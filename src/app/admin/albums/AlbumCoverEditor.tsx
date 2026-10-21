@@ -856,6 +856,11 @@ export default function AlbumCoverEditor({
               alt={shown.alt}
               referrerPolicy="no-referrer"
               onError={() => setPreviewFailed(true)}
+              // The server-rendered <img> can fail before hydration
+              // attaches onError; catch that case when React mounts it.
+              ref={(el) => {
+                if (el && el.complete && el.naturalWidth === 0) setPreviewFailed(true);
+              }}
               className="h-40 w-40 object-contain"
             />
           ) : (

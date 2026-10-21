@@ -208,7 +208,7 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium">슬러그</label>
             <div className="flex gap-2">
@@ -244,7 +244,7 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium">
               발매일 (선택)
