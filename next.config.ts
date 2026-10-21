@@ -13,7 +13,7 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 // Vercel sets VERCEL=1 and GitHub Actions sets CI=true during builds, so
 // deployed bundles keep their source maps. Only the build plugin is gated:
 // the runtime SDK, DSN and /monitoring tunnel behave the same everywhere.
-// To upload from a local build on purpose, run it with CI=1.
+// To upload from a local build on purpose, set CI=1 in its environment.
 const uploadToSentry = Boolean(process.env.CI || process.env.VERCEL);
 
 export default withSentryConfig(withNextIntl({
@@ -79,13 +79,17 @@ export default withSentryConfig(withNextIntl({
   silent: !process.env.CI,
 
   // See `uploadToSentry` above. The empty token is what actually stops the
-  // plugin from talking to Sentry: it falls back to SENTRY_AUTH_TOKEN only
+  // plugin from writing to our Sentry project (its own anonymous build
+  // telemetry to sentry.io is separate and unaffected): it falls back to
+  // SENTRY_AUTH_TOKEN only
   // when `authToken` is undefined (`??`), and every API step (release
   // create, set-commits, upload) returns early without a token.
   // `release.create: false` alone is not enough — the SDK then drops the
   // release options, and the plugin core still derives a release from the
   // git SHA and runs `set-commits` on it. `sourcemaps.disable` additionally
-  // skips source-map generation and debug-ID injection locally.
+  // skips browser source-map generation and debug-ID injection locally, so
+  // a local build is slightly faster than a CI/Vercel one and its .next
+  // output carries no browser .map files; runtime behaviour is the same.
   authToken: uploadToSentry ? process.env.SENTRY_AUTH_TOKEN : "",
   sourcemaps: { disable: !uploadToSentry },
 
