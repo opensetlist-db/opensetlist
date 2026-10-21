@@ -36,6 +36,19 @@ pipe):
 npx vitest run 2>&1 | grep -E "FAIL|×|Test Files|Tests "; echo "exit=${PIPESTATUS[0]}"
 ```
 
+Before review, lint every file the branch changed, with warnings
+failing. Warnings do not fail CI, so linting only some of the files lets
+one reach the PR as a CI annotation (`hex-colour-literals` on PR #671).
+The diff limits the check to this branch's files, so the repo's
+pre-existing warnings do not block it. Replace `dev` with the PR's base
+(`feature/redesign` for redesign tickets). The guard skips an empty list
+(a bare `npx eslint` lints the whole repo), and `--no-warn-ignored`
+stops a changed file under an ignore pattern from counting as a warning:
+
+```bash
+files=$(git diff --name-only --diff-filter=d origin/dev...HEAD -- '*.ts' '*.tsx' '*.mjs'); [ -z "$files" ] || npx eslint --max-warnings=0 --no-warn-ignored $files
+```
+
 ### Unit — no database
 
 `npm test` never opens a connection: the files that import
@@ -74,6 +87,13 @@ A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`
 and leaves its fixture rows in dev. A new integration test must create
 its own fixtures and delete them in `afterAll`; never assert on, or
 mutate, rows another feature depends on.
+
+A suite that asserts an exact list or count must also remove an earlier
+run's leftovers before it starts, or one interrupted run fails every
+later one. Give the file a fixed slug prefix of its own (not a per-run
+token), and hard-delete everything matching it at the start of
+`beforeAll`. Reference: `purge(PREFIX)` in `home-events.test.ts`
+(`feature/redesign`, PR #671).
 
 **Inspecting the dev DB by hand** (row counts, grants, RLS, before/after
 checks for a test or migration): use `node scripts/db-ro.mjs "<sql>"

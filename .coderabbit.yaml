@@ -64,6 +64,10 @@ reviews:
       `String(...)`, a template literal, or `new Date(...)`: `String(null)`
       yields "null" and `new Date(null)` the epoch, so an event without a
       date renders `dateTime="null"` and sorts on a NaN or 1970 key
+    - Integration tests on the shared dev DB that assert an exact list or
+      count must hard-delete their own leftovers first (a fixed per-file
+      slug prefix, purged at the start of `beforeAll`): an interrupted run
+      skips `afterAll`, and its rows then fail every later run
     - Admin route translation writes are per-locale upserts (src/app/api/admin/stage-identities/[id]/route.ts), never `<x>Translation.deleteMany` + recreate: a partial save wipes the locales and columns it did not send
 
     Skip:
