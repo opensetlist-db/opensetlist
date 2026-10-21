@@ -5,7 +5,7 @@
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, other {あと#時間}}",
     "minutesLeft": "{minutes, plural, other {あと#分}}",
-    "wishOpen": "セットリスト予想受付中",
+    "wishOpen": "セトリ予想受付中",
     "liveEyebrow": "LIVE NOW",
     "liveTitle": "いま開催中",
     "upcomingEyebrow": "LIVE DISCOVERY",

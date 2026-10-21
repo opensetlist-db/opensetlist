@@ -8,15 +8,19 @@
  * here, so the page keeps one readable module instead (same pattern as
  * `search.module.css`).
  *
- * Colours that are not shared tokens (the lavender ongoing card, the
- * raspberry LIVE capsule, Hero gradient) are home-only by the 14
- * contract ("No global shared token changes"), so they stay local.
+ * Shared shell colours come from the `:root` custom properties in
+ * globals.css (`--primary-hover`, `--focus-ring`, …), like
+ * search.module.css. Colours that are not shared tokens (the lavender
+ * ongoing card, the raspberry LIVE capsule, Hero gradient) are
+ * home-only by the 14 contract ("No global shared token changes"), so
+ * they stay local. `#165dcc` (`colors.primary`) has no custom property
+ * yet; adding one belongs to the shared shell, not this page.
  */
 
 .page {
   flex: 1 1 auto;
   width: 100%;
-  background: #f7f9fd;
+  background: var(--background);
 }
 
 /* ── Hero ─────────────────────────────────────────────────────────── */
@@ -108,7 +112,7 @@
   border: 1px solid #7c8ba3;
   border-radius: 8px;
   background: #fff;
-  color: #172445;
+  color: var(--foreground);
   font-size: 14px;
 }
 .heroInput::placeholder {
@@ -132,10 +136,10 @@
   cursor: pointer;
 }
 .heroSubmit:hover {
-  background: #edf4ff;
+  background: var(--primary-hover-bg);
 }
 .heroSubmit:active {
-  background: #dae7ff;
+  background: var(--primary-pressed-bg);
 }
 .heroSubmit svg {
   width: 20px;
@@ -153,7 +157,7 @@
 .button:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 3px;
-  box-shadow: 0 0 0 7px #172445;
+  box-shadow: 0 0 0 7px var(--foreground);
 }
 
 .heroActions {
@@ -182,20 +186,20 @@
   color: #fff;
 }
 .buttonPrimary:hover {
-  background: #104aa9;
+  background: var(--primary-hover);
 }
 .buttonPrimary:active {
-  background: #0c3d8c;
+  background: var(--primary-pressed);
 }
 .buttonGlass {
   background: #ffffffee;
-  color: #172445;
+  color: var(--foreground);
 }
 .buttonGlass:hover {
   background: #fff;
 }
 .buttonGlass:active {
-  background: #dae7ff;
+  background: var(--primary-pressed-bg);
 }
 
 /* Fictional-artwork notice — never implies a listed concert. */
@@ -272,7 +276,7 @@
   text-decoration: underline;
 }
 .textLink:active {
-  color: #0c3d8c;
+  color: var(--primary-pressed);
   text-decoration: underline;
 }
 
@@ -337,7 +341,13 @@
   word-break: keep-all;
 }
 
-/* EventArt fixes 24px at ≥700; the approved rail uses 22px. */
+/* EventArt fixes 24px at ≥700; the approved rail uses 22px. These
+   size overrides reach into EventArt's markup (`data-testid` + inner
+   `strong`) because EventArt has no title-size seam yet and is being
+   edited by the concert-list ticket; if it gains one, switch to it. */
+.card [data-testid="event-art"] {
+  padding: 16px;
+}
 .card [data-testid="event-art"] strong {
   font-size: 22px;
 }
@@ -498,7 +508,7 @@
   box-shadow: 0 6px 18px #33344f1a;
 }
 .live:focus-visible {
-  outline: 3px solid #174faf;
+  outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
 .live .cardTitle {
@@ -542,7 +552,7 @@
   padding: 9px 14px;
   border-radius: 8px;
   background: #f0edff;
-  color: #172445;
+  color: var(--foreground);
   font-size: 13px;
   font-weight: 700;
 }
@@ -573,6 +583,20 @@
   .liveDot {
     animation: none !important;
     opacity: 1;
+  }
+}
+
+/* ── ≥700: compact art fills its 96px column at 110px tall (mockup
+   `.past-grid .compact-card .art`), instead of EventArt's 96×96 /
+   76×120 compact defaults. Phones keep EventArt's 76×120. ─────────── */
+
+@media (min-width: 700px) {
+  .compact [data-testid="event-art"] {
+    width: 96px;
+    height: 110px;
+  }
+  .compact [data-testid="event-art"] strong {
+    font-size: 14px;
   }
 }
 

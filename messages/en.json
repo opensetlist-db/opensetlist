@@ -5,7 +5,7 @@
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, one {# hour left} other {# hours left}}",
     "minutesLeft": "{minutes, plural, one {# min left} other {# mins left}}",
-    "wishOpen": "Setlist Prediction Available",
+    "wishOpen": "Setlist predictions open",
     "liveEyebrow": "LIVE NOW",
     "liveTitle": "Live now",
     "upcomingEyebrow": "LIVE DISCOVERY",
@@ -22,7 +22,7 @@
     "browse": "Explore concerts",
     "liveBadge": "Live now",
     "scheduled": "Upcoming · {label}",
-    "setlistSongs": "{count, plural, one {#-song setlist} other {#-song setlist}}",
+    "setlistSongs": "{count, plural, other {#-song setlist}}",
     "setlistWaiting": "Waiting for setlist updates",
     "viewSetlist": "View setlist",
     "pastLink": "Past setlists"

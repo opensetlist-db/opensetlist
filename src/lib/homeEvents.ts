@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
@@ -104,7 +105,8 @@ function pastStatusWhere(now: Date, since: Date | null) {
   };
 }
 
-type HomeEventDbRow = Awaited<ReturnType<typeof findOngoing>>[number];
+/** One event row as all three section queries select it. */
+type HomeEventDbRow = Prisma.EventGetPayload<{ select: typeof HOME_EVENT_SELECT }>;
 
 function findOngoing(now: Date) {
   const ongoingStart = new Date(now.getTime() - ONGOING_BUFFER_MS);
