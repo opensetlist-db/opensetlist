@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { CoverImage } from "@/components/shared/CoverImage";
 import type { SearchType } from "@/lib/globalSearch/params";
 import type { ResultRowView } from "@/lib/globalSearch/view";
-import { colors, shadows } from "@/styles/tokens";
+import { colors, searchColors, shadows } from "@/styles/tokens";
 import { SearchIcon } from "./SearchIcon";
 import styles from "./search.module.css";
 
@@ -25,8 +25,8 @@ import styles from "./search.module.css";
 
 const ICON_TONE: Record<SearchType, { bg: string; fg: string }> = {
   events: { bg: colors.accentBlue, fg: colors.primary },
-  artists: { bg: colors.accentPink, fg: "#80344f" },
-  songs: { bg: colors.accentLavender, fg: "#594392" },
+  artists: { bg: colors.accentPink, fg: searchColors.artistInk },
+  songs: { bg: colors.accentLavender, fg: searchColors.songInk },
   albums: { bg: colors.accentBlue, fg: colors.primary },
 };
 
@@ -120,7 +120,7 @@ function ResultRow({
         <span
           aria-hidden="true"
           className="grid h-11 w-11 shrink-0 place-items-center rounded-full font-bold"
-          style={{ background: colors.accentPink, color: "#80344f" }}
+          style={{ background: colors.accentPink, color: searchColors.artistInk }}
         >
           {row.initial}
         </span>
@@ -137,9 +137,9 @@ function ResultRow({
               <span
                 className="rounded-md border px-[7px] py-[3px] text-[11px] leading-normal"
                 style={{
-                  background: "#edf3ff",
+                  background: searchColors.dayChipBg,
                   borderColor: colors.primaryBorder,
-                  color: "#2457a6",
+                  color: searchColors.dayChipInk,
                 }}
               >
                 {row.day}
@@ -162,8 +162,8 @@ function ResultRow({
             className="mt-1.5 inline-block rounded px-1.5 py-0.5 text-[12px]"
             style={
               row.version.base
-                ? { background: "#eef3f9", color: colors.textSecondary }
-                : { background: colors.accentLavender, color: "#58417d" }
+                ? { background: searchColors.baseChipBg, color: colors.textSecondary }
+                : { background: colors.accentLavender, color: searchColors.variantInk }
             }
           >
             {row.version.label}
@@ -171,7 +171,7 @@ function ResultRow({
         )}
         {row.meta && <Meta>{row.meta}</Meta>}
         {row.matched && (
-          <Meta color="#53527d">
+          <Meta color={searchColors.matchedInk}>
             {matchedLabel}: <span lang={row.matched.lang}>{row.matched.name}</span>
           </Meta>
         )}
@@ -225,15 +225,15 @@ export function StatePanel({
       role={error ? "alert" : "status"}
       className="rounded-2xl border px-5 py-8 text-center min-[700px]:px-7 min-[700px]:py-12"
       style={{
-        borderColor: error ? "#daa6b7" : colors.border,
-        background: error ? "#fff9fb" : colors.bgCard,
+        borderColor: error ? searchColors.errorBorder : colors.border,
+        background: error ? searchColors.errorBg : colors.bgCard,
       }}
     >
       <div
         className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full"
         style={{
           background: error ? colors.accentPink : colors.accentBlue,
-          color: error ? "#80344f" : colors.primary,
+          color: error ? searchColors.errorInk : colors.primary,
         }}
       >
         <SearchIcon size={28} />

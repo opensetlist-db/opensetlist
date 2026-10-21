@@ -277,10 +277,10 @@ export default async function SearchPage({ params, searchParams }: Props) {
                     ? {
                         background: colors.primary,
                         borderColor: colors.primary,
-                        color: "#fff",
+                        color: colors.bgCard,
                         fontWeight: 700,
                       }
-                    : { background: "#fff", borderColor: colors.borderStrong }
+                    : { background: colors.bgCard, borderColor: colors.borderStrong }
                 }
               >
                 {type ? groupLabel(type) : t("all")}

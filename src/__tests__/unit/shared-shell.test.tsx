@@ -80,25 +80,26 @@ describe("<Nav />", () => {
   });
 
   it("renders both search entry points pointing at the shared search page", () => {
-    searchQuery = "Dream";
     render(<Nav />);
     expect(screen.getByRole("search")).toHaveAttribute("action", "/ko/search");
-    const field = screen.getByRole("searchbox");
-    expect(field).toHaveAttribute("name", "q");
-    // Outside the search page the field starts empty even if some other
-    // page happens to carry a `q` parameter.
-    expect(field).toHaveValue("");
+    expect(screen.getByRole("searchbox")).toHaveAttribute("name", "q");
     expect(screen.getByRole("link", { name: "search" })).toHaveAttribute(
       "href",
       "/search",
     );
   });
 
-  it("mirrors the current query in the header field on the search page", () => {
-    pathname = "/search";
+  it("mirrors q in the header field only on the search page", () => {
     searchQuery = "Dream";
-    render(<Nav />);
+    // Positive control: on /search the field shows the URL query…
+    pathname = "/search";
+    const { unmount } = render(<Nav />);
     expect(screen.getByRole("searchbox")).toHaveValue("Dream");
+    unmount();
+    // …and with the same `q` on another page it starts empty.
+    pathname = "/events";
+    render(<Nav />);
+    expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 
   it("opens the menu, then Escape closes it and returns focus to the toggle", () => {
