@@ -84,6 +84,22 @@ enum EventStatus {
   cancelled // 관리자 override 전용
 }
 
+// How an EventSeries / Event shows its logo. Paired with the row's
+// `logoAssetId`; post-deploy.sql enforces the pairing with a CHECK:
+//   inherit    + null      → use the owning series' / parent series'
+//                            setting (a descendant `custom` is found
+//                            before an ancestor `typography` stop)
+//   custom     + non-null  → use this row's own ImageAsset
+//   typography + null      → stop inheritance here, render the name
+// Every existing row starts as inherit/null, which renders exactly as
+// before: posterUrl / EventSeries.imageUrl are NOT logos and are never
+// reinterpreted as one.
+enum LogoDisplayMode {
+  inherit
+  custom
+  typography
+}
+
 enum SetlistItemStageType {
   full_group
   unit
@@ -488,16 +504,24 @@ model EventSeries {
   isDeleted           Boolean         @default(false)
   deletedAt           DateTime?
   createdAt           DateTime        @default(now())
+  // Managed logo (redesign). See LogoDisplayMode for the mode/asset
+  // pairing. `imageUrl` above stays a generic series image, not a logo.
+  logoMode            LogoDisplayMode @default(inherit)
+  logoAssetId         String?
 
   artist       Artist?                  @relation(fields: [artistId], references: [id])
   parentSeries EventSeries?             @relation("SeriesChildren", fields: [parentSeriesId], references: [id])
   childSeries  EventSeries[]            @relation("SeriesChildren")
   translations EventSeriesTranslation[]
   events       Event[]
+  // Restrict, not SetNull: nulling the reference would leave a
+  // `custom` row with no asset, which the CHECK rejects anyway.
+  logoAsset    ImageAsset?              @relation("EventSeriesLogo", fields: [logoAssetId], references: [id], onDelete: Restrict)
 
   @@index([artistId])
   @@index([parentSeriesId])
   @@index([isDeleted])
+  @@index([logoAssetId])
 }
 
 model EventSeriesTranslation {
@@ -526,9 +550,9 @@ model EventSeriesTranslation {
 // status: drives UI mode.
 // BigInt: appears in public URLs e.g. /events/123
 model Event {
-  id                BigInt      @id @default(autoincrement())
-  slug              String      @unique
-  eventSeriesId     BigInt?
+  id                  BigInt          @id @default(autoincrement())
+  slug                String          @unique
+  eventSeriesId       BigInt?
   // Primary artist for this event. Mirrors EventSeries.artistId.
   //
   // Set for every single-artist event (whether standalone or in a
@@ -541,7 +565,7 @@ model Event {
   // prisma/post-deploy.sql for events without a series, when the
   // EventPerformer roster resolves to exactly 1 distinct non-guest
   // artist.
-  artistId          BigInt?
+  artistId            BigInt?
   // Display name for multi-artist standalone events (e.g.
   // "Bandai Namco / Lantis"). Only meaningful when artistId is null
   // AND eventSeriesId is null — i.e. a truly multi-artist event
@@ -550,17 +574,17 @@ model Event {
   // on the events list page rather than landing in the catchall.
   // This is the original-language value (the `original*` role);
   // localized variants live on EventTranslation.organizerName.
-  organizerName     String?
+  organizerName       String?
   // Optional link to the live BD Album that releases footage of this
   // event. Many-to-one — multi-day shows commonly share one Memorial
   // BOX (Saitama Day 1 + Day 2 → same album). Drives the EventBdSection
   // surface (b07) that shows store listings / bonuses for the BD on
   // the event detail page once the BD is announced.
-  bdAlbumId         BigInt?
-  type              EventType
-  status            EventStatus @default(scheduled)
-  date              DateTime?   @db.Date
-  startTime         DateTime // UTC; used as lock time for wishlist
+  bdAlbumId           BigInt?
+  type                EventType
+  status              EventStatus     @default(scheduled)
+  date                DateTime?       @db.Date
+  startTime           DateTime // UTC; used as lock time for wishlist
   // UTC instant at which the Wishlist / Predicted Setlist surfaces
   // open. Null = the default window (startTime − 168h, see
   // `src/lib/eventTiming.ts#isWishPredictOpen`). Set per event when
@@ -569,17 +593,17 @@ model Event {
   // shows and festivals open earlier (~D-30) so word-of-mouth has time
   // to build. Must be < startTime (enforced by the admin API + import).
   // Closing is still startTime (status flip), so there is no closes-at.
-  engagementOpensAt DateTime?
-  country           String? // ISO 3166 e.g. "KR" "JP" "US"
-  posterUrl         String?
-  originalName      String
-  originalShortName String?
-  originalCity      String?
-  originalVenue     String?
-  originalLanguage  String      @default("ja")
-  isDeleted         Boolean     @default(false)
-  deletedAt         DateTime?
-  createdAt         DateTime    @default(now())
+  engagementOpensAt   DateTime?
+  country             String? // ISO 3166 e.g. "KR" "JP" "US"
+  posterUrl           String?
+  originalName        String
+  originalShortName   String?
+  originalCity        String?
+  originalVenue       String?
+  originalLanguage    String          @default("ja")
+  isDeleted           Boolean         @default(false)
+  deletedAt           DateTime?
+  createdAt           DateTime        @default(now())
   // Monotonic counter of setlist-affecting saves (n14). Every writer
   // that changes what the live snapshot (`/api/setlist`) carries —
   // setlist items, their order/status/links, and the event's own
@@ -592,7 +616,7 @@ model Event {
   // it (high-frequency, low-value; the periodic poll refreshes them).
   // BigInt so the counter can never wrap; serialized to the wire as a
   // JSON number after a safe-integer assertion.
-  setlistRevision   BigInt      @default(0)
+  setlistRevision     BigInt          @default(0)
   // Fan board (n15). Explicit per-event enablement AND the kill switch:
   // the flag alone decides whether the event page mounts the board and
   // whether board reads/writes are served — not festival classification
@@ -603,15 +627,20 @@ model Event {
   // own cache entries (never the event or global tags): the board read
   // sees the change on its next request; the event page's mount
   // decision follows the event-row TTL.
-  boardEnabled        Boolean   @default(false)
+  boardEnabled        Boolean         @default(false)
   // Operator starter picks shown (labelled) in a board column that has
   // zero fan submissions: `{ "<rootGroupArtistId>": ["<songId>", …] }`,
   // ≤ 3 base songs per group, ids as decimal strings (JSON has no
   // BigInt). Never rows in the pick tables, so they cannot leak into
   // counts or the post-show tally. Null = none configured.
   boardStarterSongIds Json?
+  // Managed logo override (redesign). See LogoDisplayMode; `posterUrl`
+  // above stays the poster and is never read as a logo.
+  logoMode            LogoDisplayMode @default(inherit)
+  logoAssetId         String?
 
   eventSeries  EventSeries?          @relation(fields: [eventSeriesId], references: [id])
+  logoAsset    ImageAsset?           @relation("EventLogo", fields: [logoAssetId], references: [id], onDelete: Restrict)
   artist       Artist?               @relation(fields: [artistId], references: [id])
   bdAlbum      Album?                @relation("EventBdAlbum", fields: [bdAlbumId], references: [id])
   translations EventTranslation[]
@@ -632,6 +661,7 @@ model Event {
   @@index([bdAlbumId])
   @@index([date, status])
   @@index([isDeleted])
+  @@index([logoAssetId])
 }
 
 model EventTranslation {
@@ -923,6 +953,49 @@ model SongTranslation {
 
   @@unique([songId, locale])
   @@index([songId])
+}
+
+// ── IMAGE ASSET ───────────────────────────────────────
+// Registry of images uploaded through the admin (R2). One row per stored
+// object; an internal record, not a public gallery or revision history.
+// UUID id: never in a public URL.
+//
+// Retention: rows and objects outlive unlink/replacement on purpose. A
+// replacement is a NEW object under a NEW key (objects are never
+// overwritten in place), so an old direct URL keeps serving what it
+// served. Nothing here may be purged without checking both logo FKs AND
+// every Album.imageUrl that equals `publicUrl`.
+//
+// Album covers do NOT reference this table: Album.imageUrl stays the only
+// cover source, and admin provenance is the exact match
+// `Album.imageUrl = ImageAsset.publicUrl`. A second FK column would let a
+// URL-only writer (an older deployment, the CSV path) leave a stale asset
+// that a reader could resurrect.
+//
+// Private: sourceUrl / usageNote are admin-only. post-deploy.sql revokes
+// anon/authenticated access and enables RLS on this table (the Supabase
+// default ACL would otherwise grant both roles everything); server Prisma
+// connects as the owner and is unaffected. Do not add it to Realtime.
+// byteSize / width / height > 0 is a CHECK in post-deploy.sql.
+model ImageAsset {
+  id        String   @id @default(uuid())
+  // Immutable storage key inside the deployment's R2 namespace.
+  objectKey String   @unique
+  // Canonical public delivery URL of that object (never a signed URL).
+  publicUrl String   @unique
+  // Server-validated decoded type, not the client's claim.
+  mimeType  String
+  byteSize  Int
+  width     Int
+  height    Int
+  // Admin-only provenance and usage note (nullable: original artwork
+  // may have no source).
+  sourceUrl String?
+  usageNote String?
+  createdAt DateTime @default(now())
+
+  eventSeriesLogos EventSeries[] @relation("EventSeriesLogo")
+  eventLogos       Event[]       @relation("EventLogo")
 }
 
 // ── ALBUM ─────────────────────────────────────────────
