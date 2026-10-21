@@ -17,7 +17,9 @@ import { randomUUID } from "node:crypto";
 
 const h = vi.hoisted(() => ({ storage: null as unknown }));
 
-vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }));
+vi.mock("@/lib/admin-auth", () => ({
+  verifyAdminAPI: vi.fn(async () => null),
+}));
 vi.mock("@/lib/dataCache", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/dataCache")>()),
   cachedQuery:
@@ -69,7 +71,12 @@ let storage: MemoryImageStorage;
 const params = () => ({ params: Promise.resolve({ id: albumId.toString() }) });
 const url = (suffix = "") => `${ORIGIN}/api/admin/albums/${albumId}${suffix}`;
 
-function json(method: string, target: string, body: unknown, headers: Record<string, string> = {}) {
+function json(
+  method: string,
+  target: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) {
   return new NextRequest(target, {
     method,
     headers: { "Content-Type": "application/json", origin: ORIGIN, ...headers },
@@ -79,13 +86,26 @@ function json(method: string, target: string, body: unknown, headers: Record<str
 
 function upload(fields: Record<string, string>, bytes: Uint8Array = png) {
   const form = new FormData();
-  form.set("file", new Blob([bytes as BlobPart], { type: "image/png" }), "cover.png");
+  form.set(
+    "file",
+    new Blob([bytes as BlobPart], { type: "image/png" }),
+    "cover.png",
+  );
   for (const [k, v] of Object.entries(fields)) form.set(k, v);
-  return new NextRequest(url("/cover"), { method: "POST", headers: { origin: ORIGIN }, body: form });
+  return new NextRequest(url("/cover"), {
+    method: "POST",
+    headers: { origin: ORIGIN },
+    body: form,
+  });
 }
 
 async function cover(): Promise<string | null> {
-  return (await prisma.album.findUniqueOrThrow({ where: { id: albumId }, select: { imageUrl: true } })).imageUrl;
+  return (
+    await prisma.album.findUniqueOrThrow({
+      where: { id: albumId },
+      select: { imageUrl: true },
+    })
+  ).imageUrl;
 }
 
 async function setCover(imageUrl: string | null) {
@@ -102,47 +122,80 @@ const info = (over: Record<string, unknown> = {}) => ({
 
 beforeAll(async () => {
   png = new Uint8Array(
-    await sharp({ create: { width: 64, height: 64, channels: 3, background: "#245cce" } })
+    await sharp({
+      create: { width: 64, height: 64, channels: 3, background: "#245cce" },
+    })
       .png()
       .toBuffer(),
   );
   storage = new MemoryImageStorage("itest", BASE);
   h.storage = storage;
   const album = await prisma.album.create({
-    data: { slug: TAG, type: "single", originalTitle: `${TAG} album`, imageUrl: EXTERNAL },
+    data: {
+      slug: TAG,
+      type: "single",
+      originalTitle: `${TAG} album`,
+      imageUrl: EXTERNAL,
+    },
   });
   albumId = album.id;
 });
 
 afterAll(async () => {
   if (albumId) await prisma.album.delete({ where: { id: albumId } });
-  await prisma.imageAsset.deleteMany({ where: { publicUrl: { startsWith: BASE } } });
+  await prisma.imageAsset.deleteMany({
+    where: { publicUrl: { startsWith: BASE } },
+  });
   expect(await prisma.album.count({ where: { slug: TAG } })).toBe(0);
-  expect(await prisma.imageAsset.count({ where: { publicUrl: { startsWith: BASE } } })).toBe(0);
+  expect(
+    await prisma.imageAsset.count({
+      where: { publicUrl: { startsWith: BASE } },
+    }),
+  ).toBe(0);
 });
 
 describe("album info PATCH and the cover", () => {
   it("an info edit without imageUrl keeps the existing external cover", async () => {
     await setCover(EXTERNAL);
-    const res = await PATCH(json("PATCH", url(), info({ labelName: "Lantis" })), params());
+    const res = await PATCH(
+      json("PATCH", url(), info({ labelName: "Lantis" })),
+      params(),
+    );
     expect(res.status).toBe(200);
     expect(await cover()).toBe(EXTERNAL);
     // positive control: the info field itself was written
-    expect((await prisma.album.findUniqueOrThrow({ where: { id: albumId } })).labelName).toBe("Lantis");
+    expect(
+      (await prisma.album.findUniqueOrThrow({ where: { id: albumId } }))
+        .labelName,
+    ).toBe("Lantis");
   });
 
   it("imageUrl without the expected value is refused, not written blindly", async () => {
     await setCover(EXTERNAL_B);
-    const res = await PATCH(json("PATCH", url(), info({ imageUrl: EXTERNAL, labelName: "stale" })), params());
+    const res = await PATCH(
+      json("PATCH", url(), info({ imageUrl: EXTERNAL, labelName: "stale" })),
+      params(),
+    );
     expect(res.status).toBe(400);
     expect(await cover()).toBe(EXTERNAL_B);
-    expect((await prisma.album.findUniqueOrThrow({ where: { id: albumId } })).labelName).toBe("Lantis");
+    expect(
+      (await prisma.album.findUniqueOrThrow({ where: { id: albumId } }))
+        .labelName,
+    ).toBe("Lantis");
   });
 
   it("a stale expected cover rolls back every field of the request (real transaction)", async () => {
     await setCover(EXTERNAL_B);
     const res = await PATCH(
-      json("PATCH", url(), info({ labelName: "should-not-stick", imageUrl: null, expectedImageUrl: EXTERNAL })),
+      json(
+        "PATCH",
+        url(),
+        info({
+          labelName: "should-not-stick",
+          imageUrl: null,
+          expectedImageUrl: EXTERNAL,
+        }),
+      ),
       params(),
     );
     expect(res.status).toBe(409);
@@ -153,13 +206,24 @@ describe("album info PATCH and the cover", () => {
       current: { imageUrl: EXTERNAL_B },
     });
     expect(await cover()).toBe(EXTERNAL_B);
-    expect((await prisma.album.findUniqueOrThrow({ where: { id: albumId } })).labelName).toBe("Lantis");
+    expect(
+      (await prisma.album.findUniqueOrThrow({ where: { id: albumId } }))
+        .labelName,
+    ).toBe("Lantis");
   });
 
   it("a matching expected cover is written together with the info fields", async () => {
     await setCover(EXTERNAL_B);
     const res = await PATCH(
-      json("PATCH", url(), info({ labelName: "Lantis", imageUrl: ` ${EXTERNAL} `, expectedImageUrl: EXTERNAL_B })),
+      json(
+        "PATCH",
+        url(),
+        info({
+          labelName: "Lantis",
+          imageUrl: ` ${EXTERNAL} `,
+          expectedImageUrl: EXTERNAL_B,
+        }),
+      ),
       params(),
     );
     expect(res.status).toBe(200);
@@ -168,7 +232,10 @@ describe("album info PATCH and the cover", () => {
 
   it("a non-string imageUrl is a 400, not an unlink", async () => {
     await setCover(EXTERNAL);
-    const res = await PATCH(json("PATCH", url(), info({ imageUrl: 42, expectedImageUrl: EXTERNAL })), params());
+    const res = await PATCH(
+      json("PATCH", url(), info({ imageUrl: 42, expectedImageUrl: EXTERNAL })),
+      params(),
+    );
     expect(res.status).toBe(400);
     expect(await cover()).toBe(EXTERNAL);
   });
@@ -178,24 +245,48 @@ describe("cover route — URL edit and unlink", () => {
   it("replaces the URL, unlinks to null, and nothing brings the old URL back", async () => {
     await setCover(EXTERNAL);
     vi.mocked(revalidatePublicData).mockClear();
-    let res = await PUT(json("PUT", url("/cover"), { expectedImageUrl: EXTERNAL, imageUrl: EXTERNAL_B }), params());
+    let res = await PUT(
+      json("PUT", url("/cover"), {
+        expectedImageUrl: EXTERNAL,
+        imageUrl: EXTERNAL_B,
+      }),
+      params(),
+    );
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ imageUrl: EXTERNAL_B, provenance: null });
+    expect(await res.json()).toMatchObject({
+      imageUrl: EXTERNAL_B,
+      provenance: null,
+    });
     expect(revalidatePublicData).toHaveBeenCalled();
 
-    res = await PUT(json("PUT", url("/cover"), { expectedImageUrl: EXTERNAL_B, imageUrl: null }), params());
+    res = await PUT(
+      json("PUT", url("/cover"), {
+        expectedImageUrl: EXTERNAL_B,
+        imageUrl: null,
+      }),
+      params(),
+    );
     expect(res.status).toBe(200);
     expect(await cover()).toBeNull();
 
     // An unrelated info save afterwards leaves it empty.
-    res = await PATCH(json("PATCH", url(), info({ labelName: "Lantis" })), params());
+    res = await PATCH(
+      json("PATCH", url(), info({ labelName: "Lantis" })),
+      params(),
+    );
     expect(res.status).toBe(200);
     expect(await cover()).toBeNull();
   });
 
   it("a stale expected value is 409 with the current value; the cover is untouched", async () => {
     await setCover(EXTERNAL_B);
-    const res = await PUT(json("PUT", url("/cover"), { expectedImageUrl: EXTERNAL, imageUrl: null }), params());
+    const res = await PUT(
+      json("PUT", url("/cover"), {
+        expectedImageUrl: EXTERNAL,
+        imageUrl: null,
+      }),
+      params(),
+    );
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({
       error: "assignment_conflict",
@@ -208,8 +299,20 @@ describe("cover route — URL edit and unlink", () => {
   it("two saves from the same loaded value: exactly one wins", async () => {
     await setCover(EXTERNAL);
     const [a, b] = await Promise.all([
-      PUT(json("PUT", url("/cover"), { expectedImageUrl: EXTERNAL, imageUrl: EXTERNAL_B }), params()),
-      PUT(json("PUT", url("/cover"), { expectedImageUrl: EXTERNAL, imageUrl: null }), params()),
+      PUT(
+        json("PUT", url("/cover"), {
+          expectedImageUrl: EXTERNAL,
+          imageUrl: EXTERNAL_B,
+        }),
+        params(),
+      ),
+      PUT(
+        json("PUT", url("/cover"), {
+          expectedImageUrl: EXTERNAL,
+          imageUrl: null,
+        }),
+        params(),
+      ),
     ]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
     const winner = a.status === 200 ? EXTERNAL_B : null;
@@ -218,15 +321,30 @@ describe("cover route — URL edit and unlink", () => {
 
   it("validates the request: missing expected, bad URL, cross origin", async () => {
     await setCover(EXTERNAL);
-    expect((await PUT(json("PUT", url("/cover"), { imageUrl: null }), params())).status).toBe(400);
     expect(
-      (await PUT(json("PUT", url("/cover"), { expectedImageUrl: EXTERNAL, imageUrl: "javascript:alert(1)" }), params()))
+      (await PUT(json("PUT", url("/cover"), { imageUrl: null }), params()))
         .status,
     ).toBe(400);
     expect(
       (
         await PUT(
-          json("PUT", url("/cover"), { expectedImageUrl: EXTERNAL, imageUrl: null }, { origin: "https://evil.example" }),
+          json("PUT", url("/cover"), {
+            expectedImageUrl: EXTERNAL,
+            imageUrl: "javascript:alert(1)",
+          }),
+          params(),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await PUT(
+          json(
+            "PUT",
+            url("/cover"),
+            { expectedImageUrl: EXTERNAL, imageUrl: null },
+            { origin: "https://evil.example" },
+          ),
           params(),
         )
       ).status,
@@ -240,7 +358,12 @@ describe("cover route — upload and re-read", () => {
     await setCover(EXTERNAL);
     const attemptId = randomUUID();
     let res = await POST(
-      upload({ attemptId, expectedImageUrl: EXTERNAL, sourceUrl: "https://example.com/src", usageNote: "itest" }),
+      upload({
+        attemptId,
+        expectedImageUrl: EXTERNAL,
+        sourceUrl: "https://example.com/src",
+        usageNote: "itest",
+      }),
       params(),
     );
     expect(res.status).toBe(201);
@@ -248,44 +371,85 @@ describe("cover route — upload and re-read", () => {
     expect(managed.startsWith(BASE)).toBe(true);
     expect(await cover()).toBe(managed);
 
-    res = await GET(new NextRequest(url(`/cover?attemptId=${attemptId}`)), params());
+    res = await GET(
+      new NextRequest(url(`/cover?attemptId=${attemptId}`)),
+      params(),
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       imageUrl: managed,
-      provenance: { sourceUrl: "https://example.com/src", usageNote: "itest", width: 64, height: 64 },
+      provenance: {
+        sourceUrl: "https://example.com/src",
+        usageNote: "itest",
+        width: 64,
+        height: 64,
+      },
       attempt: { state: "committed", publicUrl: managed },
     });
 
     // Same attempt again (e.g. after a lost reply): reconciled, no second write.
-    res = await POST(upload({ attemptId, expectedImageUrl: EXTERNAL }), params());
+    res = await POST(
+      upload({ attemptId, expectedImageUrl: EXTERNAL }),
+      params(),
+    );
     expect(res.status).toBe(200);
     expect((await res.json()).status).toBe("reconciled");
 
-    res = await PUT(json("PUT", url("/cover"), { expectedImageUrl: managed, imageUrl: EXTERNAL_B }), params());
+    res = await PUT(
+      json("PUT", url("/cover"), {
+        expectedImageUrl: managed,
+        imageUrl: EXTERNAL_B,
+      }),
+      params(),
+    );
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ imageUrl: EXTERNAL_B, provenance: null });
-    expect(await prisma.imageAsset.count({ where: { publicUrl: managed } })).toBe(1);
+    expect(await res.json()).toMatchObject({
+      imageUrl: EXTERNAL_B,
+      provenance: null,
+    });
+    expect(
+      await prisma.imageAsset.count({ where: { publicUrl: managed } }),
+    ).toBe(1);
 
     // The committed attempt is now superseded: re-read says so, a resend
     // must not take the assignment back.
-    res = await GET(new NextRequest(url(`/cover?attemptId=${attemptId}`)), params());
-    expect(await res.json()).toMatchObject({ imageUrl: EXTERNAL_B, attempt: { state: "committed" } });
-    res = await POST(upload({ attemptId, expectedImageUrl: EXTERNAL }), params());
+    res = await GET(
+      new NextRequest(url(`/cover?attemptId=${attemptId}`)),
+      params(),
+    );
+    expect(await res.json()).toMatchObject({
+      imageUrl: EXTERNAL_B,
+      attempt: { state: "committed" },
+    });
+    res = await POST(
+      upload({ attemptId, expectedImageUrl: EXTERNAL }),
+      params(),
+    );
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ attemptCommitted: true });
     expect(await cover()).toBe(EXTERNAL_B);
   });
 
-  it("an external URL never inherits provenance; an unknown attempt reads as absent", async () => {
+  it("an external URL never inherits provenance; an unknown attempt reads as not-observed", async () => {
     await setCover(EXTERNAL);
-    const res = await GET(new NextRequest(url(`/cover?attemptId=${randomUUID()}`)), params());
-    expect(await res.json()).toMatchObject({ imageUrl: EXTERNAL, provenance: null, attempt: { state: "absent" } });
+    const res = await GET(
+      new NextRequest(url(`/cover?attemptId=${randomUUID()}`)),
+      params(),
+    );
+    expect(await res.json()).toMatchObject({
+      imageUrl: EXTERNAL,
+      provenance: null,
+      attempt: { state: "not-observed" },
+    });
   });
 
   it("a stale upload is 409 and stores nothing", async () => {
     await setCover(EXTERNAL_B);
     const before = storage.puts.length;
-    const res = await POST(upload({ attemptId: randomUUID(), expectedImageUrl: EXTERNAL }), params());
+    const res = await POST(
+      upload({ attemptId: randomUUID(), expectedImageUrl: EXTERNAL }),
+      params(),
+    );
     expect(res.status).toBe(409);
     expect(storage.puts.length).toBe(before);
     expect(await cover()).toBe(EXTERNAL_B);
@@ -293,10 +457,20 @@ describe("cover route — upload and re-read", () => {
 
   it("GET of a missing album is 404; a malformed attempt id is 400", async () => {
     const missing = { params: Promise.resolve({ id: "9223372036854775806" }) };
-    expect((await GET(new NextRequest(`${ORIGIN}/api/admin/albums/9223372036854775806/cover`), missing)).status).toBe(
-      404,
-    );
-    expect((await GET(new NextRequest(url("/cover?attemptId=nope")), params())).status).toBe(400);
+    expect(
+      (
+        await GET(
+          new NextRequest(
+            `${ORIGIN}/api/admin/albums/9223372036854775806/cover`,
+          ),
+          missing,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (await GET(new NextRequest(url("/cover?attemptId=nope")), params()))
+        .status,
+    ).toBe(400);
   });
 });
 
@@ -320,11 +494,15 @@ describe("non-upload write outcomes", () => {
     };
     const lost = writeAssignment(
       target,
-      (tx) => writeAlbumImageUrl(tx, albumId, { imageUrl: EXTERNAL }, EXTERNAL_B),
+      (tx) =>
+        writeAlbumImageUrl(tx, albumId, { imageUrl: EXTERNAL }, EXTERNAL_B),
       lostReply,
     );
     await expect(lost).rejects.toBeInstanceOf(UploadError);
-    await expect(lost).rejects.toMatchObject({ code: "outcome_unknown", outcome: "unknown" });
+    await expect(lost).rejects.toMatchObject({
+      code: "outcome_unknown",
+      outcome: "unknown",
+    });
     // The form's re-read then finds the requested value in place.
     const res = await GET(new NextRequest(url("/cover")), params());
     expect((await res.json()).imageUrl).toBe(EXTERNAL_B);
@@ -335,7 +513,9 @@ describe("CSV import keeps covers", () => {
   it("re-importing an existing album row leaves imageUrl untouched", async () => {
     await setCover(EXTERNAL);
     const csv = `slug,originalTitle,originalLanguage,type,labelName\n${TAG},${TAG} album,ja,single,Lantis\n`;
-    const res = await IMPORT_POST(json("POST", `${ORIGIN}/api/admin/import`, { type: "albums", csv }));
+    const res = await IMPORT_POST(
+      json("POST", `${ORIGIN}/api/admin/import`, { type: "albums", csv }),
+    );
     expect(res.status).toBe(200);
     expect(await cover()).toBe(EXTERNAL);
   });

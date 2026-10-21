@@ -1,10 +1,10 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  ACCEPTED_IMAGE_FORMATS,
   UploadError,
-  buildObjectKey,
+  findAttemptAsset,
   readR2Config,
+  type AttemptLookup,
 } from "@/lib/imageUpload";
 import { MAX_SOURCE_URL_LENGTH } from "@/lib/imageUpload/limits";
 
@@ -28,22 +28,8 @@ export type CoverProvenance = {
   createdAt: string;
 };
 
-/**
- * What a re-read found out about one upload attempt:
- *   committed — its ImageAsset row exists (asset and assignment commit
- *               together, so the row proves the commit);
- *   absent    — no row at read time. NOT proof of failure: a request
- *               still in flight may commit later;
- *   ambiguous — more than one row for the attempt (should not happen;
- *               the form keeps the outcome unknown);
- *   unavailable — the storage namespace is not configured here, so the
- *               attempt's key cannot be rebuilt.
- */
-export type AttemptState =
-  | { state: "committed"; publicUrl: string }
-  | { state: "absent" }
-  | { state: "ambiguous" }
-  | { state: "unavailable" };
+/** Shared attempt lookup states (see imageUpload/attemptLookup.ts). */
+export type AttemptState = AttemptLookup;
 
 export type CoverState = {
   imageUrl: string | null;
@@ -154,28 +140,6 @@ export function isUploadStorageConfigured(
   }
 }
 
-function attemptKeys(albumId: bigint, attemptId: string): string[] | null {
-  let prefix: string;
-  try {
-    const cfg = readR2Config();
-    if (!cfg) return null;
-    prefix = cfg.keyPrefix;
-  } catch {
-    return null;
-  }
-  // The decoded format decides the extension, so the committed key is one
-  // of exactly these. An exact `in` lookup, never a substring match.
-  return Object.values(ACCEPTED_IMAGE_FORMATS).map((f) =>
-    buildObjectKey({
-      prefix,
-      segment: "album-cover",
-      targetId: albumId,
-      attemptId,
-      ext: f.ext,
-    }),
-  );
-}
-
 function toProvenance(
   row: Prisma.ImageAssetGetPayload<{ select: typeof PROVENANCE_SELECT }>,
 ): CoverProvenance {
@@ -185,14 +149,13 @@ function toProvenance(
 /**
  * Current cover (+ provenance, + the attempt's state when asked) read in
  * ONE repeatable-read snapshot, so an upload committing between two
- * separate reads cannot produce a false "absent but changed" verdict.
+ * separate reads cannot produce a false "not observed but changed" verdict.
  * Returns null when the album does not exist.
  */
 export async function readCoverState(
   albumId: bigint,
   attemptId?: string,
 ): Promise<CoverState | null> {
-  const keys = attemptId ? attemptKeys(albumId, attemptId) : null;
   return prisma.$transaction(
     async (tx) => {
       const album = await tx.album.findUnique({
@@ -211,20 +174,12 @@ export async function readCoverState(
         provenance: asset ? toProvenance(asset) : null,
       };
       if (attemptId) {
-        if (!keys) {
-          state.attempt = { state: "unavailable" };
-        } else {
-          const rows = await tx.imageAsset.findMany({
-            where: { objectKey: { in: keys } },
-            select: { publicUrl: true },
-          });
-          state.attempt =
-            rows.length === 0
-              ? { state: "absent" }
-              : rows.length === 1
-                ? { state: "committed", publicUrl: rows[0].publicUrl }
-                : { state: "ambiguous" };
-        }
+        state.attempt = await findAttemptAsset(
+          tx,
+          "album-cover",
+          albumId,
+          attemptId,
+        );
       }
       return state;
     },

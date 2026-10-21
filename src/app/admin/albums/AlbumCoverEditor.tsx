@@ -90,8 +90,8 @@ type CoverStateResponse = {
   imageUrl: string | null;
   provenance: CoverProvenance | null;
   attempt?:
-    | { state: "committed"; publicUrl: string }
-    | { state: "absent" }
+    | { state: "committed"; assetId: string; publicUrl: string }
+    | { state: "not-observed" }
     | { state: "ambiguous" }
     | { state: "unavailable" };
 };
@@ -468,7 +468,7 @@ export default function AlbumCoverEditor({
           attemptCommitted: true,
           latest: state.imageUrl,
         });
-      } else if (a?.state === "absent") {
+      } else if (a?.state === "not-observed") {
         if (state.imageUrl === submitted.expected) {
           setPhase({ kind: "unchanged" });
         } else {

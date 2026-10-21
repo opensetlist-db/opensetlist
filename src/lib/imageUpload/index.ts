@@ -46,3 +46,4 @@ export {
   type UploadTargetSpec,
 } from "./http";
 export { writeAssignment, type AssignmentDb } from "./assignmentWrite";
+export { findAttemptAsset, attemptObjectKeys, type AttemptLookup } from "./attemptLookup";
