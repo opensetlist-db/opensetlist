@@ -67,6 +67,12 @@ export type LogoCardCopy = {
   title: string;
   inheritTitle: string;
   customDescription: string;
+  /**
+   * Success notice body when nothing else is unsaved. Defaults to the
+   * series page's "목록으로 이동합니다" (it navigates); a page that stays
+   * after a logo save (the event edit page) says so instead.
+   */
+  savedBody?: string;
 };
 
 export type LogoCardStatus = {
@@ -750,6 +756,7 @@ export default function LogoAssignmentCard({
         onRetry={retry}
         onCheck={checkCurrent}
         onLoadLatest={loadLatest}
+        savedBody={copy.savedBody}
       />
 
       <div className="mb-[9px] mt-5 flex justify-end gap-[9px]">
@@ -822,6 +829,7 @@ function Notice({
   onRetry,
   onCheck,
   onLoadLatest,
+  savedBody,
 }: {
   refEl: React.RefObject<HTMLDivElement | null>;
   phase: Phase;
@@ -832,6 +840,7 @@ function Notice({
   onRetry: () => void;
   onCheck: () => void;
   onLoadLatest: () => void;
+  savedBody?: string;
 }) {
   const tone = {
     info: "border-[#b5caec] bg-[#eff5ff] text-[#305385]",
@@ -919,7 +928,7 @@ function Notice({
     case "saved":
       kind = "success";
       title = "저장되었습니다";
-      body = message ?? "로고 설정을 저장했습니다. 목록으로 이동합니다.";
+      body = message ?? savedBody ?? "로고 설정을 저장했습니다. 목록으로 이동합니다.";
       break;
     case "savedStay":
       kind = "success";

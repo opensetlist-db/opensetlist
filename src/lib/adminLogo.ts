@@ -82,7 +82,8 @@ export type AdminSeriesLogoState = {
   attempt: AdminAttemptEvidence | null;
 };
 
-const ADMIN_ASSET_SELECT = {
+/** Asset columns of the admin card — includes the admin-only provenance. */
+export const ADMIN_ASSET_SELECT = {
   id: true,
   publicUrl: true,
   mimeType: true,
@@ -167,7 +168,7 @@ export async function getSeriesLogoAdminState(
 }
 
 /** Korean admin label of a series: ko translation, else the original. */
-async function seriesAdminName(tx: Prisma.TransactionClient, id: bigint): Promise<string> {
+export async function seriesAdminName(tx: Prisma.TransactionClient, id: bigint): Promise<string> {
   const row = await tx.eventSeries.findUnique({
     where: { id },
     select: { originalName: true, translations: { where: { locale: "ko" }, select: { name: true } } },

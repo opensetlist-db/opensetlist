@@ -255,6 +255,29 @@ export function explainSeriesLogo(
   );
 }
 
+/**
+ * Admin explanation of an event's logo — the event-override counterpart
+ * of `explainSeriesLogo`, with the same server-only contract.
+ *
+ * `source` names the node whose own mode decided: `"event"` when the
+ * event's own custom / typography / unusable custom asset ended it,
+ * otherwise the deciding series (null for exhausted / broken chain).
+ * The decision is always `decideEventLogo`'s: the event node first, then
+ * the very walk `explainSeriesLogo` runs from the event's series.
+ */
+export function explainEventLogo(
+  event: LogoEventInput,
+  graph: LogoSeriesGraph,
+): { decision: LogoDecision; source: "event" | { seriesId: bigint } | null } {
+  const own = decideNode(event);
+  if (own) return { decision: own, source: "event" };
+  const { decision, sourceSeriesId } =
+    event.eventSeriesId == null
+      ? { decision: EXHAUSTED, sourceSeriesId: null }
+      : explainSeriesLogo(event.eventSeriesId, graph);
+  return { decision, source: sourceSeriesId === null ? null : { seriesId: sourceSeriesId } };
+}
+
 function artistColor(artist: ColorArtistRow | null): string | null {
   if (!artist || artist.isDeleted) return null;
   return artist.color && HEX_COLOR.test(artist.color) ? artist.color : null;
