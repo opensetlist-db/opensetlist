@@ -113,3 +113,36 @@ describe("precheckImageFile", () => {
     );
   });
 });
+
+describe("unknown is sticky for the attempt, across submit() calls", () => {
+  it("a later plain failure after an earlier unknown stays unknown (manual retry)", async () => {
+    const attempt = startImageAttempt(file(), env);
+    const lost = vi.fn(async () => {
+      throw new TypeError("network");
+    });
+    expect((await attempt.submit("/u", {}, { fetchImpl: lost })).kind).toBe("unknown");
+
+    const storageDown = vi.fn(async () =>
+      json(502, { error: "storage_failed", outcome: "not_saved" }),
+    );
+    expect((await attempt.submit("/u", {}, { fetchImpl: storageDown })).kind).toBe("unknown");
+  });
+
+  it("stronger evidence still wins: success or a server-answered conflict", async () => {
+    const attempt = startImageAttempt(file(), env);
+    await attempt.submit("/u", {}, { fetchImpl: vi.fn(async () => json(503, { outcome: "unknown" })) });
+    const ok = await attempt.submit("/u", {}, { fetchImpl: vi.fn(async () => json(200, { status: "reconciled" })) });
+    expect(ok).toMatchObject({ kind: "saved", status: "reconciled" });
+    const conflict = await attempt.submit("/u", {}, {
+      fetchImpl: vi.fn(async () => json(409, { outcome: "conflict", attemptCommitted: true })),
+    });
+    expect(conflict.kind).toBe("conflict");
+  });
+
+  it("(control) a fresh attempt's plain failure is not_saved", async () => {
+    const out = await startImageAttempt(file(), env).submit("/u", {}, {
+      fetchImpl: vi.fn(async () => json(502, { error: "storage_failed", outcome: "not_saved" })),
+    });
+    expect(out.kind).toBe("not_saved");
+  });
+});

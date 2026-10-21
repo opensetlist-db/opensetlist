@@ -59,6 +59,7 @@ know what each suite leaves behind:
 | `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
 | `logo-resolution.test.ts` | **writes** | three series + two events keyed `logo-itest-<ts>-*`, `ImageAsset` rows keyed `itest/logo-itest-<ts>/…`, plus one admin `PUT /api/admin/event-series/[id]` and one `PUT /api/admin/events/[id]` on its own fixtures; creates its own coloured artist `logo-itest-<ts>-artist`; `afterAll` deletes them and asserts none are left |
 | `image-upload-service.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/upload-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `album-cover.test.ts` | **writes** | one album with slug `cover-itest-<ts>`, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/cover-itest-<ts>/`; re-imports that one slug through the CSV importer; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
 | `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
