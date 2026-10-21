@@ -428,8 +428,15 @@ describe("writer modes (runWarmJob)", () => {
 // ---------------------------------------------------------------------
 
 // Numeric value of ` <key>=<n>` on a log line (NaN when absent / `-`).
-const num = (line: string, key: string) =>
-  Number(line.match(new RegExp(` ${key}=(\\d+)(?: |$)`))?.[1]);
+// A token lookup rather than a RegExp built from `key`, which Semgrep's
+// detect-non-literal-regexp rule blocks.
+const num = (line: string, key: string) => {
+  const v = line
+    .split(" ")
+    .find((t) => t.startsWith(`${key}=`))
+    ?.slice(key.length + 1);
+  return v !== undefined && /^\d+$/.test(v) ? Number(v) : NaN;
+};
 const setLinesOf = () => lines().filter((l) => l.startsWith("[liveWarm] set "));
 const startLines = () => lines().filter((l) => l.startsWith("[liveWarm] start "));
 

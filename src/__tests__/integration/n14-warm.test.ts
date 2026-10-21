@@ -281,7 +281,12 @@ describe("slowbuild drill hold (dev DB, pool max 2)", () => {
       );
     log.mockRestore();
     expect(sets).toHaveLength(locales.length);
-    const num = (l: string, k: string) => Number(l.match(new RegExp(` ${k}=(\\d+)(?: |$)`))?.[1]);
+    // Token lookup instead of a RegExp built from `k` (Semgrep
+    // detect-non-literal-regexp); NaN when the key is absent or `-`.
+    const num = (l: string, k: string) => {
+      const v = l.split(" ").find((t) => t.startsWith(`${k}=`))?.slice(k.length + 1);
+      return v !== undefined && /^\d+$/.test(v) ? Number(v) : NaN;
+    };
     const iv = sets
       .map((l) => {
         expect(l).toMatch(/ ok=true /);

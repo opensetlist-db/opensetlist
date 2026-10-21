@@ -254,7 +254,9 @@ function expireTags(tags: string[]): void {
       // cache couldn't be told about it — worst case the public page
       // is stale for one TTL. Throws outside a Next request scope
       // (unit tests, scripts).
-      console.error(`[dataCache] revalidateTag(${tag}) failed`, err);
+      // `tag` goes in as a %s argument, not interpolated into the
+      // format string, so a `%` in it can't be read as a directive.
+      console.error("[dataCache] revalidateTag(%s) failed", tag, err);
     }
   }
 }
@@ -341,7 +343,7 @@ function expireWarmPublicData(): void {
     );
   };
   const fail = (err: unknown) =>
-    console.error(`[dataCache] expireTag(${WARM_PUBLIC_DATA_TAG}) failed`, err);
+    console.error("[dataCache] expireTag(%s) failed", WARM_PUBLIC_DATA_TAG, err);
   let pending: Promise<void>;
   try {
     pending = warmEntryCache()
