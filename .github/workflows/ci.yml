@@ -27,7 +27,9 @@ jobs:
       # Lint runs after prisma generate (so generated types resolve in
       # imports) and before Typecheck (faster failure on style — the type
       # pass is more expensive). Errors fail the gate; existing warnings
-      # don't (no --max-warnings=0 yet — that's a follow-up).
+      # don't (no --max-warnings=0 yet — that's a follow-up). `lint` runs
+      # ESLint, then stylelint over CSS modules (stylelint.config.mjs),
+      # whose hex-colour rule is a warning on the same terms.
       - name: Lint
         run: npm run lint
 
@@ -41,3 +43,10 @@ jobs:
 
       - name: Unit tests
         run: npm run test
+
+      # Unused files / exports (knip.config.ts). Report-only while the
+      # existing findings are open: drop continue-on-error once the report
+      # is empty. Last, so it never delays a real failure above.
+      - name: Dead code (report only)
+        run: npm run lint:dead
+        continue-on-error: true

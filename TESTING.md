@@ -18,8 +18,15 @@
 | Event-detail TTFB | `scripts/ttfb-event-detail.sh <base-url> [label]` | — | `scripts/` | dev DB through the app (reads) |
 | Load (manual) | see `tests/load/README.md` | — | `tests/load/` | some scripts write to dev |
 
-CI (`.github/workflows/ci.yml`) runs only lint, `tsc --noEmit` and the
-unit suite. Integration and E2E run locally, by hand.
+CI (`.github/workflows/ci.yml`) runs only lint, the TESTING.md row
+check, `tsc --noEmit`, the unit suite and a report-only dead-code pass. Integration and E2E run
+locally, by hand.
+
+`npm run lint` is ESLint plus `npm run lint:css` (stylelint over
+`src/**/*.module.css`, `stylelint.config.mjs`: hex colour literals
+warn). `npm run lint:dead` (knip, `knip.config.ts`) lists files nothing
+imports and exports nothing uses; CI does not fail on it
+(`continue-on-error`).
 
 Filtering a long unit run once instead of rerunning it to find the
 failing file (the echo keeps vitest's exit code visible through the
