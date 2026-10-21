@@ -68,7 +68,7 @@ export function ConcertRow({
         title={artTitle}
         logoUrl={logoUrl}
         tint={tint}
-        className="row-span-2 self-center rounded-[10px] min-[1100px]:row-span-1"
+        className="col-start-1 row-span-2 row-start-1 self-center rounded-[10px] !p-2.5 min-[1100px]:row-span-1"
       />
       <div className="col-start-2 row-start-1 min-w-0">
         <h4 className="mb-1.5 text-[15px] font-bold leading-[1.65] text-[var(--row-title)] [overflow-wrap:anywhere] group-hover:text-[var(--row-title-hover)] group-hover:underline min-[1100px]:text-[16px] [&:lang(ko)]:break-keep">
