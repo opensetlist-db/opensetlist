@@ -257,7 +257,10 @@ What's worth commenting:
 Still skip:
 - Restating what well-named code already says (`// increment i`)
 - References to the current task / PR / fix — those rot fast and
-  belong in the PR description, not the source
+  belong in the PR description, not the source. Approved design packet
+  IDs (`18-v3`, `20-v1`) may be cited: they name the durable wiki
+  packet (`output/redesign/handoffs/`) the code reproduces; ticket and
+  PR numbers stay out.
 
 Code reviewers (CodeRabbit and the local review hooks) should NOT flag
 multi-line comment blocks as a style violation in this project.
