@@ -208,9 +208,10 @@ export async function adminSession(base) {
     body: JSON.stringify({ password: process.env.ADMIN_PASSWORD }),
   });
   const setCookie = login.headers.get("set-cookie") || "";
-  const m = new RegExp(`${COOKIE_NAME}=([^;]+)`).exec(setCookie);
-  if (login.status !== 200 || !m) throw new Error(`admin login failed: HTTP ${login.status}`);
-  const cookie = `${COOKIE_NAME}=${m[1]}`;
+  const at = setCookie.indexOf(`${COOKIE_NAME}=`);
+  const value = at === -1 ? "" : setCookie.slice(at + COOKIE_NAME.length + 1).split(";")[0];
+  if (login.status !== 200 || !value) throw new Error(`admin login failed: HTTP ${login.status}`);
+  const cookie = `${COOKIE_NAME}=${value}`;
   const created = [];
   let row = null; // { id, position, isEncore, songId }
   let flip = 0;
