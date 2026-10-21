@@ -19,13 +19,19 @@ Similar to setlist.fm but focused on East Asian content — Korean, Japanese, En
 
 ## Tech Stack
 
+Versions are deliberately not pinned here: `package.json` (and the
+installed `node_modules`) is the source of truth. When this table and
+the installed packages disagree, trust the packages — e.g. read the
+Next.js guides in `node_modules/next/dist/docs/` before relying on
+remembered App Router APIs.
+
 | Layer | Technology | Notes |
 |---|---|---|
-| Framework | Next.js 14 (App Router) | SSR for SEO |
+| Framework | Next.js (App Router) | SSR for SEO |
 | Language | TypeScript | Strict mode |
 | i18n | next-intl | /[locale]/ routing |
 | Auth | NextAuth.js | Phase 1B |
-| ORM | Prisma 7 | prisma.config.ts pattern |
+| ORM | Prisma | prisma.config.ts pattern |
 | Database | PostgreSQL (Supabase Seoul) | Free tier → Pro at Phase 2 |
 | Search | pg_tsvector → Meilisearch Cloud → self-hosted | Phased progression |
 | Cache | Redis (Upstash Seoul) | Phase 2 |
@@ -155,7 +161,8 @@ in page metadata only — next-intl's `Link` header is off
 
 ```
 /[locale]/... routing — locale prefix required on all pages
-Locales: ko (launch), ja (Phase 2), en (Phase 3), zh-CN (Phase 3)
+Locales: as configured in src/i18n/routing.ts (`locales`, `defaultLocale`)
+Planned: zh-CN (not yet routed)
 ```
 
 Hard rules:

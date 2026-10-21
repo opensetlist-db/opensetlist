@@ -17,9 +17,6 @@ Before investigating, editing, or reviewing this repository:
    implementing. For testing, consult [TESTING.md](./TESTING.md) and the
    scripts in `package.json`.
 
-Use installed versions and current source/configuration when older
-overview tables disagree with them. In particular, this checkout uses
-Next.js 16, not the Next.js 14 listed in the historical stack table.
 Use the local context file to resolve `memory/` references from CLAUDE.md;
 those paths refer to Claude's external project memory, not this repository.
 If local context is unavailable, continue with shared rules and report
