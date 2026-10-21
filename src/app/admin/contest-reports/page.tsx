@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, formatDate } from "@/lib/utils";
+import {
+  serializeBigInt,
+  formatDate,
+  OPERATOR_TIMESTAMP_DATE_FORMAT,
+} from "@/lib/utils";
 import { ContestReportActions } from "@/components/admin/ContestReportActions";
 import type { ContestReportStatus } from "@/generated/prisma/enums";
 
@@ -191,7 +195,7 @@ export default async function ContestReportsAdminPage({
                     )}
                   </td>
                   <td className="py-2 pr-3 text-xs text-zinc-500">
-                    {formatDate(r.createdAt, "ko")}
+                    {formatDate(r.createdAt, "ko", OPERATOR_TIMESTAMP_DATE_FORMAT)}
                   </td>
                   {status === "pending" && (
                     <td className="py-2 pr-3 text-right">

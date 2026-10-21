@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { formatDate } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 
@@ -10,13 +10,20 @@ import { formatVenueDate } from "@/lib/eventDateTime";
 // anything — so it is asserted explicitly rather than assumed.
 const STORED_UTC_MIDNIGHT = new Date("2023-03-29T00:00:00.000Z");
 
+// No timeZone option → local zone → March 28 in Los Angeles. Every case
+// below only means something when this holds.
+const localDay = () =>
+  STORED_UTC_MIDNIGHT.toLocaleDateString("en-US", { day: "numeric" });
+
 describe("unit suite timezone pin", () => {
-  it("control: the process runs in a UTC-negative zone", () => {
-    expect(process.env.TZ).toBe("America/Los_Angeles");
-    // No timeZone option → local zone → March 28 in Los Angeles.
-    expect(
-      STORED_UTC_MIDNIGHT.toLocaleDateString("en-US", { day: "numeric" }),
-    ).toBe("28");
+  // Also guard the precondition here so a filtered run (`-t`, `.only`)
+  // that skips the control case cannot pass the UTC cases vacuously.
+  beforeAll(() => {
+    expect(localDay()).toBe("28");
+  });
+
+  it("control: a stored UTC midnight reads as the previous local day", () => {
+    expect(localDay()).toBe("28");
   });
 
   it.each(["ko", "ja", "en"])(

@@ -1,7 +1,11 @@
 import Link from "next/link";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, formatDate } from "@/lib/utils";
+import {
+  serializeBigInt,
+  formatDate,
+  OPERATOR_TIMESTAMP_DATE_FORMAT,
+} from "@/lib/utils";
 import { displayNameWithFallback, displayOriginalTitle } from "@/lib/display";
 
 const ROW_LIMIT = 200;
@@ -248,7 +252,7 @@ export default async function WishesAdminPage() {
                 {renderSongTitle(r.song)}
               </td>
               <td className="py-2 text-zinc-500">
-                {formatDate(r.createdAt, "ko")}
+                {formatDate(r.createdAt, "ko", OPERATOR_TIMESTAMP_DATE_FORMAT)}
               </td>
             </tr>
           ))}
