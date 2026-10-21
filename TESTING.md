@@ -183,6 +183,15 @@ motion) across locales × widths and exits 1 on any FAIL. Page tickets run
 it after any shared-style change (redesign spec story 51): chromium in
 full, `--browser webkit --quick` for Safari.
 
+A production hydration mismatch shows up only as "Minified React error
+#418/#423/#425", with no component or text. `redesign-capture.mjs` then
+prints a hint line naming `scripts/hydration-diff.mjs <url> --timezone
+Asia/Seoul`. That script diffs the SSR HTML against the hydrated DOM in
+each `--timezone` (repeatable, default UTC) and prints the page errors
+plus the text found on only one side, with an ancestor path. Compare two
+zones to tell a timezone-dependent render from post-hydration client
+updates.
+
 Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
 (build + `next start`, Sentry blanked, refuses a foreign port holder,
 `--stop` kills only its own verified PID) and `scripts/admin-qa.mjs

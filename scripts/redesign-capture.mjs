@@ -441,6 +441,10 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round, live) {
     page.on("console", (m) => {
       if (m.type() === "error") consoleErrors.push(m.text().slice(0, 200));
     });
+    // Uncaught exceptions never reach the console listener — React 19's
+    // hydration mismatch (#418) among them, which it reports via
+    // reportError. Same prefix as the --design mode's list.
+    page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${String(err.message ?? err).slice(0, 190)}`));
     page.on("request", (rq) => {
       if (rq.method() !== "GET" && rq.method() !== "HEAD")
         writes.push(`${rq.method()} ${rq.url().replace(BASE, "")}`.slice(0, 200));
@@ -629,6 +633,9 @@ async function finish(cutShort) {
   const repeatErrors = manifest.reduce((n, e) => n + (e.repeatErrors?.length ?? 0), 0);
   if (cutShort) console.log(`RUN TIMEOUT: --run-timeout ${args["run-timeout"]} min reached; manifest is partial`);
   console.log(`done: ${manifest.length} captures, ${errors} errors, ${repeatErrors} repeat errors → ${outDir}`);
+  printHydrationHint(
+    manifest.flatMap((e) => (e.consoleErrors ?? []).map((text) => ({ text, url: selected.find((t) => t.key === e.key)?.url }))),
+  );
   if (baseline) compareWithBaseline(baseline, manifest);
   process.exit(errors || repeatErrors || cutShort ? 1 : 0);
 }
@@ -1140,6 +1147,24 @@ async function writeCompare(baselinePath, actualPng, outFile) {
     .toFile(outFile);
 }
 
+// React's production build reports a hydration mismatch only as "Minified
+// React error #418" (text), #423 (recoverable root error) or #425 (text
+// content) — no component, no text, no location. scripts/hydration-diff.mjs
+// diffs the SSR HTML against the hydrated DOM to find it; this prints the
+// command once, for the first page that hit one. The capture contexts run in
+// Asia/Seoul, so the hint passes that zone: a mismatch from formatting a date
+// in the viewer's zone shows up there and not under the default UTC.
+// The pattern lives inside the function: both callers run from top-level
+// awaits above this point, before a module-level const would be initialised.
+function printHydrationHint(errors) {
+  const hydrationError = /Minified React error #(418|423|425)/;
+  // Admin pages are left out: hydration-diff sends no admin cookie, so it
+  // would diff the login page instead.
+  const hit = errors.find((e) => hydrationError.test(e.text) && e.url && !e.url.startsWith("/admin"));
+  if (!hit) return;
+  console.log("hydration mismatch → node scripts/hydration-diff.mjs %s --timezone Asia/Seoul", BASE + hit.url);
+}
+
 function summarizeDesign(results, skipped, manifestFile) {
   const ok = results.filter((r) => !r.error);
   const baselineRuns = ok.filter((r) => !r.extra);
@@ -1191,6 +1216,7 @@ function summarizeDesign(results, skipped, manifestFile) {
   console.log("console errors: %d distinct (speed-insights 404 ignored)", groups.size);
   for (const [k, names] of groups)
     console.log("  [%d] %s  (%s%s)", names.length, k, names.slice(0, 4).join(", "), names.length > 4 ? ", …" : "");
+  printHydrationHint(ok.flatMap((r) => r.consoleErrors.map((e) => ({ text: e.text, url: r.url }))));
   for (const r of results.filter((x) => x.error)) console.log("ERRORED %s: %s", r.name, r.error);
   for (const s of skipped) console.log("skipped %s: %s", s.name, s.reason);
   console.log("manifest → %s", manifestFile);
