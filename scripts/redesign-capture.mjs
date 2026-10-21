@@ -19,6 +19,13 @@
 //     [--env <path>]                 dotenv file with ADMIN_PASSWORD
 //                                    (default: <repo>/.env)
 //     [--list]                       print the keys that would be captured
+//     [--compare <captures.json>]    after writing this run's manifest,
+//                                    compare it entry by entry (key + vp)
+//                                    with a baseline manifest and print a
+//                                    regression summary. The ticket 02
+//                                    baseline lives in the wiki vault, not
+//                                    the repo, so pass its path. A report
+//                                    only: it never changes the exit code.
 //
 // Serve a production build, not `next dev` — dev-mode TTFB, bundle bytes and
 // overlay errors make the metrics meaningless. Build with the Sentry
@@ -51,6 +58,7 @@ const { values: args } = parseArgs({
     "no-webp": { type: "boolean", default: false },
     env: { type: "string", default: path.join(repoRoot, ".env") },
     list: { type: "boolean", default: false },
+    compare: { type: "string" },
   },
 });
 
@@ -162,6 +170,18 @@ if (!args.out) {
 if (selected.length === 0) {
   console.error(`--filter ${args.filter} matched no keys (see --list)`);
   process.exit(1);
+}
+// Load the baseline up front so a bad path fails before a long capture run,
+// not after it.
+let baseline = null;
+if (args.compare) {
+  try {
+    baseline = JSON.parse(fs.readFileSync(args.compare, "utf8"));
+    if (!Array.isArray(baseline)) throw new Error("not a captures.json array");
+  } catch (e) {
+    console.error(`--compare ${args.compare}: ${e.message}`);
+    process.exit(1);
+  }
 }
 
 // Read ADMIN_PASSWORD only when an admin page is selected. It is posted to
@@ -345,4 +365,103 @@ fs.writeFileSync(path.join(outDir, "captures.json"), JSON.stringify(manifest, nu
 await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
 const errors = manifest.filter((e) => e.error).length;
 console.log(`done: ${manifest.length} captures, ${errors} errors → ${outDir}`);
+if (baseline) compareWithBaseline(baseline, manifest);
 process.exit(errors ? 1 : 0);
+
+// ---------------------------------------------------------------------------
+// --compare: entry-by-entry diff against a baseline manifest.
+//
+// Pairs are matched on key + vp only. The baseline (ticket 02) predates the
+// `browser` field, and comparing a WebKit run against a Chromium baseline is
+// the caller's choice, so browser is not part of the match.
+//
+// Only baseline entries this run was asked to capture count as "missing":
+// with --filter, the rest of the baseline is out of scope, not lost.
+// ---------------------------------------------------------------------------
+function compareWithBaseline(before, after) {
+  const CLS_THRESHOLD = 0.05;
+  const id = (e) => `${e.key}__${e.vp}`;
+  const median = (xs) => {
+    if (xs.length === 0) return null;
+    const s = [...xs].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  };
+  const selectedKeys = new Set(selected.map((t) => t.key));
+  const viewportKeys = new Set(Object.keys(VIEWPORTS));
+  const afterById = new Map(after.map((e) => [id(e), e]));
+
+  const pairs = [];
+  const missing = [];
+  const errored = [];
+  for (const b of before) {
+    if (b.error || !selectedKeys.has(b.key) || !viewportKeys.has(b.vp)) continue;
+    const a = afterById.get(id(b));
+    if (!a) missing.push(id(b));
+    else if (a.error) errored.push(`${id(b)}: ${a.error}`);
+    else pairs.push([b, a]);
+  }
+
+  // Each regression is one line, grouped under its check so a long list
+  // still reads at a glance.
+  const regressions = {
+    "horizontal scroll appeared": [],
+    [`CLS up by more than ${CLS_THRESHOLD}`]: [],
+    "more console errors": [],
+    "lang changed": [],
+    "HTTP status changed": [],
+  };
+  const ttfbRatios = [];
+  const jsDeltas = [];
+  for (const [b, a] of pairs) {
+    const k = id(b);
+    if (a.hScroll && !b.hScroll) regressions["horizontal scroll appeared"].push(k);
+    // CLS is null on WebKit (no layout-shift entries); skip rather than
+    // treat null as 0.
+    if (typeof a.cls === "number" && typeof b.cls === "number" && a.cls - b.cls > CLS_THRESHOLD)
+      regressions[`CLS up by more than ${CLS_THRESHOLD}`].push(`${k}  ${b.cls} → ${a.cls}`);
+    const ce = (e) => e.consoleErrors?.length ?? 0;
+    if (ce(a) > ce(b))
+      regressions["more console errors"].push(
+        `${k}  ${ce(b)} → ${ce(a)}  (new: ${a.consoleErrors.slice(ce(b)).join(" | ").slice(0, 160)})`,
+      );
+    if (a.lang !== b.lang) regressions["lang changed"].push(`${k}  ${b.lang} → ${a.lang}`);
+    if (a.status !== b.status) regressions["HTTP status changed"].push(`${k}  ${b.status} → ${a.status}`);
+    if (b.ttfbMs > 0 && a.ttfbMs >= 0) ttfbRatios.push(a.ttfbMs / b.ttfbMs);
+    if (typeof a.jsBytesDecoded === "number" && typeof b.jsBytesDecoded === "number")
+      jsDeltas.push(a.jsBytesDecoded - b.jsBytesDecoded);
+  }
+
+  const total = Object.values(regressions).reduce((n, xs) => n + xs.length, 0);
+  console.log("");
+  console.log("=== compare vs %s ===", args.compare);
+  console.log("matched: %d   missing from this run: %d   errored in this run: %d", pairs.length, missing.length, errored.length);
+  const ttfb = median(ttfbRatios);
+  const js = median(jsDeltas);
+  console.log("median TTFB ratio (after/before): %s", ttfb === null ? "n/a" : `${ttfb.toFixed(2)}×`);
+  console.log(
+    "median JS bytes delta (decoded): %s",
+    js === null ? "n/a" : `${js >= 0 ? "+" : ""}${Math.round(js).toLocaleString("en-US")} B`,
+  );
+  console.log("");
+  if (total === 0) {
+    console.log("REGRESSIONS: none");
+  } else {
+    console.log("!!!!!!!! REGRESSIONS: %d !!!!!!!!", total);
+    for (const [check, lines] of Object.entries(regressions)) {
+      if (lines.length === 0) continue;
+      console.log("  [%s] %d", check, lines.length);
+      for (const l of lines) console.log("    %s", l);
+    }
+  }
+  if (missing.length) {
+    console.log("");
+    console.log("MISSING (in baseline, not captured): %d", missing.length);
+    for (const m of missing) console.log("    %s", m);
+  }
+  if (errored.length) {
+    console.log("");
+    console.log("ERRORED (capture failed in this run): %d", errored.length);
+    for (const m of errored) console.log("    %s", m);
+  }
+}

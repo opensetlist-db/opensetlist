@@ -120,6 +120,23 @@ Absolute numbers differ from the runner's (different network path to
 Supabase Seoul); compare a branch against its base on the same machine,
 as the workflow does.
 
+### Redesign captures and shell QA
+
+Both run against a production build like the TTFB script above
+(`npx next start -p 3110`), and their output stays out of the repo.
+
+`scripts/redesign-capture.mjs` captures screenshots and per-page metrics
+for the redesign page set. `--compare <captures.json>` diffs the new run
+against a baseline manifest (the ticket 02 one is in the wiki vault,
+`output/redesign/handoffs/02/captures/captures.json`) and prints the
+regressions: new horizontal scroll, CLS, console errors, `lang`, status.
+
+`scripts/redesign-shell-qa.mjs` checks the shared shell (header bands,
+overflow, menu keyboard behaviour, focus ring, locale switch, reduced
+motion) across locales × widths and exits 1 on any FAIL. Page tickets run
+it after any shared-style change (redesign spec story 51): chromium in
+full, `--browser webkit --quick` for Safari.
+
 ---
 
 ## What to test
