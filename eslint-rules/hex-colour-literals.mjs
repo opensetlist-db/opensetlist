@@ -16,8 +16,8 @@
  *   template chunk that contains a hex colour, including inside a longer
  *   value (`"1px solid #e2e8f0"`, `` `0 0 0 2px #fff` ``).
  * - `hexColourAssertionRestrictions` — tests: only a hex used as the
- *   *expected* value — a direct argument of a matcher (`toBe("#…")`) or
- *   of `hexToRgbString("#…")`. A hex that is input data (an artist
+ *   *expected* value — a direct argument of a matcher (`toBe("#…")`),
+ *   anything inside `toHaveStyle(…)`, or `hexToRgbString("#…")`. A hex that is input data (an artist
  *   colour fed into a component, a fixture row) stays allowed: it is not
  *   a copy of the palette. A test that echoes its input back
  *   (`color: "#FF6B9D"` … `toBe(hexToRgbString("#FF6B9D"))`) names it
@@ -50,7 +50,14 @@ const FULL_HEX = `^${HEX}$`;
 
 export const hexColourAssertionRestrictions = [
   {
-    selector: `CallExpression[callee.property.name=/^(toBe|toEqual|toStrictEqual|toHaveStyle|toContain|toMatch|toHaveProperty)$/] > Literal.arguments[value=/${FULL_HEX}/]`,
+    selector: `CallExpression[callee.property.name=/^(toBe|toEqual|toStrictEqual|toContain|toMatch|toHaveProperty)$/] > Literal.arguments[value=/${FULL_HEX}/]`,
+    message: assertionMessage,
+  },
+  {
+    // `toHaveStyle` takes a CSS string (`"color: #fff"`) or an object
+    // (`{ color: "#fff" }`) and is only ever an expectation, so any hex
+    // anywhere in its arguments counts.
+    selector: `CallExpression[callee.property.name='toHaveStyle'] Literal[value=/${HEX}/]`,
     message: assertionMessage,
   },
   {

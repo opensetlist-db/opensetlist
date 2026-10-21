@@ -42,16 +42,13 @@ const eslintConfig = defineConfig([
       "no-restricted-syntax": ["error", adminTranslationDeleteRestriction],
     },
   },
-  // Colours come from src/styles/tokens.ts, not hex literals. When the
-  // redesign swapped the palette, three unit tests broke because they
-  // compared against literal hexes, and components that hard-coded the
-  // old primary kept rendering it. A warning, not an error: existing
-  // components still carry literals until their page redesign replaces
-  // them. Share-card files keep their own export palette on purpose.
-  // Tests flag only hexes used as expected values (input fixtures stay
-  // allowed); the OG palette's own test is exempt like src/lib/ogPalette.ts,
-  // since its hexes are colour-math inputs and outputs, not the site
-  // palette. See eslint-rules/hex-colour-literals.mjs.
+  // Colours come from src/styles/tokens.ts, not hex literals: the
+  // redesign palette swap broke three unit tests that compared against
+  // literal hexes. A warning until page redesigns clear the existing
+  // literals. Share-card files and the OG palette's own test keep their
+  // own colours on purpose. See eslint-rules/hex-colour-literals.mjs.
+  // Flat config replaces a rule's options per matching block, so a new
+  // `no-restricted-syntax` block over these paths must re-spread these.
   {
     files: ["src/components/**/*.{ts,tsx}"],
     ignores: ["src/components/**/ShareCard*.tsx"],

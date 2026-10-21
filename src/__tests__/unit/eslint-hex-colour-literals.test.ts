@@ -96,7 +96,13 @@ tester.run("hex colour assertions (tests)", rule, {
       errors: [assertionError],
     },
     {
-      code: 'expect(el).toHaveStyle("#94a3b8");',
+      // Both toHaveStyle shapes: CSS string and style object.
+      code: 'expect(el).toHaveStyle("color: #94a3b8");',
+      options: assertion,
+      errors: [assertionError],
+    },
+    {
+      code: 'expect(el).toHaveStyle({ color: "#94a3b8" });',
       options: assertion,
       errors: [assertionError],
     },
