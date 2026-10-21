@@ -3,8 +3,7 @@ import { colors } from "@/styles/tokens";
 /*
  * Small uppercase caption that sits below a big stat number — the
  * "TOTAL EVENTS" / "COMPLETED" / "CITIES" labels in the artist /
- * member / series detail sidebars and the ArtistCard right-side
- * metric. Visual: 10px regular weight, `colors.textMuted`,
+ * member / series detail sidebars. Visual: 10px regular weight, `colors.textMuted`,
  * letter-spacing 0.04em, uppercase. Distinct from `<SectionLabel>`
  * (13px / 700 / has bottom border by default) — section labels
  * head a section, stats sub-labels caption a number.
@@ -17,8 +16,8 @@ import { colors } from "@/styles/tokens";
  * tighter 0.04em spacing keep them on one row.
  *
  * Server component (no "use client") so it composes inside both
- * server pages (artist / member / series detail) and existing
- * client surfaces (ArtistCard).
+ * server pages (artist / member / series detail) and client
+ * surfaces.
  */
 
 interface Props {
