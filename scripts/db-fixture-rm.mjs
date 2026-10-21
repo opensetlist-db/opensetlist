@@ -8,7 +8,7 @@
 //
 // --expect counts every row named by id, assets included. Exit status:
 // 0 done (or dry run passed), 2 refused / bad arguments (nothing deleted),
-// 1 any other error (rolled back).
+// 1 any other error — missing env, connection, SQL (rolled back).
 //
 // Why this exists: the admin API only soft-deletes (and some entities not
 // at all), and scripts/db-ro.mjs is read-only by design, so every QA pass
@@ -25,30 +25,35 @@
 //     settings it issues are `SET LOCAL` (they end with the transaction);
 //     a session-level SET through Supavisor leaks to other clients (the
 //     2026-10-18 read-only incident).
-//   - explicit ids AND a name prefix AND an expected count: every id must
-//     exist, every row's original name (Album: original title) must start
-//     with --prefix, and the number of rows must equal --expect. Three
-//     independent statements of intent, so a typo in one is caught by the
-//     others. Assets: every id must exist and its objectKey must start
-//     with --asset-prefix.
-//   - nothing outside the fixture set may reference a fixture row. The
-//     check reads the foreign keys from pg_catalog instead of a hand-kept
-//     list, so a table added later is covered without editing this file.
+//   - explicit ids AND a name prefix AND an expected count: every row's
+//     original name (Album: original title; asset: objectKey against
+//     --asset-prefix) must start with the prefix, and --expect must equal
+//     both the number of ids typed and the number of rows found — so a
+//     mistyped id list or a prefix that doesn't fit the rows refuses the
+//     run. The ids are the selector; the prefix and count only confirm it.
+//   - nothing outside the fixture set may reference a fixture row. The FK
+//     part reads the foreign keys from pg_catalog instead of a hand-kept
+//     list, so a table that gains an FK later is covered without editing
+//     this file. References WITHOUT an FK are hand-checked and must be
+//     added here when the schema grows one: Album.imageUrl = an asset's
+//     publicUrl, and Comment's string / roll-up event and series columns.
 //     A reference from another fixture row is fine (an event inside a
 //     fixture series, a fixture series' logo asset); a reference from
 //     anywhere else — a real event under the series, a setlist item, an
-//     album track, a non-fixture album whose imageUrl is the asset's
-//     publicUrl (no FK) — refuses the whole run. This matters beyond
+//     album track, a comment — refuses the whole run. This matters beyond
 //     Restrict FKs: Prisma's default for an optional relation is
 //     SET NULL, so deleting a series a real event pointed at would
 //     silently detach that event instead of failing.
 //   - owned rows go with their parent: translations, plus the two pure
 //     link tables the admin create forms write (EventPerformer,
 //     AlbumArtist). They hold nothing of their own, only the link to an
-//     existing artist / stage identity, which stays.
-//   - one transaction, rows locked FOR UPDATE (which also blocks a
-//     concurrent insert of a child row), every UPDATE / DELETE row count
-//     checked against the plan; any mismatch → ROLLBACK and a message.
+//     existing artist / stage identity, which stays. Any FK pointing at
+//     an owned row refuses the run too (none exists today).
+//   - one transaction, fixture rows locked FOR UPDATE (which blocks a
+//     concurrent insert of an FK child row; the hand-checked non-FK
+//     references are a snapshot, which is enough on the dev DB), every
+//     UPDATE / DELETE row count checked against the plan; any mismatch →
+//     ROLLBACK and a message.
 //   - --dry-run runs every check and prints the plan, then rolls back.
 //
 // It never touches R2. A deleted ImageAsset's object stays in the bucket
@@ -66,13 +71,13 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // The fixture entity tables, in DELETE order: Event first (it points at
 // EventSeries, Album and ImageAsset), ImageAsset last (both logo FKs point
-// at it). `name` is the column the prefix is checked against; `owned` are
+// at it). `prefixColumn` is the column the prefix is checked against; `owned` are
 // the child tables deleted with the parent (found by their FK to it).
 const ENTITIES = [
-  { flag: "events", table: "Event", idType: "bigint", name: "originalName", owned: ["EventTranslation", "EventPerformer"] },
-  { flag: "series", table: "EventSeries", idType: "bigint", name: "originalName", owned: ["EventSeriesTranslation"] },
-  { flag: "albums", table: "Album", idType: "bigint", name: "originalTitle", owned: ["AlbumTranslation", "AlbumArtist"] },
-  { flag: "assets", table: "ImageAsset", idType: "text", name: "objectKey", owned: [] },
+  { flag: "events", table: "Event", idType: "bigint", prefixColumn: "originalName", owned: ["EventTranslation", "EventPerformer"] },
+  { flag: "series", table: "EventSeries", idType: "bigint", prefixColumn: "originalName", owned: ["EventSeriesTranslation"] },
+  { flag: "albums", table: "Album", idType: "bigint", prefixColumn: "originalTitle", owned: ["AlbumTranslation", "AlbumArtist"] },
+  { flag: "assets", table: "ImageAsset", idType: "text", prefixColumn: "objectKey", owned: [] },
 ];
 
 // Fixture tables that carry a managed logo. A custom logo needs an asset
@@ -171,17 +176,20 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
  * Every FK pointing at `table`: child table, child column, whether the
- * child column may be NULL. Composite FKs don't exist in this schema; one
- * showing up would make the reference check incomplete, so it refuses
- * instead of guessing.
+ * child column may be NULL, and the referenced (parent) column. Composite
+ * FKs and FKs from another schema don't exist here; either showing up
+ * would make the reference check incomplete (the queries below address
+ * tables in `public` by bare name), so it refuses instead of guessing.
  */
 async function referencingKeys(client, table) {
   const r = await client.query(
-    `SELECT c.conname, ch.relname AS child, a.attname AS col, NOT a.attnotnull AS nullable,
-            cardinality(c.conkey) AS ncols
+    `SELECT c.conname, ns.nspname AS schema, ch.relname AS child, a.attname AS col,
+            NOT a.attnotnull AS nullable, pa.attname AS pcol, cardinality(c.conkey) AS ncols
        FROM pg_constraint c
        JOIN pg_class ch ON ch.oid = c.conrelid
+       JOIN pg_namespace ns ON ns.oid = ch.relnamespace
        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+       JOIN pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = c.confkey[1]
       WHERE c.contype = 'f'
         AND c.confrelid = (SELECT oid FROM pg_class WHERE relname = $1 AND relnamespace = 'public'::regnamespace)
       ORDER BY ch.relname, a.attname`,
@@ -189,6 +197,9 @@ async function referencingKeys(client, table) {
   );
   for (const row of r.rows) {
     if (row.ncols !== 1) throw new Refusal(`${row.child}.${row.conname} is a composite FK to ${table} — this script can't check it`);
+    if (row.schema !== "public") {
+      throw new Refusal(`${row.schema}.${row.child}.${row.col} references ${table} from outside the public schema — this script can't check it`);
+    }
   }
   return r.rows;
 }
@@ -206,7 +217,7 @@ async function run(client, { ids, prefix, assetPrefix, expect, dryRun }) {
   const rows = {};
   for (const e of active) {
     const r = await client.query(
-      `SELECT id::text AS id, ${q(e.name)} AS name, starts_with(${q(e.name)}, $2) AS matches
+      `SELECT id::text AS id, ${q(e.prefixColumn)} AS label, starts_with(${q(e.prefixColumn)}, $2) AS matches
          FROM ${q(e.table)} WHERE id = ANY($1::${e.idType}[]) ORDER BY id FOR UPDATE`,
       [ids[e.table], prefixOf(e)],
     );
@@ -216,7 +227,7 @@ async function run(client, { ids, prefix, assetPrefix, expect, dryRun }) {
     if (missing.length) problems.push(`${e.table}: no row with id ${missing.join(", ")}`);
     for (const x of r.rows) {
       if (!x.matches) {
-        problems.push(`${e.table} ${x.id}: ${e.name} ${JSON.stringify(x.name)} does not start with ${JSON.stringify(prefixOf(e))}`);
+        problems.push(`${e.table} ${x.id}: ${e.prefixColumn} ${JSON.stringify(x.label)} does not start with ${JSON.stringify(prefixOf(e))}`);
       }
     }
   }
@@ -236,6 +247,16 @@ async function run(client, { ids, prefix, assetPrefix, expect, dryRun }) {
           [ids[e.table]],
         );
         ownedPlan.push({ parent: e, child: fk.child, col: fk.col, count: r.rows[0].n });
+        // One level further: an FK pointing at an owned row would be
+        // nulled or block the delete, so any row behind one refuses.
+        for (const gfk of await referencingKeys(client, fk.child)) {
+          const g = await client.query(
+            `SELECT count(*)::int AS n FROM ${q(gfk.child)}
+              WHERE ${q(gfk.col)} IN (SELECT ${q(gfk.pcol)} FROM ${q(fk.child)} WHERE ${q(fk.col)} = ANY($1::${e.idType}[]))`,
+            [ids[e.table]],
+          );
+          if (g.rows[0].n > 0) problems.push(`${gfk.child}.${gfk.col} → ${fk.child}: ${plural(g.rows[0].n, "row")} reference rows owned by the fixtures`);
+        }
         continue;
       }
       // Every referencing table that isn't owned has an `id` column in
@@ -274,12 +295,28 @@ async function run(client, { ids, prefix, assetPrefix, expect, dryRun }) {
       problems.push(`Album ${x.album}.imageUrl is ImageAsset ${x.asset}'s publicUrl (album outside the fixture set)`);
     }
   }
-  const assetKeys = (rows.ImageAsset ?? []).map((x) => x.name);
+  // Comments store their event / series anchors as strings (BigInt FK
+  // compatibility) plus server-computed roll-up arrays, none of them FKs.
+  // A comment is never a fixture row, so any match refuses: deleting the
+  // event would leave the comment pointing at nothing.
+  if (ids.Event.length || ids.EventSeries.length) {
+    const r = await client.query(
+      `SELECT id FROM "Comment"
+        WHERE "eventId" = ANY($1::text[]) OR "taggedEventId" = ANY($1::text[]) OR "rollupEventIds" && $1::text[]
+           OR "eventSeriesId" = ANY($2::text[]) OR "rollupEventSeriesIds" && $2::text[]`,
+      [ids.Event, ids.EventSeries],
+    );
+    if (r.rows.length) {
+      const shown = r.rows.slice(0, 5).map((x) => x.id).join(", ") + (r.rows.length > 5 ? ", …" : "");
+      problems.push(`Comment: ${plural(r.rows.length, "row")} anchored to or rolled up into a fixture event / series (${shown})`);
+    }
+  }
+  const assetKeys = (rows.ImageAsset ?? []).map((x) => x.label);
 
   // 3. The plan.
   console.log(`\nplan${dryRun ? " (dry run)" : ""}:`);
   for (const e of active) {
-    const listed = rows[e.table].map((x) => `${x.id} ${JSON.stringify(x.name)}`).join("; ");
+    const listed = rows[e.table].map((x) => `${x.id} ${JSON.stringify(x.label)}`).join("; ");
     console.log(`  ${e.table}: ${listed || "(none found)"}`);
   }
   for (const o of ownedPlan) console.log(`  ${o.child} (by ${o.col}): ${plural(o.count, "row")}`);
@@ -311,7 +348,7 @@ async function run(client, { ids, prefix, assetPrefix, expect, dryRun }) {
     // The prefix is re-applied on the DELETE itself, so even a bug in the
     // checks above can't delete a row that doesn't carry it.
     const r = await client.query(
-      `DELETE FROM ${q(e.table)} WHERE id = ANY($1::${e.idType}[]) AND starts_with(${q(e.name)}, $2)`,
+      `DELETE FROM ${q(e.table)} WHERE id = ANY($1::${e.idType}[]) AND starts_with(${q(e.prefixColumn)}, $2)`,
       [ids[e.table], prefixOf(e)],
     );
     expectCount(r.rowCount, ids[e.table].length, `delete ${e.table}`);
@@ -352,9 +389,9 @@ async function main(argv) {
 
   const { Client } = (await import("pg")).default;
   const client = new Client({ connectionString });
-  await client.connect();
   let result;
   try {
+    await client.connect();
     await client.query("BEGIN");
     await client.query("SET LOCAL statement_timeout = '60s'");
     // Fail fast instead of queueing behind a QA browser's open
