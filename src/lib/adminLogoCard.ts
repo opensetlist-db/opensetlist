@@ -50,6 +50,32 @@ export function attemptCommittedFromConflict(body: unknown): boolean {
   return (body as { attemptCommitted?: unknown } | null)?.attemptCommitted === true;
 }
 
+/** What a conflict says about MY submission. */
+export type ConflictMine = "saved" | "not_saved" | "unknown";
+
+/**
+ * Whether my change was saved, when the slot now holds a third value.
+ *
+ * - Upload: decidable. The attempt's ImageAsset row exists only after it
+ *   committed (the server reports that as `attemptCommitted`, the state
+ *   read as `committed` evidence), and with no row the CAS can no longer
+ *   succeed against a moved slot — so it is "saved, then replaced" or
+ *   "not saved".
+ * - Mode change: decidable only on a first send whose 409 came from the
+ *   server before any write. After a lost reply (a resend's 409, or a
+ *   state read finding a third value) the PATCH may have committed
+ *   expected → next and been overwritten since: value comparison cannot
+ *   tell, so it is "unknown". Claiming "not saved" there would invite the
+ *   operator to re-pick the mode and overwrite the newer value.
+ */
+export function conflictMine(
+  kind: "upload" | "mode",
+  { attemptCommitted, afterLostReply }: { attemptCommitted: boolean; afterLostReply: boolean },
+): ConflictMine {
+  if (kind === "upload") return attemptCommitted ? "saved" : "not_saved";
+  return afterLostReply ? "unknown" : "not_saved";
+}
+
 export type ReconcileVerdict =
   /** My change is what the series holds now. */
   | "reflected"

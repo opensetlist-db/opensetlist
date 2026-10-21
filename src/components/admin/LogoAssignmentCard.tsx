@@ -8,6 +8,8 @@ import {
   assignmentLabel,
   attemptCommittedFromConflict,
   classifyModeChangeReply,
+  conflictMine,
+  type ConflictMine,
   modeLabel,
   reconcileModeChange,
   reconcileUpload,
@@ -170,7 +172,7 @@ export default function LogoAssignmentCard({
   const [frozen, setFrozen] = useState<Frozen | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [conflictCurrent, setConflictCurrent] = useState<AdminLogoAssignment | null>(null);
-  const [conflictCommitted, setConflictCommitted] = useState(false);
+  const [conflictOwn, setConflictOwn] = useState<ConflictMine>("not_saved");
   const [imageFailed, setImageFailed] = useState(false);
   const noticeRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -245,7 +247,7 @@ export default function LogoAssignmentCard({
     setUsageNote("");
     setFrozen(null);
     setConflictCurrent(null);
-    setConflictCommitted(false);
+    setConflictOwn("not_saved");
     setImageFailed(false);
     setConfirmed(next);
     setDraftMode(next.assignment.mode);
@@ -308,9 +310,9 @@ export default function LogoAssignmentCard({
     onSaved?.({ otherDirty: stay });
   }
 
-  function enterConflict(body: unknown) {
+  function enterConflict(kind: "upload" | "mode", body: unknown, afterLostReply: boolean) {
     setConflictCurrent(assignmentFromConflict(body));
-    setConflictCommitted(attemptCommittedFromConflict(body));
+    setConflictOwn(conflictMine(kind, { attemptCommitted: attemptCommittedFromConflict(body), afterLostReply }));
     setMessage(null);
     setPhase("conflict");
   }
@@ -329,7 +331,7 @@ export default function LogoAssignmentCard({
         await finishSaved({ mode: "custom", assetId }, outcome.status === "reconciled" ? "reconciled" : "saved");
         return;
       }
-      if (outcome.kind === "conflict") return enterConflict(outcome.body);
+      if (outcome.kind === "conflict") return enterConflict("upload", outcome.body, resend);
       if (outcome.kind === "unknown" || resend) {
         setMessage(replyMessage(outcome.body));
         setPhase("unknown");
@@ -358,7 +360,7 @@ export default function LogoAssignmentCard({
     }
     const outcome = classifyModeChangeReply(httpStatus, body, resend);
     if (outcome.kind === "saved") return finishSaved(submission.next, "saved");
-    if (outcome.kind === "conflict") return enterConflict(outcome.body);
+    if (outcome.kind === "conflict") return enterConflict("mode", outcome.body, resend);
     setMessage(outcome.message);
     if (outcome.kind === "unknown") {
       setPhase("unknown");
@@ -436,7 +438,12 @@ export default function LogoAssignmentCard({
       return;
     }
     setConflictCurrent(fresh.assignment);
-    setConflictCommitted(frozen.kind === "upload" && fresh.attempt?.state === "committed");
+    setConflictOwn(
+      conflictMine(frozen.kind, {
+        attemptCommitted: fresh.attempt?.state === "committed",
+        afterLostReply: true,
+      }),
+    );
     setPhase("conflict");
   }
 
@@ -735,7 +742,7 @@ export default function LogoAssignmentCard({
         phase={phase}
         message={message}
         conflictCurrent={conflictCurrent}
-        conflictCommitted={conflictCommitted}
+        conflictOwn={conflictOwn}
         frozen={frozen}
         onRetry={retry}
         onCheck={checkCurrent}
@@ -807,7 +814,7 @@ function Notice({
   phase,
   message,
   conflictCurrent,
-  conflictCommitted,
+  conflictOwn,
   frozen,
   onRetry,
   onCheck,
@@ -817,7 +824,7 @@ function Notice({
   phase: Phase;
   message: string | null;
   conflictCurrent: AdminLogoAssignment | null;
-  conflictCommitted: boolean;
+  conflictOwn: ConflictMine;
   frozen: Frozen | null;
   onRetry: () => void;
   onCheck: () => void;
@@ -887,9 +894,12 @@ function Notice({
     case "refreshing":
       kind = "error";
       title = "다른 곳에서 이미지 설정이 변경되었습니다";
-      body = conflictCommitted
-        ? "내 업로드는 저장되었지만 그 뒤 다른 곳에서 설정이 바뀌었습니다. 되돌리지 않습니다. 최신 값을 불러와 확인해 주세요. 이미지 외 입력값은 유지합니다."
-        : `${message ? `${message} ` : ""}내 변경은 저장되지 않았습니다. 최신 값을 불러온 후 다시 선택해 주세요. 이미지 외 입력값은 유지합니다.`;
+      body =
+        conflictOwn === "saved"
+          ? "내 업로드는 저장되었지만 그 뒤 다른 곳에서 설정이 바뀌었습니다. 되돌리지 않습니다. 최신 값을 불러와 확인해 주세요. 이미지 외 입력값은 유지합니다."
+          : conflictOwn === "unknown"
+            ? "내 변경이 저장되었는지 확인할 수 없습니다. 저장된 뒤 다른 곳에서 다시 바뀌었을 수도 있습니다. 같은 값을 다시 고르기 전에 최신 값을 불러와 확인해 주세요. 이미지 외 입력값은 유지합니다."
+            : `${message ? `${message} ` : ""}내 변경은 저장되지 않았습니다. 최신 값을 불러온 후 다시 선택해 주세요. 이미지 외 입력값은 유지합니다.`;
       action = (
         <>
           <div className="mt-2.5 border-t border-black/10 pt-[9px] text-[11px]">

@@ -9,6 +9,7 @@ import {
   assignmentFromConflict,
   attemptCommittedFromConflict,
   classifyModeChangeReply,
+  conflictMine,
   reconcileModeChange,
   reconcileUpload,
   resolutionText,
@@ -175,6 +176,20 @@ describe("conflict body", () => {
     expect(assignmentFromConflict(null)).toBeNull();
     expect(attemptCommittedFromConflict({ attemptCommitted: true })).toBe(true);
     expect(attemptCommittedFromConflict({})).toBe(false);
+  });
+});
+
+describe("conflictMine (was MY change saved?)", () => {
+  it("upload: decided by the attempt's committed evidence", () => {
+    expect(conflictMine("upload", { attemptCommitted: true, afterLostReply: true })).toBe("saved");
+    expect(conflictMine("upload", { attemptCommitted: false, afterLostReply: true })).toBe("not_saved");
+    expect(conflictMine("upload", { attemptCommitted: false, afterLostReply: false })).toBe("not_saved");
+  });
+
+  it("mode change: not saved only on a first send; after a lost reply it is unknown", () => {
+    expect(conflictMine("mode", { attemptCommitted: false, afterLostReply: false })).toBe("not_saved");
+    // expected → next may have committed and been overwritten since.
+    expect(conflictMine("mode", { attemptCommitted: false, afterLostReply: true })).toBe("unknown");
   });
 });
 
