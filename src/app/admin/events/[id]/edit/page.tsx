@@ -65,6 +65,15 @@ export default async function EditEventPage({ params }: Props) {
   // between the two reads.
   const logoState = await getEventLogoAdminState(event.id);
   if (!logoState) notFound();
+  // Two names on purpose: the explanation text is admin prose (Korean
+  // name first, like the series card), while the typography preview
+  // mirrors the record's original-language fields, as public pages do.
+  const series = event.eventSeriesId
+    ? await prisma.eventSeries.findUnique({
+        where: { id: event.eventSeriesId },
+        select: { originalName: true, originalShortName: true },
+      })
+    : null;
   const seriesName = event.eventSeriesId ? await seriesAdminName(prisma, event.eventSeriesId) : null;
   // Typography fallback from the SAVED record (the preview shows what
   // public pages render, which changes only when EventForm saves). Event
@@ -75,7 +84,7 @@ export default async function EditEventPage({ params }: Props) {
     ? `${event.date.getUTCFullYear()}.${String(event.date.getUTCMonth() + 1).padStart(2, "0")}.${String(event.date.getUTCDate()).padStart(2, "0")}`
     : null;
   const logoTypography = {
-    eyebrow: seriesName,
+    eyebrow: series ? series.originalShortName || series.originalName : null,
     title: event.originalShortName || event.originalName || `#${event.id}`,
     caption: [logoDate, event.originalVenue].filter(Boolean).join(" · ") || null,
   };

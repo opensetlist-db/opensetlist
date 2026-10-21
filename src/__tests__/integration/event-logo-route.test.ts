@@ -497,7 +497,7 @@ describe("attempt evidence for a lost upload reply", () => {
     expect(s.attempt).toEqual({ state: "committed", assetId: up.body.asset.id, held: true });
 
     // Unlinked back to the original expected value: the attempt WAS saved.
-    await patch({ mode: "custom", assetId: up.body.asset.id }, { mode: "inherit" });
+    expect((await patch({ mode: "custom", assetId: up.body.asset.id }, { mode: "inherit" })).status).toBe(200);
     s = (await getState(eventId, `?attemptId=${up.attemptId}`)).body;
     expect(s.attempt).toEqual({ state: "committed", assetId: up.body.asset.id, held: false });
     expect(s.assignment).toEqual(INHERIT);

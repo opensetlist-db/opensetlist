@@ -1,9 +1,11 @@
-import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   ADMIN_ASSET_SELECT,
+  ADMIN_LOGO_TX_OPTIONS,
+  adminAssetJson,
+  adminPreview,
+  attemptEvidence,
   seriesAdminName,
-  type AdminAttemptEvidence,
   type AdminLogoPreview,
   type AdminSeriesLogoState,
 } from "@/lib/adminLogo";
@@ -70,20 +72,10 @@ export async function getEventLogoAdminState(
         },
       });
       if (!event) return null;
-      const adminAsset = event.logoAsset;
-
-      let evidence: AdminAttemptEvidence | null = null;
-      if (attemptId) {
-        const found = await findAttemptAsset(tx, "event-logo", eventId, attemptId);
-        evidence =
-          found.state === "committed"
-            ? {
-                state: "committed",
-                assetId: found.assetId,
-                held: event.logoMode === "custom" && event.logoAssetId === found.assetId,
-              }
-            : found;
-      }
+      const assignment = { mode: event.logoMode, assetId: event.logoAssetId };
+      const evidence = attemptId
+        ? attemptEvidence(await findAttemptAsset(tx, "event-logo", eventId, attemptId), assignment)
+        : null;
 
       const graph = buildLogoSeriesGraph(await tx.eventSeries.findMany({ select: LOGO_SERIES_SELECT }));
       const names = new Map<string, string>();
@@ -97,15 +89,13 @@ export async function getEventLogoAdminState(
           if (!names.has(key)) names.set(key, await seriesAdminName(tx, source.seriesId));
           named = { id: key, name: names.get(key)!, isSelf: false };
         }
-        return decision.kind === "custom"
-          ? { imageUrl: decision.image.url, reason: "custom", source: named }
-          : { imageUrl: null, reason: decision.reason, source: named };
+        return adminPreview(decision, named);
       };
 
       return {
         eventId: eventId.toString(),
-        assignment: { mode: event.logoMode, assetId: event.logoAssetId },
-        asset: adminAsset ? { ...adminAsset, createdAt: adminAsset.createdAt.toISOString() } : null,
+        assignment,
+        asset: event.logoAsset ? adminAssetJson(event.logoAsset) : null,
         applied: await explain(event, graph),
         previews: {
           inherit: await explain({ ...event, logoMode: "inherit", logoAsset: null }, graph),
@@ -114,8 +104,6 @@ export async function getEventLogoAdminState(
         attempt: evidence,
       };
     },
-    // Same budget as the series card: a few dozen series rows, but the
-    // default 5s is tight on a cold pooler connection.
-    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 10_000 },
+    ADMIN_LOGO_TX_OPTIONS,
   );
 }

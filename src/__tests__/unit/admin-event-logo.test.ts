@@ -6,7 +6,7 @@ import {
   type LogoEventInput,
   type LogoSeriesNode,
 } from "@/lib/logoResolution";
-import { eventResolutionText } from "@/lib/adminLogoCard";
+import { eventResolutionText, resolutionText } from "@/lib/adminLogoCard";
 import type { AdminLogoPreview } from "@/lib/adminLogo";
 
 // Admin event logo override card: the event explanation next to the
@@ -136,6 +136,11 @@ describe("eventResolutionText", () => {
     );
   });
 
+  it("drops a missing series name instead of leaving empty brackets", () => {
+    const text = describeFor("inherit", preview({ reason: "custom", imageUrl: asset.publicUrl }), false);
+    expect(text).toBe("시리즈의 로고를 사용합니다. 시리즈 로고가 바뀌면 함께 바뀝니다.");
+  });
+
   it("names the deciding series for an inherited logo or stop", () => {
     const src = { id: "1", name: "蓮ノ空", isSelf: false };
     expect(describeFor("inherit", preview({ reason: "custom", imageUrl: asset.publicUrl, source: src }), false)).toBe(
@@ -147,6 +152,10 @@ describe("eventResolutionText", () => {
   });
 
   it("never mentions descendants (nothing inherits from an event)", () => {
+    // Positive control: the series wording DOES mention them for these
+    // inputs, so the absence below is the event wording's own choice.
+    expect(resolutionText("typography", preview({}), false)).toContain("하위");
+    expect(resolutionText("inherit", preview({}), false)).toContain("하위");
     for (const mode of ["inherit", "custom", "typography"] as const) {
       for (const reason of ["custom", "exhausted", "typography-mode", "unusable-asset", "broken-chain"] as const) {
         expect(describeFor(mode, preview({ reason }), false)).not.toContain("하위");

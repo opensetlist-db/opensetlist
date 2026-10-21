@@ -182,13 +182,17 @@ export function resolutionText(mode: LogoMode, preview: AdminLogoPreview, imageF
 }
 
 /**
- * Event-override wording of the explanation under the preview (04-v1
- * event screen). Differs from the series wording where the path differs:
+ * Event-override wording of the explanation under the preview. Differs from the series wording where the path differs:
  * an event inherits from ITS series (not a parent series), and nothing
  * inherits from an event, so the series text's "하위 공연은…" line does
  * not apply. `seriesName` is the event's own series (null = no series),
- * named in the exhausted case as the mockup does
- * ("공연 → <series> → 상속할 로고 없음").
+ * named in the exhausted case ("공연 → <series> → 상속할 로고 없음") as
+ * in the approved design.
+ *
+ * The deciding series' name is expected for the custom / typography-mode
+ * / unusable-asset reasons (the resolver always has a source node then);
+ * if it is ever missing the sentence drops the name rather than leaving
+ * an empty 「」.
  */
 export function eventResolutionText(seriesName: string | null): typeof resolutionText {
   return (mode, preview, imageFailed) => {
@@ -203,14 +207,14 @@ export function eventResolutionText(seriesName: string | null): typeof resolutio
         ? "이 공연에 직접 지정한 로고를 사용합니다. 시리즈의 설정보다 우선합니다."
         : "선택된 로고를 사용할 수 없어 제목을 표시합니다. 상위 이미지나 포스터로 대체하지 않습니다.";
     }
-    const from = preview.source && !preview.source.isSelf ? `「${preview.source.name}」` : "";
+    const series = preview.source && !preview.source.isSelf ? `시리즈 「${preview.source.name}」` : "시리즈";
     switch (preview.reason) {
       case "custom":
-        return `시리즈 ${from}의 로고를 사용합니다. 시리즈 로고가 바뀌면 함께 바뀝니다.`;
+        return `${series}의 로고를 사용합니다. 시리즈 로고가 바뀌면 함께 바뀝니다.`;
       case "typography-mode":
-        return `시리즈 ${from}에서 상속을 멈춰 공연 제목을 표시합니다.`;
+        return `${series}에서 상속을 멈춰 공연 제목을 표시합니다.`;
       case "unusable-asset":
-        return `시리즈 ${from}의 로고를 사용할 수 없어 공연 제목을 표시합니다.`;
+        return `${series}의 로고를 사용할 수 없어 공연 제목을 표시합니다.`;
       case "broken-chain":
         return "시리즈 연결이 끊겨(삭제·순환) 공연 제목을 표시합니다.";
       case "exhausted":

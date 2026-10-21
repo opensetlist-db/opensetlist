@@ -5,12 +5,12 @@ import LogoAssignmentCard, { type LogoCardStatus } from "@/components/admin/Logo
 import { eventResolutionText, type LogoCardState } from "@/lib/adminLogoCard";
 
 /*
- * Event logo override section of the event edit page — the approved 04-v1
- * "공연 로고" screen, rendered by the shared LogoAssignmentCard (the
+ * Event logo override section of the event edit page — the approved
+ * admin "공연 로고" design, rendered by the shared LogoAssignmentCard (the
  * series card's component) with the event's endpoint and wording.
  *
- * Placement (owner-approved mapping of 04-v1 onto this page): its own
- * section after EventForm and before the fan board / setlist sections,
+ * Placement (owner-approved for this page): its own section after
+ * EventForm and before the fan board / setlist sections,
  * each of which already saves on its own. The card saves only the logo;
  * EventForm's save never writes logo fields.
  *
@@ -20,7 +20,7 @@ import { eventResolutionText, type LogoCardState } from "@/lib/adminLogoCard";
  * no page refresh to do.
  *
  * Leaving the page: EventForm's save navigates to the event list and is
- * NOT blocked here (the 04 contract locks only the image form's own
+ * NOT blocked here (the approved design locks only the image form's own
  * controls). Instead, while a logo draft or an unsettled save exists, a
  * note says exactly what is lost, and `beforeunload` covers reload/close
  * — it cannot cover client-side navigation, so it is a convenience, not
@@ -46,6 +46,8 @@ export default function EventLogoSection({ eventId, initialState, typography, se
     if (!guard) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
+      // Older engines show the prompt only when returnValue is set.
+      e.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
