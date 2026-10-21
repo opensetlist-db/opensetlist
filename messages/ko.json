@@ -670,11 +670,15 @@
     "brandName": "OpenSetlist",
     "home": "홈",
     "artists": "아티스트",
-    "events": "이벤트",
+    "events": "공연",
     "albums": "앨범",
     "signIn": "로그인",
     "openMenu": "메뉴 열기",
-    "closeMenu": "메뉴 닫기"
+    "closeMenu": "메뉴 닫기",
+    "mainNav": "메인 메뉴",
+    "search": "검색",
+    "searchPlaceholder": "공연·아티스트·곡·앨범 검색",
+    "skipToContent": "본문으로 이동"
   },
   "Hero": {
     "heading": "모두가 이어가는 공연의 이야기",
@@ -684,7 +688,12 @@
     "privacy": "개인정보처리방침",
     "terms": "이용약관",
     "contact": "문의",
-    "copyright": "© {year} OpenSetlist"
+    "copyright": "© {year} OpenSetlist",
+    "unofficial": "팬이 만드는 비공식 사이트입니다. 출연자·주최자·권리자와 관계가 없습니다.",
+    "navLabel": "사이트 정보"
+  },
+  "SharedImage": {
+    "noImage": "이미지 없음"
   },
   "legal": {
     "privacyTitle": "개인정보처리방침",

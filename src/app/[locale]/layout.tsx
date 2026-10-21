@@ -72,13 +72,24 @@ export default async function LocaleLayout({
   if (!hasLocale(routing.locales, locale)) {
     notFound();
   }
+  const th = await getTranslations({ locale, namespace: "Header" });
 
   return (
     <html lang={locale} className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>
           <FirstVisitTracker />
+          {/* Skip link (03 contract): first focusable element on every
+              page. The target is a zero-size marker after the header
+              rather than a wrapper around `children`: pages render
+              their own <main>, and wrapping them would insert a box
+              between body's flex column and each page's outer element
+              (whose width rules assume it is the direct flex item). */}
+          <a href="#main-content" className="skip-link">
+            {th("skipToContent")}
+          </a>
           <Nav />
+          <span id="main-content" tabIndex={-1} className="outline-none" />
           {children}
           <Footer />
           <SpeedInsights />

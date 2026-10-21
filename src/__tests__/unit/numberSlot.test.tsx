@@ -97,9 +97,9 @@ describe("NumberSlot — rumoured state, dual vote buttons", () => {
     const disagreeBtn = screen.getByRole("button", { name: "d" });
     expect(confirmBtn.getAttribute("aria-pressed")).toBe("true");
     expect(confirmBtn.getAttribute("style")).toContain("solid");
-    // colors.primaryBg = #e8f4fd → rgb(232, 244, 253)
+    // colors.primaryBg = #EAF2FF → rgb(234, 242, 255)
     expect(confirmBtn.getAttribute("style")?.toLowerCase()).toContain(
-      "rgb(232, 244, 253)",
+      "rgb(234, 242, 255)",
     );
     // ✕ stays muted/dashed when only ✓ is voted.
     expect(disagreeBtn.getAttribute("aria-pressed")).toBe("false");

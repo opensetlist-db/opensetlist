@@ -4,6 +4,7 @@ import { SetlistRow } from "@/components/SetlistRow";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import { resolveUnitColor } from "@/lib/artistColor";
 import { hexToRgbString } from "@/__tests__/utils/color";
+import { colors } from "@/styles/tokens";
 
 vi.mock("next-intl", () => ({
   // Match the predicted-setlist test's substituting mock: when the
@@ -101,7 +102,7 @@ describe("SetlistRow", () => {
     expect(li?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
     const mcLabel = screen.getByText("itemType.mc");
-    expect(mcLabel.style.color).toBe(hexToRgbString("#94a3b8"));
+    expect(mcLabel.style.color).toBe(hexToRgbString(colors.textMuted));
 
     rerender(
       <SetlistRow
@@ -115,7 +116,7 @@ describe("SetlistRow", () => {
     expect(container.querySelector("li")?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
     expect(screen.getByText("itemType.video").style.color).toBe(
-      hexToRgbString("#94a3b8"),
+      hexToRgbString(colors.textMuted),
     );
 
     rerender(
@@ -130,7 +131,7 @@ describe("SetlistRow", () => {
     expect(container.querySelector("li")?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
     expect(screen.getByText("itemType.interval").style.color).toBe(
-      hexToRgbString("#94a3b8"),
+      hexToRgbString(colors.textMuted),
     );
   });
 
@@ -503,10 +504,9 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    // Primary token is #0277BD (handoff §1). Without importing tokens directly
-    // we can verify via the rendered jsdom rgb form.
+    // Song link uses the primary token; compared in jsdom's rgb form.
     const link = screen.getByText("Test Song");
-    expect(link.style.color).toBe(hexToRgbString("#0277BD"));
+    expect(link.style.color).toBe(hexToRgbString(colors.primary));
   });
 
   it("uses a CSS grid with `items-start` so position + title align at the top, not vertically centered", () => {
