@@ -331,6 +331,8 @@
   border-color: #a8bce5;
   box-shadow: 0 8px 24px #233c681b;
 }
+/* Outline itself comes from the global base-layer `:focus-visible`
+   (3px var(--focus-ring)); the card only tightens the offset. */
 .card:focus-visible {
   outline-offset: 3px;
 }
