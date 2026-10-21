@@ -6,6 +6,10 @@ import { resolveUnitColor } from "@/lib/artistColor";
 import { hexToRgbString } from "@/__tests__/utils/color";
 import { colors } from "@/styles/tokens";
 
+// Artist colours fed in as fixture data and expected back on `--artist`.
+const CERISE = "#e91e8c";
+const KAHO_SOLO = "#ffb74d";
+
 vi.mock("next-intl", () => ({
   // Match the predicted-setlist test's substituting mock: when the
   // caller passes a values map (e.g. `t("flagEmailSubject", { eventId,
@@ -247,7 +251,7 @@ describe("SetlistRow", () => {
     // position number.
     expect(screen.queryByRole("button", { name: "confirmAria" })).toBeNull();
     expect(screen.queryByRole("button", { name: "disagreeAria" })).toBeNull();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("01")).toBeInTheDocument();
   });
 
   describe("group badge on multi-group events", () => {
@@ -441,13 +445,11 @@ describe("SetlistRow", () => {
       />,
     );
     const badge = screen.getByText("Cerise Bouquet");
-    // Text color uses the artist.color hex directly — jsdom normalizes to
-    // rgb form, which we match via the helper. The background uses the
-    // 8-digit `${color}18` (alpha 0.094) form, which jsdom normalizes
-    // inconsistently across versions, so just assert it's NON-empty (not
-    // the zinc-class fallback path).
-    expect(badge.style.color).toBe(hexToRgbString("#e91e8c"));
-    expect(badge.style.backgroundColor).not.toBe("");
+    // 18-v3 artist tag: the artist colour feeds `--artist`, which the
+    // stylesheet mixes into the chip background; the label stays ink
+    // (no inline text colour), so a pale unit colour can't carry text.
+    expect(badge.style.getPropertyValue("--artist")).toBe(CERISE);
+    expect(badge.style.color).toBe("");
   });
 
   it("falls back to a deterministic palette color when Artist.color is null", () => {
@@ -490,11 +492,10 @@ describe("SetlistRow", () => {
       slug: "cerise-bouquet",
       color: null,
     });
-    expect(badge.style.color).toBe(hexToRgbString(expected));
-    expect(badge.style.backgroundColor).not.toBe("");
+    expect(badge.style.getPropertyValue("--artist")).toBe(expected);
   });
 
-  it("uses primary color for the song link (sourced from tokens)", () => {
+  it("leaves the song link's colour to the row stylesheet (ink title, 18-v3)", () => {
     render(
       <SetlistRow
         item={makeItem()}
@@ -504,12 +505,14 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    // Song link uses the primary token; compared in jsdom's rgb form.
+    // The approved card row titles songs in ink (hover turns them
+    // blue); no inline colour may override the stylesheet.
     const link = screen.getByText("Test Song");
-    expect(link.style.color).toBe(hexToRgbString(colors.primary));
+    expect(link.tagName).toBe("A");
+    expect(link.style.color).toBe("");
   });
 
-  it("uses a CSS grid with `items-start` so position + title align at the top, not vertically centered", () => {
+  it("renders the row as the 18-v3 card row (number column + body grid)", () => {
     const { container } = render(
       <SetlistRow
         item={makeItem()}
@@ -519,13 +522,10 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    // Mockup `event-page-desktop-mockup-v2.jsx:185` uses
-    // `alignItems: "start"` on the row grid so the position number
-    // sits flush with the first line of the title (not centered
-    // vertically against the unit badge).
+    // The grid itself lives in the CSS module (`.songRow`); hashed
+    // class names keep the source name as a substring in tests.
     const li = container.querySelector("li");
-    expect(li?.className).toContain("grid");
-    expect(li?.className).toContain("items-start");
+    expect(li?.className).toMatch(/songRow/);
   });
 
   it("renders the generic stageType label for an ad-hoc unit-stage row with no Artist credit (D8)", () => {
@@ -690,7 +690,7 @@ describe("SetlistRow", () => {
       />,
     );
     const badge = screen.getByText("Kaho");
-    expect(badge.style.color).toBe(hexToRgbString("#ffb74d"));
+    expect(badge.style.getPropertyValue("--artist")).toBe(KAHO_SOLO);
     expect(
       container.querySelector('a[href="/en/artists/11/kaho-solo"]'),
     ).not.toBeNull();
@@ -847,7 +847,7 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
       />,
     );
     // Position 3 (index + 1) renders as a span, not a button.
-    const position = screen.getByText("3");
+    const position = screen.getByText("03");
     expect(position.tagName.toLowerCase()).toBe("span");
     // No interactive ARIA labels for the rumoured/my-confirmed
     // states.

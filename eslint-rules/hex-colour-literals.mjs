@@ -1,8 +1,7 @@
 /**
  * `no-restricted-syntax` entries for hard-coded `#RGB` / `#RRGGBB` colours.
  *
- * Colour values come from `src/styles/tokens.ts` (`colors`,
- * `shareCardColors`, …). When the redesign swapped the palette
+ * Colour values come from `src/styles/tokens.ts` (`colors`, …). When the redesign swapped the palette
  * (primary #0277BD → #165DCC), three unit tests broke because they
  * compared rendered styles against literal hexes, and several
  * components kept rendering the old blue because they carried their own
@@ -30,7 +29,7 @@
 const HEX = "#(?:[0-9a-fA-F]{3}){1,2}(?![0-9a-zA-Z_-])";
 
 const componentMessage =
-  "Hard-coded hex colour: use a token from src/styles/tokens.ts (colors, shareCardColors, …) so a palette change reaches this code";
+  "Hard-coded hex colour: use a token from src/styles/tokens.ts (colors, …) so a palette change reaches this code";
 
 export const hexColourLiteralRestrictions = [
   {

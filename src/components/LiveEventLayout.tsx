@@ -14,12 +14,14 @@ import {
   EventImpressions,
   type Impression,
 } from "@/components/EventImpressions";
-import { EventHeader } from "@/components/EventHeader";
-import { UnitsCard, type UnitsCardItem } from "@/components/event/UnitsCard";
-import {
-  PerformersCard,
-  type PerformersCardItem,
-} from "@/components/event/PerformersCard";
+import { EventInfoCard } from "@/components/event/EventInfoCard";
+import { EventPerformersPanel } from "@/components/event/EventPerformersPanel";
+import { EventSeriesCard } from "@/components/event/EventSeriesCard";
+import styles from "@/components/event/eventDetail.module.css";
+import type {
+  PerformersCardItem,
+  UnitsCardItem,
+} from "@/lib/types/setlist";
 import {
   deriveSidebarUnitsAndPerformers,
   deriveSongsCount,
@@ -51,7 +53,9 @@ interface Props {
   // No polling needed for this slice.
   eventPerformers: EventPerformerSummary[];
 
-  // EventHeader props (event-level, never change after mount).
+  // Event-level props (never change after mount). The title, status
+  // pill and artist line render in the page Hero (`<EventHero>`), not
+  // here; this layout owns only what the live snapshot can change.
   status: ResolvedEventStatus;
   /**
    * D-7 open-window indicator (Wishlist + Predicted Setlist
@@ -69,10 +73,10 @@ interface Props {
    * `<LiveSetlist>`, which mounts `<FanBoardSection>` from it.
    */
   board?: BoardBlockSeed | null;
-  statusLabel: string;
   date: Date | string | null;
   startTime: Date | string | null;
   artist: { id: string; slug: string; name: string } | null;
+  /** Festival organizer, shown when there is no series artist. */
   organizerName: string | null;
   series: { id: string; slug: string; name: string } | null;
   title: string;
@@ -203,7 +207,6 @@ export function LiveEventLayout({
   status,
   isWishPredictOpen,
   board = null,
-  statusLabel,
   date,
   startTime,
   artist,
@@ -378,42 +381,14 @@ export function LiveEventLayout({
 
   return (
     /*
-      Mobile: single column (header on top, setlist + impressions below).
-      Desktop (lg ≥ 1024px): 2-col grid 300px / 1fr with sticky sidebar at
-      top: 72px. Grid's natural single-col on mobile means EventHeader
-      renders above the main column without any extra layout branching.
+      18-v3 layout: main column + 296px sidebar on the RIGHT (260px under
+      1100px), one column from 800px down with the sidebar panels after
+      the main column (two-up at 700–800px). Not sticky: the approved
+      sidebar scrolls with the page, and a festival roster is taller
+      than the viewport anyway.
     */
-    <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
-      {/* sticky offset = Nav.tsx desktop height (56px) + 16px breathing room.
-          Three sidebar cards stacked with consistent gap; flex column wraps
-          the stack so sticky positioning still applies to the topmost edge. */}
-      {/* Not sticky in lineup mode: a festival roster (dozens of rows +
-          pills) is taller than the viewport, and a sticky element that
-          tall hides its own bottom until the grid ends. Pre-show the
-          main column is short anyway, so normal flow loses nothing. */}
-      <aside
-        className={`flex flex-col gap-4 ${showLineup ? "" : "lg:sticky lg:top-[72px]"}`}
-      >
-        <EventHeader
-          status={status}
-          statusLabel={statusLabel}
-          date={date}
-          startTime={startTime}
-          locale={locale}
-          artist={artist}
-          organizerName={organizerName}
-          series={series}
-          title={title}
-          songsCount={songsCount}
-          reactionsValue={reactionsValue}
-          venue={venue}
-          city={city}
-        />
-        <UnitsCard locale={locale} units={unitsForCard} isLineup={showLineup} />
-        <PerformersCard locale={locale} performers={performersForCard} isLineup={showLineup} />
-      </aside>
-
-      <div className="mt-6 lg:mt-0 min-w-0">
+    <div className={styles.layout}>
+      <div className={styles.mainColumn}>
         <LiveSetlist
           eventId={eventId}
           items={items}
@@ -456,14 +431,13 @@ export function LiveEventLayout({
           //   - `eventTitle`: short event-specific identifier (e.g.
           //     "Hyogo Day.1" instead of "Garden Stage / Hyogo Day.1").
           //
-          // `dateLine` stays as a forwarded prop on the chain (kept
-          // for forward-compatibility if the operator wants to surface
-          // date/venue/city on the captured PNG later) but is passed
-          // empty here per the operator's preference: the share card
-          // should show series + event title only, no date row.
+          // `dateLine`: "2026.05.02 · venue" under the title, as the
+          // approved 18-share-v1 cards print it (the card had carried
+          // no date row since v0.11.6). Built from the venue date's
+          // UTC parts — the stored calendar date, not the viewer's.
           seriesName={seriesShortName ?? series?.name ?? ""}
           eventTitle={eventShortName ?? title}
-          dateLine=""
+          dateLine={shareDateLine(date, venue)}
           availableSongs={availableSongs}
           unitFilters={unitFilters}
           setlistStartLabel={setlistStartLabel}
@@ -494,6 +468,38 @@ export function LiveEventLayout({
           isOngoing={isOngoing}
         />
       </div>
+
+      <aside className={styles.sideColumn}>
+        <EventInfoCard
+          locale={locale}
+          date={date}
+          startTime={startTime}
+          venue={venue}
+          city={city}
+          artist={artist}
+          organizerName={organizerName}
+          series={series}
+          songsCount={songsCount}
+          reactionsValue={reactionsValue}
+        />
+        <EventPerformersPanel
+          locale={locale}
+          units={unitsForCard}
+          performers={performersForCard}
+          isLineup={showLineup}
+        />
+        <EventSeriesCard locale={locale} series={series} />
+      </aside>
     </div>
   );
+}
+
+/** "2026.05.02 · Marine Messe Fukuoka" for the share card header. */
+function shareDateLine(date: Date | string | null, venue: string | null): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const ymd =
+    d && !Number.isNaN(d.getTime())
+      ? `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, "0")}.${String(d.getUTCDate()).padStart(2, "0")}`
+      : "";
+  return [ymd, venue].filter(Boolean).join(" · ");
 }

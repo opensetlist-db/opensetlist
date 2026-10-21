@@ -12,11 +12,11 @@ describe("NumberSlot — confirmed state (no buttons)", () => {
         disagreeAriaLabel="d"
       />,
     );
-    expect(screen.getByText("5")).toBeTruthy();
+    expect(screen.getByText("05")).toBeTruthy();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("regression: span carries text-right + font-mono (byte-equiv pre-Confirm-UI)", () => {
+  it("renders the confirmed position as the 18-v3 number chip", () => {
     render(
       <NumberSlot
         state="confirmed"
@@ -27,8 +27,8 @@ describe("NumberSlot — confirmed state (no buttons)", () => {
     );
     const span = screen.getByText("42");
     expect(span.tagName.toLowerCase()).toBe("span");
-    expect(span.className).toContain("text-right");
-    expect(span.className).toContain("font-mono");
+    // CSS-module class (hashed in tests, name kept as a substring).
+    expect(span.className).toMatch(/songNum/);
   });
 
   it("ignores myVote on confirmed rows (no buttons rendered regardless)", () => {
