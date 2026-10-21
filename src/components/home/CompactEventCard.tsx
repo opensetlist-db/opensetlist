@@ -4,7 +4,7 @@ import EventStatusTicker from "@/components/EventStatusTicker";
 import { EventArt } from "@/components/shared/EventArt";
 import type { HomeCardView } from "@/lib/homeView";
 import { motion } from "@/styles/tokens";
-import { ChevronIcon, PinIcon } from "./HomeIcons";
+import { HomeChevronIcon, HomePinIcon } from "./HomeIcons";
 import styles from "./home.module.css";
 
 /*
@@ -60,7 +60,7 @@ export async function CompactEventCard({
         <h3 className={styles.cardTitle}>{view.title}</h3>
         {view.place && (
           <p className={styles.venue}>
-            <PinIcon />
+            <HomePinIcon />
             <span>{view.place}</span>
           </p>
         )}
@@ -76,7 +76,7 @@ export async function CompactEventCard({
           </p>
         )}
       </div>
-      <ChevronIcon />
+      <HomeChevronIcon />
       {live && <EventStatusTicker startTime={view.startTimeIso} />}
     </Link>
   );

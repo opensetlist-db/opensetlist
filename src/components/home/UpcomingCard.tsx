@@ -7,7 +7,7 @@ import EventStatusTicker from "@/components/EventStatusTicker";
 import { EventArt } from "@/components/shared/EventArt";
 import { trackEvent } from "@/lib/analytics";
 import type { UpcomingCardView } from "@/lib/homeView";
-import { ChevronIcon, PinIcon } from "./HomeIcons";
+import { HomeChevronIcon, HomePinIcon } from "./HomeIcons";
 import styles from "./home.module.css";
 
 const MINUTE_MS = 60 * 1000;
@@ -78,7 +78,7 @@ export function UpcomingCard({ view }: { view: UpcomingCardView }) {
         <h3 className={styles.cardTitle}>{view.title}</h3>
         {view.place && (
           <p className={styles.venue}>
-            <PinIcon />
+            <HomePinIcon />
             <span>{view.place}</span>
           </p>
         )}
@@ -93,7 +93,7 @@ export function UpcomingCard({ view }: { view: UpcomingCardView }) {
               </span>
             )}
           </div>
-          <ChevronIcon />
+          <HomeChevronIcon />
         </div>
       </div>
       <EventStatusTicker startTime={view.startTimeIso} />

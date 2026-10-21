@@ -199,6 +199,12 @@ describe("home queries", () => {
     expect(data.upcoming[0].startTime).toBe("2026-11-14T07:30:00.000Z");
     expect(data.pastMode).toBe("recent");
     // Only the public projection leaves: no asset/artist/series-id inputs.
+    // Positive control: the DB rows the projection read DID carry them.
+    const upcomingRow = (await eventFindMany.mock.results.find(
+      (r, i) => section(eventFindMany.mock.calls[i][0]) === "upcoming",
+    )!.value)[0];
+    expect(upcomingRow).toHaveProperty("logoAsset");
+    expect(upcomingRow).toHaveProperty("eventSeriesId");
     expect(Object.keys(data.upcoming[0])).not.toContain("logoAsset");
     expect(Object.keys(data.upcoming[0])).not.toContain("eventSeriesId");
   });

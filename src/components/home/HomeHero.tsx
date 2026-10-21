@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { QUERY_MAX_LENGTH } from "@/lib/globalSearch/params";
-import { SearchIcon } from "./HomeIcons";
+import { HomeSearchIcon } from "./HomeIcons";
 import styles from "./home.module.css";
 
 /*
@@ -82,7 +82,7 @@ export async function HomeHero({ locale }: { locale: string }) {
             aria-label={ts("submit")}
             className={styles.heroSubmit}
           >
-            <SearchIcon />
+            <HomeSearchIcon />
           </button>
         </form>
 
