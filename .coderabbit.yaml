@@ -69,6 +69,11 @@ reviews:
       slug prefix, purged at the start of `beforeAll`): an interrupted run
       skips `afterAll`, and its rows then fail every later run
     - Admin route translation writes are per-locale upserts (src/app/api/admin/stage-identities/[id]/route.ts), never `<x>Translation.deleteMany` + recreate: a partial save wipes the locales and columns it did not send
+    - A Prisma `findMany` or relation `include` whose rows are rendered in
+      order (lists, chips, tables) with no `orderBy`: Postgres returns heap
+      order, which changes between builds and after updates, so rows and
+      chips reorder on their own. Expect an explicit `orderBy`, or an
+      in-memory sort with a deterministic tiebreak (e.g. the id)
 
     Skip:
     - Stylistic preferences already handled by ESLint
