@@ -8,7 +8,7 @@ import {
   type LogoDecision,
   type LogoSeriesNode,
 } from "@/lib/logoResolution";
-import { findAttemptAsset } from "@/lib/imageUpload/attemptLookup";
+import { findAttemptAsset, type AttemptLookup } from "@/lib/imageUpload/attemptLookup";
 
 // Admin read model of a series' logo card: the local assignment, its
 // asset (WITH admin-only provenance), what the public resolver makes of
@@ -82,7 +82,8 @@ export type AdminSeriesLogoState = {
   attempt: AdminAttemptEvidence | null;
 };
 
-const ADMIN_ASSET_SELECT = {
+/** Asset columns of the admin card — includes the admin-only provenance. */
+export const ADMIN_ASSET_SELECT = {
   id: true,
   publicUrl: true,
   mimeType: true,
@@ -92,6 +93,45 @@ const ADMIN_ASSET_SELECT = {
   sourceUrl: true,
   usageNote: true,
   createdAt: true,
+} as const;
+
+// ── Pieces shared with the event card's reader (adminEventLogo.ts) ──
+// Both readers build the same card state; these keep the two from
+// drifting in what "held", a preview or an asset row means.
+
+/** Attempt evidence: the lookup result plus whether `assignment` holds it. */
+export function attemptEvidence(found: AttemptLookup, assignment: AdminLogoAssignment): AdminAttemptEvidence {
+  return found.state === "committed"
+    ? {
+        state: "committed",
+        assetId: found.assetId,
+        held: assignment.mode === "custom" && assignment.assetId === found.assetId,
+      }
+    : found;
+}
+
+/** Card preview of a resolver decision, given the named deciding node. */
+export function adminPreview(decision: LogoDecision, source: AdminLogoPreview["source"]): AdminLogoPreview {
+  return decision.kind === "custom"
+    ? { imageUrl: decision.image.url, reason: "custom", source }
+    : { imageUrl: null, reason: decision.reason, source };
+}
+
+/** JSON-safe admin asset row (the select above, `createdAt` as ISO). */
+export function adminAssetJson(
+  asset: Omit<AdminLogoAsset, "createdAt"> & { createdAt: Date },
+): AdminLogoAsset {
+  return { ...asset, createdAt: asset.createdAt.toISOString() };
+}
+
+/**
+ * Repeatable read, so the attempt evidence, the assignment and the graph
+ * come from one snapshot. The series table is small (a few dozen rows);
+ * the default 5s budget is tight only on a cold pooler connection.
+ */
+export const ADMIN_LOGO_TX_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+  timeout: 10_000,
 } as const;
 
 function withDraft(
@@ -119,18 +159,10 @@ export async function getSeriesLogoAdminState(
       });
       if (!series) return null;
 
-      let evidence: AdminAttemptEvidence | null = null;
-      if (attemptId) {
-        const found = await findAttemptAsset(tx, "series-logo", seriesId, attemptId);
-        evidence =
-          found.state === "committed"
-            ? {
-                state: "committed",
-                assetId: found.assetId,
-                held: series.logoMode === "custom" && series.logoAssetId === found.assetId,
-              }
-            : found;
-      }
+      const assignment = { mode: series.logoMode, assetId: series.logoAssetId };
+      const evidence = attemptId
+        ? attemptEvidence(await findAttemptAsset(tx, "series-logo", seriesId, attemptId), assignment)
+        : null;
 
       const rows = await tx.eventSeries.findMany({ select: LOGO_SERIES_SELECT });
       const names = new Map<string, string>();
@@ -142,16 +174,14 @@ export async function getSeriesLogoAdminState(
           if (!names.has(key)) names.set(key, await seriesAdminName(tx, sourceSeriesId));
           source = { id: key, name: names.get(key)!, isSelf: sourceSeriesId === seriesId };
         }
-        return decision.kind === "custom"
-          ? { imageUrl: decision.image.url, reason: "custom", source }
-          : { imageUrl: null, reason: decision.reason, source };
+        return adminPreview(decision, source);
       };
 
       const asset = series.logoAsset;
       return {
         seriesId: seriesId.toString(),
-        assignment: { mode: series.logoMode, assetId: series.logoAssetId },
-        asset: asset ? { ...asset, createdAt: asset.createdAt.toISOString() } : null,
+        assignment,
+        asset: asset ? adminAssetJson(asset) : null,
         applied: await explain(rows),
         previews: {
           inherit: await explain(withDraft(rows, seriesId, "inherit")),
@@ -160,15 +190,16 @@ export async function getSeriesLogoAdminState(
         attempt: evidence,
       };
     },
-    // The series table is small (a few dozen rows); the default 5s budget
-    // is tight only on a cold pooler connection.
-    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 10_000 },
+    ADMIN_LOGO_TX_OPTIONS,
   );
 }
 
 /** Korean admin label of a series: ko translation, else the original. */
-async function seriesAdminName(tx: Prisma.TransactionClient, id: bigint): Promise<string> {
-  const row = await tx.eventSeries.findUnique({
+export async function seriesAdminName(
+  db: Pick<Prisma.TransactionClient, "eventSeries">,
+  id: bigint,
+): Promise<string> {
+  const row = await db.eventSeries.findUnique({
     where: { id },
     select: { originalName: true, translations: { where: { locale: "ko" }, select: { name: true } } },
   });
