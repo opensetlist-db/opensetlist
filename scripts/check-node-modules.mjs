@@ -5,8 +5,10 @@
 //   node scripts/check-node-modules.mjs [root]      root defaults to cwd
 //
 // Exit 0 when every package the lockfile lists is present with a
-// package.json; exit 1 with a per-package repair recipe otherwise;
-// exit 2 when root has no package-lock.json or no node_modules.
+// package.json; exit 3 with a per-package repair recipe otherwise;
+// exit 2 when root has no usable package-lock.json or no node_modules.
+// "Damaged" is deliberately not 1: an uncaught error (EACCES on a
+// package dir, say) exits 1, and must not read as damage to a caller.
 //
 // Why this exists: task worktrees link node_modules to the MAIN
 // checkout's (scripts/worktree-new.sh), so damage there reaches every
@@ -34,12 +36,32 @@ if (!existsSync(path.join(root, "node_modules"))) {
 }
 
 const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+if (!lock.packages) {
+  // lockfileVersion 1 has only the nested `dependencies` tree; checking
+  // nothing and printing "ok" would be a false all-clear.
+  console.error(`check-node-modules: ${lockPath} has no "packages" map (lockfile v1?)`);
+  process.exit(2);
+}
+
+const NM = "node_modules/";
+
+// The installed name is the part after the last node_modules/ segment
+// (scoped names keep their @scope/ prefix); `name` in the entry wins for
+// npm-aliased installs, where the folder and the real package differ.
+// npm pack names the tarball <scope>-<name>-<version>.tgz.
+function describe(key, entry, problem) {
+  const name = entry.name ?? key.slice(key.lastIndexOf(NM) + NM.length);
+  const version = entry.version ?? "<version>";
+  const tgz = `${name.replace(/^@/, "").replace("/", "-")}-${version}.tgz`;
+  return { key, name, version, tgz, integrity: entry.integrity, problem };
+}
+
 const broken = [];
 
-for (const [key, entry] of Object.entries(lock.packages ?? {})) {
+for (const [key, entry] of Object.entries(lock.packages)) {
   // "" is the root project; workspace paths (no node_modules/ prefix)
   // are source folders, not installed packages.
-  if (!key.startsWith("node_modules/")) continue;
+  if (!key.startsWith(NM)) continue;
 
   const dir = path.join(root, key);
   let isDir = false;
@@ -52,18 +74,20 @@ for (const [key, entry] of Object.entries(lock.packages ?? {})) {
   if (!isDir) {
     // `link` entries point at a workspace folder npm links in; optional
     // ones (platform-specific binaries such as @next/swc-*) are legitimately
-    // skipped on other platforms. Anything else should have been installed.
-    if (entry.link || entry.optional) continue;
-    broken.push({ key, entry, problem: "missing" });
+    // skipped on other platforms — devOptional is the same flag for an
+    // optional dependency of a dev dependency. Anything else should have
+    // been installed.
+    if (entry.link || entry.optional || entry.devOptional) continue;
+    broken.push(describe(key, entry, "missing"));
     continue;
   }
   if (entry.link) continue; // the target is source, not an npm tarball
 
   const files = readdirSync(dir);
   if (files.length === 0) {
-    broken.push({ key, entry, problem: "empty directory" });
+    broken.push(describe(key, entry, "empty directory"));
   } else if (!files.includes("package.json")) {
-    broken.push({ key, entry, problem: "no package.json" });
+    broken.push(describe(key, entry, "no package.json"));
   }
 }
 
@@ -72,17 +96,11 @@ if (broken.length === 0) {
   process.exit(0);
 }
 
-// The installed name is the part after the last node_modules/ segment
-// (scoped names keep their @scope/ prefix); `name` in the entry wins for
-// npm-aliased installs, where the folder and the real package differ.
-const pkgName = (key, entry) =>
-  entry.name ?? key.slice(key.lastIndexOf("node_modules/") + "node_modules/".length);
-
 console.error(
   `check-node-modules: ${broken.length} damaged package(s) in ${path.join(root, "node_modules")}:`,
 );
-for (const { key, entry, problem } of broken) {
-  console.error(`  ${key}  ${pkgName(key, entry)}@${entry.version ?? "?"}  (${problem})`);
+for (const { key, name, version, problem } of broken) {
+  console.error(`  ${key}  ${name}@${version}  (${problem})`);
 }
 
 // Repair recipe. Run everything from the root with RELATIVE paths: Git
@@ -90,12 +108,10 @@ for (const { key, entry, problem } of broken) {
 // `npm pack` downloads the exact lockfile version into the cwd and
 // prints its integrity, which must match the lockfile's before extracting.
 console.error(`\nRepair, from ${root}:`);
-for (const { key, entry } of broken) {
-  const spec = `${pkgName(key, entry)}@${entry.version ?? "<version>"}`;
-  const tgz = `${pkgName(key, entry).replace(/^@/, "").replace("/", "-")}-${entry.version ?? "<version>"}.tgz`;
+for (const { key, name, version, tgz, integrity } of broken) {
   console.error(`\n  # ${key}`);
-  console.error(`  npm pack ${spec}`);
-  console.error(`  #   integrity must equal: ${entry.integrity ?? "(none in lockfile)"}`);
+  console.error(`  npm pack ${name}@${version}`);
+  console.error(`  #   integrity must equal: ${integrity ?? "(none in lockfile)"}`);
   console.error(`  mkdir -p ${key}`);
   console.error(`  tar -xzf ${tgz} -C ${key} --strip-components=1`);
   console.error(`  rm ${tgz}`);
@@ -105,4 +121,4 @@ console.error(
     " it replaces node_modules for EVERY worktree linked to it, so stop" +
     " dev servers and test runs there first.",
 );
-process.exit(1);
+process.exit(3);
