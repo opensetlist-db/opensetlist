@@ -21,6 +21,12 @@
 CI (`.github/workflows/ci.yml`) runs only lint, `tsc --noEmit` and the
 unit suite. Integration and E2E run locally, by hand.
 
+`npm run lint` is ESLint plus `npm run lint:css` (stylelint over
+`src/**/*.module.css`: hex colour literals warn; `globals.css` defines
+the palette and is skipped). `npm run lint:dead` (knip,
+`knip.config.ts`) lists files nothing imports and exports nothing uses;
+CI runs it report-only (`continue-on-error`).
+
 Filtering a long unit run once instead of rerunning it to find the
 failing file (the echo keeps vitest's exit code visible through the
 pipe):
