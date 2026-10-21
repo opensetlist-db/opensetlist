@@ -11,6 +11,10 @@
 #     commits have no branch to survive the removal — unless --force.
 #   - The linked node_modules is unlinked FIRST, so nothing below can
 #     recurse through it into the main checkout's node_modules.
+#   - Every other link in the worktree (the junctions `next build` puts
+#     under .next/node_modules/) is unlinked next; if one survives, stop.
+#   - After the removal, the main checkout's node_modules is checked
+#     (exit 3 if packages vanished).
 #   - The branch is deleted only if git agrees it is merged
 #     (`git branch -d`); a squash-merged branch is therefore kept.
 #
@@ -90,6 +94,66 @@ if [ -z "$registered" ] && [ -z "$force" ] && [ -n "$(ls -A "$path")" ]; then
   exit 1
 fi
 
+# 1b. Unlink every other link under the worktree. `next build` on Windows
+#     creates junctions at .next/node_modules/<pkg>-<hash> that point at
+#     server-external packages (pg, @prisma/client, kuromoji, ...) in the
+#     MAIN checkout's node_modules — through our node_modules link, but
+#     resolved to the real path. Git for Windows' `git worktree remove`
+#     recurses through a junction and empties its target (reproduced with
+#     git 2.44; MSYS `rm -rf` does not), so every link must be gone before
+#     step 2. MSYS reports junctions and symlinks alike as `-type l`, and
+#     `find` never descends into one, so the scan itself cannot leave the
+#     worktree. A worktree with its own real node_modules is scanned too:
+#     slower, but a link in there is no safer than one in .next. A scan
+#     that errors (unreadable folder) could have missed a link: stop.
+list_links() {
+  find "$path" -type l || {
+    echo "refusing: could not scan $path for links (see above)" >&2
+    exit 1
+  }
+}
+links="$(list_links)"
+while IFS= read -r link; do
+  [ -n "$link" ] || continue
+  case "${OSTYPE:-}" in
+    # rmdir without /s removes a directory junction/symlink, never the
+    # folder it points at; a file symlink needs del.
+    msys*)
+      if [ -d "$link" ]; then
+        cmd //c rmdir "$(cygpath -w "$link")" > /dev/null 2>&1 || true
+      else
+        cmd //c del //q "$(cygpath -w "$link")" > /dev/null 2>&1 || true
+      fi
+      ;;
+    *) rm -f "$link" ;;
+  esac
+done <<< "$links"
+left="$(list_links)"
+if [ -n "$left" ]; then
+  echo "refusing: could not unlink these links under $path — remove them by hand (rmdir without /s), then rerun:" >&2
+  printf '  %s\n' "$left" >&2
+  exit 1
+fi
+
+# The main checkout's node_modules must come out of the removal intact.
+# Two packages a recursive delete has emptied before (via .next links)
+# stand in for the whole folder; only those present now are checked.
+sentinels=()
+for p in next @prisma/client; do
+  f="$main/node_modules/$p/package.json"
+  [ -e "$f" ] && sentinels+=("$f")
+done
+check_main() {
+  local f bad=""
+  for f in ${sentinels[@]+"${sentinels[@]}"}; do
+    [ -e "$f" ] || bad="$bad $f"
+  done
+  if [ -n "$bad" ]; then
+    echo "DANGER: removing $path deleted files in the main checkout's node_modules (missing:$bad). Run \`npm ci\` in $main." >&2
+    exit 3
+  fi
+}
+
 # 2. Remove the worktree. If git refuses (locked, untracked files) and
 #    still lists it, stop — that refusal is the safety net. On Windows
 #    git often unregisters the worktree and then stops at a folder it
@@ -100,6 +164,7 @@ if [ -n "$registered" ]; then
     # kept it registered; anything else means git unregistered it.
     still="$(git -C "$path" rev-parse --show-toplevel 2> /dev/null || true)"
     if [ -n "$still" ] && same_path "$(canon "$still")" "$path"; then
+      check_main
       echo "refusing: git would not remove $path (see above); node_modules was unlinked — relink it before using the worktree again" >&2
       exit 1
     fi
@@ -108,6 +173,7 @@ fi
 if [ -d "$path" ]; then
   rm -rf "$path" 2> /dev/null || true
 fi
+check_main
 git -C "$main" worktree prune
 
 # 3. Delete the branch only if git agrees it is merged.
