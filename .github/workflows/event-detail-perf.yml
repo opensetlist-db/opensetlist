@@ -53,9 +53,11 @@ name: perf — event detail TTFB
 #   delta > +100%  → ✗ failure ("likely real regression")
 # Re-tune if false positives become noisy.
 
+# feature/redesign: integration branch for the site redesign — its task
+# PRs are measured against the integration tip, like dev's against dev.
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, feature/redesign]
     paths-ignore:
       - "**/*.md"
 

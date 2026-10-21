@@ -9,6 +9,7 @@ reviews:
     base_branches:
       - "main"
       - "dev"
+      - "feature/redesign"
     drafts: false
     ignore_title_keywords:
       - "WIP"
