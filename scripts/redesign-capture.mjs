@@ -28,11 +28,31 @@
 //                                    the repo, so pass its path. A report
 //                                    only: it never changes the exit code.
 //
+// Approved-design mode — page tickets compare their build with the design
+// packet the owner approved (wiki: output/redesign/handoffs/NN/vX/):
+//   node scripts/redesign-capture.mjs --base http://localhost:3110 --out <dir>
+//     --design <packet>/qa-report.json
+//     [--design-map v1.1-=v1.2-]     rewrite a baseline file-name prefix
+//                                    (comma-separated from=to pairs); a
+//                                    rewritten name that does not exist
+//                                    falls back to the listed file
+//     [--widths 320,375,430,768,1024] extra widths: the same URLs again,
+//                                    without a baseline, for overflow
+//     [--ids-scope main]             CSS scope of the entity links read
+//     [--browser webkit] [--filter ja-390-] [--list]
+//   Replays every `captures[]` URL of the packet (path + query, on --base)
+//   at the packet's viewport, DPR1, and records status, entity IDs vs the
+//   packet's `ids`, horizontal overflow, console errors, <html lang> and
+//   robots meta into `design-<browser>.json`. Chromium runs also write
+//   `compare-<locale>-<width>-<key>.webp` (baseline | actual). Mockup-only
+//   scenarios (/entry, /review, state=error|loading) are skipped with a
+//   reason. Like --compare, mismatches are reported, not failed; only a
+//   capture that errors exits 1. See runDesign() below for the details.
+//
 // Serve a production build, not `next dev` — dev-mode TTFB, bundle bytes and
-// overlay errors make the metrics meaningless. Build with the Sentry
-// variables emptied so nothing uploads:
-//   SENTRY_AUTH_TOKEN= SENTRY_DSN= NEXT_PUBLIC_SENTRY_DSN= npm run build
-//   npx next start -p 3110
+// overlay errors make the metrics meaningless. `scripts/serve-build.sh 3110`
+// builds and serves the current checkout with the Sentry variables emptied
+// so nothing uploads.
 //
 // Admin keys log in once per capture context. A production build marks the
 // admin cookie Secure, which WebKit drops on http://localhost (Chromium
@@ -69,6 +89,10 @@ const { values: args } = parseArgs({
     env: { type: "string", default: path.join(repoRoot, ".env") },
     list: { type: "boolean", default: false },
     compare: { type: "string" },
+    design: { type: "string" },
+    "design-map": { type: "string" },
+    widths: { type: "string" },
+    "ids-scope": { type: "string", default: "main" },
   },
 });
 
@@ -87,6 +111,14 @@ const PNG = args.png || !WEBP;
 // pixels, so the 2× mobile viewport hits this at ~8000 CSS px.
 const WEBP_MAX_PART_HEIGHT = 16000;
 const WEBP_QUALITY = 90;
+// limitInputPixels off: a long 2× mobile page (the baseline's longest is
+// ~41000 CSS px → 82000 device px) exceeds sharp's default pixel cap long
+// before it is a problem for memory.
+const SHARP_INPUT = { limitInputPixels: false };
+
+// The design mode has its own scenario list and manifest; it never reaches
+// the page-set code below (runDesign ends the process).
+if (args.design) await runDesign();
 
 const VIEWPORTS = {
   d1440: { width: 1440, height: 900 },
@@ -210,18 +242,13 @@ if (selected.some((t) => t.admin)) {
 const outDir = path.resolve(args.out);
 fs.mkdirSync(outDir, { recursive: true });
 
-// limitInputPixels off: a long 2× mobile page (the baseline's longest is
-// ~41000 CSS px → 82000 device px) exceeds sharp's default pixel cap long
-// before it is a problem for memory.
-const SHARP_INPUT = { limitInputPixels: false };
-
 // `png` in the manifest is null unless --png was passed; comparisons should
 // read the `webp` array, which every run fills (unless --no-webp).
-async function writeImages(png, stem) {
+async function writeImages(png, stem, dir = outDir) {
   const files = { png: null, webp: [] };
   if (PNG) {
     files.png = `${stem}.png`;
-    fs.writeFileSync(path.join(outDir, files.png), png);
+    fs.writeFileSync(path.join(dir, files.png), png);
   }
   if (!WEBP) return files;
   const { width, height } = await sharp(png, SHARP_INPUT).metadata();
@@ -232,7 +259,7 @@ async function writeImages(png, stem) {
     await sharp(png, SHARP_INPUT)
       .extract({ left: 0, top, width, height: Math.min(WEBP_MAX_PART_HEIGHT, height - top) })
       .webp({ quality: WEBP_QUALITY })
-      .toFile(path.join(outDir, file));
+      .toFile(path.join(dir, file));
     files.webp.push(file);
   }
   return files;
@@ -514,4 +541,355 @@ function compareWithBaseline(before, after) {
     console.log("ERRORED (capture failed in this run): %d", errored.length);
     for (const m of errored) console.log("    %s", m);
   }
+}
+
+// ---------------------------------------------------------------------------
+// --design: replay an approved design packet against this build.
+//
+// The packet's qa-report.json lists every mockup capture the owner approved:
+// `{ file, url, viewport, locale, ids? }`, `url` on the mockup host (e.g.
+// http://127.0.0.1:4312/ja/search?q=Dream) and `ids` the entity order the
+// mockup rendered (`songs:62`). Each scenario's path + query is replayed on
+// --base at the same viewport and DPR1 (the packet's captures are DPR1), so
+// the baseline image and the actual capture line up pixel for pixel in the
+// side-by-side compare image.
+//
+// Scenario key: the baseline file name minus its version prefix and
+// `<locale>-<width>-` (`captures/v1.1-ja-390-menu.webp` → `menu`).
+//
+// Two keys carry an interaction the mockup capture shows and the URL alone
+// does not: `…menu` opens the header menu toggle, `…focus` focuses the page's
+// first text input with the caret at the end. A packet entry may name one
+// explicitly with `"action": "menu" | "focus"`.
+//
+// Entity IDs: every link inside --ids-scope (default `main`) whose href is
+// /<locale>/<kind>/<id>/…, in DOM order, deduplicated (a card's cover and
+// title link the same record). An exact list match against the packet's
+// `ids` is required; order matters because the order IS the design (ranking,
+// grouping). Scenarios without `ids` in the packet are not judged.
+// ---------------------------------------------------------------------------
+async function runDesign() {
+  const qaPath = path.resolve(args.design);
+  let packet;
+  try {
+    packet = JSON.parse(fs.readFileSync(qaPath, "utf8"));
+    if (!Array.isArray(packet.captures)) throw new Error("no captures[] array");
+  } catch (e) {
+    console.error(`--design ${args.design}: ${e.message}`);
+    process.exit(1);
+  }
+  const qaDir = path.dirname(qaPath);
+
+  // `v1.1-=v1.2-`: a later packet version re-shot some captures under a new
+  // prefix while qa-report.json still lists the earlier names.
+  const maps = (args["design-map"] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const i = s.indexOf("=");
+      if (i <= 0) {
+        console.error(`--design-map ${s}: expected from=to`);
+        process.exit(1);
+      }
+      return [s.slice(0, i), s.slice(i + 1)];
+    });
+  const baselineFile = (listed) => {
+    const dir = path.dirname(listed);
+    const name = path.basename(listed);
+    for (const [from, to] of maps) {
+      if (!name.startsWith(from)) continue;
+      const mapped = path.join(dir, to + name.slice(from.length));
+      if (fs.existsSync(path.join(qaDir, mapped))) return mapped.replaceAll("\\", "/");
+    }
+    return listed;
+  };
+
+  // Mockup-only states: the design server fakes them with a route or a
+  // query flag the app does not have, so replaying them would capture a 404
+  // or the plain page under a misleading name.
+  const SKIPS = [
+    [(u) => /\/entry\/?$/.test(u.pathname), "mockup-only route /entry"],
+    [(u) => /\/review(\/|$)/.test(u.pathname), "mockup-only route /review"],
+    [
+      (u) => ["error", "loading"].includes(u.searchParams.get("state") ?? ""),
+      "mockup-only state= query",
+    ],
+  ];
+
+  const scenarios = [];
+  const skipped = [];
+  for (const c of packet.captures) {
+    const u = new URL(c.url);
+    const locale = c.locale ?? u.pathname.split("/")[1];
+    const width = c.viewport?.width;
+    const height = c.viewport?.height ?? 1000;
+    const stem = path.basename(c.file).replace(/\.[a-z0-9]+$/i, "");
+    const lw = `${locale}-${width}-`;
+    // String search, not a RegExp built from packet values (the repo's lint
+    // forbids non-literal RegExp).
+    const cut = stem.startsWith(lw) ? lw.length : stem.indexOf(`-${lw}`) + 1 + lw.length;
+    const key = cut > lw.length || stem.startsWith(lw) ? stem.slice(cut) : stem;
+    const name = `${locale}-${width}-${key}`;
+    const reason = SKIPS.find(([test]) => test(u))?.[1];
+    if (reason) {
+      skipped.push({ name, file: c.file, url: u.pathname + u.search, reason });
+      continue;
+    }
+    scenarios.push({
+      name,
+      key,
+      locale,
+      width,
+      height,
+      url: u.pathname + u.search,
+      action: c.action ?? (/(^|-)menu$/.test(key) ? "menu" : /(^|-)focus$/.test(key) ? "focus" : null),
+      ids: Array.isArray(c.ids) ? c.ids : null,
+      baseline: baselineFile(c.file),
+      listedBaseline: c.file,
+    });
+  }
+
+  // Extra widths: every distinct URL again, plain (no interaction, no
+  // baseline), only for overflow and console checks at in-between widths.
+  const widths = (args.widths ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  const extraHeight = scenarios[0]?.height ?? 1000;
+  const seen = new Set();
+  for (const s of [...scenarios]) {
+    if (seen.has(s.url)) continue;
+    seen.add(s.url);
+    for (const w of widths) {
+      // A distinct URL keeps its first key, so `ja-375-dream` names the
+      // same page as `ja-390-dream`.
+      scenarios.push({
+        name: `${s.locale}-${w}-${s.key}`,
+        key: s.key,
+        locale: s.locale,
+        width: w,
+        height: extraHeight,
+        url: s.url,
+        action: null,
+        ids: null,
+        baseline: null,
+        extra: true,
+      });
+    }
+  }
+
+  const prefixes = args.filter?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+  const chosen = prefixes.length
+    ? scenarios.filter((s) => prefixes.some((p) => s.name.startsWith(p)))
+    : scenarios;
+
+  if (args.list) {
+    for (const s of chosen)
+      console.log("%s %s%s", s.name.padEnd(28), s.url.slice(0, 90), s.extra ? "  (extra width)" : "");
+    for (const s of skipped) console.log("%s SKIP %s", s.name.padEnd(28), s.reason);
+    process.exit(0);
+  }
+  if (!args.out) {
+    console.error("--out <dir> is required");
+    process.exit(1);
+  }
+  if (chosen.length === 0) {
+    console.error(`--filter ${args.filter} matched no scenarios (see --list)`);
+    process.exit(1);
+  }
+  const dir = path.resolve(args.out);
+  fs.mkdirSync(dir, { recursive: true });
+  const prefix = args.browser === "chromium" ? "" : `${args.browser}-`;
+
+  const browser = await browserType.launch();
+  const results = [];
+  for (const s of chosen) {
+    const ctx = await browser.newContext({
+      viewport: { width: s.width, height: s.height },
+      deviceScaleFactor: 1,
+      locale: s.locale,
+      timezoneId: "Asia/Seoul",
+      // The mockup captures were taken without motion; a mid-transition
+      // frame would read as a visual difference.
+      reducedMotion: "reduce",
+    });
+    try {
+      const page = await ctx.newPage();
+      const consoleErrors = [];
+      page.on("console", (m) => {
+        if (m.type() !== "error") return;
+        // The 404 console text omits the URL; the location carries it.
+        const at = m.location()?.url?.replace(BASE, "") ?? "";
+        if (at.includes("/_vercel/speed-insights/script.js")) return; // local-only
+        consoleErrors.push({ text: m.text().slice(0, 200), at: at.slice(0, 200) });
+      });
+      const resp = await page.goto(BASE + s.url, { waitUntil: "networkidle", timeout: 60000 });
+      await page.evaluate(() => document.fonts.ready);
+      if (s.action === "menu") {
+        await page.locator("header button[aria-controls][aria-expanded]").filter({ visible: true }).first().click();
+      } else if (s.action === "focus") {
+        await page.locator('main input:not([type="hidden"])').filter({ visible: true }).first().focus();
+        await page.keyboard.press("End");
+      }
+      // Settle time for the opened menu / client fetches after networkidle.
+      await page.waitForTimeout(500);
+      const m = await page.evaluate((scope) => {
+        const KIND = /^\/[^/]+\/(events|artists|songs|albums|members|series)\/([^/?#]+)(?:[/?#]|$)/;
+        const ids = [];
+        for (const a of document.querySelectorAll(`${scope} a[href]`)) {
+          const hit = new URL(a.getAttribute("href"), location.href).pathname.match(KIND);
+          if (!hit) continue;
+          const id = `${hit[1]}:${decodeURIComponent(hit[2])}`;
+          if (!ids.includes(id)) ids.push(id);
+        }
+        return {
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          lang: document.documentElement.lang,
+          robots: document.querySelector('meta[name="robots"]')?.getAttribute("content") ?? null,
+          title: document.title,
+          h1: document.querySelector("main h1")?.textContent?.trim().slice(0, 120) ?? null,
+          docHeight: document.documentElement.scrollHeight,
+          ids,
+        };
+      }, args["ids-scope"]);
+      const png = await page.screenshot({ fullPage: true });
+      const files = await writeImages(png, `${prefix}${s.name}`, dir);
+
+      let compare = null;
+      let baselineMissing = false;
+      if (s.baseline && args.browser === "chromium") {
+        const src = path.join(qaDir, s.baseline);
+        if (fs.existsSync(src)) {
+          compare = `compare-${s.name}.webp`;
+          await writeCompare(src, png, path.join(dir, compare));
+        } else baselineMissing = true;
+      }
+      const idsMatch = s.ids ? JSON.stringify(s.ids) === JSON.stringify(m.ids) : null;
+      results.push({
+        name: s.name,
+        key: s.key,
+        locale: s.locale,
+        width: s.width,
+        url: s.url,
+        extra: !!s.extra,
+        action: s.action,
+        status: resp?.status() ?? null,
+        finalUrl: page.url().replace(BASE, ""),
+        ...m,
+        expectedIds: s.ids,
+        idsMatch,
+        consoleErrors,
+        webp: files.webp,
+        png: files.png,
+        baseline: s.baseline,
+        baselineMissing,
+        compare,
+      });
+      console.log(
+        "%s %s overflow=%d ids=%d%s",
+        s.name,
+        resp?.status(),
+        m.overflow,
+        m.ids.length,
+        idsMatch === null ? "" : idsMatch ? " match" : " MISMATCH",
+      );
+    } catch (e) {
+      results.push({ name: s.name, url: s.url, extra: !!s.extra, error: String(e).slice(0, 300) });
+      console.log("ERR %s %s", s.name, String(e.message ?? e).slice(0, 200));
+    } finally {
+      await ctx.close();
+    }
+  }
+  // Manifest before close, as in the page-set mode (WebKit close can hang).
+  const manifestFile = path.join(dir, `design-${args.browser}.json`);
+  fs.writeFileSync(
+    manifestFile,
+    JSON.stringify(
+      { at: new Date().toISOString(), base: BASE, browser: args.browser, design: qaPath, results, skipped },
+      null,
+      2,
+    ),
+  );
+  await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
+  summarizeDesign(results, skipped, manifestFile);
+  process.exit(results.some((r) => r.error) ? 1 : 0);
+}
+
+// Baseline | 24px white gutter | actual, top-aligned. WebP caps a side at
+// 16383 px, so a taller pair is cropped to WEBP_MAX_PART_HEIGHT; the full
+// actual capture is in the scenario's own webp parts.
+async function writeCompare(baselinePath, actualPng, outFile) {
+  const GUTTER = 24;
+  const crop = async (input) => {
+    const img = sharp(input, SHARP_INPUT);
+    const { width, height } = await img.metadata();
+    const h = Math.min(height, WEBP_MAX_PART_HEIGHT);
+    return { buf: await img.extract({ left: 0, top: 0, width, height: h }).png().toBuffer(), width, height: h };
+  };
+  const b = await crop(fs.readFileSync(baselinePath));
+  const a = await crop(actualPng);
+  await sharp({
+    create: {
+      width: b.width + GUTTER + a.width,
+      height: Math.max(b.height, a.height),
+      channels: 3,
+      background: "#ffffff",
+    },
+    limitInputPixels: false,
+  })
+    .composite([
+      { input: b.buf, left: 0, top: 0 },
+      { input: a.buf, left: b.width + GUTTER, top: 0 },
+    ])
+    .webp({ quality: WEBP_QUALITY })
+    .toFile(outFile);
+}
+
+function summarizeDesign(results, skipped, manifestFile) {
+  const ok = results.filter((r) => !r.error);
+  const baselineRuns = ok.filter((r) => !r.extra);
+  const judged = baselineRuns.filter((r) => r.idsMatch !== null);
+  const mismatches = judged.filter((r) => !r.idsMatch);
+  console.log("");
+  console.log("=== design %s (%s) ===", args.design, args.browser);
+  console.log(
+    "scenarios: %d baseline, %d extra-width, %d skipped, %d errored",
+    baselineRuns.length,
+    ok.length - baselineRuns.length,
+    skipped.length,
+    results.length - ok.length,
+  );
+  console.log("ids: %d match, %d mismatch (of %d with packet ids)", judged.length - mismatches.length, mismatches.length, judged.length);
+  for (const r of mismatches) {
+    console.log("  MISMATCH %s", r.name);
+    console.log("    packet: %s", r.expectedIds.join(" "));
+    console.log("    actual: %s", r.ids.join(" "));
+  }
+  const nonOk = ok.filter((r) => r.status !== 200);
+  if (nonOk.length) {
+    console.log("non-200 status: %d", nonOk.length);
+    for (const r of nonOk) console.log("  %s %s", r.name, r.status);
+  }
+  const over = ok.filter((r) => r.overflow > 0);
+  console.log("overflow > 0: %d", over.length);
+  for (const r of over) console.log("  %s +%dpx", r.name, r.overflow);
+  const missing = baselineRuns.filter((r) => r.baselineMissing);
+  if (missing.length) {
+    console.log("baseline image missing: %d", missing.length);
+    for (const r of missing) console.log("  %s %s", r.name, r.baseline);
+  }
+  // Grouped by message so one broken asset on every page reads as one line.
+  const groups = new Map();
+  for (const r of ok)
+    for (const e of r.consoleErrors) {
+      const k = `${e.text}${e.at ? `  @ ${e.at}` : ""}`;
+      groups.set(k, [...(groups.get(k) ?? []), r.name]);
+    }
+  console.log("console errors: %d distinct (speed-insights 404 ignored)", groups.size);
+  for (const [k, names] of groups)
+    console.log("  [%d] %s  (%s%s)", names.length, k, names.slice(0, 4).join(", "), names.length > 4 ? ", …" : "");
+  for (const r of results.filter((x) => x.error)) console.log("ERRORED %s: %s", r.name, r.error);
+  for (const s of skipped) console.log("skipped %s: %s", s.name, s.reason);
+  console.log("manifest → %s", manifestFile);
 }
