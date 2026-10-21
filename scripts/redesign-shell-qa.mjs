@@ -70,8 +70,11 @@ fs.mkdirSync(outDir, { recursive: true });
 // ---------------------------------------------------------------------------
 // Shell geometry. Mirrors src/styles/tokens.ts — `layout.navHeight`
 // ({ mobile: 64, tablet: 68, desktop: 80 }) and `breakpoint.nav` (1100); the
-// tablet band starts at 700 per the comment on `layout`. A plain .mjs cannot
-// import the .ts module, so when a token changes, change it here too.
+// tablet band starts at 700 per the comment on `layout`. These are the
+// redesigned shell's tokens, which live on feature/redesign until the
+// redesign merges; run this against a build of that branch (or a page
+// ticket cut from it). A plain .mjs cannot import the .ts module, so when a
+// token changes, change it here too.
 // ---------------------------------------------------------------------------
 const NAV_HEIGHT = { mobile: 64, tablet: 68, desktop: 80 };
 const NAV_TABLET_MIN = 700;
@@ -79,6 +82,10 @@ const NAV_BREAKPOINT = 1100;
 const DESKTOP_NAV_LINKS = 4;
 // Focus ring: 3px solid #174FAF (rgb 23, 79, 175), offset 4px.
 const FOCUS_RING = /solid 3px rgb\(23, 79, 175\) 4px/;
+
+// The header's menu toggle. Scoped to <header>: page content may carry its own
+// aria-controls buttons (tabs, disclosures).
+const TOGGLE = "header button[aria-controls]";
 
 const expectedHeaderHeight = (w) =>
   w >= NAV_BREAKPOINT ? NAV_HEIGHT.desktop : w >= NAV_TABLET_MIN ? NAV_HEIGHT.tablet : NAV_HEIGHT.mobile;
@@ -106,6 +113,18 @@ async function section(name, fn) {
   }
 }
 
+// Outline of the focused element plus a short label of what has focus, so a
+// FAIL says which element the ring was read from.
+const readFocusRing = (page) =>
+  page.evaluate(() => {
+    const a = document.activeElement;
+    const s = getComputedStyle(a);
+    return {
+      ring: `${s.outlineStyle} ${s.outlineWidth} ${s.outlineColor} ${s.outlineOffset}`,
+      el: `${a.tagName.toLowerCase()} "${(a.textContent ?? "").trim().slice(0, 30)}"`,
+    };
+  });
+
 const browser = await browserType.launch();
 
 // ---------------------------------------------------------------------------
@@ -118,12 +137,14 @@ for (const locale of LOCALES) {
     for (const p of PAGES) {
       const key = `${locale}${p || "/"}@${w}`;
       await section(`layout ${key}`, async () => {
-        await page.goto(`${BASE}/${locale}${p}`, { waitUntil: "networkidle" });
-        const m = await page.evaluate(() => {
+        // An error page still renders the shell and would pass every check
+        // below, so a non-200 (e.g. a record gone from the dev DB) is a FAIL.
+        const resp = await page.goto(`${BASE}/${locale}${p}`, { waitUntil: "networkidle" });
+        const m = await page.evaluate((toggleSel) => {
           const header = document.querySelector("header");
           const r = header.getBoundingClientRect();
           const navLinks = [...document.querySelectorAll("header nav a")].filter((a) => a.offsetParent);
-          const toggle = document.querySelector("button[aria-controls]");
+          const toggle = document.querySelector(toggleSel);
           // Any visible header descendant poking past either viewport edge
           // means the header row overflows at this width.
           let headerOverflow = false;
@@ -142,13 +163,14 @@ for (const locale of LOCALES) {
             headerOverflow,
             footer: !!document.querySelector("footer p")?.textContent?.trim(),
           };
-        });
+        }, TOGGLE);
         const desktop = w >= NAV_BREAKPOINT;
         const fontOk =
           locale === "ko"
             ? /Noto Sans KR Variable.*Noto Sans JP/.test(m.font)
             : /Noto Sans JP.*Noto Sans KR/.test(m.font);
         const problems = [
+          resp?.status() !== 200 && `HTTP ${resp?.status()}`,
           m.h !== expectedHeaderHeight(w) && `header ${m.h}px, want ${expectedHeaderHeight(w)}`,
           m.scrollW > m.innerW && `page overflow ${m.scrollW}>${m.innerW}`,
           m.headerOverflow && "header child outside viewport",
@@ -194,16 +216,14 @@ await section("menu keyboard", async () => {
     );
     check("skip link moves focus to page <main>", /^MAIN#|#main-content$/.test(focused), focused);
 
-    const toggle = page.locator("button[aria-controls]");
+    const toggle = page.locator(TOGGLE);
+    const expanded = () => toggle.getAttribute("aria-expanded");
     await toggle.focus();
     await page.keyboard.press("Enter");
-    check("menu opens via keyboard", (await toggle.getAttribute("aria-expanded")) === "true");
+    check("menu opens via keyboard", (await expanded()) === "true");
     await page.screenshot({ path: path.join(outDir, `${args.browser}-ja-390-menu.png`) });
-    const ring = await page.evaluate(() => {
-      const s = getComputedStyle(document.activeElement);
-      return `${s.outlineStyle} ${s.outlineWidth} ${s.outlineColor} ${s.outlineOffset}`;
-    });
-    check("focus ring on toggle is 3px #174FAF offset 4px", FOCUS_RING.test(ring), ring);
+    const toggleRing = await readFocusRing(page);
+    check("focus ring on toggle is 3px #174FAF offset 4px", FOCUS_RING.test(toggleRing.ring), toggleRing.ring);
 
     const menuId = await toggle.getAttribute("aria-controls");
     // Attribute selector, not #id: React's useId ids contain colons.
@@ -217,34 +237,40 @@ await section("menu keyboard", async () => {
     check(WEBKIT ? "menu links are focusable" : "Tab from toggle enters menu links", inMenu);
 
     await page.keyboard.press("Escape");
-    const back = await page.evaluate(
-      () => document.activeElement?.tagName === "BUTTON" && document.activeElement.hasAttribute("aria-controls"),
-    );
-    check(
-      "Escape closes menu and returns focus to toggle",
-      back && (await toggle.getAttribute("aria-expanded")) === "false",
-    );
+    const back = await toggle.evaluate((t) => t === document.activeElement);
+    check("Escape closes menu and returns focus to toggle", back && (await expanded()) === "false");
 
+    // Each "closes" check below first confirms the click opened the menu;
+    // otherwise a toggle that stopped opening would pass them all.
     await toggle.click();
+    const openedForOutside = (await expanded()) === "true";
     await page.mouse.click(200, 800);
-    check("outside click closes menu", (await toggle.getAttribute("aria-expanded")) === "false");
+    check(
+      "outside click closes menu",
+      openedForOutside && (await expanded()) === "false",
+      `opened: ${openedForOutside}`,
+    );
 
     await toggle.click();
+    const openedForResize = (await expanded()) === "true";
     await page.setViewportSize({ width: NAV_BREAKPOINT + 100, height: 844 });
     await page.waitForTimeout(200);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(200);
     check(
       `widening past ${NAV_BREAKPOINT}px clears the open menu`,
-      (await toggle.getAttribute("aria-expanded")) === "false",
+      openedForResize && (await expanded()) === "false",
+      `opened: ${openedForResize}`,
     );
 
     await toggle.click();
+    const openedForRoute = (await expanded()) === "true";
     await menuLinks.and(page.locator('[href$="/artists"]')).click();
     await page.waitForURL(/\/ja\/artists$/);
     check(
       "route selection closes menu",
-      (await page.locator("button[aria-controls]").getAttribute("aria-expanded")) === "false",
+      openedForRoute && (await expanded()) === "false",
+      `opened: ${openedForRoute}`,
     );
   } finally {
     await ctx.close();
@@ -263,20 +289,24 @@ await section("locale switch", async () => {
     await page.waitForURL(/\/en\/events/);
     check("locale switch keeps query", new URL(page.url()).search === "?filter=upcoming", page.url());
 
+    // Fresh load, so Tab starts from the top of the document rather than
+    // from wherever the client-side locale navigation left focus.
+    await page.goto(`${BASE}/en/events`, { waitUntil: "networkidle" });
     // Chromium: Tab, Tab = skip link, then the logo link. WebKit skips
-    // links on Tab, so focus the first header link after a key press.
-    if (WEBKIT) {
-      await page.keyboard.press("Shift");
-      await page.locator("header a").first().focus();
-    } else {
-      await page.keyboard.press("Tab");
-      await page.keyboard.press("Tab");
-    }
-    const ring = await page.evaluate(() => {
-      const s = getComputedStyle(document.activeElement);
-      return `${s.outlineStyle} ${s.outlineWidth} ${s.outlineColor} ${s.outlineOffset}`;
-    });
-    check("desktop keyboard focus shows 3px #174FAF ring", FOCUS_RING.test(ring), ring);
+    // links on Tab, so one Tab lands on the first header button instead.
+    // A programmatic focus() on a link would not do here: with no key
+    // pressed after it, :focus-visible does not match and the ring is
+    // legitimately absent. The full ring (style, width, colour, offset) is
+    // compared, since an outline-width alone also reads 3px under
+    // `outline: none`.
+    await page.keyboard.press("Tab");
+    if (!WEBKIT) await page.keyboard.press("Tab");
+    const { ring, el } = await readFocusRing(page);
+    check(
+      "desktop keyboard focus shows 3px #174FAF ring",
+      !!el && !el.startsWith("body") && FOCUS_RING.test(ring),
+      `${el}: ${ring}`,
+    );
     await page.screenshot({ path: path.join(outDir, `${args.browser}-en-1440-focus.png`) });
   } finally {
     await ctx.close();
@@ -284,13 +314,15 @@ await section("locale switch", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Reduced motion: nothing on the page transitions or animates.
+// Reduced motion: nothing on the page transitions or animates. The same
+// page without the preference is the positive control: it must show some
+// motion, or a blank or error page would pass the reduced run vacuously.
 // ---------------------------------------------------------------------------
-await section("reduced motion", async () => {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+async function countAnimated(reducedMotion) {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion });
   try {
     const page = await ctx.newPage();
-    await page.goto(`${BASE}/ko`, { waitUntil: "networkidle" });
+    const resp = await page.goto(`${BASE}/ko`, { waitUntil: "networkidle" });
     const animated = await page.evaluate(
       () =>
         [...document.querySelectorAll("*")].filter((e) => {
@@ -298,10 +330,19 @@ await section("reduced motion", async () => {
           return s.transitionDuration.split(",").some((d) => parseFloat(d) > 0) || s.animationName !== "none";
         }).length,
     );
-    check("reduced motion removes transitions/animations", animated === 0, `animated elements: ${animated}`);
+    return { status: resp?.status(), animated };
   } finally {
     await ctx.close();
   }
+}
+await section("reduced motion", async () => {
+  const normal = await countAnimated("no-preference");
+  const reduced = await countAnimated("reduce");
+  check(
+    "reduced motion removes transitions/animations",
+    normal.status === 200 && reduced.status === 200 && normal.animated > 0 && reduced.animated === 0,
+    `animated elements: ${normal.animated} normally → ${reduced.animated} reduced (HTTP ${reduced.status})`,
+  );
 });
 
 // Results first: Playwright's WebKit on Windows can hang in browser.close()

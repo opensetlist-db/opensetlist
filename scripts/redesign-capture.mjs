@@ -427,7 +427,9 @@ function compareWithBaseline(before, after) {
       );
     if (a.lang !== b.lang) regressions["lang changed"].push(`${k}  ${b.lang} → ${a.lang}`);
     if (a.status !== b.status) regressions["HTTP status changed"].push(`${k}  ${b.status} → ${a.status}`);
-    if (b.ttfbMs > 0 && a.ttfbMs >= 0) ttfbRatios.push(a.ttfbMs / b.ttfbMs);
+    // typeof, not >= 0: a NaN timing serialises to null, and null >= 0.
+    if (typeof b.ttfbMs === "number" && typeof a.ttfbMs === "number" && b.ttfbMs > 0)
+      ttfbRatios.push(a.ttfbMs / b.ttfbMs);
     if (typeof a.jsBytesDecoded === "number" && typeof b.jsBytesDecoded === "number")
       jsDeltas.push(a.jsBytesDecoded - b.jsBytesDecoded);
   }
