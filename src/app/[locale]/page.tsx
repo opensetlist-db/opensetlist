@@ -94,7 +94,9 @@ export default async function HomePage({
           </section>
         )}
 
-        <section className={styles.section} aria-labelledby="upcoming-title">
+        {/* Not aria-labelledby: the rail below is the labelled region, and
+            two regions with one name would be a duplicate landmark. */}
+        <section className={styles.section}>
           <div className={styles.sectionHead}>
             <div>
               <p className={styles.eyebrow}>{t("upcomingEyebrow")}</p>
