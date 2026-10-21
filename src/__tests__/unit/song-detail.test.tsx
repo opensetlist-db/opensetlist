@@ -30,6 +30,7 @@ import {
 } from "@/components/songs/detail/songHistory";
 import { utcYear } from "@/components/songs/detail/songDate";
 import type { SongAlbumRow } from "@/lib/songAlbums";
+import { colors } from "@/styles/tokens";
 
 const albumTypeLabels = {
   single: "single",
@@ -159,7 +160,7 @@ describe("SongIdentity", () => {
     });
     const { container } = render(el as ReactElement);
     expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.getByText("Song.title")).toBeTruthy();
+    expect(screen.getByText("Song.kindBadge")).toBeTruthy();
     expect(screen.getByText("번역 제목")).toBeTruthy();
     expect(container.querySelector("dl")).toBeNull();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(long);
@@ -168,7 +169,10 @@ describe("SongIdentity", () => {
   it("ignores a malformed artist colour", async () => {
     const el = await SongIdentity({ ...base, artist: { ...base.artist, color: "red;x" } });
     const { container } = render(el as ReactElement);
-    expect(container.querySelector("section")!.getAttribute("style")).not.toContain("red;x");
+    const style = container.querySelector("section")!.getAttribute("style") ?? "";
+    // Positive control: the accent variable is set — to the neutral border.
+    expect(style).toContain(`--artist-color: ${colors.borderStrong}`);
+    expect(style).not.toContain("red;x");
   });
 });
 

@@ -19,3 +19,13 @@ export function buildAlbumTypeLabels(
     soundtrack: t("albumType.soundtrack"),
   };
 }
+
+/*
+ * Label for an album row's `type`. The song payload types it as a plain
+ * string (`SongAlbumsAlbum.type`, shared with AlbumCard), so the lookup
+ * narrows here once instead of casting at each call site; a value outside
+ * the enum shows as-is rather than blank.
+ */
+export function albumTypeLabel(labels: AlbumTypeLabels, type: string): string {
+  return Object.hasOwn(labels, type) ? labels[type as AlbumType] : type;
+}

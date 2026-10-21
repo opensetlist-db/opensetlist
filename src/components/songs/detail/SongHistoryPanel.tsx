@@ -88,7 +88,7 @@ export async function SongHistoryPanel({
               <span className={styles.status} data-status={row.status}>
                 {statusLabels[row.status]}
               </span>
-              <time dateTime={row.dateTime}>{row.formattedDate}</time>
+              <time dateTime={row.dateTime ?? undefined}>{row.formattedDate}</time>
               <strong>{row.name}</strong>
               <span className={styles.trailing}>
                 {row.isEncore ? (

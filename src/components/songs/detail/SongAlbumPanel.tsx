@@ -5,7 +5,7 @@ import { entityPath } from "@/lib/seo/entityUrl";
 import type { SongAlbumRow } from "@/lib/songAlbums";
 import { SongAlbumCover } from "./SongAlbumCover";
 import { utcYear } from "./songDate";
-import type { AlbumTypeLabels } from "./albumTypeLabels";
+import { albumTypeLabel, type AlbumTypeLabels } from "./albumTypeLabels";
 import styles from "./songDetail.module.css";
 
 /*
@@ -42,9 +42,7 @@ export async function SongAlbumPanel({
           locale,
         );
         const year = utcYear(row.album.releaseDate);
-        const typeLabel =
-          albumTypeLabels[row.album.type as keyof AlbumTypeLabels] ??
-          row.album.type;
+        const typeLabel = albumTypeLabel(albumTypeLabels, row.album.type);
         return (
           <Link
             key={String(row.album.id)}

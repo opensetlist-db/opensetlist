@@ -71,7 +71,7 @@ export async function SongIdentity({
             {artist.name} <span aria-hidden="true">›</span>
           </Link>
         ) : (
-          <span className={styles.kindBadge}>{t("title")}</span>
+          <span className={styles.kindBadge}>{t("kindBadge")}</span>
         )}
         <h1 id="song-title" className={styles.h1}>
           {title.main}

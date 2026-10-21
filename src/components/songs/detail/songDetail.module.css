@@ -464,6 +464,9 @@
 .performance:focus-visible {
   outline-offset: -5px;
 }
+.performance > .status {
+  font-size: 11px;
+}
 .performance time {
   color: #52617a;
   font-size: 12px;
@@ -476,13 +479,14 @@
   overflow-wrap: anywhere;
 }
 
+/* 12px pill (group summary); 11px inside a history row, as in 28-v1. */
 .status {
   justify-self: start;
   padding: 1px 7px;
   border-radius: 5px;
   background: #edf1f8;
   color: #52617a;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   white-space: nowrap;
 }
@@ -671,6 +675,17 @@ a.versionRow:hover {
   }
   .h1 {
     font-size: 28px;
+  }
+  .subtitle {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+  .kindBadge {
+    margin-bottom: 8px;
+  }
+  .count {
+    padding: 1px 5px;
+    font-size: 11px;
   }
   .artistBadge {
     font-size: 12px;

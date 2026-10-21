@@ -21,8 +21,8 @@ export interface SongHistoryRow {
   seriesId: string | null;
   seriesName: string | null;
   status: ResolvedEventStatus;
-  /** UTC calendar date `YYYY-MM-DD` for `<time dateTime>`. */
-  dateTime: string;
+  /** UTC calendar date `YYYY-MM-DD` for `<time dateTime>`; null = no date. */
+  dateTime: string | null;
   formattedDate: string;
   dateMs: number;
   name: string;

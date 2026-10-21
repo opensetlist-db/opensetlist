@@ -36,9 +36,11 @@ import {
   SONG_HISTORY_DATE_FORMAT,
   utcYear,
 } from "@/components/songs/detail/songDate";
-import { buildAlbumTypeLabels } from "@/components/songs/detail/albumTypeLabels";
+import {
+  albumTypeLabel,
+  buildAlbumTypeLabels,
+} from "@/components/songs/detail/albumTypeLabels";
 import styles from "@/components/songs/detail/songDetail.module.css";
-import type { AlbumType } from "@/generated/prisma/enums";
 
 type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
@@ -74,11 +76,12 @@ function resolveTab(value: string | string[] | undefined): TabKey {
 // page's prisma fan-out from 5 → 3 (Song + Performances + variant
 // groupBy), comfortably below the detector threshold while keeping
 // the variant `groupBy` isolated (cross-variant aggregation,
-// SQL-efficient as a single set operation — see `page.tsx:512`).
+// SQL-efficient as a single set operation — see the version counts in
+// `SongPage`).
 //
 // `vocalTracks` is fetched unbounded — b08 dropped the prior
-// `take: 1` cap so the sidebar's 수록 앨범 section can render one
-// card per album the song appears on. The orderBy chain
+// `take: 1` cap so the 수록 앨범 panel can render one row per album
+// the song appears on. The orderBy chain
 // (`album.releaseDate ASC, album.id ASC, discNumber ASC,
 // trackNumber ASC`) is deterministic regardless of insertion order
 // and matches the user's mental model — "the album where this song
@@ -369,10 +372,10 @@ export default async function SongPage({ params, searchParams }: Props) {
   const songAlbums = getSongAlbums(song.vocalTracks);
 
   const [t, ct, et, at] = await Promise.all([
-    getTranslations("Song"),
-    getTranslations("Common"),
-    getTranslations("Event"),
-    getTranslations("Artist"),
+    getTranslations({ locale, namespace: "Song" }),
+    getTranslations({ locale, namespace: "Common" }),
+    getTranslations({ locale, namespace: "Event" }),
+    getTranslations({ locale, namespace: "Artist" }),
   ]);
   const albumTypeLabels = buildAlbumTypeLabels(t);
 
@@ -400,9 +403,7 @@ export default async function SongPage({ params, searchParams }: Props) {
           songAlbums[0].album.translations,
           locale,
         ).main,
-        typeLabel:
-          albumTypeLabels[songAlbums[0].album.type as AlbumType] ??
-          songAlbums[0].album.type,
+        typeLabel: albumTypeLabel(albumTypeLabels, songAlbums[0].album.type),
       }
     : null;
 
@@ -430,7 +431,7 @@ export default async function SongPage({ params, searchParams }: Props) {
       ),
       // Serialized payload: ISO string, so the first 10 characters are
       // the UTC calendar date.
-      dateTime: event.date ? String(event.date).slice(0, 10) : "",
+      dateTime: event.date ? String(event.date).slice(0, 10) : null,
       formattedDate: formatDate(event.date, locale, SONG_HISTORY_DATE_FORMAT),
       dateMs: event.date ? new Date(String(event.date)).getTime() : 0,
       name:
@@ -452,7 +453,13 @@ export default async function SongPage({ params, searchParams }: Props) {
   const baseSong = song.baseVersion ?? song;
   const siblings = (song.baseVersion?.variants ?? song.variants)
     .filter((v) => String(v.id) !== String(baseSong.id))
-    .sort((a, b) => Number(a.id) - Number(b.id));
+    // Compare as BigInt: ids are BIGINT, Number() would lose precision
+    // past 2^53.
+    .sort((a, b) => {
+      const ia = BigInt(a.id);
+      const ib = BigInt(b.id);
+      return ia < ib ? -1 : ia > ib ? 1 : 0;
+    });
   const versionSources =
     siblings.length > 0 ? [baseSong, ...siblings] : [];
 

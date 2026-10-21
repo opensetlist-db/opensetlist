@@ -137,6 +137,7 @@
     "baseVariant": "기본",
     "recentPerformances": "공연 이력",
     "performanceCount": "{count}회 공연",
+    "kindBadge": "곡",
     "statsPerformances": "공연",
     "statsTours": "투어",
     "releaseYearLabel": "발매",
