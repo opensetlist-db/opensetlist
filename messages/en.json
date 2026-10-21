@@ -2,21 +2,30 @@
   "Home": {
     "title": "OpenSetlist",
     "description": "Open setlist database for live events (JP/EN/KR)",
-    "ongoingTitle": "🔴 Live Now",
-    "ongoingSubtitle": "Setlist updating in real time",
-    "upcomingTitle": "Upcoming Events",
-    "recentTitle": "Recent Events",
-    "viewAllSchedule": "View full schedule ›",
-    "viewAllEvents": "View all events ›",
-    "songCountOngoing": "{count, plural, one {🎵 # song so far} other {🎵 # songs so far}}",
-    "songCount": "{count, plural, one {🎵 # song} other {🎵 # songs}}",
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, one {# hour left} other {# hours left}}",
     "minutesLeft": "{minutes, plural, one {# min left} other {# mins left}}",
-    "wishOpen": "Setlist Prediction Available",
-    "noEvents": "Event listings coming soon.",
-    "noUpcoming": "No upcoming events in the next 30 days.",
-    "noRecent": "No recent events in the last 30 days."
+    "wishOpen": "Setlist predictions open",
+    "liveEyebrow": "LIVE NOW",
+    "liveTitle": "Live now",
+    "upcomingEyebrow": "LIVE DISCOVERY",
+    "upcomingTitle": "Upcoming concerts",
+    "allConcerts": "All concerts",
+    "railHint": "Scroll sideways to discover the next show →",
+    "pastEyebrow": "SETLIST ARCHIVE",
+    "recentTitle": "Recent setlists",
+    "archiveTitle": "From the setlist archive",
+    "recentNote": "Shows held in the last 30 days with songs in their setlists.",
+    "archiveNote": "No qualifying setlists in the last 30 days. Explore earlier shows.",
+    "emptyUpcoming": "There are no upcoming concerts listed yet.",
+    "emptyPast": "No setlists with songs have been registered yet.",
+    "browse": "Explore concerts",
+    "liveBadge": "Live now",
+    "scheduled": "Upcoming · {label}",
+    "setlistSongs": "{count, plural, other {#-song setlist}}",
+    "setlistWaiting": "Waiting for setlist updates",
+    "viewSetlist": "View setlist",
+    "pastLink": "Past setlists"
   },
   "Common": {
     "notFound": "Page not found.",
@@ -761,8 +770,12 @@
     }
   },
   "Hero": {
+    "eyebrow": "OPENSETLIST",
     "heading": "The live story we keep together",
-    "searchPlaceholder": "Search artists, events, songs..."
+    "lead": "Find a concert. Revisit a setlist. Keep the memories together.",
+    "browse": "Explore concerts",
+    "pastSetlists": "Past setlists",
+    "caption": "Fictional concert artwork"
   },
   "Footer": {
     "privacy": "Privacy Policy",

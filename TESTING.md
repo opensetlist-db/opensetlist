@@ -63,6 +63,7 @@ know what each suite leaves behind:
 | `series-logo-route.test.ts` | **writes** | parent/child series (+ a soft-deleted one) and one event, all named `series-logo-itest-<ts> …`, through the admin handlers; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/series-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
 | `event-logo-route.test.ts` | **writes** | parent/child series and events (one soft-deleted) named `event-logo-itest-<ts> …` through the admin handlers, with a fake poster URL; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/event-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
 | `global-search.test.ts` | **writes** | songs (one variant, one soft-deleted), artists, an album and events whose slug starts `srchitest<ts>`, plus their translations and one `SongArtist`; search reads only; `afterAll` deletes them and asserts none are left |
+| `home-events.test.ts` | **writes** | one song and events dated 2099 whose slug starts `home-itest<ts>`, with setlist items (+ `SetlistItemSong`) on some; home queries read with a 2099 reference instant so real events stay out of the windows; `afterAll` deletes them and asserts none are left |
 | `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 

@@ -2,21 +2,30 @@
   "Home": {
     "title": "OpenSetlist",
     "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",
-    "ongoingTitle": "🔴 開催中",
-    "ongoingSubtitle": "セットリスト更新中",
-    "upcomingTitle": "今後の公演",
-    "recentTitle": "最近の公演",
-    "viewAllSchedule": "すべての日程を見る ›",
-    "viewAllEvents": "すべてのイベントを見る ›",
-    "songCountOngoing": "{count, plural, other {🎵 #曲 進行中}}",
-    "songCount": "{count, plural, other {🎵 #曲}}",
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, other {あと#時間}}",
     "minutesLeft": "{minutes, plural, other {あと#分}}",
-    "wishOpen": "セットリスト予想受付中",
-    "noEvents": "もうすぐ公演情報が更新されます。",
-    "noUpcoming": "今後30日以内の公演はありません。",
-    "noRecent": "過去30日以内の公演はありません。"
+    "wishOpen": "セトリ予想受付中",
+    "liveEyebrow": "LIVE NOW",
+    "liveTitle": "いま開催中",
+    "upcomingEyebrow": "LIVE DISCOVERY",
+    "upcomingTitle": "これからの公演",
+    "allConcerts": "すべての公演",
+    "railHint": "横にスクロールして、次の公演へ →",
+    "pastEyebrow": "SETLIST ARCHIVE",
+    "recentTitle": "最近のセトリ",
+    "archiveTitle": "過去のセトリから",
+    "recentNote": "最近30日間に開催され、曲が登録されている公演です。",
+    "archiveNote": "最近30日間の公演にセトリがないため、以前の公演を紹介します。",
+    "emptyUpcoming": "現在、掲載されている開催予定の公演はありません。",
+    "emptyPast": "まだ曲が登録されたセトリはありません。",
+    "browse": "公演を探す",
+    "liveBadge": "開催中",
+    "scheduled": "開催予定 · {label}",
+    "setlistSongs": "{count, plural, other {#曲のセトリ}}",
+    "setlistWaiting": "セトリの更新を待っています",
+    "viewSetlist": "セトリを見る",
+    "pastLink": "過去のセトリ"
   },
   "Common": {
     "notFound": "ページが見つかりません。",
@@ -761,8 +770,12 @@
     }
   },
   "Hero": {
-    "heading": "みんなでつなぐ、ライブの物語",
-    "searchPlaceholder": "アーティスト、イベント、曲を検索..."
+    "eyebrow": "OPENSETLIST",
+    "heading": "<line>みんなでつなぐ、</line><line>ライブの物語</line>",
+    "lead": "公演を見つけて、セトリをたどる。ライブの記録を、みんなで。",
+    "browse": "公演を探す",
+    "pastSetlists": "過去のセトリを見る",
+    "caption": "架空のライブ会場イメージ"
   },
   "Footer": {
     "privacy": "プライバシーポリシー",
