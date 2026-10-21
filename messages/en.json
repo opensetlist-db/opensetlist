@@ -705,7 +705,6 @@
     "errorTitle": "We couldn’t load the results",
     "errorBody": "Your search is still here. Please try again in a moment.",
     "retry": "Try again",
-    "loading": "Loading search results…",
     "longTitle": "Your search is too long",
     "longBody": "Shorten your search to {max} characters or fewer.",
     "edit": "Edit search",

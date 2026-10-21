@@ -22,7 +22,7 @@ import {
   type SearchParamsInput,
   type SearchType,
 } from "@/lib/globalSearch/params";
-import { searchType, type SearchSlice } from "@/lib/globalSearch/service";
+import { rankIds, searchType, type SearchSlice } from "@/lib/globalSearch/service";
 import { buildRowView, type RowLabels } from "@/lib/globalSearch/view";
 import { colors } from "@/styles/tokens";
 
@@ -63,7 +63,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 
 type Outcome =
   | { kind: "overview"; slices: SearchSlice[] }
-  | { kind: "type"; slice: SearchSlice }
+  | { kind: "type"; slice: SearchSlice; anyMatch: boolean }
   | { kind: "error" };
 
 async function runSearch(state: ParsedSearch): Promise<Outcome> {
@@ -75,7 +75,13 @@ async function runSearch(state: ParsedSearch): Promise<Outcome> {
         PAGE_SIZE,
         (state.page - 1) * PAGE_SIZE,
       );
-      return { kind: "type", slice };
+      // An empty page past the first is "out of range" only when the type
+      // has matches at all; otherwise it is plain "no results".
+      const anyMatch =
+        slice.hits.length > 0 ||
+        state.page === 1 ||
+        (await rankIds(state.type, state.q, 1, 0)).length > 0;
+      return { kind: "type", slice, anyMatch };
     }
     const slices = await Promise.all(
       SEARCH_TYPES.map((type) => searchType(type, state.q, OVERVIEW_LIMIT, 0)),
@@ -145,7 +151,7 @@ export default async function SearchPage({ params, searchParams }: Props) {
       );
     } else if (outcome.kind === "type") {
       const { slice } = outcome;
-      if (slice.hits.length === 0 && state.page > 1) {
+      if (slice.hits.length === 0 && outcome.anyMatch && state.page > 1) {
         results = (
           <StatePanel
             title={t("rangeTitle")}

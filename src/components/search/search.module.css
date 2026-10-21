@@ -25,19 +25,23 @@
   background: var(--primary-pressed);
 }
 
-.secondary {
+.button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 46px;
   padding: 11px 18px;
-  border: 1px solid #8b99b0;
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: #fff;
-  color: #165dcc;
   font-size: 13px;
   font-weight: 700;
   line-height: 1.5;
+}
+.secondary {
+  composes: button;
+  border-color: #8b99b0;
+  background: #fff;
+  color: #165dcc;
   transition: background 0.15s;
 }
 .secondary:hover {
@@ -48,18 +52,10 @@
   color: var(--primary-hover);
 }
 .disabled {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 46px;
-  padding: 11px 18px;
-  border: 1px solid #dce3ef;
-  border-radius: 8px;
+  composes: button;
+  border-color: #dce3ef;
   background: #edf0f5;
   color: #67758b;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.5;
 }
 
 .typeLink:hover {

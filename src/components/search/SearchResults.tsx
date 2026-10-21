@@ -171,12 +171,9 @@ function ResultRow({
         )}
         {row.meta && <Meta>{row.meta}</Meta>}
         {row.matched && (
-          <span
-            className="mt-[5px] block text-[12px] [overflow-wrap:anywhere]"
-            style={{ color: "#53527d" }}
-          >
+          <Meta color="#53527d">
             {matchedLabel}: <span lang={row.matched.lang}>{row.matched.name}</span>
-          </span>
+          </Meta>
         )}
       </span>
       <span style={{ color: colors.primary }}>
@@ -186,12 +183,20 @@ function ResultRow({
   );
 }
 
-function Meta({ children, lang }: { children: ReactNode; lang?: string }) {
+function Meta({
+  children,
+  lang,
+  color = colors.textSecondary,
+}: {
+  children: ReactNode;
+  lang?: string;
+  color?: string;
+}) {
   return (
     <span
       lang={lang}
       className="mt-[5px] block text-[12px] [overflow-wrap:anywhere]"
-      style={{ color: colors.textSecondary }}
+      style={{ color }}
     >
       {children}
     </span>

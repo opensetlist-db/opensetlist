@@ -139,6 +139,15 @@ test.describe("search states", () => {
     await expect(page.locator("#search-results ul li").first()).toBeVisible();
   });
 
+  test("a later page of a type with no matches at all is plain no-results", async ({ page }) => {
+    // Positive control: the range panel exists for a type that has matches.
+    await page.goto("/ko/search?q=Dream&type=songs&page=999");
+    await expect(page.getByRole("link", { name: "첫 페이지로" })).toBeVisible();
+    await page.goto(`/ko/search?q=${NO_MATCH}&type=artists&page=2`);
+    await expect(page.getByRole("status")).toBeVisible();
+    await expect(page.getByRole("link", { name: "첫 페이지로" })).toHaveCount(0);
+  });
+
   test("malformed page and type fall back safely", async ({ page }) => {
     const res = await page.goto("/ko/search?q=a&type=bogus&page=-1");
     expect(res?.status()).toBe(200);

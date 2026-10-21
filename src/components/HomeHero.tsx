@@ -46,7 +46,7 @@ export async function HomeHero() {
             name="q"
             maxLength={QUERY_MAX_LENGTH}
             autoComplete="off"
-            placeholder={ts("placeholder")}
+            placeholder={t("searchPlaceholder")}
             className="font-dm-sans min-w-0 flex-1 bg-transparent px-3 py-2 text-[13px]"
             style={{ color: "#1a1a1a" }}
           />

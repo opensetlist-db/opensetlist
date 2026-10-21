@@ -55,10 +55,11 @@ export type RowLabels = {
 
 // Event dates are calendar days stored at UTC midnight (`@db.Date`), so
 // they are formatted in UTC: formatting in the viewer's zone would shift
-// them a day west of UTC.
+// them a day west of UTC. Short month = the approved row density
+// ("Apr 21, 2023" in en; ja/ko render the same either way).
 const DATE_FORMAT: Intl.DateTimeFormatOptions = {
   year: "numeric",
-  month: "long",
+  month: "short",
   day: "numeric",
   timeZone: "UTC",
 };

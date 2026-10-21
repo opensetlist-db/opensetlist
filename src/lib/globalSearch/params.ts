@@ -76,9 +76,8 @@ export function parseSearchParams(sp: SearchParamsInput): ParsedSearch {
 }
 
 /**
- * Locale-less search href (`/search?…`) for next-intl's `Link`, which adds
- * the locale prefix. Omits empty params and page 1 so every state has one
- * canonical-looking URL.
+ * Locale-less search href (`/search?…`); callers prefix the locale. Omits
+ * empty params and page 1 so every state has one canonical-looking URL.
  */
 export function searchHref(state: {
   q: string;

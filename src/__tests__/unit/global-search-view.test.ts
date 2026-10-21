@@ -63,7 +63,7 @@ describe("buildRowView", () => {
       "Dream",
       labels,
     );
-    expect(row.date).toBe("September 10, 2022");
+    expect(row.date).toBe("Sep 10, 2022");
   });
 
   it("shows the matched name when the visible title does not contain the query", () => {
