@@ -126,16 +126,23 @@ export function pickLocaleTranslation<T extends { locale: string }>(
  *
  * `options` lets callers override the default `{year, month, day}`
  * shape — needed for surfaces that want only month, or weekday +
- * month + day (home cards). The default preserves the original
- * behavior so existing call sites don't change. When formatting a
- * UTC-stored date for display, callers should pass
- * `{ ..., timeZone: "UTC" }` so the rendered day matches how the
- * value is stored (CLAUDE.md §"Date & Time").
+ * month + day (home cards). Callers that pass their own `options`
+ * must include `timeZone` themselves: `"UTC"` for a stored date
+ * (CLAUDE.md §"Date & Time"), or an explicit zone when the surface
+ * means one (admin import-review pins Asia/Seoul).
+ *
+ * The default carries `timeZone: "UTC"` because every stored date is
+ * UTC. Without it the rendered day follows the process's local zone:
+ * an album release date printed one day early on a local production
+ * build, while Vercel and CI (both UTC) hid it. It also keeps SSR and the browser in agreement
+ * for client components, whose hydration would otherwise differ by
+ * the viewer's zone.
  */
 const DEFAULT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "long",
   day: "numeric",
+  timeZone: "UTC",
 };
 
 /**
