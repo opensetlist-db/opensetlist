@@ -73,16 +73,52 @@ if [ -n "$toplevel" ] && same_path "$(canon "$toplevel")" "$path"; then
   fi
 fi
 
-# 1. Unlink node_modules. On Windows `rmdir` without /s removes a
-#    junction (or an empty folder) and refuses a real non-empty folder,
-#    so it is safe either way; elsewhere `rm` on a symlink removes the
-#    link only.
+# The main checkout's node_modules must come out of the removal intact.
+# These are packages `next build` links from .next/node_modules, plus
+# next itself; a delete that followed one of those links would empty it.
+# Snapshotted before anything is unlinked, so the check after step 2
+# also covers the unlinking. Only those present now are checked.
+sentinels=()
+for p in next @prisma/client pg kuromoji; do
+  f="$main/node_modules/$p/package.json"
+  [ -e "$f" ] && sentinels+=("$f")
+done
+if [ ${#sentinels[@]} -eq 0 ]; then
+  echo "warning: $main/node_modules has none of next, @prisma/client, pg, kuromoji — the after-removal check of the main checkout is off" >&2
+fi
+check_main() {
+  local f bad=""
+  for f in ${sentinels[@]+"${sentinels[@]}"}; do
+    [ -e "$f" ] || bad="$bad $f"
+  done
+  if [ -n "$bad" ]; then
+    echo "DANGER: removing $path deleted files in the main checkout's node_modules (missing:$bad). Run \`npm ci\` in $main." >&2
+    exit 3
+  fi
+}
+
+# Remove one link, never what it points at. On Windows `rmdir` without
+# /s removes a directory junction or symlink — dangling ones included —
+# (or an empty folder) and refuses a real non-empty folder. A file
+# symlink needs `del`, but `del` on a LIVE directory link deletes the
+# files inside its target, so it runs only when rmdir failed and the
+# path is not a directory. Elsewhere `rm` on a symlink removes the link.
+unlink_link() {
+  case "${OSTYPE:-}" in
+    msys*)
+      cmd //c rmdir "$(cygpath -w "$1")" > /dev/null 2>&1 || true
+      if [ -L "$1" ] && [ ! -d "$1" ]; then
+        cmd //c del //q "$(cygpath -w "$1")" > /dev/null 2>&1 || true
+      fi
+      ;;
+    *) if [ -L "$1" ]; then rm "$1"; fi ;;
+  esac
+}
+
+# 1. Unlink node_modules first, so nothing below can recurse through it.
 nm="$path/node_modules"
 if [ -L "$nm" ] || [ -e "$nm" ]; then
-  case "${OSTYPE:-}" in
-    msys*) cmd //c rmdir "$(cygpath -w "$nm")" 2> /dev/null || true ;;
-    *) if [ -L "$nm" ]; then rm "$nm"; fi ;;
-  esac
+  unlink_link "$nm"
 fi
 if [ -L "$nm" ]; then
   echo "refusing: could not unlink $nm" >&2
@@ -115,44 +151,14 @@ list_links() {
 links="$(list_links)"
 while IFS= read -r link; do
   [ -n "$link" ] || continue
-  case "${OSTYPE:-}" in
-    # rmdir without /s removes a directory junction/symlink, never the
-    # folder it points at; a file symlink needs del.
-    msys*)
-      if [ -d "$link" ]; then
-        cmd //c rmdir "$(cygpath -w "$link")" > /dev/null 2>&1 || true
-      else
-        cmd //c del //q "$(cygpath -w "$link")" > /dev/null 2>&1 || true
-      fi
-      ;;
-    *) rm -f "$link" ;;
-  esac
+  unlink_link "$link"
 done <<< "$links"
-left="$(list_links)"
-if [ -n "$left" ]; then
-  echo "refusing: could not unlink these links under $path — remove them by hand (rmdir without /s), then rerun:" >&2
-  printf '  %s\n' "$left" >&2
+surviving="$(list_links)"
+if [ -n "$surviving" ]; then
+  echo "refusing: could not unlink these links under $path — remove them by hand (rmdir without /s), then rerun; node_modules was unlinked — relink it before using the worktree again:" >&2
+  printf '%s\n' "$surviving" | sed 's/^/  /' >&2
   exit 1
 fi
-
-# The main checkout's node_modules must come out of the removal intact.
-# Two packages a recursive delete has emptied before (via .next links)
-# stand in for the whole folder; only those present now are checked.
-sentinels=()
-for p in next @prisma/client; do
-  f="$main/node_modules/$p/package.json"
-  [ -e "$f" ] && sentinels+=("$f")
-done
-check_main() {
-  local f bad=""
-  for f in ${sentinels[@]+"${sentinels[@]}"}; do
-    [ -e "$f" ] || bad="$bad $f"
-  done
-  if [ -n "$bad" ]; then
-    echo "DANGER: removing $path deleted files in the main checkout's node_modules (missing:$bad). Run \`npm ci\` in $main." >&2
-    exit 3
-  fi
-}
 
 # 2. Remove the worktree. If git refuses (locked, untracked files) and
 #    still lists it, stop — that refusal is the safety net. On Windows
