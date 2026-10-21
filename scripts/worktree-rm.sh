@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Remove a task worktree made by scripts/worktree-new.sh, and its branch.
 #
-#   scripts/worktree-rm.sh [--force] <path>
+#   scripts/worktree-rm.sh [--force] [--dry-run] <path>
+#   scripts/worktree-rm.sh --sweep [--dry-run]
 #
 # Safety rules, in the order they are enforced:
 #   - Only a folder directly inside <main checkout>/.claude/worktrees/ is
@@ -27,11 +28,101 @@
 # empty, or with --force after you have looked inside. A folder still in
 # use — typically by the session that worked in it — cannot be deleted
 # on Windows; the script then exits 2 and a fresh session reruns it.
+#
+# --dry-run prints what would happen and deletes nothing (not even the
+# node_modules link). A leftover folder is reported as "would try": whether
+# Windows lets go of it is only known by trying.
+#
+# --sweep (task-workflow step 1) walks <main checkout>/.claude/worktrees/*
+# and prints ONE summary line instead of one message per folder. Each
+# folder goes through this very script (one child per folder), so every
+# rule above applies unchanged; the sweep only decides which folders to
+# hand over:
+#   - a registered worktree is handed over only when GitHub has a MERGED
+#     PR whose head commit is the branch's current tip. "Branch tip is an
+#     ancestor of origin/dev" would also match a fresh worktree nobody has
+#     committed to yet, and the worktree this very session is working in.
+#     Unmerged, PR-less, or gh unavailable => kept as "active".
+#   - the worktree the sweep is run from, and a detached-HEAD worktree
+#     (no branch to match a PR against), are always kept as active.
+#   - an unregistered leftover folder is handed over as is: it is deleted
+#     only when empty (a non-empty one is a real refusal).
+# A clean worktree whose branch tip matches a merged PR is removed even
+# if another session still has it open, as the manual rule always did.
+# Dry-run skips the link scan and does not look inside a real node_modules
+# folder, so it can over-report "would remove".
+# Summary: removed N / locked M (folders Windows still holds open — exit 2,
+# names on one line) / active A / refused K (with the reason). Exit 0 unless
+# something was refused; locked and active folders alone are not a failure.
 set -euo pipefail
 
 force=""
-if [ "${1:-}" = "--force" ]; then force=1; shift; fi
-target="${1:?usage: worktree-rm.sh [--force] <path>}"
+dry=""
+sweep=""
+target=""
+for a in "$@"; do
+  case "$a" in
+    --force) force=1 ;;
+    --dry-run) dry=1 ;;
+    --sweep) sweep=1 ;;
+    -*) echo "unknown option: $a" >&2; exit 1 ;;
+    *) [ -z "$target" ] || { echo "only one path allowed" >&2; exit 1; }; target="$a" ;;
+  esac
+done
+
+if [ -n "$sweep" ]; then
+  if [ -n "$force" ] || [ -n "$target" ]; then
+    echo "usage: worktree-rm.sh --sweep [--dry-run] (no --force, no path)" >&2
+    exit 1
+  fi
+  main="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
+  main="$(cd "$main" && pwd -P)"
+  here="$(git rev-parse --show-toplevel 2> /dev/null || true)"
+  [ -z "$here" ] || here="$(cd "$here" && pwd -P)"
+  # Absolute path, run through bash: $0 may be a bare name or lack the exec bit.
+  self="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
+  removed=0 locked_n=0 active_n=0 refused_n=0
+  locked="" active="" refused=""
+  for dir in "$main"/.claude/worktrees/*/; do
+    [ -d "$dir" ] || continue
+    dir="$(cd "$dir" && pwd -P)"
+    name="$(basename "$dir")"
+    if [ -n "$here" ] && [ "$(printf %s "$dir" | tr '[:upper:]' '[:lower:]')" = "$(printf %s "$here" | tr '[:upper:]' '[:lower:]')" ]; then
+      active_n=$((active_n + 1)); active="$active $name(self)"; continue
+    fi
+    top="$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null || true)"
+    if [ -n "$top" ] && [ "$(cd "$top" && pwd -P | tr '[:upper:]' '[:lower:]')" = "$(printf %s "$dir" | tr '[:upper:]' '[:lower:]')" ]; then
+      br="$(git -C "$dir" symbolic-ref --quiet --short HEAD || true)"
+      tip="$(git -C "$dir" rev-parse HEAD 2> /dev/null || true)"
+      if [ -z "$br" ] || [ -z "$tip" ]; then
+        # No branch to match a PR against; the commits may exist nowhere else.
+        active_n=$((active_n + 1)); active="$active $name($([ -n "$br" ] && echo unreadable || echo detached))"; continue
+      else
+        merged="$(gh pr list --head "$br" --state merged --json headRefOid --jq "map(select(.headRefOid==\"$tip\"))|length" 2> /dev/null || true)"
+      fi
+      if [ "${merged:-0}" = "0" ]; then
+        active_n=$((active_n + 1)); active="$active $name"; continue
+      fi
+    fi
+    rc=0
+    out="$(bash "$self" ${dry:+--dry-run} "$dir" 2>&1)" || rc=$?
+    case "$rc" in
+      3) echo "$out" >&2; echo "worktree sweep aborted: the main checkout lost files (exit 3 from $name)" >&2; exit 3 ;;
+      0) removed=$((removed + 1)) ;;
+      2) locked_n=$((locked_n + 1)); locked="$locked $name" ;;
+      *) refused_n=$((refused_n + 1)); refused="$refused
+  $name: $(printf %s "$out" | grep -v '^$' | tail -n 1)" ;;
+    esac
+  done
+  verb="removed"; [ -z "$dry" ] || verb="would try to remove"
+  echo "worktree sweep${dry:+ (dry-run)}: $verb $removed, locked $locked_n${locked:+ (${locked# })}, active $active_n${active:+ (${active# })}, refused $refused_n"
+  [ -z "$refused" ] || printf '%s
+' "${refused#
+}"
+  exit $((refused_n > 0))
+fi
+
+[ -n "$target" ] || { echo "usage: worktree-rm.sh [--force] [--dry-run] <path>  |  --sweep [--dry-run]" >&2; exit 1; }
 [ -d "$target" ] || { echo "no such folder: $target" >&2; exit 1; }
 
 # Physical paths, compared case-insensitively on Windows (drive letters
@@ -118,6 +209,23 @@ unlink_link() {
     *) if [ -L "$1" ]; then rm "$1"; fi ;;
   esac
 }
+
+if [ -n "$dry" ]; then
+  # Same refusals as a real run up to here, minus everything that touches
+  # the disk. A node_modules entry is assumed to be the link a real run
+  # unlinks first; anything else in an unregistered folder is a refusal.
+  others="$(ls -A "$path" | grep -vx node_modules || true)"
+  if [ -z "$registered" ] && [ -z "$force" ] && [ -n "$others" ]; then
+    echo "refusing: $path is not a worktree and is not empty — look inside, then rerun with --force" >&2
+    exit 1
+  fi
+  if [ -n "$registered" ]; then
+    echo "would remove worktree $path (branch ${branch:-detached})"
+  else
+    echo "would try to delete leftover folder $path"
+  fi
+  exit 0
+fi
 
 # 1. Unlink node_modules first, so nothing below can recurse through it.
 nm="$path/node_modules"
