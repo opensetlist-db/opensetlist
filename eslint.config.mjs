@@ -4,6 +4,10 @@ import nextTs from "eslint-config-next/typescript";
 import useClientExports from "./eslint-rules/use-client-exports.mjs";
 import noTicketIds from "./eslint-rules/no-ticket-ids.mjs";
 import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
+import {
+  hexColourAssertionRestrictions,
+  hexColourLiteralRestrictions,
+} from "./eslint-rules/hex-colour-literals.mjs";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -36,6 +40,30 @@ const eslintConfig = defineConfig([
     files: ["src/app/api/admin/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": ["error", adminTranslationDeleteRestriction],
+    },
+  },
+  // Colours come from src/styles/tokens.ts, not hex literals. When the
+  // redesign swapped the palette, three unit tests broke because they
+  // compared against literal hexes, and components that hard-coded the
+  // old primary kept rendering it. A warning, not an error: existing
+  // components still carry literals until their page redesign replaces
+  // them. Share-card files keep their own export palette on purpose.
+  // Tests flag only hexes used as expected values (input fixtures stay
+  // allowed); the OG palette's own test is exempt like src/lib/ogPalette.ts,
+  // since its hexes are colour-math inputs and outputs, not the site
+  // palette. See eslint-rules/hex-colour-literals.mjs.
+  {
+    files: ["src/components/**/*.{ts,tsx}"],
+    ignores: ["src/components/**/ShareCard*.tsx"],
+    rules: {
+      "no-restricted-syntax": ["warn", ...hexColourLiteralRestrictions],
+    },
+  },
+  {
+    files: ["src/__tests__/**/*.{ts,tsx}"],
+    ignores: ["src/__tests__/unit/og-palette-anchor.test.ts"],
+    rules: {
+      "no-restricted-syntax": ["warn", ...hexColourAssertionRestrictions],
     },
   },
   // Override default ignores of eslint-config-next.
