@@ -433,6 +433,26 @@ export const unitFallbackPalette = [
   "#A3A3A3", // 16 neutral-400 — soft gray
 ] as const;
 
+/*
+ * Search result accents from the approved 12-v1.2 design (ticket 13).
+ * Inks are the readable foregrounds on the 03 pastel accent washes
+ * (all ≥ 5.6:1 on their backgrounds); they are role accents, not artist
+ * colours. Search-only for now — a page ticket that needs the same role
+ * should reuse these rather than add near-duplicates.
+ */
+export const searchColors = {
+  artistInk: "#80344F", // artist icon chip + initial avatar, on accentPink
+  songInk: "#594392", // song icon chip, on accentLavender
+  variantInk: "#58417D", // version chip text, on accentLavender
+  baseChipBg: "#EEF3F9", // "base version" chip, with textSecondary
+  dayChipBg: "#EDF3FF", // concert "Day.N" chip
+  dayChipInk: "#2457A6",
+  matchedInk: "#53527D", // "matched name" line
+  errorBorder: "#DAA6B7", // error state panel
+  errorBg: "#FFF9FB",
+  errorInk: "#80344F", // error state icon, on accentPink
+} as const;
+
 export const shadows = {
   // 03 contract card shadow (navy-tinted, low alpha) and its hover lift.
   card: "0 5px 18px #233C6810",

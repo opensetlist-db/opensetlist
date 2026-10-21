@@ -32,6 +32,13 @@ export interface CoverImageProps {
   /** Corner radius; 8px matches the 03 control radius. */
   radius?: number;
   className?: string;
+  /**
+   * Show the "no image" label below the 64px default threshold, at this
+   * font size. Search rows (approved 12-v1.2) use a 56px slot with a
+   * 12px label that wraps inside the square; omit for the default
+   * behaviour (label only from 64px, 9px).
+   */
+  fallbackLabel?: { size: number };
 }
 
 export function CoverImage(props: CoverImageProps) {
@@ -45,13 +52,14 @@ function CoverImageInner({
   alt = "",
   radius = 8,
   className = "",
+  fallbackLabel,
 }: CoverImageProps) {
   const t = useTranslations("SharedImage");
   const { failed, imgProps } = useImageFallback();
   const showImage = Boolean(src) && !failed;
   // The visible label only fits from ~64px up; smaller thumbnails show
   // the glyph alone.
-  const showLabel = size >= 64;
+  const showLabel = Boolean(fallbackLabel) || size >= 64;
   // Fallback semantics follow `alt`: decorative covers hide the
   // placeholder from assistive tech; a named cover keeps its name.
   const fallbackA11y = alt
@@ -90,7 +98,20 @@ function CoverImageInner({
           >
             ♫
           </span>
-          {showLabel && <span className="text-[9px]">{t("noImage")}</span>}
+          {fallbackLabel ? (
+            <span
+              className="px-0.5 text-center"
+              style={{
+                fontSize: fallbackLabel.size,
+                lineHeight: 1.15,
+                wordBreak: "keep-all",
+              }}
+            >
+              {t("noImage")}
+            </span>
+          ) : (
+            showLabel && <span className="text-[9px]">{t("noImage")}</span>
+          )}
         </>
       )}
     </div>

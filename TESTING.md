@@ -62,6 +62,7 @@ know what each suite leaves behind:
 | `album-cover.test.ts` | **writes** | one album with slug `cover-itest-<ts>`, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/cover-itest-<ts>/`; re-imports that one slug through the CSV importer; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
 | `series-logo-route.test.ts` | **writes** | parent/child series (+ a soft-deleted one) and one event, all named `series-logo-itest-<ts> …`, through the admin handlers; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/series-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
 | `event-logo-route.test.ts` | **writes** | parent/child series and events (one soft-deleted) named `event-logo-itest-<ts> …` through the admin handlers, with a fake poster URL; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/event-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `global-search.test.ts` | **writes** | songs (one variant, one soft-deleted), artists, an album and events whose slug starts `srchitest<ts>`, plus their translations and one `SongArtist`; search reads only; `afterAll` deletes them and asserts none are left |
 | `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
@@ -94,6 +95,7 @@ the skip count.
 | `album-cross-links.spec.ts` | GET only | `E2E_MULTI_ALBUM_SONG_ID`, `E2E_DISCOGRAPHY_ARTIST_ID`, `E2E_BD_SERIES_ID` |
 | `bonus-scrape.spec.ts` | GET only | `E2E_BONUS_ALBUM_ID` |
 | `event-bd-section.spec.ts` | GET only | `E2E_BD_EVENT_ID`, `E2E_PLAIN_EVENT_ID` |
+| `search.spec.ts` | GET only | a catalog where `a` matches >20 songs (any seeded dev DB) |
 | `seo-canonical.spec.ts` | GET only | events in the sitemap |
 | `setlist-unknown-song.spec.ts` | **writes** | `E2E_UNKNOWN_SONG_EVENT_ID`, `E2E_MULTI_ALBUM_SONG_ID`, `ADMIN_PASSWORD` |
 
