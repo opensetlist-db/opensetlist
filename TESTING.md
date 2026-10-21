@@ -70,6 +70,15 @@ and leaves its fixture rows in dev. A new integration test must create
 its own fixtures and delete them in `afterAll`; never assert on, or
 mutate, rows another feature depends on.
 
+**Inspecting the dev DB by hand** (row counts, grants, RLS, before/after
+checks for a test or migration): use `node scripts/db-ro.mjs "<sql>"
+["<sql>" …]` (or `--file q.sql`, `--json`) instead of an ad-hoc `pg`
+script. It is dev-only (same URL guard as the integration setup, from
+`scripts/dev-db-guard.mjs`) and read-only (each statement runs inside
+`BEGIN READ ONLY … ROLLBACK`, writes and session `SET` are refused before
+connecting). It runs from any directory or task worktree and prints
+timestamps as UTC.
+
 ### E2E — through the app
 
 `playwright.config.ts` starts `npm run dev` on `localhost:3000` unless
@@ -116,6 +125,30 @@ scripts/ttfb-event-detail.sh http://localhost:3000 LOCAL
 Absolute numbers differ from the runner's (different network path to
 Supabase Seoul); compare a branch against its base on the same machine,
 as the workflow does.
+
+### Redesign captures and shell QA
+
+Both run against a production build like the TTFB script above
+(`npx next start -p 3110`), and their output stays out of the repo.
+
+`scripts/redesign-capture.mjs` captures screenshots and per-page metrics
+for the redesign page set. `--compare <captures.json>` diffs the new run
+against a baseline manifest (the ticket 02 one is in the wiki vault,
+`output/redesign/handoffs/02/captures/captures.json`) and prints the
+regressions: new horizontal scroll, CLS, console errors, `lang`, status.
+
+`scripts/redesign-shell-qa.mjs` checks the shared shell (header bands,
+overflow, menu keyboard behaviour, focus ring, locale switch, reduced
+motion) across locales × widths and exits 1 on any FAIL. Page tickets run
+it after any shared-style change (redesign spec story 51): chromium in
+full, `--browser webkit --quick` for Safari.
+
+Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
+(build + `next start`, Sentry blanked, refuses a foreign port holder,
+`--stop` kills only its own verified PID) and `scripts/admin-qa.mjs
+--scenario <name>`, which logs in, creates and always deletes a dev-DB
+fixture, and runs overflow/keyboard/label/motion/referrer checks; a page
+adds a scenario under `scripts/admin-qa/scenarios/` (copy `album-cover`).
 
 ---
 

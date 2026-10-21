@@ -3,7 +3,13 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import useClientExports from "./eslint-rules/use-client-exports.mjs";
 import noTicketIds from "./eslint-rules/no-ticket-ids.mjs";
+import consoleFormatString from "./eslint-rules/console-format-string.mjs";
+import imgOnErrorRef from "./eslint-rules/img-onerror-ref.mjs";
 import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
+import {
+  hexColourAssertionRestrictions,
+  hexColourLiteralRestrictions,
+} from "./eslint-rules/hex-colour-literals.mjs";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -13,6 +19,14 @@ const eslintConfig = defineConfig([
   // in a plain module (they can resolve to undefined from a server
   // component). `no-ticket-ids`: comments keep the reason, not the
   // ticket id (`n15-03`) — the id belongs in the PR description.
+  // `console-format-string`: a console call's first argument is a
+  // constant format, not a `${…}` template — CI Semgrep blocks that form
+  // (unsafe-formatstring). Scoped to src/ like the others: scripts/ and
+  // tests/load/ hold 130+ such calls in operator-run tooling that ships
+  // nothing, and Semgrep reports only findings a PR adds.
+  // `img-onerror-ref`: in a "use client" module an `<img onError>` also
+  // has a ref that checks the image on mount — a server-rendered image
+  // that fails before hydration never fires React's onError.
   {
     files: ["src/**/*.{ts,tsx}"],
     plugins: {
@@ -20,12 +34,16 @@ const eslintConfig = defineConfig([
         rules: {
           "use-client-exports": useClientExports,
           "no-ticket-ids": noTicketIds,
+          "console-format-string": consoleFormatString,
+          "img-onerror-ref": imgOnErrorRef,
         },
       },
     },
     rules: {
       "local/use-client-exports": "error",
       "local/no-ticket-ids": "error",
+      "local/console-format-string": "error",
+      "local/img-onerror-ref": "error",
     },
   },
   // Admin routes save translations per locale (upsert), never by
@@ -36,6 +54,27 @@ const eslintConfig = defineConfig([
     files: ["src/app/api/admin/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": ["error", adminTranslationDeleteRestriction],
+    },
+  },
+  // Colours come from src/styles/tokens.ts, not hex literals: the
+  // redesign palette swap broke three unit tests that compared against
+  // literal hexes. A warning until page redesigns clear the existing
+  // literals. Share-card files and the OG palette's own test keep their
+  // own colours on purpose. See eslint-rules/hex-colour-literals.mjs.
+  // Flat config replaces a rule's options per matching block, so a new
+  // `no-restricted-syntax` block over these paths must re-spread these.
+  {
+    files: ["src/components/**/*.{ts,tsx}"],
+    ignores: ["src/components/**/ShareCard*.tsx"],
+    rules: {
+      "no-restricted-syntax": ["warn", ...hexColourLiteralRestrictions],
+    },
+  },
+  {
+    files: ["src/__tests__/**/*.{ts,tsx}"],
+    ignores: ["src/__tests__/unit/og-palette-anchor.test.ts"],
+    rules: {
+      "no-restricted-syntax": ["warn", ...hexColourAssertionRestrictions],
     },
   },
   // Override default ignores of eslint-config-next.
