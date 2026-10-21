@@ -10,7 +10,6 @@ import type { KnipConfig } from "knip";
 // the list below covers what those plugins do not know about.
 const config: KnipConfig = {
   entry: [
-    "src/instrumentation*.ts",
     "sentry.*.config.ts",
     // Operator-run scripts: each top-level file is invoked directly
     // (node / tsx / npm script), so each is an entry.

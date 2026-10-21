@@ -33,15 +33,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # Unused files / exports (knip.config.ts). Report-only for now: the
-      # first runs list existing dead code that the owner clears item by
-      # item; drop continue-on-error once the report is empty.
-      - name: Dead code (report only)
-        run: npm run lint:dead
-        continue-on-error: true
-
       - name: Typecheck
         run: npx tsc --noEmit
 
       - name: Unit tests
         run: npm run test
+
+      # Unused files / exports (knip.config.ts). Report-only while the
+      # existing findings are open: drop continue-on-error once the report
+      # is empty. Last, so it never delays a real failure above.
+      - name: Dead code (report only)
+        run: npm run lint:dead
+        continue-on-error: true
