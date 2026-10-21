@@ -686,11 +686,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                 unitName={
                   owningUnit
                     ? {
-                        text: displayNameWithFallback(
-                          owningUnit,
-                          owningUnit.translations,
-                          locale,
-                        ),
+                        // Same fallback as the unit card, so a unit
+                        // with no displayable name never leaves an
+                        // empty second line on the chip.
+                        text:
+                          displayNameWithFallback(
+                            owningUnit,
+                            owningUnit.translations,
+                            locale,
+                          ) || t("unknown"),
                         lang: fallbackNameLang(
                           owningUnit,
                           owningUnit.translations,
