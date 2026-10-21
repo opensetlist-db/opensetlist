@@ -10,30 +10,57 @@
 @source not "../../tests";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Page surface + main text from the approved redesign contract (03-v1.1).
+     `--background` mirrors `colors.bgPage`, `--foreground` mirrors
+     `colors.textPrimary` in src/styles/tokens.ts — keep in lockstep. */
+  --background: #f7f9fd;
+  --foreground: #172445;
+  /* Keyboard focus ring colour; mirrors `colors.focus`. */
+  --focus-ring: #174faf;
+  /* Quiet-surface interaction states; mirror `colors.primaryHover`,
+     `primaryPressed`, `primaryHoverBg`, `primaryPressedBg`. */
+  --primary-hover: #104aa9;
+  --primary-pressed: #0c3d8c;
+  --primary-hover-bg: #edf4ff;
+  --primary-pressed-bg: #dae7ff;
+  /* Body font stack. DM Sans first so Latin text and digits share one
+     face across locales; then the CJK face matching the page language,
+     so Han characters take Japanese glyph forms on ja/en and Korean
+     forms on ko (the two Noto families draw some shared ideographs
+     differently). All faces are self-hosted via @fontsource. */
+  --font-body: 'DM Sans', 'Noto Sans JP', 'Noto Sans KR Variable', sans-serif;
   /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
      so a palette change is one edit, not a grep across components.
      Consumed by `.row-hover-bg:hover` below; available as a Tailwind
      arbitrary-value `bg-[var(--bg-subtle)]` if needed elsewhere. */
   --bg-subtle: #f8fafc;
   /* Anchor-jump offset for `scroll-margin-top` on legal section
-     headings. Mobile = `layout.navHeight.mobile` (52) + 24 breathing
-     room; desktop overrides below. Keep in lockstep with
-     `layout.navHeight` in `src/styles/tokens.ts`. */
-  --legal-anchor-offset: 76px;
+     headings: header height + 24 breathing room per header band.
+     Mobile = `layout.navHeight.mobile` (64) + 24; the wider bands
+     override below. Keep in lockstep with `layout.navHeight` and
+     `breakpoint.nav` in `src/styles/tokens.ts`. */
+  --legal-anchor-offset: 88px;
 }
-@media (min-width: 1024px) {
+html:lang(ko) {
+  --font-body: 'DM Sans', 'Noto Sans KR Variable', 'Noto Sans JP', sans-serif;
+}
+@media (min-width: 700px) {
   :root {
-    /* Desktop = `layout.navHeight.desktop` (56) + 24 breathing room. */
-    --legal-anchor-offset: 80px;
+    /* Tablet = `layout.navHeight.tablet` (68) + 24. */
+    --legal-anchor-offset: 92px;
+  }
+}
+@media (min-width: 1100px) {
+  :root {
+    /* Desktop = `layout.navHeight.desktop` (80) + 24. */
+    --legal-anchor-offset: 104px;
   }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Noto Sans KR Variable', sans-serif;
+  --font-sans: var(--font-body);
   --font-josefin: 'Josefin Sans', 'Noto Sans KR Variable', sans-serif;
   --font-dm-sans: 'DM Sans', 'Noto Sans KR Variable', sans-serif;
 }
@@ -64,7 +91,85 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
+  /* 03 contract body size: 15px, 14px under 700px. Only text that does
+     not set its own size inherits this; Tailwind's rem utilities are
+     unaffected (they resolve against <html>). */
+  font-size: 15px;
+}
+@media (max-width: 699px) {
+  body {
+    font-size: 14px;
+  }
+}
+
+/*
+ * Shared keyboard focus treatment (03 contract): 3px ring, 4px offset,
+ * shown only for keyboard focus. In the base layer so a component that
+ * needs a different ring (e.g. white-on-dark Hero buttons) overrides it
+ * with a utility or inline style.
+ */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 4px;
+  }
+}
+
+/*
+ * Hover / pressed treatment for the quiet header controls (inactive nav
+ * links, locale buttons, icon buttons): pale-blue wash + darker blue text.
+ * One class so the four interaction colours live in exactly one place.
+ */
+.shell-interactive:hover {
+  background: var(--primary-hover-bg);
+  color: var(--primary-hover);
+}
+.shell-interactive:active {
+  background: var(--primary-pressed-bg);
+  color: var(--primary-pressed);
+}
+
+/*
+ * "Skip to content" link rendered first in <body>. Off-screen until it
+ * receives keyboard focus, then pinned top-left above the header.
+ */
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 400;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--foreground);
+  font-weight: 700;
+  box-shadow: 0 5px 18px #233c6820;
+}
+.skip-link:focus {
+  top: 12px;
+}
+/* The skip link focuses the page <main> programmatically; the landmark
+   itself needs no ring around the whole page. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/*
+ * Reduced motion (spec story 48): drop transitions and keyframe
+ * animations — the LIVE pulse, reaction pops and menu transitions all
+ * stop. Static state (colour, the LIVE dot itself) still shows.
+ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 /*

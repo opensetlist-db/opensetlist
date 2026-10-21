@@ -12,9 +12,10 @@ import { colors } from "@/styles/tokens";
  * gradient). Keep these two components separate; their contracts will
  * diverge over time (e.g. real photos for members, never for groups).
  *
- * Falls back to `colors.textMuted` when no color is supplied — better
- * than rendering a flat black circle when a member is missing the
- * personal-color data.
+ * With no colour, it uses the brand fallback from the redesign common
+ * contract (03-v1.1 avatar specimen): pale-blue fill, hairline border,
+ * primary-blue initial — the shared "no verified colour" identity, rather
+ * than a grey that reads as disabled. Never substitute an invented colour.
  */
 
 interface Props {
@@ -24,14 +25,17 @@ interface Props {
 }
 
 export function InitialAvatar({ label, color, size = 32 }: Props) {
-  const baseColor = color || colors.textMuted;
   const initial = label.charAt(0) || "?";
+  const brandFallback = !color;
+  const baseColor = color || colors.primary;
   // Two-stop gradient using the source color at two alpha levels —
   // baseColor + "40" at 25% opacity for the lighter top-left, and
   // baseColor + "80" at 50% for the deeper bottom-right. The text
   // sits on top in baseColor at full opacity, so contrast is the
   // designer's responsibility per the original mockup.
-  const background = `linear-gradient(135deg, ${baseColor}40, ${baseColor}80)`;
+  const background = brandFallback
+    ? colors.primaryBg
+    : `linear-gradient(135deg, ${baseColor}40, ${baseColor}80)`;
 
   return (
     <div
@@ -42,6 +46,7 @@ export function InitialAvatar({ label, color, size = 32 }: Props) {
         borderRadius: "50%",
         flexShrink: 0,
         background,
+        border: brandFallback ? `1px solid ${colors.primaryBorder}` : undefined,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
