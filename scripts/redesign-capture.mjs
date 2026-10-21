@@ -264,8 +264,10 @@ async function capture({ key, url, admin }, vpKey) {
       // Secure cookie on http://localhost, WebKit discards it, so without
       // this every WebKit admin capture is the login page. Over plain http,
       // re-add each cookie from its name=value pair alone: addCookies with a
-      // `url` and no `secure` stores it non-Secure for this origin. Only the
-      // pair is parsed; the value is never logged or written anywhere.
+      // `url` and no `secure` stores it non-Secure for this origin (also
+      // without httpOnly and maxAge, which a one-page capture context never
+      // needs). Only the pair is parsed; the value is never logged or
+      // written anywhere.
       if (new URL(BASE).protocol === "http:") {
         const cookies = r
           .headersArray()
