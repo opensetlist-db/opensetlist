@@ -57,6 +57,8 @@ know what each suite leaves behind:
 | `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
 | `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
+| `image-upload-service.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/upload-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
 A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`
