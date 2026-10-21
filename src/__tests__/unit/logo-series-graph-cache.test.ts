@@ -1,0 +1,95 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Cache contract of the logo series graph: it is an ordinary cached
+// public read (PUBLIC_DATA_TAG), so the `revalidatePublicData()` every
+// series/event/artist admin writer already calls expires it — and with
+// it every surface's resolved logos. Stubs model `unstable_cache` the
+// same way unit/data-cache.test.ts does: tag-aware store, expiry by tag.
+
+const store = new Map<string, { value: string; tags: string[] }>();
+const revalidateTagMock = vi.fn((tag: string) => {
+  for (const [key, entry] of store) if (entry.tags.includes(tag)) store.delete(key);
+});
+
+vi.mock("next/cache", () => ({
+  unstable_cache:
+    (cb: () => Promise<unknown>, keyParts: string[], options: { tags?: string[] }) =>
+    async () => {
+      const key = JSON.stringify(keyParts);
+      const hit = store.get(key);
+      if (hit) return JSON.parse(hit.value);
+      const result = await cb();
+      store.set(key, { value: JSON.stringify(result), tags: options.tags ?? [] });
+      return result;
+    },
+  revalidateTag: (tag: string) => revalidateTagMock(tag),
+}));
+
+vi.mock("@vercel/functions", () => ({
+  getCache: () => ({ expireTag: async () => {} }),
+  waitUntil: () => {},
+}));
+
+const rows = vi.fn();
+vi.mock("@/lib/prisma", () => ({
+  prisma: { eventSeries: { findMany: (...args: unknown[]) => rows(...args) } },
+}));
+
+import { PUBLIC_DATA_TAG, revalidateEventData, revalidatePublicData } from "@/lib/dataCache";
+import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
+import { resolveSeriesLogo } from "@/lib/logoResolution";
+
+const node = (over: Record<string, unknown>) => ({
+  id: BigInt(1),
+  parentSeriesId: null,
+  isDeleted: false,
+  logoMode: "inherit",
+  logoAsset: null,
+  artistId: null,
+  artist: null,
+  ...over,
+});
+const logo = { publicUrl: "https://img.example/a.webp", width: 300, height: 100 };
+
+beforeEach(() => {
+  store.clear();
+  rows.mockReset();
+  revalidateTagMock.mockClear();
+});
+
+describe("logo series graph cache", () => {
+  it("selects only delivery columns of the asset", async () => {
+    rows.mockResolvedValue([]);
+    await getLogoSeriesGraph();
+    const select = rows.mock.calls[0][0].select;
+    expect(select.logoAsset).toEqual({ select: { publicUrl: true, width: true, height: true } });
+    expect(JSON.stringify(select)).not.toMatch(/sourceUrl|usageNote|objectKey|imageUrl|posterUrl/);
+  });
+
+  it("is tagged public-data and survives bigint ids through the cache", async () => {
+    rows.mockResolvedValue([node({ id: BigInt(5), parentSeriesId: BigInt(4) }), node({ id: BigInt(4) })]);
+    const g = await getLogoSeriesGraph();
+    expect(g.get("5")?.parentSeriesId).toBe(BigInt(4));
+    const [entry] = [...store.values()];
+    expect(entry.tags).toContain(PUBLIC_DATA_TAG);
+    // Second read is a hit.
+    await getLogoSeriesGraph();
+    expect(rows).toHaveBeenCalledTimes(1);
+  });
+
+  it("an ancestor change reaches descendants after revalidatePublicData", async () => {
+    rows.mockResolvedValue([node({ id: BigInt(1) }), node({ id: BigInt(2), parentSeriesId: BigInt(1) })]);
+    expect(resolveSeriesLogo(BigInt(2), await getLogoSeriesGraph()).image).toBeNull();
+
+    rows.mockResolvedValue([
+      node({ id: BigInt(1), logoMode: "custom", logoAsset: logo }),
+      node({ id: BigInt(2), parentSeriesId: BigInt(1) }),
+    ]);
+    // An event-scoped expiry is NOT enough for a series change …
+    revalidateEventData(BigInt(2));
+    expect(resolveSeriesLogo(BigInt(2), await getLogoSeriesGraph()).image).toBeNull();
+    // … the public expiry every series/event writer calls is.
+    revalidatePublicData();
+    expect(resolveSeriesLogo(BigInt(2), await getLogoSeriesGraph()).image?.url).toBe(logo.publicUrl);
+  });
+});
