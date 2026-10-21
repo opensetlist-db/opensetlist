@@ -20,8 +20,9 @@
 //     [--list]                       list the scenarios and exit
 //
 // --scenario takes a name under scripts/admin-qa/scenarios/ or a path to a
-// .mjs file. ADMIN_PASSWORD and DATABASE_URL_UNPOOLED come from this
-// repo's .env/.env.local (.env.local wins); neither is ever printed.
+// .mjs file. ADMIN_PASSWORD and DATABASE_URL_UNPOOLED come from the
+// .env/.env.local of the checkout holding the current directory (.env.local
+// wins); neither is ever printed.
 //
 // Writes <out>/<scenario>-<state>-<width>[-webkit].png and
 // <out>/results-<scenario>-<browser>-<mode>.json; exits 1 on any FAIL.
@@ -33,10 +34,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { BROWSERS, loadEnv, runScenario } from "./admin-qa/harness.mjs";
+import { BROWSERS, checkoutRoot, loadEnv, runScenario } from "./admin-qa/harness.mjs";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const scenarioDir = path.join(repoRoot, "scripts", "admin-qa", "scenarios");
+// Scenarios ship with the script; .env/.env.local come from the checkout
+// under test (see checkoutRoot), which differs for an extracted copy.
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const scenarioDir = path.join(scriptDir, "admin-qa", "scenarios");
+const repoRoot = checkoutRoot(path.resolve(scriptDir, ".."));
 
 const { values: args } = parseArgs({
   options: {
@@ -71,6 +75,9 @@ const scenarioPath = args.scenario.endsWith(".mjs")
   : path.join(scenarioDir, `${args.scenario}.mjs`);
 const scenario = (await import(pathToFileURL(scenarioPath).href)).default;
 
+// The cwd picks the checkout whose .env is read (see checkoutRoot): say
+// which one, so a run started from the wrong directory shows it.
+console.log(`checkout: ${repoRoot}`);
 console.log(
   "reminder: this run INSERTs and deletes fixture rows in the shared dev DB — hold the redesign execution-board DB slot",
 );

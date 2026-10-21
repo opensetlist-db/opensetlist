@@ -181,7 +181,9 @@ regressions: new horizontal scroll, CLS, console errors, `lang`, status.
 overflow, menu keyboard behaviour, focus ring, locale switch, reduced
 motion) across locales × widths and exits 1 on any FAIL. Page tickets run
 it after any shared-style change (redesign spec story 51): chromium in
-full, `--browser webkit --quick` for Safari.
+full, `--browser webkit --quick` for Safari. `--summary` prints only the
+FAIL lines (timeouts included) and the tally; every check, PASS and N/A
+too, stays in `<out>/<browser>-qa.json`.
 
 A production hydration mismatch shows up only as "Minified React error
 #418/#423/#425", with no component or text. `redesign-capture.mjs` then
@@ -216,6 +218,14 @@ composited), `h.focusRing`, `h.scrollRegion` (fresh-load ArrowRight) and
 checklist — `home` uses them all. Responses ≥400 count as errors except
 the local `_vercel/speed-insights` 404; a check whose subject is absent
 on the build or data prints SKIP, which never fails a run.
+
+`page-qa.mjs`, `admin-qa.mjs` and `redesign-capture.mjs` read
+`messages/` and `.env` from the git checkout holding the current
+directory, and their scenarios from beside the script. A copy extracted
+from another branch (e.g. into a redesign worktree's gitignored
+`.claude/tmp/`, with its `page-qa/` or `admin-qa/` folder, plus
+`dev-db-guard.mjs` for admin-qa) therefore runs against the worktree it
+is started from.
 
 ---
 

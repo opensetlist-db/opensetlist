@@ -17,8 +17,9 @@
 //     [--png]                        also keep the full-size PNG
 //     [--no-webp]                    skip WebP (then --png is implied)
 //     [--env <path>]                 dotenv file with ADMIN_PASSWORD
-//                                    (default: <repo>/.env); it must match
-//                                    the server's ADMIN_PASSWORD
+//                                    (default: .env of the checkout holding
+//                                    the cwd); it must match the server's
+//                                    ADMIN_PASSWORD
 //     [--list]                       print the keys that would be captured
 //     [--compare <captures.json>]    after writing this run's manifest,
 //                                    compare it entry by entry (key + vp)
@@ -113,6 +114,7 @@
 // Vercel, which shows up as one "Failed to load resource … 404" console
 // error on every page (the baseline has it too). `failedResponses` records
 // the URL so it can be told apart from a real regression.
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -122,7 +124,24 @@ import dotenv from "dotenv";
 import { chromium, webkit } from "@playwright/test";
 import sharp from "sharp";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// The checkout holding the current directory, so a copy extracted into
+// another checkout (a redesign worktree's .claude/tmp/) reads that
+// checkout's .env; the script-relative root only outside a git work tree.
+// Same rule as checkoutRoot() in scripts/page-qa/harness.mjs, inlined so
+// this script stays a single file to extract.
+function checkoutRoot() {
+  try {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (top) return path.resolve(top);
+  } catch {
+    // not in a work tree, or git missing
+  }
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+}
+const repoRoot = checkoutRoot();
 
 const { values: args } = parseArgs({
   options: {

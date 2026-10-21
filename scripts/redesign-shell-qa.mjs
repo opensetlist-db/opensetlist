@@ -64,6 +64,10 @@
 //                                    page checks above for each
 //     [--timeout <s>]                per-check limit, default 30
 //     [--run-timeout <min>]          whole-run limit, default 60
+//     [--summary]                    print only FAIL lines (timeouts are
+//                                    FAILs) and the final tally; PASS and
+//                                    N/A lines go to the JSON alone. A --path
+//                                    run otherwise prints dozens of N/A lines
 //
 // Timeouts. Navigations wait for `load`, then for what the check reads
 // (fonts for geometry, React hydration before driving the menu) — never
@@ -101,6 +105,7 @@ const { values: args } = parseArgs({
     path: { type: "string", multiple: true, default: [] },
     timeout: { type: "string", default: "30" },
     "run-timeout": { type: "string", default: "60" },
+    summary: { type: "boolean", default: false },
   },
 });
 
@@ -191,6 +196,7 @@ const late = () => sectionScope.getStore()?.abandoned === true;
 function check(name, ok, detail = "") {
   if (late()) return;
   results.push({ name, ok: !!ok, detail });
+  if (ok && args.summary) return;
   console.log("%s %s%s", ok ? "PASS" : "FAIL", name, detail ? ` — ${detail}` : "");
 }
 // A check whose subject is absent from the page (no event art, no <time>).
@@ -199,7 +205,7 @@ function check(name, ok, detail = "") {
 function notApplicable(name, detail) {
   if (late()) return;
   results.push({ name, ok: true, na: true, detail });
-  console.log("N/A  %s — %s", name, detail);
+  if (!args.summary) console.log("N/A  %s — %s", name, detail);
 }
 
 class CheckTimeout extends Error {}
@@ -303,7 +309,8 @@ async function finish({ closeBrowser = true } = {}) {
     na ? `, ${na} n/a` : "",
     file,
   );
-  for (const f of fails) console.log("FAIL %s — %s", f.name, f.detail);
+  // --summary already printed each FAIL as it happened.
+  if (!args.summary) for (const f of fails) console.log("FAIL %s — %s", f.name, f.detail);
   process.exit(fails.length ? 1 : 0);
 }
 

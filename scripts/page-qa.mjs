@@ -7,8 +7,11 @@
 // its own QA script (copy `artist-detail`). Admin pages have their own
 // harness, scripts/admin-qa.mjs.
 //
-// Usage (from the repo root, against a running production build — start
-// one with scripts/serve-build.sh <port>, from the checkout to test):
+// Usage (from the root of the checkout to test, against a running
+// production build — start one with scripts/serve-build.sh <port>). The
+// script may also be a copy extracted from another branch (e.g. into a
+// redesign worktree's .claude/tmp/, with page-qa/ beside it): the scenarios
+// come from beside the script, messages/ from the checkout holding the cwd.
 //   node scripts/page-qa.mjs --scenario artist-detail --out <dir>
 //     [--base http://localhost:3121]
 //     [--browser chromium|webkit]   default chromium
@@ -41,10 +44,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { BROWSERS, messageNamespaces, runScenario } from "./page-qa/harness.mjs";
+import { BROWSERS, checkoutRoot, messageNamespaces, runScenario } from "./page-qa/harness.mjs";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const scenarioDir = path.join(repoRoot, "scripts", "page-qa", "scenarios");
+// Scenarios ship with the script; messages/ comes from the checkout under
+// test (see checkoutRoot), which differs when this script is an extracted copy.
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const scenarioDir = path.join(scriptDir, "page-qa", "scenarios");
+const repoRoot = checkoutRoot(path.resolve(scriptDir, ".."));
 
 const usage = (msg) => {
   if (msg) console.error(msg);
@@ -110,6 +116,9 @@ if (args.fixture) {
   usage("--only-fixture needs --fixture <json>");
 }
 
+// The cwd picks the checkout (see checkoutRoot): say which one, so a run
+// started from the wrong directory shows it on the first line.
+console.log(`checkout: ${repoRoot}`);
 const summary = await runScenario({
   scenario,
   browserName: args.browser,
