@@ -23,6 +23,7 @@ import {
   type ImageAttempt,
 } from "@/lib/imageUpload/client";
 import { MAX_SOURCE_URL_LENGTH, MAX_USAGE_NOTE_LENGTH } from "@/lib/imageUpload/limits";
+import { useImageFallback } from "@/components/shared/useImageFallback";
 
 /*
  * Admin logo card — the approved 04-v1 "시리즈 로고" section (layout,
@@ -684,17 +685,11 @@ export default function LogoAssignmentCard({
         className="flex min-h-[152px] items-center justify-center overflow-hidden rounded-[9px] bg-[linear-gradient(115deg,#f4f0fc,#f0f5fc)] px-4 py-5 text-center min-[481px]:p-6"
       >
         {previewImage && !imageFailed ? (
-          // Plain <img>: a local blob: preview or a storage URL — next/image
-          // cannot optimise either usefully. object-contain: a logo is
-          // never cropped or stretched.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <PreviewImage
             key={previewImage}
             src={previewImage}
             alt={attempt ? "선택한 이미지 미리보기" : `${copy.title} 미리보기`}
-            referrerPolicy="no-referrer"
-            onError={() => setImageFailed(true)}
-            className="block max-h-48 w-full object-contain"
+            onFailed={() => setImageFailed(true)}
           />
         ) : (
           <div className="max-w-full">
@@ -751,7 +746,7 @@ export default function LogoAssignmentCard({
         <button
           type="button"
           onClick={cancelDraft}
-          disabled={locked || !dirty}
+          disabled={locked}
           className="min-h-11 min-w-[92px] flex-1 rounded-[7px] border border-[#ccd0d9] bg-white px-[17px] py-[9px] font-semibold text-[#343947] hover:bg-[#f3f5fa] disabled:cursor-not-allowed disabled:opacity-50 min-[481px]:flex-none"
         >
           취소
@@ -769,6 +764,32 @@ export default function LogoAssignmentCard({
         {saveNote}
       </p>
     </>
+  );
+}
+
+/**
+ * The preview <img>, failure-tracked by the shared hook: the edit page is
+ * server-rendered, so a saved logo URL that 404s fast fails BEFORE
+ * hydration and React never sees its error event — the hook's ref check
+ * catches that case too. Remounted per URL (`key`), which resets it.
+ */
+function PreviewImage({ src, alt, onFailed }: { src: string; alt: string; onFailed: () => void }) {
+  const { failed, imgProps } = useImageFallback();
+  useEffect(() => {
+    if (failed) onFailed();
+  }, [failed, onFailed]);
+  return (
+    // Plain <img>: a local blob: preview or a storage URL — next/image
+    // cannot optimise either usefully. object-contain: a logo is never
+    // cropped or stretched.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      referrerPolicy="no-referrer"
+      {...imgProps}
+      className="block max-h-48 w-full object-contain"
+    />
   );
 }
 
