@@ -32,7 +32,8 @@ const reset = async (t) => {
 };
 
 const card = (t) => t.page.getByTestId("event-logo-section");
-const radio = (t, name) => card(t).getByRole("radio", { name: new RegExp(name) });
+// A string name matches as a substring (the label also holds the description).
+const radio = (t, name) => card(t).getByRole("radio", { name });
 const save = (t) => card(t).getByRole("button", { name: /^(저장|저장 중…)$/ });
 const fileInput = (t) => card(t).getByLabel("이미지 파일 선택");
 const preview = (t) => t.page.getByTestId("logo-preview");
