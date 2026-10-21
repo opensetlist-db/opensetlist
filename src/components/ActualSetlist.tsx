@@ -79,7 +79,6 @@ export function ActualSetlist({
   eventArtistId,
   snapshotCapturedAt,
 }: Props) {
-  const t = useTranslations("Event");
   const ct = useTranslations("Common");
   const confirmT = useTranslations("Confirm");
 

@@ -111,8 +111,8 @@ describe("EventWishSection — render gates", () => {
         top3Wishes={[fanEntry(10, 5)]}
       />,
     );
-    expect(screen.getByText(/^🌸 title$/)).toBeTruthy();
-    expect(screen.queryByText(/^🌸 lockedTitle$/)).toBeNull();
+    expect(screen.getByText(/^title$/)).toBeTruthy();
+    expect(screen.queryByText(/^lockedTitle$/)).toBeNull();
   });
 
   it("locked + has data renders the title key 'lockedTitle' and hides the description strip", () => {
@@ -126,7 +126,7 @@ describe("EventWishSection — render gates", () => {
         top3Wishes={[fanEntry(10, 5)]}
       />,
     );
-    expect(screen.getByText(/^🌸 lockedTitle$/)).toBeTruthy();
+    expect(screen.getByText(/^lockedTitle$/)).toBeTruthy();
     expect(screen.queryByText("description")).toBeNull();
   });
 });
@@ -348,13 +348,13 @@ describe("EventWishSection — server-status lock (slow-client-clock fallback)",
         top3Wishes={[]}
       />,
     );
-    // Title bar reads `🌸 title` when unlocked (vs `🌸 lockedTitle`
+    // Heading reads `title` when unlocked (vs `lockedTitle`
     // when locked). Anchor both ends of the regex so a future
     // `lockedTitle` rename ending in "title" doesn't slip through —
     // the `queryByText(/lockedTitle/)` assertion below would still
     // catch the regression, but the strict-match here documents the
     // exact unlocked-state contract. CR #294 nit.
-    expect(screen.getByText(/^🌸 title$/)).toBeTruthy();
+    expect(screen.getByText(/^title$/)).toBeTruthy();
     expect(screen.queryByText(/lockedTitle/)).toBeNull();
     expect(screen.getByText("description")).toBeTruthy();
   });

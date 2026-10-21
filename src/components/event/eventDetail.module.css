@@ -632,3 +632,545 @@ a.artistTag:hover {
     font-size: 14px;
   }
 }
+
+/* ── Fan board (18-v3 `#participate`, color-v3 ballots) ────────── */
+
+.participatePanel {
+  --bar: #e968a6;
+  background: linear-gradient(130deg, #fff 45%, #f2f7ff);
+  border-color: #cfdcef;
+}
+.boardStatus {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #52617a;
+}
+.boardLead {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #172445;
+}
+.boardTally {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #172445;
+}
+.groupTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 14px 0 18px;
+}
+.groupTab {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--artist) 50%, #bdc5d4);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--artist) 30%, white);
+  font-size: 12px;
+  color: #172445;
+}
+.groupTab[aria-selected="true"] {
+  border-color: #172445;
+  background: color-mix(in srgb, var(--artist) 45%, white);
+  box-shadow: inset 0 0 0 1px #172445;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.boardColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.ballot {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #efbcd5;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffe3f0 0%, #fff6fa 58%, #fff 100%);
+  box-shadow: inset 0 4px #ee92bc;
+}
+.ballotExpect {
+  border-color: #b9d9f7;
+  background: linear-gradient(135deg, #dcedff 0%, #f2f8ff 58%, #fff 100%);
+  box-shadow: inset 0 4px #91c8f6;
+}
+.ballotTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #b41463;
+}
+.ballotExpect .ballotTitle {
+  color: #165dcc;
+}
+.ballotNote {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #52617a;
+}
+.earlyTag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fff6e9;
+  font-size: 11px;
+  font-weight: 400;
+  color: #67502e;
+}
+.crowdList {
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+.crowdItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 7px 0;
+  padding: 12px 9px;
+  border: 1px solid #fff;
+  border-radius: 8px;
+  background: #ffffffc9;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.crowdItemStarter {
+  border-style: dashed;
+  border-color: #c1cbda;
+}
+.crowdTitle {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  color: #172445;
+  overflow-wrap: anywhere;
+}
+a.crowdTitle:hover {
+  color: #165dcc;
+  text-decoration: underline;
+}
+.crowdMuted {
+  flex: 1;
+  min-width: 0;
+  color: #67758b;
+  overflow-wrap: anywhere;
+}
+.rank {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  min-height: 28px;
+  border-radius: 6px;
+  background: #ffe5a2;
+  font-size: 12px;
+  font-weight: 700;
+  color: #694200;
+}
+.crowdItem:nth-child(2) .rank {
+  background: #e1e9f3;
+  color: #47566d;
+}
+.crowdItem:nth-child(3) .rank {
+  background: #f7d9c7;
+  color: #79472c;
+}
+.crowdCount,
+.crowdTag {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #52617a;
+  font-variant-numeric: tabular-nums;
+}
+.crowdTag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f4f6fa;
+  font-size: 11px;
+}
+.crowdMine {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #165dcc;
+}
+.myChoices {
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid #ddc9da;
+}
+.ballotExpect .myChoices {
+  border-color: #c0d8ed;
+}
+.myChoicesHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.myChoicesTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b41463;
+}
+.ballotExpect .myChoicesTitle {
+  color: #165dcc;
+}
+.myChoicesCounter {
+  font-size: 12px;
+  color: #52617a;
+  font-variant-numeric: tabular-nums;
+}
+.myChoiceList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.myChoice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 4px 4px 9px;
+  border: 1px solid #efaacb;
+  border-radius: 8px;
+  background: #ffd2e8;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #8b1452;
+}
+.ballotExpect .myChoice {
+  border-color: #9bc7ef;
+  background: #cce8ff;
+  color: #164c93;
+}
+.myChoice a {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+.myChoice a:hover {
+  text-decoration: underline;
+}
+.myChoicePlayed {
+  border-color: #165dcc;
+  box-shadow: inset 0 0 0 1px #165dcc;
+}
+.myChoiceRemove {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: inherit;
+}
+.myChoiceRemove:hover {
+  background: #ffffff80;
+}
+.myChoiceNote {
+  display: block;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.pickButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 6px;
+  padding: 11px 18px;
+  border: 1px solid #b41463;
+  border-radius: 8px;
+  background: #b41463;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.ballotExpect .pickButton {
+  border-color: #165dcc;
+  background: #165dcc;
+}
+.pickButton:disabled {
+  border-color: #dce3ef;
+  background: #edf0f5;
+  color: #67758b;
+}
+.capNote {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #52617a;
+}
+.bridgeStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding-top: 18px;
+}
+.bridgeLink {
+  font-size: 13px;
+  color: #52617a;
+  text-decoration: underline;
+}
+.bridgeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 11px 18px;
+  border: 1px solid #7c8ba3;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  color: #165dcc;
+}
+.secondaryButton:hover:not(:disabled) {
+  background: #edf4ff;
+}
+.secondaryButton:active:not(:disabled) {
+  background: #dae7ff;
+}
+.secondaryButton:disabled {
+  border-color: #dce3ef;
+  background: #edf0f5;
+  color: #67758b;
+}
+.legacyBlock {
+  margin-top: 16px;
+}
+.legacyTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #172445;
+}
+
+@media (max-width: 1150px) {
+  .bridgeStrip {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 699px) {
+  .boardColumns {
+    grid-template-columns: 1fr;
+  }
+  .ballot {
+    padding: 16px;
+  }
+  .groupTabs {
+    gap: 6px;
+  }
+  .groupTab {
+    padding: 7px 10px;
+  }
+  .crowdItem {
+    padding: 14px 9px;
+    font-size: 14px;
+  }
+  .bridgeActions,
+  .bridgeActions > * {
+    width: 100%;
+  }
+}
+
+/* ── Event-wide wishlist (18-v3 legacy / `#locked-wishes`) ──────── */
+
+.lockedWishPanel {
+  --bar: #e968a6;
+  background: #fff0f7;
+  border-color: #efc5da;
+}
+.lockedWishPanel .panelTitle {
+  color: #b41463;
+}
+.wishStack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 14px;
+}
+.wishSubhead {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #172445;
+}
+.wishStack .crowdList {
+  margin: 0 0 8px;
+}
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 11px 18px;
+  border: 1px solid #165dcc;
+  border-radius: 8px;
+  background: #165dcc;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.primaryButton:hover {
+  background: #104aa9;
+}
+.primaryButton:active {
+  background: #0c3d8c;
+}
+
+/* ── Predicted setlist (18-v3 `.predict-layout`, color-v3) ──────── */
+
+.predictLayout {
+  display: grid;
+  gap: 20px;
+  align-items: start;
+}
+.predictEditor {
+  min-width: 0;
+}
+.predictHint {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #172445;
+}
+.predictNote {
+  margin: 6px 0 10px;
+  font-size: 12px;
+  color: #52617a;
+}
+.resultStrip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid #d3c3f2;
+  border-radius: 10px;
+  background: #ece4ff;
+}
+.resultStrip strong {
+  font-size: 18px;
+  font-weight: 700;
+  color: #5b3ca1;
+}
+.predictBridge {
+  margin: 8px 0;
+  font-size: 13px;
+  color: #52617a;
+}
+.predictBridge p {
+  margin: 2px 0;
+}
+.textButton {
+  min-height: 36px;
+  margin-right: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #165dcc;
+}
+.textButton:hover {
+  text-decoration: underline;
+}
+.predictList {
+  margin: 4px 0;
+}
+.predictRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 7px 0;
+  padding: 11px 10px;
+  border: 1px solid #ded6ee;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+.predictRowOut {
+  background: #f4f2f8;
+}
+.predictRank {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 27px;
+  min-height: 29px;
+  border-radius: 6px;
+  background: #e9e2fb;
+  font-weight: 700;
+  color: #5b3ca1;
+  font-variant-numeric: tabular-nums;
+}
+.predictTitle {
+  flex: 1;
+  min-width: 0;
+  color: #172445;
+  overflow-wrap: anywhere;
+}
+.predictTool {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 40px;
+  min-height: 40px;
+  border: 1px solid #aab8cf;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  color: #172445;
+}
+.predictTool:hover {
+  background: #edf4ff;
+}
+.predictActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.progressDivider {
+  margin: 7px 0;
+  padding: 10px;
+  border-top: 2px solid #165dcc;
+  border-radius: 5px;
+  background: #eaf2ff;
+  font-size: 12px;
+  font-weight: 700;
+  color: #165dcc;
+}
+.inlinePicker {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: min(640px, 80vh);
+  overflow: hidden;
+  border: 1px solid #ded4f3;
+  border-radius: 12px;
+  background: #f0ebfc;
+}
+
+@media (max-width: 699px) {
+  .predictActions > * {
+    flex: 1 1 100%;
+  }
+}

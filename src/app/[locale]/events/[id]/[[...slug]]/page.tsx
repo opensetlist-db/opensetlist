@@ -1286,10 +1286,10 @@ export default async function EventPage({ params }: Props) {
   const heroStart = formatVenueStart(event.startTime, event.country, locale);
   const heroVenueLine = [venue, city].filter(Boolean).join(" · ") || null;
 
-  // In-page jump links (18-v3 `.jump`). The first entry is the section
-  // the page leads with: the fan board while it is mounted (upcoming in
-  // the open window, or completed), the event-wide wishlist pre-show
-  // while that window is open, otherwise the setlist card. Same SSR
+  // In-page jump links (18-v3 `.jump`). The first entry is the fan
+  // board while it is mounted (upcoming in the open window, or
+  // completed), otherwise the setlist card — the approved legacy
+  // (board off) state also leads its links with the setlist. Same SSR
   // gates as the sections themselves, so every link has a target on
   // first paint. Info and impressions always render; performers only
   // when the sidebar has a lineup or performed credits.
@@ -1297,9 +1297,8 @@ export default async function EventPage({ params }: Props) {
     boardSeed !== null &&
     ((resolvedStatus === "upcoming" && wishPredictOpen) ||
       resolvedStatus === "completed");
-  const [boardT, wishT, impressionT] = await Promise.all([
+  const [boardT, impressionT] = await Promise.all([
     getTranslations("Board"),
-    getTranslations("Wishlist"),
     getTranslations("Impression"),
   ]);
   const detailT = await getTranslations("EventDetail");
@@ -1311,9 +1310,7 @@ export default async function EventPage({ params }: Props) {
   const jumpLinks: Array<{ href: string; label: string }> = [
     leadsWithBoard
       ? { href: `#fan-board-${id}`, label: boardT("title") }
-      : resolvedStatus === "upcoming" && wishPredictOpen
-        ? { href: `#event-wishlist`, label: wishT("title") }
-        : { href: `#setlist-card-${id}`, label: t("setlist") },
+      : { href: `#setlist-card-${id}`, label: t("setlist") },
     { href: "#event-info", label: detailT("infoTitle") },
     { href: "#event-impressions", label: impressionT("title") },
     ...(hasPerformers

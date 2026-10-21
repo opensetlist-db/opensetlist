@@ -12,6 +12,7 @@ import type { StoredBoardPick } from "@/lib/board/pickStorage";
 import { deriveUnitFilters } from "@/lib/predict/unitFilters";
 import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
+import styles from "@/components/event/eventDetail.module.css";
 
 /**
  * "My picks" for the open group on the fan board (n15): the rows I
@@ -130,25 +131,23 @@ export function BoardMyPicks({
   };
 
   return (
+    // 18-v3 `.my-choices`: my picks as tinted chips (pink in the want
+    // ballot, blue in the expect one — the ballot sets the tone), then
+    // the full-width "add" button. Played picks (results mode) get an
+    // ink-blue ring plus the ✓ label, not colour alone.
     <div
-      className="mt-3"
+      className={styles.myChoices}
       data-testid={kind === "pick" ? "board-my-picks" : "board-my-wishes"}
     >
-      <div className="mb-1 flex items-center justify-between">
-        <h4 className="text-[12px] font-medium" style={{ color: colors.textSecondary }}>
-          {t(copy.mine)}
-        </h4>
-        <span
-          data-testid="board-pick-counter"
-          className="text-[11px] tabular-nums"
-          style={{ color: colors.textMuted }}
-        >
+      <div className={styles.myChoicesHead}>
+        <h4 className={styles.myChoicesTitle}>{t(copy.mine)}</h4>
+        <span data-testid="board-pick-counter" className={styles.myChoicesCounter}>
           {t("counter", { count: picks.length, max })}
         </span>
       </div>
 
       {picks.length > 0 && (
-        <ul className="mb-1.5 space-y-1">
+        <ul className={styles.myChoiceList}>
           {picks.map((p) => {
             // Live catalog wins over the stored flag while the page has
             // one: a song moderated after it was picked drops out of the
@@ -165,45 +164,25 @@ export function BoardMyPicks({
                 key={p.id}
                 data-testid="board-my-pick"
                 data-played={played || undefined}
-                className="flex items-center gap-2 rounded-md border border-transparent px-2 py-1 text-[13px]"
-                style={
-                  played
-                    ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
-                    : { background: colors.bgSubtle }
-                }
+                className={`${styles.myChoice} ${played ? styles.myChoicePlayed : ""}`}
               >
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0">
                   {available ? (
-                    <Link
-                      href={`/${locale}/songs/${p.songId}`}
-                      className="block truncate"
-                      style={{ color: colors.textPrimary }}
-                    >
-                      {p.title}
-                    </Link>
+                    <Link href={`/${locale}/songs/${p.songId}`}>{p.title}</Link>
                   ) : (
-                    <span
-                      className="block truncate"
-                      style={{ color: colors.textMuted }}
-                    >
+                    <span style={{ color: colors.textMuted }}>
                       {p.title}{" "}
-                      <span className="text-[10px]">({t("unavailable")})</span>
+                      <span className="text-[11px]">({t("unavailable")})</span>
                     </span>
                   )}
                   {crossGroup && (
-                    <span
-                      className="block text-[10px]"
-                      style={{ color: colors.textSubtle }}
-                    >
+                    <span className={styles.myChoiceNote}>
                       {t("countedUnder", { group: groupName })}
                     </span>
                   )}
                 </span>
                 {played && (
-                  <span
-                    className="flex-shrink-0 rounded px-1.5 text-[10px]"
-                    style={{ color: colors.primary }}
-                  >
+                  <span className="flex-shrink-0 px-1 text-[11px] font-bold">
                     ✓ {t("minePlayed")}
                   </span>
                 )}
@@ -213,8 +192,7 @@ export function BoardMyPicks({
                     onClick={() => onRemove(p)}
                     disabled={pending.has(p.songId)}
                     aria-label={t("removeAria", { title: p.title })}
-                    className="flex-shrink-0 px-1 text-[14px] leading-none disabled:opacity-40"
-                    style={{ color: colors.textMuted }}
+                    className={`${styles.myChoiceRemove} disabled:opacity-40`}
                   >
                     ✕
                   </button>
@@ -232,20 +210,12 @@ export function BoardMyPicks({
             onClick={() => setPickerOpen(true)}
             disabled={atCap}
             aria-describedby={atCap ? capNoteId : undefined}
-            className="rounded-full px-3 py-1 text-[12px] disabled:opacity-50"
-            style={{
-              border: `1px dashed ${colors.border}`,
-              color: colors.textPrimary,
-            }}
+            className={styles.pickButton}
           >
             {t(copy.add, { group: groupName })}
           </button>
           {atCap && (
-            <p
-              id={capNoteId}
-              className="mt-1 text-[11px]"
-              style={{ color: colors.textMuted }}
-            >
+            <p id={capNoteId} className={styles.capNote}>
               {t("capReached", { max })}
             </p>
           )}

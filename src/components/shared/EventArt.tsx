@@ -74,7 +74,7 @@ const REGION: Record<EventArtVariant, string> = {
   compact:
     "h-[120px] w-[76px] rounded-lg p-2 min-[1100px]:h-24 min-[1100px]:w-24",
   detail:
-    "h-[118px] w-[90px] rounded-xl border border-[#e2def2] p-[9px] min-[700px]:h-[156px] min-[700px]:w-[156px] min-[700px]:rounded-[18px] min-[700px]:p-5 min-[801px]:h-[182px] min-[801px]:w-[204px]",
+    "h-[118px] w-[90px] rounded-xl p-[9px] min-[700px]:h-[156px] min-[700px]:w-[156px] min-[700px]:rounded-[18px] min-[700px]:p-5 min-[801px]:h-[182px] min-[801px]:w-[204px]",
 };
 
 export function EventArt(props: EventArtProps) {

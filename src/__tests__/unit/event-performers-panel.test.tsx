@@ -62,7 +62,7 @@ describe("EventPerformersPanel", () => {
   it("feeds the unit colour (or its palette fallback) into --artist, never into text", () => {
     render(<EventPerformersPanel locale="ko" units={units} performers={[]} />);
     const cerise = screen.getByText("Cerise Bouquet").closest("a")!;
-    expect(cerise.style.getPropertyValue("--artist")).toBe("#e91e8c");
+    expect(cerise.style.getPropertyValue("--artist")).toBe(units[0].color);
     expect(cerise.style.color).toBe("");
     const dollch = screen.getByText("DOLLCHESTRA").closest("a")!;
     expect(dollch.style.getPropertyValue("--artist")).toBe(
