@@ -45,8 +45,12 @@
 //                                    one whole load (login, navigation,
 //                                    settle, screenshot, WebP) is cut at
 //                                    2×S. A timed-out load is recorded as an
-//                                    error starting with "timeout:" and the
-//                                    run moves on to the next entry.
+//                                    error starting with "timeout:" (a later
+//                                    --repeat round's failure goes to the
+//                                    entry's `repeatErrors` instead, keeping
+//                                    round 1's capture) and the run moves on
+//                                    to the next entry; either fails the run
+//                                    (exit 1) at the end.
 //     [--run-timeout M]              default 90 (minutes). Whole-run guard:
 //                                    once M minutes have passed, entries not
 //                                    yet loaded are recorded as "timeout:"
@@ -115,20 +119,24 @@ const { values: args } = parseArgs({
 });
 
 // Positive-number options; a typo fails here rather than as NaN timeouts.
-function positive(name, { integer = false } = {}) {
+// `max` keeps the timeouts under setTimeout's 2^31−1 ms ceiling (~24.8
+// days): Node clamps a larger delay to 1 ms, which would fire the run guard
+// immediately.
+function positive(name, { integer = false, max = Infinity } = {}) {
   const n = Number(args[name]);
-  if (!Number.isFinite(n) || n <= 0 || (integer && !Number.isInteger(n))) {
-    console.error(`--${name} must be a positive ${integer ? "integer" : "number"} (got ${args[name]})`);
+  if (!Number.isFinite(n) || n <= 0 || n > max || (integer && !Number.isInteger(n))) {
+    const limit = max < Infinity ? ` up to ${max}` : "";
+    console.error(`--${name} must be a positive ${integer ? "integer" : "number"}${limit} (got ${args[name]})`);
     process.exit(1);
   }
   return n;
 }
 const REPEAT = positive("repeat", { integer: true });
-const PAGE_TIMEOUT_MS = positive("page-timeout") * 1000;
+const PAGE_TIMEOUT_MS = positive("page-timeout", { max: 3600 }) * 1000;
 // One load's hard cap: navigation alone may use PAGE_TIMEOUT_MS, and the
 // settle wait, screenshot and WebP encoding of a long page come on top.
 const LOAD_BUDGET_MS = PAGE_TIMEOUT_MS * 2;
-const RUN_TIMEOUT_MS = positive("run-timeout") * 60000;
+const RUN_TIMEOUT_MS = positive("run-timeout", { max: 7 * 24 * 60 }) * 60000;
 
 const BASE = args.base.replace(/\/+$/, "");
 const BROWSERS = { chromium, webkit };
@@ -275,7 +283,7 @@ const SHARP_INPUT = { limitInputPixels: false };
 
 // `png` in the manifest is null unless --png was passed; comparisons should
 // read the `webp` array, which every run fills (unless --no-webp).
-async function writeImages(png, stem) {
+async function writeImages(png, stem, live) {
   const files = { png: null, webp: [] };
   if (PNG) {
     files.png = `${stem}.png`;
@@ -285,6 +293,7 @@ async function writeImages(png, stem) {
   const { width, height } = await sharp(png, SHARP_INPUT).metadata();
   const parts = Math.ceil(height / WEBP_MAX_PART_HEIGHT);
   for (let i = 0; i < parts; i++) {
+    live.check();
     const top = i * WEBP_MAX_PART_HEIGHT;
     const file = parts === 1 ? `${stem}.webp` : `${stem}.part${i + 1}.webp`;
     await sharp(png, SHARP_INPUT)
@@ -329,7 +338,12 @@ function errorText(e) {
 // wait, body accounting and screenshot. Returns the manifest entry (or, for
 // a TTFB-only round, just `{ ttfbMs, status }`); the caller owns the manifest so an
 // abandoned, timed-out load can never push into it late.
-async function loadOnce(ctx, { key, url, admin }, vpKey, round) {
+//
+// `live.check()` throws once the caller has given up on this load. Closing
+// the context stops the Playwright calls of an abandoned load, but not the
+// sharp/fs work in writeImages, so that checks too: a timed-out entry must
+// not leave WebP files next to a manifest that records it as an error.
+async function loadOnce(ctx, { key, url, admin }, vpKey, round, live) {
   const full = round === 1;
   ctx.setDefaultTimeout(PAGE_TIMEOUT_MS);
   ctx.setDefaultNavigationTimeout(PAGE_TIMEOUT_MS);
@@ -441,6 +455,7 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round) {
       const n = performance.getEntriesByType("navigation")[0];
       return Math.round(n.responseStart - n.requestStart);
     });
+    live.check();
     console.log("r%s %s %s %s %sms", round, vpKey, key, resp?.status(), ttfbMs);
     return { ttfbMs, status: resp?.status() };
   }
@@ -462,7 +477,8 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round) {
   });
   const png = await page.screenshot({ fullPage: true });
   await Promise.all(bodyReads);
-  const files = await writeImages(png, `${key}__${vpKey}`);
+  const files = await writeImages(png, `${key}__${vpKey}`, live);
+  live.check();
   const parts = files.webp.length > 1 ? `${files.webp.length} parts` : "";
   console.log("%s %s %s %sms cls %s %s", vpKey, key, resp?.status(), m.ttfbMs, m.cls, parts);
   return {
@@ -489,19 +505,33 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round) {
 // run here either).
 async function load(t, vpKey, round) {
   const vp = VIEWPORTS[vpKey];
-  const ctx = await withTimeout(
-    browser.newContext({
-      viewport: { width: vp.width, height: vp.height },
-      isMobile: !!vp.isMobile,
-      hasTouch: !!vp.hasTouch,
-      deviceScaleFactor: vp.deviceScaleFactor ?? 1,
-      timezoneId: "Asia/Seoul",
-    }),
-    PAGE_TIMEOUT_MS,
-    "browser.newContext",
-  );
+  const pending = browser.newContext({
+    viewport: { width: vp.width, height: vp.height },
+    isMobile: !!vp.isMobile,
+    hasTouch: !!vp.hasTouch,
+    deviceScaleFactor: vp.deviceScaleFactor ?? 1,
+    timezoneId: "Asia/Seoul",
+  });
+  let ctx;
   try {
-    return await withTimeout(loadOnce(ctx, t, vpKey, round), LOAD_BUDGET_MS, `${t.key} ${vpKey} load`);
+    ctx = await withTimeout(pending, PAGE_TIMEOUT_MS, "browser.newContext");
+  } catch (e) {
+    // A context that arrives after the race was lost would otherwise stay
+    // open until browser.close().
+    pending.then((c) => c.close()).catch(() => {});
+    throw e;
+  }
+  let abandoned = false;
+  const live = {
+    check() {
+      if (abandoned) throw new Error("abandoned after timeout");
+    },
+  };
+  try {
+    return await withTimeout(loadOnce(ctx, t, vpKey, round, live), LOAD_BUDGET_MS, `${t.key} ${vpKey} load`);
+  } catch (e) {
+    abandoned = true;
+    throw e;
   } finally {
     await Promise.race([ctx.close().catch(() => {}), new Promise((r) => setTimeout(r, 10000))]);
   }
@@ -517,8 +547,10 @@ const median = (xs) => {
 // One slot per key × viewport, in capture order. `entry` is round 1's
 // manifest entry (or its error); later rounds add TTFB samples to it.
 const slots = selected.flatMap((t) =>
-  Object.keys(VIEWPORTS).map((vpKey) => ({ t, vpKey, entry: null, samples: [], repeatErrors: [] })),
+  Object.keys(VIEWPORTS).map((vpKey) => ({ t, vpKey, entry: null, loading: false, samples: [], repeatErrors: [] })),
 );
+
+const errorEntry = (s, error) => ({ key: s.t.key, vp: s.vpKey, browser: args.browser, error });
 
 // Builds the manifest from whatever has been captured so far, so the run
 // guard can write a partial one. Entries not yet loaded become "timeout:"
@@ -527,7 +559,9 @@ const slots = selected.flatMap((t) =>
 function buildManifest(cutShort) {
   const runLimit = `timeout: run limit (--run-timeout ${args["run-timeout"]} min) reached`;
   return slots.map((s) => {
-    if (!s.entry) return { key: s.t.key, vp: s.vpKey, browser: args.browser, error: `${runLimit} before this entry` };
+    // `loading`: the backstop timer fired while this entry's first load was
+    // still in flight, so it was cut, not skipped.
+    if (!s.entry) return errorEntry(s, `${runLimit} ${s.loading ? "while this entry was loading" : "before this entry"}`);
     if (s.entry.error) return s.entry;
     const repeatErrors = [...s.repeatErrors];
     const missingRounds = REPEAT - s.samples.length - s.repeatErrors.length;
@@ -555,10 +589,14 @@ async function finish(cutShort) {
   fs.writeFileSync(path.join(outDir, "captures.json"), JSON.stringify(manifest, null, 2));
   await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
   const errors = manifest.filter((e) => e.error).length;
+  // A failed later-round load is not an entry error (round 1's capture
+  // stands), but it is still a load that did not complete, so it fails the
+  // run too: a run whose every repeat timed out must not exit 0.
+  const repeatErrors = manifest.reduce((n, e) => n + (e.repeatErrors?.length ?? 0), 0);
   if (cutShort) console.log(`RUN TIMEOUT: --run-timeout ${args["run-timeout"]} min reached; manifest is partial`);
-  console.log(`done: ${manifest.length} captures, ${errors} errors → ${outDir}`);
+  console.log(`done: ${manifest.length} captures, ${errors} errors, ${repeatErrors} repeat errors → ${outDir}`);
   if (baseline) compareWithBaseline(baseline, manifest);
-  process.exit(errors || cutShort ? 1 : 0);
+  process.exit(errors || repeatErrors || cutShort ? 1 : 0);
 }
 
 // Whole-run guard. The loop below checks the deadline between loads; this
@@ -569,10 +607,12 @@ setTimeout(() => {
   finish(true);
 }, RUN_TIMEOUT_MS).unref();
 
-// A NaN timing (an odd navigation entry) is not a sample; with none left the
-// entry's ttfbMs is null, which --compare already skips.
-function addSample(s, ms) {
+// A NaN timing (an odd navigation entry) is not a sample; it is noted in
+// repeatErrors so samples + repeatErrors still account for every round. With
+// no samples left the entry's ttfbMs is null, which --compare skips.
+function addSample(s, ms, round) {
   if (Number.isFinite(ms)) s.samples.push(ms);
+  else s.repeatErrors.push(`round ${round}: TTFB not a number`);
 }
 
 let cutShort = false;
@@ -584,23 +624,26 @@ run: for (let round = 1; round <= REPEAT; round++) {
     }
     // An entry whose first load failed has no page to sample again.
     if (round > 1 && s.entry.error) continue;
+    s.loading = true;
     try {
       const r = await load(s.t, s.vpKey, round);
       if (round === 1) {
         s.entry = r;
-        addSample(s, r.ttfbMs);
+        addSample(s, r.ttfbMs, round);
       } else if (r.status !== s.entry.status) {
         // A 500 or a redirect in a later round is not a TTFB sample of the
         // page round 1 captured.
         s.repeatErrors.push(`round ${round}: status ${r.status} (round 1: ${s.entry.status})`);
       } else {
-        addSample(s, r.ttfbMs);
+        addSample(s, r.ttfbMs, round);
       }
     } catch (e) {
       const err = errorText(e);
-      if (round === 1) s.entry = { key: s.t.key, vp: s.vpKey, browser: args.browser, error: err };
+      if (round === 1) s.entry = errorEntry(s, err);
       else s.repeatErrors.push(`round ${round}: ${err}`);
       console.log("ERR r%s %s %s %s", round, s.vpKey, s.t.key, err.slice(0, 200));
+    } finally {
+      s.loading = false;
     }
   }
 }
@@ -681,26 +724,26 @@ function compareWithBaseline(before, after) {
   // all-entries 1.26× with an IQR of 1.20–1.30× is a shift, one with an IQR
   // of 0.85–1.60× is noise. Quartiles interpolate linearly.
   const quantile = (xs, q) => {
-    const s = [...xs].sort((x, y) => x - y);
+    const s = [...xs].sort((a, b) => a - b);
     const pos = (s.length - 1) * q;
     const lo = Math.floor(pos);
     return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (pos - lo);
   };
-  const x = (r) => `${r.toFixed(2)}×`;
+  const fmtRatio = (r) => `${r.toFixed(2)}×`;
   console.log(
     "median TTFB ratio (after/before): %s",
     ttfb === null
       ? "n/a"
-      : `${x(ttfb)}   per-entry spread: IQR ${x(quantile(ttfbRatios, 0.25))}–${x(quantile(ttfbRatios, 0.75))}, ` +
-          `min–max ${x(Math.min(...ttfbRatios))}–${x(Math.max(...ttfbRatios))}, n=${ttfbRatios.length}`,
+      : `${fmtRatio(ttfb)}   per-entry spread: IQR ${fmtRatio(quantile(ttfbRatios, 0.25))}–${fmtRatio(quantile(ttfbRatios, 0.75))}, ` +
+          `min–max ${fmtRatio(Math.min(...ttfbRatios))}–${fmtRatio(Math.max(...ttfbRatios))}, n=${ttfbRatios.length}`,
   );
   // Only --repeat runs have samples. Ratios well inside this band are what
   // rerunning the same code would also produce.
   if (ttfbSelfSpread.length)
     console.log(
       "this run's TTFB repeat spread (slowest/fastest load per entry): median %s, max %s, n=%d",
-      x(median(ttfbSelfSpread)),
-      x(Math.max(...ttfbSelfSpread)),
+      fmtRatio(median(ttfbSelfSpread)),
+      fmtRatio(Math.max(...ttfbSelfSpread)),
       ttfbSelfSpread.length,
     );
   console.log(
