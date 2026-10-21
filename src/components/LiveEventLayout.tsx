@@ -428,14 +428,13 @@ export function LiveEventLayout({
           //   - `eventTitle`: short event-specific identifier (e.g.
           //     "Hyogo Day.1" instead of "Garden Stage / Hyogo Day.1").
           //
-          // `dateLine` stays as a forwarded prop on the chain (kept
-          // for forward-compatibility if the operator wants to surface
-          // date/venue/city on the captured PNG later) but is passed
-          // empty here per the operator's preference: the share card
-          // should show series + event title only, no date row.
+          // `dateLine`: "2026.05.02 · venue" under the title, as the
+          // approved 18-share-v1 cards print it (the card had carried
+          // no date row since v0.11.6). Built from the venue date's
+          // UTC parts — the stored calendar date, not the viewer's.
           seriesName={seriesShortName ?? series?.name ?? ""}
           eventTitle={eventShortName ?? title}
-          dateLine=""
+          dateLine={shareDateLine(date, venue)}
           availableSongs={availableSongs}
           unitFilters={unitFilters}
           setlistStartLabel={setlistStartLabel}
@@ -488,4 +487,14 @@ export function LiveEventLayout({
       </aside>
     </div>
   );
+}
+
+/** "2026.05.02 · Marine Messe Fukuoka" for the share card header. */
+function shareDateLine(date: Date | string | null, venue: string | null): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const ymd =
+    d && !Number.isNaN(d.getTime())
+      ? `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, "0")}.${String(d.getUTCDate()).padStart(2, "0")}`
+      : "";
+  return [ymd, venue].filter(Boolean).join(" · ");
 }

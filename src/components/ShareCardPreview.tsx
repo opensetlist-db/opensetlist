@@ -24,151 +24,139 @@ function captureShift(key: CaptureShiftKey) {
 }
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
-import { shareCardColors, type ShareCardTheme } from "@/styles/tokens";
+import type { ShareCardTheme } from "@/styles/tokens";
 
 
-/**
- * "LIVE" badge red — intentionally theme-invariant so the captured
- * PNG reads as a live indicator regardless of whether the user
- * shared from the dark or light card theme. Tailwind red-600
- * (#dc2626) matches the project's existing `colors.live` token but
- * is duplicated here, not imported, so the share-card visual
- * language stays decoupled from event-status palette decisions that
- * might re-tone `colors.live` for accessibility or branding reasons
- * later.
- */
-const LIVE_BADGE_BG = "#dc2626";
-
-/**
- * Pixel footprint reserved on the right of the title block when the
- * LIVE badge is rendered absolutely-positioned in the corner. Drives
- * the `paddingRight` on the title container so long event titles
- * truncate (via natural wrap) rather than running under the badge.
+/*
+ * Share-card palette — approved packet 18-share-v1 (wiki
+ * `output/redesign/handoffs/18/share-v1/style.css`). Each phase owns
+ * an accent + header wash: pre-show pink, live blue, final lavender
+ * (the card family shared with the concert-detail page); the dark
+ * theme repaints the export only — the site itself stays light.
  *
- * Locked to the badge's actual rendered width: 6px pulse dot + 6px
- * gap + ~28px "LIVE" text at 11px font + 10px+10px horizontal padding
- * + 0.5px×2 inner spacing = ~60px badge content + ~12px gap from
- * title block + ~8px right-side breathing room ≈ 80px. If the badge
- * geometry changes (font size, padding, label text), revisit this
- * constant in lockstep — coupling is explicit by design so a future
- * tweak to the badge doesn't silently overlap the title.
+ * Kept in this file (ShareCard* files may carry their own hexes) rather
+ * than in `tokens.ts`: the exported bitmap is its own surface, and its
+ * colours were measured on the 600px card, not against page chrome.
+ * Hit rows pair a green ✓ with a tinted row; rows that were not
+ * predicted get a neutral dot (and the legend says so), never a
+ * red/"failed" mark — a live snapshot can't call an unplayed
+ * prediction a miss yet.
  */
-const LIVE_BADGE_RESERVED_PX = 80;
+interface CardPalette {
+  ink: string;
+  muted: string;
+  surface: string;
+  line: string;
+  row: string;
+  hit: string;
+  hitBg: string;
+  accent: string;
+  wash: string;
+}
+
+const BASE: Record<ShareCardTheme, CardPalette> = {
+  light: {
+    ink: "#172445",
+    muted: "#52617a",
+    surface: "#ffffff",
+    line: "#dce2ed",
+    row: "#f4f6fb",
+    hit: "#176c50",
+    hitBg: "#e7f6ef",
+    accent: "#5b3ca1",
+    wash: "#eee5ff",
+  },
+  dark: {
+    ink: "#f3f5ff",
+    muted: "#bcc7df",
+    surface: "#14213a",
+    line: "#3b4b65",
+    row: "#1e2c45",
+    hit: "#9ce6c4",
+    hitBg: "#153d37",
+    accent: "#cdb7ff",
+    wash: "#342d51",
+  },
+};
+
+const PHASE_ACCENT: Record<
+  ShareCardTheme,
+  Record<ShareCardMode, Pick<CardPalette, "accent" | "wash">>
+> = {
+  light: {
+    prediction: { accent: "#99385f", wash: "#ffe3f0" },
+    live: { accent: "#165dcc", wash: "#dcedff" },
+    final: { accent: "#5b3ca1", wash: "#eee5ff" },
+  },
+  dark: {
+    prediction: { accent: "#f6b9d1", wash: "#49283f" },
+    live: { accent: "#a6d3ff", wash: "#1d3c5c" },
+    final: { accent: "#cdb7ff", wash: "#342d51" },
+  },
+};
+
+function paletteFor(theme: ShareCardTheme, mode: ShareCardMode): CardPalette {
+  return { ...BASE[theme], ...PHASE_ACCENT[theme][mode] };
+}
+
+/** Thin three-colour strip on top of every card (pink / blue / lavender). */
+const RIBBON =
+  "linear-gradient(90deg, #e9a7c7 0 28%, #9dcaf1 28% 62%, #bfa8ec 62% 100%)";
+
+/** The LIVE pill keeps its raspberry on both themes (badge, not ink). */
+const LIVE_PILL = { color: "#b4144f", background: "#fff0f5" };
 
 /**
- * Row-height floor for song-title rows in the captured PNG. iOS
- * Safari's html2canvas pipeline collapses line-boxes on `overflow:
- * hidden + whiteSpace: nowrap` spans more aggressively than desktop
- * browsers do, clipping the bottom half of each title in the saved
- * image. Forcing the row's `minHeight` to a known floor bypasses
- * line-box computation entirely — the row physically owns enough
- * vertical space to contain the rendered text regardless of how the
- * capture pipeline interprets line-height.
- *
- * 28px = 1.8 × ~15px (room for 13px font + 2px descender headroom)
- * + small slop for cross-browser font-metrics variance. Browsers
- * fold this into the natural row height (no visible change in the
- * live preview); only the captured PNG depends on the floor.
+ * Pixel footprint reserved on the right of the header's top line for
+ * the phase pill. The pill is absolutely positioned (html2canvas does
+ * not reliably honour flex sizing when it captures — flex children
+ * fall back to intrinsic width), so the eyebrow's box is bounded by a
+ * padding instead.
  */
-const CAPTURE_ROW_MIN_HEIGHT_PX = 28;
+const PILL_RESERVED_PX = 120;
 
 /**
- * Vertical padding inside each song-title row. Tuned down from 5px
- * (pre-v0.13.18) to 2px because 32-song setlists were producing
- * portrait share images that scrolled well past the viewer's
- * attention. The row's effective height is `max(minHeight, line-box) +
- * 2 × paddingY`; with `CAPTURE_ROW_LINE_HEIGHT = 2.2` driving a
- * ~28.6px line-box, the row floor is the line-box itself and padding
- * is pure inter-row whitespace. Cutting 6px per row × 32 rows trims
- * ~190px off the captured PNG without touching the line-height
- * safeguards that PR #305 layered in for iOS Safari glyph-clipping.
- *
- * Horizontal padding stays at 8px — the rank column needs its left
- * breathing room and the title needs room to truncate cleanly before
- * the row's rounded-corner edge.
+ * Song-row geometry. iOS Safari's html2canvas pipeline collapses
+ * line-boxes on `overflow: hidden + nowrap` spans and clipped the
+ * bottom of titles in saved images; two safeguards from the earlier
+ * card are kept: an explicit row `minHeight` (the row owns its height
+ * whatever line-height the capture computes) and a generous title
+ * line-height (≈ 7px of leading below descenders). With 14px titles,
+ * `2.2 × 14 ≈ 31px` + 6px padding top and bottom lands on the
+ * approved ~42px row.
  */
-const ROW_PADDING_Y_PX = 2;
-const ROW_PADDING_X_PX = 8;
-
-/**
- * Line-height multiplier for song-title spans, paired with the row
- * `minHeight` floor above. Successive iOS Safari captures pushed this
- * upward: PR #305 / v0.10.2 used 1.5 for desktop html2canvas, 1.8 was
- * needed once mobile captures showed up, and 2.2 was needed after
- * operator feedback that the bottom pixels of letters like e/v/B
- * (which extend slightly below the baseline) were still being clipped
- * by the title span's own `overflow: hidden`. 2.2 × 13px ≈ 28.6px
- * line-box, giving ~7px of leading below the descender — enough buffer
- * that any iOS Safari glyph-placement drift stays inside the span's
- * visible bounds.
- *
- * Belt-and-suspenders with `CAPTURE_ROW_MIN_HEIGHT_PX`. If a future
- * browser quirk affects one of the two, the other should still keep
- * the glyph inside the captured bounds.
- */
+const ROW_MIN_HEIGHT_PX = 42;
+const ROW_PADDING_Y_PX = 6;
 const CAPTURE_ROW_LINE_HEIGHT = 2.2;
 
 /**
- * Side length of the checkbox-style hit indicator that sits before
- * the position number on every song row. Must stay in lockstep
- * across all three row variants — `ShareCardRow`'s filled-checkbox
- * (hit), `ShareCardRow`'s outline-only box (miss), and
- * `PredictionRow`'s transparent spacer — so the rank column's left
- * edge lands at the same x in every captured PNG regardless of
- * mode. 14px is the smallest size that keeps the ✓ glyph legible at
- * scale=2 capture quality.
- */
-const INDICATOR_SIZE_PX = 14;
-
-/**
- * Total-song-count threshold at and above which the row list splits
- * into two side-by-side columns. Below this, the rows stack in a
- * single column the way they always have.
- *
- * Geometry rationale at the card's fixed 600px width: outer padding
- * (`26px 32px 22px`) reserves 64px horizontally → 536px of inner
- * width for rows; two columns with `COLUMN_GAP_PX` (16px) gap →
- * `(536 − 16) / 2 = 260px` per column. Subtract the indicator (14px)
- * + indicator-to-rank gap (10px) + rank column (18px) + rank-to-title
- * gap (10px) = 52px of fixed-width prefix, leaving ~208px for the
- * title slot. At the 13px CJK font that's ~16–17 glyphs of title,
- * enough for most setlist titles to render without aggressive
- * truncation.
- *
- * 21 picked so typical concert mainlines (15–18 songs incl. encore)
- * stay single-column — the dead right-column space at those lengths
- * reads more like generous breathing room than wasted real estate.
- * Long predictions (32-song festival sets, multi-day tour
- * predictions) and festival final setlists are the ones that
- * actually need two-column compression to stay attention-span-sized.
- *
- * Threshold is by total song count, not by entry count, so the
- * encore divider's presence doesn't shift the boundary between
- * single- and two-column rendering. Once two-column kicks in, the
- * split itself IS done by entry count for visual balance — see
- * `splitAtMid` use sites in `ActualResultBody`.
+ * Two columns from 21 rows (18-share-v1: up to 20 single column), read
+ * left top→bottom then right top→bottom. The split is by entry count
+ * (songs + the encore divider) so the columns stay within ±1 entry.
  */
 const TWO_COLUMN_MIN_SONG_COUNT = 21;
-
-/**
- * Horizontal gap between the two row columns when the threshold is
- * crossed. 16px reads cleanly as two distinct columns at the
- * card's 600px width without eating much title slot width. See the
- * geometry math in `TWO_COLUMN_MIN_SONG_COUNT` for the column-width
- * derivation.
- */
 const COLUMN_GAP_PX = 16;
 
 /**
  * Split an array at the midpoint, biased so the LEFT column gets the
- * extra item on odd counts. `Math.ceil(items.length / 2)` matches the
- * setlist.fm reading convention where a 21-item list reads 1..11 in
- * the left column and 12..21 in the right.
+ * extra item on odd counts (a 21-item list reads 1..11 then 12..21).
  */
 function splitAtMid<T>(items: T[]): [T[], T[]] {
   const mid = Math.ceil(items.length / 2);
   return [items.slice(0, mid), items.slice(mid)];
 }
+
+/** "1" → "01": the approved rows show two-digit positions. */
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/** Phase index shown in the eyebrow ("MY SETLIST / 01"). */
+const PHASE_INDEX: Record<ShareCardMode, number> = {
+  prediction: 1,
+  live: 2,
+  final: 3,
+};
 
 interface Props {
   theme: ShareCardTheme;
@@ -176,7 +164,7 @@ interface Props {
   /** Pre-resolved series + event title for the card header. */
   seriesName: string;
   eventTitle: string;
-  /** Pre-formatted date+venue line (page resolves via formatVenueDate). */
+  /** "2026.05.02 · venue"; empty hides the line. */
   dateLine: string;
   /**
    * Actual setlist filtered to song-type items already (caller does the
@@ -191,13 +179,14 @@ interface Props {
    */
   predictions: PredictionEntry[];
   /**
-   * Pre-computed score from `calcShareCardScore` (order-independent).
-   * Only consumed in `live` / `final` modes; ignored in `prediction`.
+   * Pre-computed score from `calcShareCardScore` (order-independent,
+   * actual song rows with a predicted match / actual song rows). Only
+   * consumed in `live` / `final` modes; ignored in `prediction`.
    */
   matched: number;
   total: number;
   percentage: number;
-  /** Display locale (drives `displayOriginalTitle`). */
+  /** Display locale (drives `displayOriginalTitle` and the live stamp). */
   locale: string;
 }
 
@@ -205,14 +194,11 @@ interface Props {
  * The DOM target for `html2canvas`. Forwarded ref lets the parent
  * (`<ShareCardModal>`) pass the element to the capture helper.
  *
- * Width is fixed at 600px per `raw/mockups/mockup-share-card.jsx`
- * — at scale=2, html2canvas produces a 1200px PNG which Twitter
- * accepts at full quality. Heights flow naturally from setlist
- * length.
+ * Width is fixed at 600px; at scale=2 html2canvas produces a 1200px
+ * PNG. Height flows from the list length.
  *
- * Renders song titles only (no performers / unit / subtitle / MC
- * / video / interval). Caller is responsible for filtering
- * `type === "song"`.
+ * Renders song titles only (no performers / unit / MC / video /
+ * interval). Caller is responsible for filtering `type === "song"`.
  */
 export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
   function ShareCardPreview(
@@ -232,944 +218,486 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
     ref,
   ) {
     const t = useTranslations("ShareCard");
-    const T = shareCardColors[theme];
-    const isPredictionMode = mode === "prediction";
-    const isLiveMode = mode === "live";
+    const setlistT = useTranslations("Setlist");
+    const P = paletteFor(theme, mode);
+    const isPrediction = mode === "prediction";
+    const isLive = mode === "live";
 
     const mainSongs = actualSongs.filter((s) => !s.isEncore);
     const encoreSongs = actualSongs.filter((s) => s.isEncore);
+    const rowCount = isPrediction ? predictions.length : actualSongs.length;
+
+    const pillLabel = isPrediction
+      ? t("pillPrediction")
+      : isLive
+        ? t("pillLive")
+        : t("pillFinal");
+
+    // Live snapshot stamp: a live card is a moment, so it says when.
+    // Viewer's locale and zone, minute precision — the modal renders
+    // the visible and the capture copy within the same minute.
+    const liveStamp = isLive
+      ? new Intl.DateTimeFormat(locale, {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZoneName: "short",
+        }).format(new Date())
+      : "";
+
+    const section = (padding: string, border = true): React.CSSProperties => ({
+      padding,
+      borderBottom: border ? `1px solid ${P.line}` : undefined,
+    });
 
     return (
       <div
         ref={ref}
         style={{
           width: CARD_CAPTURE_WIDTH_PX,
-          background: T.cardBg,
-          borderRadius: 20,
+          background: P.surface,
+          color: P.ink,
+          border: `1px solid ${P.line}`,
+          borderRadius: 16,
           overflow: "hidden",
-          border: T.cardBorder,
-          // Latin-first fallback chain so ASCII characters (Latin
-          // letters, digits, spaces) render with the system Latin
-          // font's metrics — `system-ui` resolves to SF Pro on
-          // iOS/macOS, Segoe UI on Windows, Roboto on Android — and
-          // CJK characters fall through to Noto Sans JP / Pretendard
-          // / Noto Sans KR. The pre-v0.11.5 order put `Noto Sans JP`
-          // first which the live browser handled fine (modern CSS
-          // text-shaping uses per-script font selection), but
-          // html2canvas's capture pipeline on iOS Safari fell back
-          // wholesale to Hiragino for the whole run and rendered
-          // ASCII spaces at ideographic (full-width) metrics —
-          // operator-spotted: "Garden  Stage  /  兵庫  公演  Day .1"
-          // in the captured PNG vs tight "Garden Stage／兵庫公演 Day.1"
-          // in the live preview. Putting the Latin-resolving system
-          // font first makes the per-script selection more robust
-          // through the capture pipeline.
+          // Latin-first fallback chain so ASCII renders with the
+          // system Latin font's metrics and CJK falls through to Noto.
+          // With a CJK font first, html2canvas on iOS Safari fell back
+          // wholesale to Hiragino and rendered ASCII spaces at
+          // full-width metrics in the saved PNG.
           fontFamily:
             "system-ui, -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Pretendard', 'Noto Sans KR', sans-serif",
           position: "relative",
         }}
       >
-        {/* Dark: radial gradient overlay covers the whole card.
-            Both themes: 4px top accent bar (light-blue → brand-blue
-            gradient). The accent bar is rendered with explicit
-            stacking (position: relative, z-index: 2) so it sits
-            above the dark theme's absolutely-positioned radial
-            overlay — without the stacking, the overlay would paint
-            over the top 4px and hide the accent. */}
-        {T.radialOverlay && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              pointerEvents: "none",
-              background: T.radialOverlay,
-            }}
-          />
-        )}
-        {T.topBar && (
-          <div
-            style={{
-              position: "relative",
-              zIndex: 2,
-              height: 4,
-              background: T.topBar,
-            }}
-          />
-        )}
+        <div style={{ height: 7, background: RIBBON }} />
 
-        <div style={{ position: "relative", zIndex: 1, padding: "26px 32px 22px" }}>
-          {/* Header — series + event title + date. Live-mode adds a red
-              LIVE pill in the top-right corner so anyone re-seeing this
-              image after the show ends still knows it was captured
-              mid-flight (the percentage in the banner is partial, not
-              final). Pre-show prediction cards don't carry the pill —
-              there's no result to qualify.
-
-              v0.11.4 originally used `display: flex` here with a
-              `flex: 1` title block. Operator-spotted on the captured
-              PNG: the event title rendered noticeably wider than the
-              live browser preview, ignoring the flex constraint.
-              Cause: html2canvas doesn't reliably honor flexbox sizing
-              when capturing — flex children fall back to intrinsic
-              width rather than the computed share. Switched to
-              absolute positioning for the LIVE badge with explicit
-              `paddingRight` on the title block when present, so the
-              title's width is bounded by a paddingBox rather than a
-              flex computation. Renders identically in the live
-              preview (paddingRight reserves the badge's pixel
-              footprint, see LIVE_BADGE_RESERVED_PX) and the captured
-              PNG (paddingRight is a standard box-model property
-              html2canvas honors). */}
-          <div
-            style={{
-              position: "relative",
-              marginBottom: 20,
-              paddingRight: isLiveMode ? LIVE_BADGE_RESERVED_PX : 0,
-            }}
-          >
-            {/* Series row: hidden entirely when seriesName is empty
-                so standalone events (no series) get a card with just
-                title + date instead of an empty caps-style row at the
-                top. v0.11.5 plumbed real seriesName values through;
-                pre-v0.11.5 the field was a placeholder duplicated
-                from the title. */}
-            {seriesName && (
-              <div
-                {...captureShift("series-caption")}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: T.series,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  marginBottom: 4,
-                }}
-              >
-                {seriesName}
-              </div>
-            )}
+        {/* Header: eyebrow + phase pill, series, event title, date. */}
+        <div
+          style={{
+            padding: "28px 32px 25px",
+            background: `linear-gradient(125deg, ${P.wash}, ${P.surface} 92%)`,
+          }}
+        >
+          <div style={{ position: "relative", paddingRight: PILL_RESERVED_PX }}>
             <div
-              {...captureShift("event-title")}
               style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: T.title,
-                // Bumped from 1.3 → 1.5 to match the same html2canvas-
-                // glyph-clipping fix PR #305 applied to song-title
-                // rows. Tight line-heights collapse the line-box on
-                // capture and clip glyph extents; 1.5 reserves enough
-                // vertical room for Latin descenders + CJK glyph
-                // extents without making the title noticeably taller
-                // in the live browser preview.
-                lineHeight: 1.5,
-                marginBottom: 3,
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: "1.5px",
+                color: P.muted,
+                lineHeight: 2,
               }}
             >
-              {eventTitle}
+              {t("eyebrow", { index: pad2(PHASE_INDEX[mode]) })}
             </div>
-            {dateLine && (
-              <div style={{ fontSize: 12, color: T.date }}>
-                {dateLine}
-              </div>
-            )}
-            {isLiveMode && (
-              <div style={{ position: "absolute", top: 0, right: 0 }}>
-                <LiveBadge label={t("liveBadge")} />
-              </div>
-            )}
-          </div>
-
-          {isPredictionMode ? (
-            <PredictionList
-              predictions={predictions}
-              locale={locale}
-              T={T}
-              sectionLabel={t("predictionLabel")}
-              countLabel={t("predictionCount", { count: predictions.length })}
-            />
-          ) : (
-            <ActualResultBody
-              mainSongs={mainSongs}
-              encoreSongs={encoreSongs}
-              predictions={predictions}
-              matched={matched}
-              total={total}
-              percentage={percentage}
-              locale={locale}
-              T={T}
-              labels={{
-                scoreLabel: t("scoreLabel"),
-                encore: t("encore"),
+            <span
+              style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: "1px",
+                lineHeight: 1.6,
+                padding: "4px 10px",
+                borderRadius: 30,
+                ...(isLive
+                  ? { ...LIVE_PILL, border: "1px solid transparent" }
+                  : { color: P.accent, border: `1px solid ${P.accent}` }),
               }}
-            />
+            >
+              {isLive && "● "}
+              {pillLabel}
+            </span>
+          </div>
+          {seriesName && (
+            <div
+              {...captureShift("series-caption")}
+              style={{
+                margin: "22px 0 8px",
+                fontSize: 15,
+                fontWeight: 600,
+                lineHeight: 1.5,
+                color: P.accent,
+              }}
+            >
+              {seriesName}
+            </div>
           )}
+          <div
+            {...captureShift("event-title")}
+            style={{
+              marginTop: seriesName ? 0 : 22,
+              fontSize: 29,
+              fontWeight: 700,
+              lineHeight: 1.4,
+              letterSpacing: "-0.8px",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {eventTitle}
+          </div>
+          {dateLine && (
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 12,
+                fontWeight: 500,
+                lineHeight: 1.6,
+                color: P.muted,
+              }}
+            >
+              {dateLine}
+            </div>
+          )}
+        </div>
 
-          {/* Footer */}
+        {/* Score: the phase title, the big metric, its basis, a note. */}
+        <div style={section("24px 32px 22px")}>
+          <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.5, marginBottom: 15 }}>
+            {isPrediction
+              ? t("titlePrediction")
+              : isLive
+                ? t("titleLive")
+                : t("titleFinal")}
+          </div>
+          {isPrediction ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              <span
+                {...captureShift("score-percent")}
+                style={{ fontSize: 74, fontWeight: 500, lineHeight: 1, letterSpacing: "-4px", color: P.accent }}
+              >
+                {predictions.length}
+              </span>
+              <span style={{ fontSize: 13, lineHeight: 1.8, color: P.muted }}>
+                {t("predictedUnit")}
+              </span>
+            </div>
+          ) : total > 0 ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              <span
+                {...captureShift("score-percent")}
+                style={{ fontSize: 74, fontWeight: 500, lineHeight: 1, letterSpacing: "-4px", color: P.accent }}
+              >
+                {matched}
+                <span style={{ fontSize: 38, letterSpacing: "-2px", color: P.muted, marginLeft: 8 }}>
+                  / {total}
+                </span>
+              </span>
+              <span style={{ fontSize: 13, lineHeight: 1.8, color: P.muted }}>
+                <span
+                  {...captureShift("score-fraction")}
+                  style={{ display: "block", fontSize: 24, fontWeight: 700, color: P.accent }}
+                >
+                  {percentage}%
+                </span>
+                {isLive
+                  ? t("basisLive", { count: total })
+                  : t("basisFinal", { count: total })}
+              </span>
+            </div>
+          ) : (
+            // Completed with no recorded songs: no numeric result.
+            <div style={{ fontSize: 14, lineHeight: 1.8, color: P.muted }}>
+              {t("noResult")}
+            </div>
+          )}
+          <div style={{ marginTop: 15, fontSize: 11, lineHeight: 1.65, color: P.muted }}>
+            {isPrediction
+              ? t("notePrediction")
+              : isLive
+                ? t("noteLive", { time: liveStamp })
+                : t("noteFinal")}
+          </div>
+        </div>
+
+        {/* The list: predicted order pre-show, performance order after. */}
+        <div style={section("20px 32px 22px")}>
           <div
             style={{
               display: "flex",
-              alignItems: "center",
               justifyContent: "space-between",
-              marginTop: 18,
-              paddingTop: 14,
-              borderTop: `1px solid ${T.footerBorder}`,
+              fontSize: 11,
+              lineHeight: 1.6,
+              color: P.muted,
+              marginBottom: 12,
             }}
           >
-            <span
-              style={{
-                fontFamily: "'Josefin Sans', sans-serif",
-                fontSize: 12,
-                fontWeight: 700,
-                color: T.footerBrand,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-              }}
-            >
-              {BRAND_NAME}
-            </span>
-            <span style={{ fontSize: 10, color: T.footerUrl }}>
-              {BRAND_URL_DISPLAY}
-            </span>
+            <span>{isPrediction ? t("orderPrediction") : t("orderActual")}</span>
+            <span>{t("tracks", { count: rowCount })}</span>
           </div>
+          {isPrediction ? (
+            <PredictionRows predictions={predictions} locale={locale} P={P} />
+          ) : rowCount > 0 ? (
+            <>
+              <ActualRows
+                mainSongs={mainSongs}
+                encoreSongs={encoreSongs}
+                predictions={predictions}
+                locale={locale}
+                P={P}
+                encoreLabel={t("encore")}
+                unknownLabel={setlistT("unknownSong")}
+              />
+              <div style={{ marginTop: 14, fontSize: 11, lineHeight: 1.6, color: P.muted }}>
+                <span style={{ color: P.hit, fontWeight: 700 }}>✓</span> {t("legendHit")}
+                {"　 · "}
+                {t("legendMiss")}
+              </div>
+            </>
+          ) : (
+            <div style={{ padding: "24px 4px", fontSize: 14, lineHeight: 1.8, color: P.muted }}>
+              {t("noResult")}
+            </div>
+          )}
+        </div>
+
+        {/* Footer: wordmark + domain. No image URL or user identifier. */}
+        <div
+          style={{
+            padding: "20px 32px 18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span
+            style={{
+              fontFamily: "'Josefin Sans', sans-serif",
+              fontSize: 24,
+              fontWeight: 600,
+              letterSpacing: "-1px",
+              lineHeight: 1.5,
+            }}
+          >
+            {BRAND_WORDMARK[0]}
+            <span style={{ color: P.accent }}>{BRAND_WORDMARK[1]}</span>
+          </span>
+          <span style={{ fontSize: 12, color: P.muted }}>{BRAND_URL_DISPLAY}</span>
         </div>
       </div>
     );
   },
 );
 
-/**
- * Pre-show / no-actuals-yet variant. Renders a section label + the
- * viewer's predictions in their chosen rank order. No hit/miss state
- * because there's no actual setlist to compare against — the dots +
- * underline + green tint that drive the live/final variants would be
- * meaningless. The rank number stays so the card communicates the
- * predicted ORDER, not just the song set.
- */
-function PredictionList({
+/** "OpenSetlist" split for the two-tone wordmark (Open + accent Setlist). */
+const BRAND_WORDMARK = [BRAND_NAME.slice(0, 4), BRAND_NAME.slice(4)] as const;
+
+function isHit(item: LiveSetlistItem, predictions: PredictionEntry[]): boolean {
+  // Same matcher as the score (`calcShareCardScore` → `isSongMatched`):
+  // variant + medley aware, independent of predicted order.
+  return predictions.some((p) => isSongMatched(p.songId, [item]));
+}
+
+function Columns({ children }: { children: [React.ReactNode, React.ReactNode] }) {
+  return (
+    <div style={{ display: "flex", gap: COLUMN_GAP_PX }}>
+      {/* `minWidth: 0` lets each column shrink below its content so
+          long titles wrap inside the column instead of overflowing. */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+        {children[0]}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+        {children[1]}
+      </div>
+    </div>
+  );
+}
+
+function Stack({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{children}</div>;
+}
+
+/** Pre-show: the predicted order, no marks and no encore boundary. */
+function PredictionRows({
   predictions,
   locale,
-  T,
-  sectionLabel,
-  countLabel,
+  P,
 }: {
   predictions: PredictionEntry[];
   locale: string;
-  T: typeof shareCardColors.dark;
-  sectionLabel: string;
-  countLabel: string;
+  P: CardPalette;
 }) {
+  const two = predictions.length >= TWO_COLUMN_MIN_SONG_COUNT;
+  const row = (entry: PredictionEntry, rank: number) => (
+    <Row
+      key={entry.songId}
+      rank={rank}
+      title={displayOriginalTitle(entry.song, entry.song.translations, locale).main}
+      mark={null}
+      compact={two}
+      P={P}
+    />
+  );
+  if (!two) return <Stack>{predictions.map((e, i) => row(e, i + 1))}</Stack>;
+  const [left, right] = splitAtMid(predictions);
   return (
-    <>
-      {/* Section label strip — replaces the score banner. Keeps the
-          card's visual rhythm (header → labeled section → list) without
-          claiming an accuracy number that doesn't exist yet. */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 14,
-          paddingBottom: 8,
-          borderBottom: `1px solid ${T.footerBorder}`,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            color: T.scoreLabel,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-          }}
-        >
-          {sectionLabel}
-        </span>
-        <span style={{ fontSize: 12, color: T.scorePred }}>{countLabel}</span>
-      </div>
-
-      {predictions.length >= TWO_COLUMN_MIN_SONG_COUNT ? (
-        // Two-column layout for long predictions (32-song festival
-        // sets, multi-day tour predictions). Left column gets the
-        // first ceil(N/2) entries — see `splitAtMid` for the bias
-        // rationale. The rank passed to each row is the entry's
-        // ABSOLUTE position in the predictions list, not the row's
-        // position within its column — so the rank numbers read 1..N
-        // top-to-bottom-then-right across the two columns, matching
-        // setlist.fm's ordered-list convention.
-        (() => {
-          const [leftEntries, rightEntries] = splitAtMid(predictions);
-          return (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                gap: COLUMN_GAP_PX,
-                marginBottom: 4,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 1,
-                  flex: 1,
-                  // `minWidth: 0` so flex children can shrink below
-                  // their intrinsic content width — critical for the
-                  // title span's `text-overflow: ellipsis` to engage
-                  // on long song titles. Without it, the column
-                  // refuses to shrink and the title overflows past
-                  // the column's right edge.
-                  minWidth: 0,
-                }}
-              >
-                {leftEntries.map((entry, i) => (
-                  <PredictionRow
-                    key={entry.songId}
-                    entry={entry}
-                    rank={i + 1}
-                    T={T}
-                    locale={locale}
-                  />
-                ))}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 1,
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                {rightEntries.map((entry, i) => (
-                  <PredictionRow
-                    key={entry.songId}
-                    entry={entry}
-                    rank={leftEntries.length + i + 1}
-                    T={T}
-                    locale={locale}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })()
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
-          {predictions.map((entry, i) => (
-            <PredictionRow
-              key={entry.songId}
-              entry={entry}
-              rank={i + 1}
-              T={T}
-              locale={locale}
-            />
-          ))}
-        </div>
-      )}
-    </>
+    <Columns>
+      {[left.map((e, i) => row(e, i + 1)), right.map((e, i) => row(e, left.length + i + 1))]}
+    </Columns>
   );
 }
 
 /**
- * Live / final result body. Identical to the pre-v0.11.2 layout —
- * score banner + actual setlist rows with hit/miss highlighting +
- * encore divider. The LIVE pill in the parent header is the only
- * visual difference between `live` and `final` modes; everything in
- * this body is shared.
+ * Live / final: the actual song rows in performance order, numbered
+ * continuously through the encore (one setlist, not two lists), with
+ * the dashed encore boundary inline in whichever column it lands.
  */
-function ActualResultBody({
+function ActualRows({
   mainSongs,
   encoreSongs,
   predictions,
-  matched,
-  total,
-  percentage,
   locale,
-  T,
-  labels,
-}: {
-  mainSongs: LiveSetlistItem[];
-  encoreSongs: LiveSetlistItem[];
-  predictions: PredictionEntry[];
-  matched: number;
-  total: number;
-  percentage: number;
-  locale: string;
-  T: typeof shareCardColors.dark;
-  labels: {
-    scoreLabel: string;
-    encore: string;
-  };
-}) {
-  return (
-    <>
-      {/* Score banner */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: T.bannerBg,
-          border: T.bannerBorder,
-          boxShadow: T.bannerShadow,
-          borderRadius: 12,
-          padding: "14px 20px",
-          marginBottom: 20,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              color: T.scoreLabel,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              marginBottom: 4,
-            }}
-          >
-            {labels.scoreLabel}
-          </div>
-          <div {...captureShift("score-percent")}>
-            <span
-              style={{
-                fontSize: 36,
-                fontWeight: 700,
-                color: T.scoreMain,
-                lineHeight: 1,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {percentage}
-            </span>
-            <span
-              style={{
-                fontSize: 20,
-                fontWeight: 600,
-                color: T.scorePct,
-                marginLeft: 3,
-              }}
-            >
-              %
-            </span>
-          </div>
-          {/* "X of Y songs hit" subline removed in v0.11.6 — the big
-              fraction in the right column already encodes that count,
-              and the captured card reads tighter without the
-              redundant phrasing under the percentage. */}
-        </div>
-        <div style={{ textAlign: "right" }}>
-          {/* "X predicted" caption removed in v0.11.6 alongside the
-              "X of Y hit" subline — the big M/T fraction is the only
-              right-column element now. */}
-          <div
-            {...captureShift("score-fraction")}
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: T.scoreFrac,
-              lineHeight: 1,
-            }}
-          >
-            {matched} / {total}
-          </div>
-        </div>
-      </div>
-
-      <SetlistRows
-        mainSongs={mainSongs}
-        encoreSongs={encoreSongs}
-        predictions={predictions}
-        T={T}
-        locale={locale}
-        encoreLabel={labels.encore}
-      />
-    </>
-  );
-}
-
-/**
- * Renders the song rows of an actual setlist (live / final modes),
- * choosing between the legacy single-column layout (≤ 20 songs) and
- * a two-column layout (≥ 21 songs).
- *
- * The two-column path builds a unified entry sequence — songs +
- * encore divider — and splits at the entry-count midpoint for visual
- * balance, NOT at the song-count midpoint. Splitting by entry count
- * means a single divider entry shifts the seam by at most one row,
- * so the two columns stay within ±1 entry of each other regardless
- * of where the main/encore boundary lands. Splitting by song count
- * would let the right column inherit a divider on top of N/2 songs,
- * visibly imbalancing the columns.
- *
- * The encore divider is rendered inline within whichever column it
- * lands in (left or right). It is NOT a full-width element spanning
- * both columns — that would force the right column to start lower
- * than the left and break the top-aligned reading order.
- */
-function SetlistRows({
-  mainSongs,
-  encoreSongs,
-  predictions,
-  T,
-  locale,
+  P,
   encoreLabel,
+  unknownLabel,
 }: {
   mainSongs: LiveSetlistItem[];
   encoreSongs: LiveSetlistItem[];
   predictions: PredictionEntry[];
-  T: typeof shareCardColors.dark;
   locale: string;
+  P: CardPalette;
   encoreLabel: string;
+  unknownLabel: string;
 }) {
-  const totalSongs = mainSongs.length + encoreSongs.length;
-
-  // Single-column path — preserves the exact pre-v0.13.18 layout for
-  // typical 15–20-song concert sets. No structural change, just a
-  // direct port of the previous JSX so a future blame still shows
-  // PR #305 / v0.11.x history cleanly.
-  if (totalSongs < TWO_COLUMN_MIN_SONG_COUNT) {
-    return (
-      <>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
-          {mainSongs.map((item, i) => (
-            <ShareCardRow
-              key={item.id}
-              item={item}
-              rank={i + 1}
-              hit={isHit(item, predictions)}
-              T={T}
-              locale={locale}
-            />
-          ))}
-        </div>
-
-        {encoreSongs.length > 0 && (
-          <>
-            <EncoreDivider label={encoreLabel} T={T} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {encoreSongs.map((item, i) => (
-                <ShareCardRow
-                  key={item.id}
-                  item={item}
-                  // Continue numbering past the main set rather than
-                  // restart at 1 — the share card is a single setlist
-                  // surface, so an event with 15 main + 3 encore reads
-                  // as 1..18, not 1..15 followed by 1..3 (the latter
-                  // would visually suggest two unrelated lists).
-                  rank={mainSongs.length + i + 1}
-                  hit={isHit(item, predictions)}
-                  T={T}
-                  locale={locale}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </>
-    );
-  }
-
-  // Two-column path. Build the unified entry sequence first so the
-  // column split logic only deals with `RowEntry[]` — keeps the
-  // rendering side identical for both columns and lets `splitAtMid`
-  // do its job without special-casing the encore divider.
-  type RowEntry =
+  type Entry =
     | { kind: "song"; item: LiveSetlistItem; rank: number }
-    | { kind: "encore-divider" };
-
-  const entries: RowEntry[] = [
-    ...mainSongs.map<RowEntry>((item, i) => ({
-      kind: "song",
-      item,
-      rank: i + 1,
-    })),
-    ...(encoreSongs.length > 0
-      ? ([{ kind: "encore-divider" }] as RowEntry[])
-      : []),
-    ...encoreSongs.map<RowEntry>((item, i) => ({
+    | { kind: "encore" };
+  const entries: Entry[] = [
+    ...mainSongs.map<Entry>((item, i) => ({ kind: "song", item, rank: i + 1 })),
+    ...(encoreSongs.length > 0 ? [{ kind: "encore" } as Entry] : []),
+    ...encoreSongs.map<Entry>((item, i) => ({
       kind: "song",
       item,
       rank: mainSongs.length + i + 1,
     })),
   ];
-
-  const [leftEntries, rightEntries] = splitAtMid(entries);
-
-  const renderEntries = (slice: RowEntry[], keyPrefix: string) =>
-    slice.map((entry, i) => {
-      if (entry.kind === "encore-divider") {
-        return (
-          <EncoreDivider key={`${keyPrefix}-encore-${i}`} label={encoreLabel} T={T} />
-        );
-      }
-      return (
-        <ShareCardRow
-          key={entry.item.id}
-          item={entry.item}
-          rank={entry.rank}
-          hit={isHit(entry.item, predictions)}
-          T={T}
-          locale={locale}
-        />
-      );
-    });
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "row",
-        gap: COLUMN_GAP_PX,
-        marginBottom: 4,
-      }}
-    >
-      {/* `minWidth: 0` on each column lets the title span's
-          `text-overflow: ellipsis` kick in at the 260px column
-          width — see the matching prop in `PredictionList`'s
-          two-column branch for the rationale. */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
-          flex: 1,
-          minWidth: 0,
-        }}
-      >
-        {renderEntries(leftEntries, "left")}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
-          flex: 1,
-          minWidth: 0,
-        }}
-      >
-        {renderEntries(rightEntries, "right")}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Red pill rendered in the top-right of the card header during
- * `live` mode. Uses inline RGB values (not theme tokens) because
- * "LIVE" semantics are theme-invariant — same red pulses in both
- * dark and light cards, so the OS share / saved image reads
- * unambiguously regardless of theme. The pulsing dot is a static
- * filled circle in the captured PNG (animation doesn't survive
- * html2canvas), styled to mirror the live-now visual language
- * used elsewhere on the site.
- */
-function LiveBadge({ label }: { label: string }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        flexShrink: 0,
-        padding: "4px 10px",
-        borderRadius: 999,
-        background: LIVE_BADGE_BG,
-        color: "white",
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
-        lineHeight: 1,
-      }}
-    >
-      <span
-        {...captureShift("live-badge-dot")}
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          background: "white",
-          flexShrink: 0,
-        }}
+  const two = mainSongs.length + encoreSongs.length >= TWO_COLUMN_MIN_SONG_COUNT;
+  const render = (e: Entry, key: string) => {
+    if (e.kind === "encore") return <EncoreDivider key={key} label={encoreLabel} P={P} />;
+    // Medleys list every available title ("A / B / C"); a row with no
+    // title at all says so rather than inventing a name.
+    const title =
+      e.item.songs
+        .map((s) => displayOriginalTitle(s.song, s.song.translations, locale).main)
+        .filter(Boolean)
+        .join(" / ") || unknownLabel;
+    return (
+      <Row
+        key={key}
+        rank={e.rank}
+        title={title}
+        mark={isHit(e.item, predictions) ? "hit" : "miss"}
+        compact={two}
+        P={P}
       />
-      <span {...captureShift("live-badge-label")}>{label}</span>
-    </span>
+    );
+  };
+  const keyOf = (e: Entry, i: number) => (e.kind === "song" ? String(e.item.id) : `encore-${i}`);
+  if (!two) return <Stack>{entries.map((e, i) => render(e, keyOf(e, i)))}</Stack>;
+  const [left, right] = splitAtMid(entries);
+  return (
+    <Columns>
+      {[
+        left.map((e, i) => render(e, keyOf(e, i))),
+        right.map((e, i) => render(e, keyOf(e, left.length + i))),
+      ]}
+    </Columns>
   );
 }
 
-function isHit(item: LiveSetlistItem, predictions: PredictionEntry[]): boolean {
-  return predictions.some((p) => isSongMatched(p.songId, [item]));
-}
-
-/**
- * Renders a single song row in `prediction` mode. Compared to the
- * live/final `<ShareCardRow>`, this one drops the hit-dot and the
- * green hit-highlight palette — there's no comparison surface yet,
- * so every prediction renders identically in the muted "miss"
- * color (which here just reads as "neutral, not yet scored").
- */
-function PredictionRow({
-  entry,
+function Row({
   rank,
-  T,
-  locale,
+  title,
+  mark,
+  compact,
+  P,
 }: {
-  entry: PredictionEntry;
   rank: number;
-  T: typeof shareCardColors.dark;
-  locale: string;
+  title: string;
+  /** null = pre-show (no comparison yet). */
+  mark: "hit" | "miss" | null;
+  /** Two-column rows: tighter padding, 12px titles. */
+  compact: boolean;
+  P: CardPalette;
 }) {
-  const display = displayOriginalTitle(
-    entry.song,
-    entry.song.translations,
-    locale,
-  );
-
+  const hit = mark === "hit";
   return (
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: `${ROW_PADDING_Y_PX}px ${ROW_PADDING_X_PX}px`,
-        // Explicit minHeight so html2canvas can't compute a row taller
-        // than the line-box it ends up rendering. PR #305 / v0.11.4
-        // set `lineHeight: 1.5` on the title span; operator's iPhone
-        // capture still showed the bottom half of every song title
-        // clipped, which is too much to be just a descender issue —
-        // html2canvas on iOS Safari was rendering the line-box at
-        // roughly half the computed CSS height. Forcing a row floor
-        // of 28px (= 1.5 × 18px line-height for 13px font + 1px slop)
-        // means the row physically owns enough vertical space to
-        // contain the rendered text regardless of how html2canvas
-        // interprets line-height. Live preview reads the same since
-        // the natural row height with the same content is ~28px
-        // anyway — this is a no-op for the browser, a load-bearing
-        // floor for the capture.
-        minHeight: CAPTURE_ROW_MIN_HEIGHT_PX,
-        borderRadius: 5,
+        gap: compact ? 6 : 9,
+        minHeight: ROW_MIN_HEIGHT_PX,
+        padding: `${ROW_PADDING_Y_PX}px ${compact ? 8 : 12}px`,
+        borderRadius: 8,
+        background: hit ? P.hitBg : P.row,
       }}
     >
-      {/* 14px spacer placed BEFORE the rank, mirroring the live/final
-          mode's filled-checkbox / empty-box that occupies the same
-          slot. Pre-show there's nothing to compare against — every
-          prediction is just a prediction, no match status to show —
-          so a transparent spacer keeps the title's horizontal
-          position aligned with the post-show capture of the same
-          event. Without it (or with a 5px spacer matching the
-          pre-v0.11.6 hit-dot width), titles would shift between
-          modes and the "this is the same surface" mental model
-          would break. */}
-      <span style={{ width: INDICATOR_SIZE_PX, flexShrink: 0 }} />
       <span
         {...captureShift("row-number")}
         style={{
-          fontSize: 11,
-          fontWeight: 500,
-          color: T.numColor,
-          width: 18,
-          textAlign: "right",
+          width: compact ? 20 : 24,
           flexShrink: 0,
+          fontSize: 12,
+          fontWeight: 500,
+          color: P.muted,
+          fontVariantNumeric: "tabular-nums",
         }}
       >
-        {rank}
+        {pad2(rank)}
       </span>
       <span
         {...captureShift("row-title")}
         style={{
-          fontSize: 13,
-          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          color: T.missColor,
-          fontWeight: 400,
+          minWidth: 0,
+          fontSize: compact ? 12 : 14,
+          fontWeight: 600,
+          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
+          // Long titles wrap rather than disappear (18-share-v1).
+          overflowWrap: "anywhere",
         }}
       >
-        {display.main}
+        {title}
       </span>
-    </div>
-  );
-}
-
-function ShareCardRow({
-  item,
-  rank,
-  hit,
-  T,
-  locale,
-}: {
-  item: LiveSetlistItem;
-  rank: number;
-  hit: boolean;
-  T: typeof shareCardColors.dark;
-  locale: string;
-}) {
-  // Pull the first song's display payload — share card titles
-  // collapse medleys to the first song for legibility (full medley
-  // detail belongs in the live tab, not the share card).
-  const song = item.songs[0]?.song;
-  const display = song
-    ? displayOriginalTitle(song, song.translations, locale)
-    : { main: "", sub: null, variant: null };
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: `${ROW_PADDING_Y_PX}px ${ROW_PADDING_X_PX}px`,
-        // See <PredictionRow> for the minHeight rationale — iOS
-        // Safari's html2canvas pipeline collapses the line-box,
-        // forcing a 28px row floor keeps the rendered text fully
-        // inside the captured bounds. No-op for the live browser
-        // preview where the natural row height matches.
-        minHeight: CAPTURE_ROW_MIN_HEIGHT_PX,
-        borderRadius: 5,
-        background: hit ? T.hitRowBg : "transparent",
-      }}
-    >
-      {/* Checkbox-style hit indicator placed BEFORE the position
-          number (operator preference) so the matched/unmatched
-          signal is the first thing a viewer's eye lands on as the
-          list reads top-to-bottom. Filled box + white ✓ for hit
-          rows; same-size outline-only box for miss rows so titles
-          stay vertically aligned across the captured PNG. Pre-
-          v0.11.6 used a 5px dot on hit + a 5px spacer on miss; the
-          dot's vertical centering was inconsistent at small sizes
-          and the size-asymmetry between dot/spacer let titles
-          drift by ~half a pixel. */}
-      {hit ? (
+      {mark && (
         <span
+          aria-hidden="true"
           style={{
-            width: INDICATOR_SIZE_PX,
-            height: INDICATOR_SIZE_PX,
-            borderRadius: 3,
-            background: T.hitDot,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
+            width: compact ? 16 : 20,
             flexShrink: 0,
-            // Box stays at flex-center (no positional shift). The
-            // generous CAPTURE_ROW_LINE_HEIGHT (2.2) makes the row
-            // tall enough that the title's flex-centered cap-middle
-            // and the box's geometric center land within ~1.4px of
-            // each other — close enough to read as aligned without
-            // requiring a `position: relative; top: -n` nudge that
-            // would couple the box's position to the line-height in
-            // ways that drift as either is retuned.
+            textAlign: "center",
+            fontSize: 14,
+            fontWeight: hit ? 700 : 400,
+            color: hit ? P.hit : P.muted,
           }}
         >
-          {/* Inline SVG check mark instead of the U+2713 text glyph.
-              The text glyph's vertical positioning varies by font —
-              with a Latin-first fontFamily, html2canvas picks up
-              SF Pro / system-ui, whose ✓ baselines higher than
-              Hiragino's and visibly drifts above the box center.
-              SVG geometry is deterministic: the polyline sits at
-              fixed coordinates inside the viewBox, and the parent
-              flex `alignItems: center` / `justifyContent: center`
-              then centers the 10×10 SVG cleanly inside the 14×14
-              box on every renderer. */}
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
+          {hit ? "✓" : "·"}
         </span>
-      ) : (
-        <span
-          style={{
-            width: INDICATOR_SIZE_PX,
-            height: INDICATOR_SIZE_PX,
-            borderRadius: 3,
-            border: `1.5px solid ${T.missColor}`,
-            boxSizing: "border-box",
-            flexShrink: 0,
-            // Matches the filled-hit box above — both variants rely
-            // on the row's flex-centering + the generous line-height
-            // to land aligned with the title text without a manual
-            // shift. Keeping hit + miss in lockstep means rows stack
-            // with identical vertical positioning regardless of
-            // match status.
-          }}
-        />
       )}
-      <span
-        {...captureShift("row-number")}
-        style={{
-          fontSize: 11,
-          fontWeight: 500,
-          color: T.numColor,
-          width: 18,
-          textAlign: "right",
-          flexShrink: 0,
-        }}
-      >
-        {rank}
-      </span>
-      <span
-        {...captureShift("row-title")}
-        style={{
-          fontSize: 13,
-          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
-          flex: 1,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          color: hit ? T.hitText : T.missColor,
-          fontWeight: hit ? 600 : 400,
-          textDecoration: hit ? "underline" : "none",
-          textDecorationColor: hit ? T.hitUnderline : "transparent",
-          textUnderlineOffset: 3,
-          textDecorationThickness: 2,
-        }}
-      >
-        {display.main}
-      </span>
     </div>
   );
 }
 
-function EncoreDivider({
-  label,
-  T,
-}: {
-  label: string;
-  T: typeof shareCardColors.dark;
-}) {
+function EncoreDivider({ label, P }: { label: string; P: CardPalette }) {
   return (
     <div
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        margin: "8px 8px 4px",
+        margin: "10px 0 2px",
+        paddingTop: 10,
+        borderTop: `1px dashed ${P.line}`,
+        fontSize: 10,
+        fontWeight: 500,
+        letterSpacing: "2px",
+        textTransform: "uppercase",
+        color: P.muted,
       }}
     >
-      <div style={{ flex: 1, height: 1, background: T.encLine }} />
-      <span
-        style={{
-          fontSize: 9,
-          color: T.encLabel,
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </span>
-      <div style={{ flex: 1, height: 1, background: T.encLine }} />
+      {label}
     </div>
   );
 }
