@@ -69,7 +69,7 @@ export function UpcomingCard({ view }: { view: UpcomingCardView }) {
         });
       }}
     >
-      <EventArt logoUrl={view.logoUrl} title={view.artTitle} />
+      <EventArt logoUrl={view.logoUrl} title={view.artTitle} tint={view.tint} />
       <div className={styles.cardBody}>
         <div className={styles.dateLine}>
           <time dateTime={view.startTimeIso}>{view.dateLabel}</time>

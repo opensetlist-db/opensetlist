@@ -36,7 +36,12 @@ export async function CompactEventCard({
       href={view.href}
       className={`${styles.compact} ${live ? styles.live : ""}`}
     >
-      <EventArt logoUrl={view.logoUrl} title={view.artTitle} variant="compact" />
+      <EventArt
+        logoUrl={view.logoUrl}
+        title={view.artTitle}
+        tint={view.tint}
+        variant="compact"
+      />
       <div>
         {live && (
           <span className={styles.liveBadge}>

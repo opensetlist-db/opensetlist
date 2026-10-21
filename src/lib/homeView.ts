@@ -16,6 +16,9 @@ import { formatDate, nonBlank } from "@/lib/utils";
  *             It is live text in the card body, never part of the art.
  *   artTitle  short name for the typography fallback in the art slot.
  *   place     "city · venue", whichever parts exist.
+ *   tint      the 07 representative colour, washed into the art slot
+ *             background by EventArt (text tones stay fixed), as on the
+ *             concert list.
  *   dateLabel year + 2-digit month/day + weekday, formatted in UTC so the
  *             printed day is the stored UTC startTime's day (same as the
  *             pre-redesign home and the concert list).
@@ -39,6 +42,8 @@ export interface HomeCardView {
   artTitle: string;
   place: string | null;
   logoUrl: string | null;
+  /** 07 representative colour for EventArt's background wash; null = neutral. */
+  tint: string | null;
   songCount: number | null;
 }
 
@@ -101,6 +106,7 @@ export function projectHomeCard(
     artTitle: seriesShort ?? eventShort ?? title,
     place: place.length > 0 ? place.join(" · ") : null,
     logoUrl: event.logo.image?.url ?? null,
+    tint: event.logo.color,
     songCount: event.songCount,
   };
 }

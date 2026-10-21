@@ -40,6 +40,7 @@ describe("projectHomeCard", () => {
     expect(v.place).toBe("나고야 · 반테린 돔 나고야");
     expect(v.href).toBe("/ko/events/109/lovelive-15th-fes-day1");
     expect(v.logoUrl).toBeNull();
+    expect(v.tint).toBeNull();
   });
 
   it("falls back to original-language names where a locale has no translation", () => {
@@ -104,6 +105,7 @@ describe("projectHomeCard", () => {
       "?",
     );
     expect(v.logoUrl).toBe("https://img.example/l.webp");
+    expect(v.tint).toBe("#E50080");
   });
 });
 
