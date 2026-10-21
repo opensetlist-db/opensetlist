@@ -309,8 +309,13 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                   : { color: P.accent, border: `1px solid ${P.accent}` }),
               }}
             >
-              {isLive && "● "}
-              {pillLabel}
+              {/* Inner span carries the capture shift: the pill itself is
+                  absolutely positioned, and the shift sets
+                  `position: relative` on whatever it tags. */}
+              <span {...captureShift("live-badge-label")}>
+                {isLive && "● "}
+                {pillLabel}
+              </span>
             </span>
           </div>
           {seriesName && (
@@ -666,6 +671,7 @@ function Row({
       </span>
       {mark && (
         <span
+          {...captureShift("row-mark")}
           aria-hidden="true"
           style={{
             width: compact ? 16 : 20,
