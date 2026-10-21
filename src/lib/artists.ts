@@ -139,9 +139,17 @@ export type GroupForList = {
  * by event count: the approved list design avoids reading as a ranking.
  */
 export function compareListRows(a: ArtistRowData, b: ArtistRowData): number {
+  return compareOngoingThenName(a, b) || a.id - b.id;
+}
+
+/** Shared panel/row rule: ongoing first, then `originalName`. One
+ *  function so the panel order and the row order cannot drift apart. */
+function compareOngoingThenName(
+  a: { hasOngoing: boolean; originalName: string | null },
+  b: { hasOngoing: boolean; originalName: string | null },
+): number {
   if (a.hasOngoing !== b.hasOngoing) return a.hasOngoing ? -1 : 1;
-  const byName = (a.originalName ?? "").localeCompare(b.originalName ?? "");
-  return byName !== 0 ? byName : a.id - b.id;
+  return (a.originalName ?? "").localeCompare(b.originalName ?? "");
 }
 
 export async function getArtistGroupsForList(
@@ -362,10 +370,7 @@ export async function getArtistGroupsForList(
   // Pin groups with ongoing events to top, then alphabetize by
   // originalName (locale-aware sorting happens at display time —
   // originalName is the stable cross-locale anchor).
-  realGroups.sort((a, b) => {
-    if (a.hasOngoing !== b.hasOngoing) return a.hasOngoing ? -1 : 1;
-    return (a.originalName ?? "").localeCompare(b.originalName ?? "");
-  });
+  realGroups.sort(compareOngoingThenName);
 
   // ── Synthetic ungrouped sections ──────────────────────────────────
   type RawUngroupedArtist = (typeof ungroupedRaw)[number];
