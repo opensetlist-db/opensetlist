@@ -29,7 +29,7 @@ describe.skipIf(!enabled)("R2 transport smoke (writes one object under test/)", 
     );
     const image = await validateImage(png);
     const key = `test/smoke/${randomUUID()}.png`;
-    console.info(`[r2-smoke] writing ${key}`);
+    console.info("[r2-smoke] writing %s", key);
 
     const put = { key, bytes: image.bytes, contentType: image.mimeType, sha256: image.sha256 };
     expect(await storage.putImmutable(put)).toBe("created");

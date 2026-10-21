@@ -94,7 +94,8 @@ class CasMismatch extends Error {}
 function defaultLog(event: string, fields: Record<string, unknown>) {
   // Operational correlation only: attempt id, target, key, error code.
   // Never credentials, provenance or notes.
-  console.warn(`[image-upload] ${event}`, fields);
+  // Constant first argument: console treats it as a format string.
+  console.warn("[image-upload] %s", event, fields);
 }
 
 /** Everything one upload call works with, built once. */
