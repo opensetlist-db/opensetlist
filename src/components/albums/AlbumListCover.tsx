@@ -41,7 +41,11 @@ function AlbumListCoverInner({ src }: { src: string | null }) {
       data-state={showImage ? "image" : "fallback"}
       aria-hidden="true"
     >
-      {showImage ? (
+      {/* Placeholder always rendered: the image is laid over it, so a
+          lazy cover still loading shows ♫ rather than an empty square. */}
+      <span className={styles.coverNote}>♫</span>
+      <span className={styles.coverLabel}>{t("noImage")}</span>
+      {showImage && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={src ?? undefined}
@@ -53,11 +57,6 @@ function AlbumListCoverInner({ src }: { src: string | null }) {
           referrerPolicy="no-referrer"
           {...imgProps}
         />
-      ) : (
-        <>
-          <span className={styles.coverNote}>♫</span>
-          <span className={styles.coverLabel}>{t("noImage")}</span>
-        </>
       )}
     </div>
   );

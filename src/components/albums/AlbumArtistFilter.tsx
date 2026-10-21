@@ -12,9 +12,9 @@ import styles from "./albumList.module.css";
  * getAlbumArtistFilters).
  *
  * Visual (26-v1): 44px-tall pills that wrap within the page and show the
- * complete name — the earlier 200px ellipsis cap is gone, so a locale
- * without a `shortName` shows the full translated name, wrapping inside
- * the pill when it is wider than the page.
+ * complete name, never an ellipsis: a locale without a `shortName` shows
+ * the full translated name (蓮ノ空女学院スクールアイドルクラブ), wrapping
+ * inside the pill when it is wider than the page.
  */
 
 interface Props {

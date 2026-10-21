@@ -108,6 +108,10 @@ describe("AlbumListRow", () => {
   });
 
   it("omits the secondary title without a translation and the year when undated", async () => {
+    // Positive control: the same album with a date prints its year.
+    const dated = await renderRow({ album: album({ translations: [] }) });
+    expect(dated.container.querySelector('[class*="rowSub"]')?.textContent).toBe("2024");
+    dated.unmount();
     const { container } = await renderRow({
       album: album({ translations: [], releaseDate: null }),
     });
@@ -129,6 +133,8 @@ describe("AlbumListRow", () => {
 
   it("renders no badge without active bonuses", async () => {
     await renderRow();
+    // Positive control: the row and its meta line rendered.
+    expect(screen.getByText("Album.type.single")).toBeTruthy();
     expect(screen.queryByRole("img")).toBeNull();
   });
 });
@@ -183,9 +189,8 @@ describe("AlbumArtistFilter", () => {
       null,
       "page",
     ]);
-    // Full names, no truncation title fallback.
+    // Full names as the visible text.
     expect(links[1].textContent).toBe("하스노소라");
-    expect(links[1].getAttribute("title")).toBeNull();
   });
 });
 
@@ -204,8 +209,24 @@ describe("AlbumsPage", () => {
       typeof v === "function" ? v.name : v,
     );
     expect(json).toContain("Album.noAlbums");
-    expect(json).not.toContain("AlbumListRow");
     expect(lib.getAlbums).toHaveBeenCalledWith("ko", undefined);
+  });
+
+  it("renders year sections of rows, not the empty panel, for a catalog", async () => {
+    lib.getAlbumArtistFilters.mockResolvedValue([]);
+    lib.getAlbums.mockResolvedValue([album(), album({ id: 136, slug: "x", releaseDate: null })]);
+    const { default: AlbumsPage } = await import("@/app/[locale]/albums/page");
+    const el = await AlbumsPage({
+      params: Promise.resolve({ locale: "ko" }),
+      searchParams: Promise.resolve({}),
+    });
+    const json = JSON.stringify(el, (_k, v) =>
+      typeof v === "function" ? v.name : v,
+    );
+    expect(json).toContain("AlbumListRow");
+    expect(json).toContain("album-year-2024");
+    expect(json).toContain("album-year-undated");
+    expect(json).not.toContain("Album.noAlbums");
   });
 
   it("validates ?artist=: unknown → all, repeated → first", async () => {

@@ -17,8 +17,8 @@ import { colors, radius } from "@/styles/tokens";
  *   discography / 최신 앨범 preview (single-column list of these rows).
  *   Mockup reference: song-page-v2-mockup.jsx lines 127–201.
  *
- * (The former `list` variant for the `/[locale]/albums` catalog moved
- * to `components/albums/AlbumListRow` with the 26-v1 redesign.)
+ * The `/[locale]/albums` catalog row is a separate component,
+ * `components/albums/AlbumListRow` (26-v1 layout).
  *
  * (A `hero` vertical-card variant existed for the Artist "최신 앨범"
  * highlight but was removed in the Sprint B2 QA pass — the artist page
@@ -29,9 +29,6 @@ import { colors, radius } from "@/styles/tokens";
  * (which works in both server and client trees).
  */
 
-// One variant today: `mini` (compact row, Song + Artist surfaces). The
-// discriminated props keep room for another self-contained render block.
-export type AlbumCardVariant = "mini";
 
 // Per-AlbumType pill styling. Mirrors the mockup's ALBUM_TYPE_LABEL
 // map (lines 96–102) but uses semantic tokens from
@@ -106,13 +103,8 @@ interface MiniProps {
   activeBonusCount?: number;
 }
 
-type Props = MiniProps;
-
-export async function AlbumCard(props: Props) {
-  if (props.variant === "mini") {
-    return await MiniVariant(props);
-  }
-  return null;
+export async function AlbumCard(props: MiniProps) {
+  return await MiniVariant(props);
 }
 
 async function MiniVariant({

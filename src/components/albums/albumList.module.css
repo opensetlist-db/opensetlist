@@ -58,7 +58,7 @@
   margin: 0 0 30px;
 }
 /* Full artist names, wrapping inside the pill if one is wider than the
-   page — 26-v1 replaced the old 200px ellipsis cap. */
+   page (26-v1: no ellipsis). */
 .filter {
   display: flex;
   align-items: center;
@@ -172,12 +172,16 @@
   background: linear-gradient(140deg, #eaf2ff, #f1ecff);
   color: #52617a;
 }
+/* The image sits over the ♫ placeholder, which shows while a lazy cover
+   is still loading (packet markup). The white backing keeps the glyph
+   from showing through a cover with transparent pixels once loaded. */
 .cover img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  background: #fff;
 }
 .coverNote {
   font-size: 28px;
