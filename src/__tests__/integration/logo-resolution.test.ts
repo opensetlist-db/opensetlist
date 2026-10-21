@@ -9,8 +9,8 @@ import { devPgClient } from "./devPg";
 // own selects, that the reads never fetch private asset columns, and
 // that legacy posters / series images are not treated as logos.
 //
-// Fixtures (per-run TAG): three series root ← mid ← leaf, two events on
-// leaf, ImageAsset rows under `itest/<TAG>/`. No existing record is
+// Fixtures (per-run TAG): one coloured artist, three series root ← mid ←
+// leaf, two events on leaf, ImageAsset rows under `itest/<TAG>/`. No existing record is
 // written. beforeEach resets the fixture state; afterAll resets logo
 // references (FKs are Restrict) and hard-deletes by slug / key prefix.
 
@@ -50,8 +50,8 @@ let midId: bigint;
 let leafId: bigint;
 let eventId: bigint;
 let otherEventId: bigint;
-let artistColor: string | null = null;
-let artistId: bigint | null = null;
+const ARTIST_COLOR = "#E50080";
+let artistId: bigint;
 const assets: { id: string; publicUrl: string }[] = [];
 
 async function createAsset(n: number) {
@@ -129,17 +129,13 @@ beforeAll(async () => {
   await createAsset(2);
   await createAsset(3);
 
-  // A real artist with a colour, read-only: used as the fixture series'
-  // representative so the colour source is exercised on real rows.
-  const artist = await prisma.artist.findFirst({
-    where: { isDeleted: false, color: { not: null } },
-    select: { id: true, color: true },
-    orderBy: { id: "asc" },
+  // Own artist with a known colour: the colour test must not depend on
+  // whichever real artist happens to have a (well-formed) colour on dev.
+  const artist = await prisma.artist.create({
+    data: { slug: `${TAG}-artist`, type: "group", originalName: `${TAG} artist`, color: ARTIST_COLOR },
+    select: { id: true },
   });
-  if (artist) {
-    artistId = artist.id;
-    artistColor = artist.color;
-  }
+  artistId = artist.id;
 });
 
 // Every test starts from the same fixture state — root ← mid ← leaf, all
@@ -178,11 +174,14 @@ afterAll(async () => {
     [slug],
   );
   await pg.query(`DELETE FROM "EventSeries" WHERE slug LIKE $1`, [slug]);
+  // After the series that referenced it.
+  await pg.query(`DELETE FROM "Artist" WHERE slug LIKE $1`, [slug]);
   await pg.query(`DELETE FROM "ImageAsset" WHERE "objectKey" LIKE $1`, [`itest/${TAG}/%`]);
   const left = await pg.query(
     `SELECT (SELECT count(*) FROM "ImageAsset" WHERE "objectKey" LIKE $1)
           + (SELECT count(*) FROM "EventSeries" WHERE slug LIKE $2)
-          + (SELECT count(*) FROM "Event" WHERE slug LIKE $2) AS n`,
+          + (SELECT count(*) FROM "Event" WHERE slug LIKE $2)
+          + (SELECT count(*) FROM "Artist" WHERE slug LIKE $2) AS n`,
     [`itest/${TAG}/%`, slug],
   );
   await pg.end();
@@ -250,10 +249,9 @@ describe("logo resolution on real rows", () => {
     expect(decideEventLogo(r.event, r.graph)).toEqual({ kind: "typography", reason: "broken-chain" });
   });
 
-  it("colours come from the series representative artist, never a performer", async (ctx) => {
-    if (!artistId) ctx.skip(); // no coloured artist on dev: nothing to prove here
+  it("colours come from the series representative artist, never a performer", async () => {
     await prisma.eventSeries.update({ where: { id: rootId }, data: { artistId } });
-    expect((await resolved()).logo.color).toBe(artistColor);
+    expect((await resolved()).logo.color).toBe(ARTIST_COLOR);
     await prisma.eventSeries.update({ where: { id: rootId }, data: { artistId: null } });
     expect((await resolved()).logo.color).toBeNull();
   });
