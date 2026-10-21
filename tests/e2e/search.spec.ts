@@ -112,12 +112,17 @@ test.describe("search URL state", () => {
 
 test.describe("search states", () => {
   test("empty query shows the invitation, not the catalog", async ({ page }) => {
+    // Positive control: a real query renders result lists under the selector.
+    await page.goto("/ko/search?q=a");
+    await expect(page.locator("#search-results ul").first()).toBeVisible();
     await page.goto("/ko/search?q=%20%20");
     await expect(page.getByRole("status")).toBeVisible();
     await expect(page.locator("#search-results ul")).toHaveCount(0);
   });
 
   test("no results", async ({ page }) => {
+    await page.goto("/ko/search?q=a");
+    await expect(page.locator("#search-results ul").first()).toBeVisible();
     await page.goto(`/ko/search?q=${NO_MATCH}`);
     await expect(page.getByRole("status")).toBeVisible();
     await expect(page.locator("#search-results ul")).toHaveCount(0);

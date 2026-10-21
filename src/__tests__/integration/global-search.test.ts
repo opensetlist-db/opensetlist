@@ -169,6 +169,8 @@ describe("global search service (dev DB)", () => {
 
   it("excludes soft-deleted songs/artists/events and does not expand artist matches", async () => {
     const songs = (await rankIds("songs", TOKEN, 50, 0)).map((r) => r.id);
+    // Positive control: the same query returns this run's visible songs.
+    expect(songs).toContain(exactSong);
     expect(songs).not.toContain(deletedSong);
     expect(songs).not.toContain(creditedSong);
     const artists = (await rankIds("artists", TOKEN, 50, 0)).map((r) => r.id);
