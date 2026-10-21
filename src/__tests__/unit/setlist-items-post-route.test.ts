@@ -10,7 +10,6 @@ vi.mock("@/lib/launchFlags", () => ({
   // tripping TS's literal-type narrowing.
   LAUNCH_FLAGS: {
     showSignIn: false as boolean,
-    showSearch: false as boolean,
     confirmDbEnabled: false as boolean,
     addItemEnabled: true as boolean,
   },

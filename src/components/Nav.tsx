@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
+import { HeaderSearchInput } from "@/components/search/HeaderSearchInput";
 import { breakpoint, colors, zIndex } from "@/styles/tokens";
 
 /*
@@ -20,12 +21,10 @@ import { breakpoint, colors, zIndex } from "@/styles/tokens";
  * `breakpoint.desktop`. Tailwind's `min-[1100px]:` arbitrary variant
  * carries it in class names — keep it equal to `breakpoint.nav`.
  *
- * Search slot: the field (desktop) and icon (menu bands) render only
- * when `LAUNCH_FLAGS.showSearch` is on. There is no search page yet, so
- * shipping the controls now would be a dead entry point; ticket 13
- * builds `/[locale]/search` and flips the flag. The contract it inherits:
- * the field submits a plain GET to `/{locale}/search?q=…` (no
- * autocomplete), and the icon links to the same page without a query.
+ * Search slot (ticket 13): the desktop field submits a plain GET to
+ * `/{locale}/search?q=…` (no autocomplete; overview, page 1) and the
+ * menu-band icon links to the same page without a query. On the search
+ * page the field mirrors the current `q` (HeaderSearchInput).
  */
 
 type NavItem = { key: "home" | "artists" | "events" | "albums"; href: string };
@@ -225,53 +224,43 @@ export function Nav() {
           })}
         </nav>
 
-        {LAUNCH_FLAGS.showSearch && (
-          <form
-            role="search"
-            action={`/${locale}/search`}
-            method="get"
-            className="relative ml-auto hidden w-[240px] min-w-[180px] items-center min-[1100px]:flex min-[1300px]:w-[300px]"
-          >
-            <label htmlFor="header-search" className="sr-only">
-              {t("search")}
-            </label>
-            <input
-              id="header-search"
-              type="search"
-              name="q"
-              autoComplete="off"
-              placeholder={t("searchPlaceholder")}
-              className="h-11 w-full rounded-lg border bg-[#f8faff] pl-3.5 pr-[45px] text-[12px] placeholder:text-[color:#52617a]"
-              style={{ borderColor: colors.borderStrong, color: colors.textPrimary }}
-            />
-            <button
-              type="submit"
-              aria-label={t("search")}
-              className="shell-interactive absolute right-px grid h-[42px] w-11 place-items-center rounded-lg"
-              style={{ color: colors.primary }}
-            >
-              <SearchIcon />
-            </button>
-          </form>
-        )}
-
-        {/* Desktop right group. `ml-auto` lands on whichever element is
-            first after the links: the search form when it is shown,
-            otherwise this group. */}
-        <div
-          className={`hidden items-center gap-4 min-[1100px]:flex ${LAUNCH_FLAGS.showSearch ? "" : "ml-auto"}`}
+        <form
+          role="search"
+          action={`/${locale}/search`}
+          method="get"
+          className="relative ml-auto hidden w-[240px] min-w-[180px] items-center min-[1100px]:flex min-[1300px]:w-[300px]"
         >
+          <label htmlFor="header-search" className="sr-only">
+            {t("search")}
+          </label>
+          <HeaderSearchInput
+            id="header-search"
+            placeholder={t("searchPlaceholder")}
+            className="h-11 w-full rounded-lg border bg-[#f8faff] pl-3.5 pr-[45px] text-[12px] placeholder:text-[color:#52617a]"
+            style={{ borderColor: colors.borderStrong, color: colors.textPrimary }}
+          />
+          <button
+            type="submit"
+            aria-label={t("search")}
+            className="shell-interactive absolute right-px grid h-[42px] w-11 place-items-center rounded-lg"
+            style={{ color: colors.primary }}
+          >
+            <SearchIcon />
+          </button>
+        </form>
+
+        {/* Desktop right group; the search form before it carries the
+            `ml-auto` that pushes both to the right. */}
+        <div className="hidden items-center gap-4 min-[1100px]:flex">
           <LanguageSwitcher variant="header" />
           {signIn}
         </div>
 
         {/* Menu bands (<1100px): search icon + menu toggle. */}
         <div className="ml-auto flex items-center gap-1 min-[1100px]:hidden">
-          {LAUNCH_FLAGS.showSearch && (
-            <Link href="/search" aria-label={t("search")} className={ICON_BUTTON}>
-              <SearchIcon />
-            </Link>
-          )}
+          <Link href="/search" aria-label={t("search")} className={ICON_BUTTON}>
+            <SearchIcon />
+          </Link>
           <button
             ref={toggleRef}
             type="button"
