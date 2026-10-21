@@ -1,4 +1,4 @@
-// redesign-page-qa scenario: the redesigned home (/<locale>), ticket 15.
+// redesign-page-qa scenario: the redesigned home (/<locale>).
 // The reference scenario — copy it as the starting point for another page.
 //
 // Everything page-specific hangs off the hero search input: a build
@@ -8,6 +8,9 @@
 // Data-dependent parts SKIP rather than fail: the ongoing section and the
 // LIVE dot exist only while a show is on, and the rail needs upcoming shows.
 const RAIL = 'main [role="region"][aria-labelledby="upcoming-title"]';
+// The home's mobile/desktop switch: the hero swaps its art-directed crop
+// and the upcoming rail turns from a scroller into a static row here.
+const MOBILE_BELOW = 700;
 
 const scenario = {
   name: "home",
@@ -38,7 +41,7 @@ const scenario = {
     // Art direction: the mobile crop below 700px, the desktop one above.
     check(
       `${tag} hero art direction`,
-      width < 700 ? /hero-mobile-/.test(info.heroSrc) : /hero-desktop-/.test(info.heroSrc),
+      width < MOBILE_BELOW ? /hero-mobile-/.test(info.heroSrc) : /hero-desktop-/.test(info.heroSrc),
       info.heroSrc.split("/").pop(),
     );
     check(
@@ -46,21 +49,26 @@ const scenario = {
       info.action === `/${locale}/search` && info.method === "get" && info.maxLength === 120 && info.labelled,
       `${info.method} ${info.action}, maxlength ${info.maxLength}, label ${info.labelled}`,
     );
-    const cards = await page.locator(`${RAIL} a`).count();
-    if (cards) check(`${tag} rail ≤5 cards`, cards <= 5, String(cards));
+    // The rail renders only when there are upcoming shows; when it does,
+    // it holds 1–5 cards (an empty rail is a bug, not "no data").
+    if (await page.locator(RAIL).count()) {
+      const cards = await page.locator(`${RAIL} a`).count();
+      check(`${tag} rail 1–5 cards`, cards > 0 && cards <= 5, String(cards));
+    }
   },
 
   // White ring on the dark hero, not the shell's #174FAF.
   focusRings: [{ name: "hero search", selector: "#hero-search", ring: /^solid 3px rgb\(255, 255, 255\)/ }],
 
-  scrollRegions: [{ name: "upcoming rail", selector: RAIL, scrollBelow: 700 }],
+  scrollRegions: [{ name: "upcoming rail", selector: RAIL, scrollBelow: MOBILE_BELOW }],
 
   contrast: {
     widths: [390, 1440],
     pairs: ["badge", "badgeWish", "liveBadge", "liveCta", "day", "heroCaption"],
   },
 
-  reducedMotion: { suffix: "liveDot", animation: "live-pulse" },
+  // Stopped, the dot rests fully opaque rather than frozen mid-fade.
+  reducedMotion: { suffix: "liveDot", animation: "live-pulse", rest: { opacity: "1" } },
 };
 
 export default scenario;

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Browser QA for one public redesign page across locales × widths.
 //
-// Generalised from the ticket 15 (home) one-off. redesign-shell-qa.mjs
-// covers the shared shell; this covers what a page ticket must verify on
+// redesign-shell-qa.mjs covers the shared shell; this covers what a page ticket must verify on
 // its own page, with the page-specific parts in a small SCENARIO module
 // (scripts/redesign-page-qa/scenarios/*.mjs, contract below).
 //
@@ -31,15 +30,21 @@
 //              width, ArrowRight on the focused region scrolls it (on a
 //              fresh load, then a 1.2 s wait: WebKit ignores arrow keys
 //              right after a programmatic scrollLeft reset)
-//   contrast   each contrast pair ≥ 4.5:1 at the scenario's widths. An
-//              element is found by its CSS-module class SUFFIX `__<name>`,
+//   contrast   each contrast pair ≥ 4.5:1 at the scenario's widths, run
+//              right after the capture (before any focus step or reload).
+//              Elements are found by CSS-module class SUFFIX `__<name>`,
 //              matched exactly: `[class*=badge]` also matches the
-//              transparent `.badges` wrapper and measures nothing.
+//              transparent `.badges` wrapper and measures nothing. Every
+//              visible match is measured and the worst reported; a
+//              translucent background is composited over the layers behind
+//              it; text over a background image is SKIP (judge by eye). A
+//              pair found at no width at all is a FAIL (typo, renamed class).
 // Once per run (1440 wide, first locale):
 //   motion     the scenario's reduced-motion target animates without the
 //              preference (positive control — otherwise a missing or static
 //              element passes vacuously), then has no running animation
-//              with `prefers-reduced-motion: reduce`
+//              with `prefers-reduced-motion: reduce`, settled on the
+//              scenario's `rest` styles if it gives any
 //
 // A scenario check whose subject is absent on this build prints SKIP (the
 // redesigned page may not be on the branch served); SKIP never fails a run.
@@ -76,18 +81,22 @@
 //     // `contrast` report one SKIP per cell instead of failing.
 //     requires: "#hero-search",
 //     checks: async (t) => {},         // t: page, locale, width, browserName,
+//                                      //    tag ("<browser> <locale> <width>",
+//                                      //    the prefix for check names),
 //                                      //    check(name, ok, detail),
 //                                      //    skip(name, detail)
 //     focusRings: [{ name, selector, ring: /solid 3px rgb\(255, 255, 255\)/ }],
 //                                      // ring is matched against
 //                                      // "<style> <width> <color> <offset>"
 //     scrollRegions: [{ name, selector, scrollBelow: 700 }],
+//                                      // fewer than 2 links in it → SKIP
 //     contrast: { widths: [390, 1440], pairs: ["badge", { name, bg }] },
 //                                      // bg: suffix of the ancestor that
 //                                      // paints the background; default the
-//                                      // element itself, else the nearest
-//                                      // ancestor with an opaque background
-//     reducedMotion: { suffix: "liveDot" | selector: "…", animation: "live-pulse" },
+//                                      // element itself; composited up to
+//                                      // the first opaque ancestor
+//     reducedMotion: { suffix: "liveDot" | selector: "…", animation: "live-pulse",
+//                      rest: { opacity: "1" } },  // computed styles once stopped
 //   }
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -122,7 +131,7 @@ if (args.list) {
 }
 const usage = () => {
   console.error(
-    "usage: node scripts/redesign-page-qa.mjs --scenario <name|path.mjs> --out <dir> [--base URL] [--path p] [--browser chromium|webkit] [--quick] [--locales ja,ko,en] [--widths 320,1440]",
+    "usage: node scripts/redesign-page-qa.mjs --scenario <name|path.mjs> --out <dir> [--base URL] [--path p] [--browser chromium|webkit] [--quick] [--locales ja,ko,en] [--widths 320,1440] [--timeout s] [--run-timeout min] | --list",
   );
   process.exit(2);
 };
@@ -169,6 +178,10 @@ if (!WIDTHS.length || WIDTHS.some((w) => !Number.isInteger(w) || w < 200 || w > 
 const scenarioPath = args.scenario.endsWith(".mjs")
   ? path.resolve(args.scenario)
   : path.join(scenarioDir, `${args.scenario}.mjs`);
+if (!fs.existsSync(scenarioPath)) {
+  console.error(`--scenario ${args.scenario}: no ${scenarioPath} (--list shows the names)`);
+  process.exit(2);
+}
 const scenario = (await import(pathToFileURL(scenarioPath).href)).default;
 
 // "/events", "events/", "/ko/events" and "/" all normalise to "" or
@@ -332,39 +345,70 @@ function measure() {
   };
 }
 
-// Contrast pairs: [{ name, bg? }] → [{ name, fg, bg, bgFrom } | { name, missing }].
-// Colours come back as the computed strings; parsed in Node.
+// Contrast pairs: [{ name, bg? }] → per pair, one entry per visible element
+// with that class suffix: { fg, layers, image, from }. `layers` are the
+// computed background colours from the element (or its named `bg` ancestor)
+// up to the first opaque one, so a translucent fill is composited over what
+// is behind it; `image` marks a background-image on the way, which this
+// check cannot see through. Colours are parsed and composited in Node.
 function readContrast(pairs) {
-  const bySuffix = (name, root = document.querySelector("main") ?? document.body) =>
-    [...root.querySelectorAll("*")].find((e) => [...e.classList].some((c) => c.endsWith("__" + name)));
+  const root = document.querySelector("main") ?? document.body;
+  const hasSuffix = (e, name) => [...e.classList].some((c) => c.endsWith("__" + name));
   const closestBySuffix = (el, name) => {
-    for (let a = el; a; a = a.parentElement) if ([...a.classList].some((c) => c.endsWith("__" + name))) return a;
+    for (let a = el; a; a = a.parentElement) if (hasSuffix(a, name)) return a;
     return null;
   };
-  const transparent = (c) => c === "transparent" || /^rgba\(.*,\s*0\)$/.test(c);
+  const alpha = (c) => {
+    if (c === "transparent") return 0;
+    const n = c.match(/[\d.]+%?/g) ?? [];
+    if (n.length < 4) return 1;
+    return n[3].endsWith("%") ? parseFloat(n[3]) / 100 : parseFloat(n[3]);
+  };
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    return getComputedStyle(el).visibility !== "hidden" && r.width > 0 && r.height > 0;
+  };
   return pairs.map(({ name, bg }) => {
-    const el = bySuffix(name);
-    if (!el) return { name, missing: true };
-    let bgEl = bg ? closestBySuffix(el, bg) : el;
-    if (!bgEl) return { name, missing: true, detail: `no __${bg} ancestor` };
-    // The element (or the named ancestor) may not paint its own background;
-    // the nearest ancestor that does is what the text sits on.
-    while (bgEl.parentElement && transparent(getComputedStyle(bgEl).backgroundColor)) bgEl = bgEl.parentElement;
-    const cls = [...bgEl.classList].find((c) => c.includes("__")) ?? bgEl.tagName.toLowerCase();
-    return {
-      name,
-      fg: getComputedStyle(el).color,
-      bg: getComputedStyle(bgEl).backgroundColor,
-      bgFrom: bgEl === el ? "self" : cls,
-    };
+    const els = [...root.querySelectorAll("*")].filter((e) => hasSuffix(e, name) && visible(e));
+    if (!els.length) return { name, missing: true };
+    const items = els.map((el) => {
+      const start = bg ? closestBySuffix(el, bg) : el;
+      if (!start) return { missingBg: true };
+      const layers = [];
+      let image = false;
+      let from = null;
+      for (let a = start; a; a = a.parentElement) {
+        const s = getComputedStyle(a);
+        if (s.backgroundImage !== "none") image = true;
+        layers.push(s.backgroundColor);
+        if (alpha(s.backgroundColor) >= 1) {
+          from = a === el ? "self" : ([...a.classList].find((c) => c.includes("__")) ?? a.tagName.toLowerCase());
+          break;
+        }
+      }
+      return { fg: getComputedStyle(el).color, layers, image, from: from ?? "page white" };
+    });
+    return { name, items };
   });
 }
 
 function parseRgb(s) {
+  if (s === "transparent") return { rgb: [0, 0, 0], a: 0 };
   const m = /^rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/.exec(s ?? "");
   if (!m) return null;
   const a = m[4] === undefined ? 1 : m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
   return { rgb: [m[1], m[2], m[3]].map(Number), a };
+}
+// Source-over compositing of a colour with alpha onto an opaque one.
+const over = (top, under) => top.rgb.map((v, i) => v * top.a + under[i] * (1 - top.a));
+// Background layers innermost first, ending at the first opaque one (or the
+// page's white canvas when none is) → the opaque colour the text sits on.
+function compositeLayers(layers) {
+  const parsed = layers.map(parseRgb);
+  if (parsed.some((p) => !p)) return null;
+  let under = [255, 255, 255];
+  for (const p of parsed.reverse()) under = over(p, under);
+  return under;
 }
 function lum(rgb) {
   const [r, g, b] = rgb.map((v) => {
@@ -431,6 +475,14 @@ async function runCell(locale, width) {
   // Capture before any focus or keyboard step (see the header).
   await page.screenshot({ path: path.join(outDir, `${NAME}-${args.browser}-${locale}-${width}.png`), fullPage: true });
 
+  // Contrast needs no focus and runs before the keyboard-scroll reload, so
+  // it reads the page as first loaded.
+  const c = scenario.contrast;
+  if (c && (!c.widths || c.widths.includes(width))) {
+    if (!present) skip(`${tag} contrast`, absent);
+    else await runContrast(page, tag, c);
+  }
+
   for (const f of scenario.focusRings ?? []) {
     const name = `${tag} focus ring ${f.name}`;
     const target = page.locator(f.selector).first();
@@ -458,17 +510,22 @@ async function runCell(locale, width) {
       overflowX: getComputedStyle(el).overflowX,
       links: el.querySelectorAll("a").length,
     }));
+    // With fewer than two links there is nothing to scroll to, and a
+    // static region proves nothing either: data-dependent, so SKIP.
+    if (s.links < 2) {
+      skip(`${name} scroll`, `${s.links} link(s) in the region on this data`);
+      continue;
+    }
     const narrow = width < r.scrollBelow;
     if (narrow) {
-      check(`${name} scrolls below ${r.scrollBelow}px`, s.links < 2 || s.scrollable, `${s.links} links, scrollable ${s.scrollable}`);
+      check(`${name} scrolls below ${r.scrollBelow}px`, s.scrollable, `${s.links} links, scrollable ${s.scrollable}`);
     } else {
       check(
         `${name} static from ${r.scrollBelow}px`,
         !s.scrollable && !/auto|scroll/.test(s.overflowX),
-        `scrollable ${s.scrollable}, overflow-x ${s.overflowX}`,
+        `${s.links} links, scrollable ${s.scrollable}, overflow-x ${s.overflowX}`,
       );
     }
-    if (s.links < 2) continue;
     await page.keyboard.press("Shift");
     const last = region.locator("a").last();
     await last.focus();
@@ -487,14 +544,18 @@ async function runCell(locale, width) {
         r.selector,
         { timeout: 2000 },
       )
-      .then(() => true, () => false);
+      .then(
+        () => true,
+        () => false,
+      );
     check(`${name} last link scrolled into view on focus`, inView);
     if (narrow) {
       // Fresh load so the region starts at 0 without a programmatic reset.
       // Errors stop counting here: the reload cancels in-flight RSC
       // prefetches, which WebKit logs as "Fetch API cannot load … due to
       // access control checks" — the harness's doing, not the page's, and
-      // the page itself was already observed through its first load.
+      // the page itself was already observed through its first load. Any
+      // later region in the scenario runs on this reloaded page.
       errorsOpen = false;
       await open(page, url);
       await region.focus();
@@ -506,58 +567,96 @@ async function runCell(locale, width) {
     }
   }
 
-  const c = scenario.contrast;
-  if (c && (!c.widths || c.widths.includes(width)) && !present) {
-    skip(`${tag} contrast`, absent);
-  } else if (c && (!c.widths || c.widths.includes(width))) {
-    const pairs = c.pairs.map((p) => (typeof p === "string" ? { name: p } : p));
-    for (const p of await page.evaluate(readContrast, pairs)) {
-      const name = `${tag} contrast ${p.name}`;
-      if (p.missing) {
-        skip(name, p.detail ?? `no .*__${p.name} element`);
-        continue;
-      }
-      const fg = parseRgb(p.fg);
-      const bg = parseRgb(p.bg);
-      if (!fg || !bg || fg.a < 1 || bg.a < 1) {
-        // A translucent colour's contrast depends on what is behind it,
-        // which this check does not composite — judge it by eye.
-        check(name, false, `cannot measure: fg ${p.fg} on bg ${p.bg} (${p.bgFrom})`);
-        continue;
-      }
-      const v = ratio(fg.rgb, bg.rgb);
-      check(name, v >= 4.5, `${v.toFixed(2)} (${p.fg} on ${p.bg}, bg ${p.bgFrom})`);
-    }
-  }
-
   check(`${tag} no errors`, errors.length === 0, errors.length ? `${errors.length}: ${errors.slice(0, 2).join(" | ")}` : "");
 }
 
+// Pair names found at least once on a build where `requires` matched. A
+// pair never found there is a FAIL at the end of the run (a typo in the
+// suffix, or a renamed class), not a SKIP at every width.
+const contrastSeen = new Set();
+let contrastRan = false;
+
+async function runContrast(page, tag, c) {
+  contrastRan = true;
+  const pairs = c.pairs.map((p) => (typeof p === "string" ? { name: p } : p));
+  for (const p of await page.evaluate(readContrast, pairs)) {
+    const name = `${tag} contrast ${p.name}`;
+    if (p.missing) {
+      skip(name, `no visible .*__${p.name} element`);
+      continue;
+    }
+    contrastSeen.add(p.name);
+    // Every element with the suffix is measured; the worst one is reported.
+    let worst = null;
+    const unmeasurable = [];
+    for (const it of p.items) {
+      if (it.missingBg) {
+        unmeasurable.push(`no __${pairs.find((x) => x.name === p.name).bg} ancestor`);
+        continue;
+      }
+      const bg = compositeLayers(it.layers);
+      const fgc = parseRgb(it.fg);
+      if (it.image || !bg || !fgc) {
+        unmeasurable.push(it.image ? `background image under it (${it.from})` : `unparsed ${it.fg} / ${it.layers.join(" > ")}`);
+        continue;
+      }
+      const fg = fgc.a < 1 ? over(fgc, bg) : fgc.rgb;
+      const v = ratio(fg, bg);
+      if (!worst || v < worst.v) worst = { v, fg: it.fg, bg: bg.map(Math.round).join(","), from: it.from };
+    }
+    if (worst) {
+      check(
+        name,
+        worst.v >= 4.5,
+        `${worst.v.toFixed(2)} worst of ${p.items.length} (${worst.fg} on rgb(${worst.bg}), bg ${worst.from})` +
+          (unmeasurable.length ? `; ${unmeasurable.length} not measured` : ""),
+      );
+    } else {
+      // Text over an image (or an unparsed colour) has no single background
+      // to compare against — judge it by eye from the capture.
+      skip(name, `cannot measure: ${unmeasurable[0]}`);
+    }
+  }
+}
+
 // Reduced motion: the target animates without the preference (positive
-// control), then not with it.
+// control), then has no running animation with it — and, when the scenario
+// gives `rest`, settles on those computed styles (e.g. a pulsing dot left
+// fully opaque rather than frozen mid-fade).
 async function runMotion() {
   const rm = scenario.reducedMotion;
   const locale = LOCALES[0];
+  const url = `${BASE}/${locale}${PAGE_PATH}`;
   const where = rm.suffix ? `.*__${rm.suffix}` : rm.selector;
   const read = async (reducedMotion) => {
     const ctx = await newContext({ viewport: { width: 1440, height: 900 }, reducedMotion });
     const page = await ctx.newPage();
-    await open(page, `${BASE}/${locale}${PAGE_PATH}`);
-    return page.evaluate(({ suffix, selector }) => {
-      const el = suffix
-        ? [...document.querySelectorAll("*")].find((e) => [...e.classList].some((c) => c.endsWith("__" + suffix)))
-        : document.querySelector(selector);
-      if (!el) return null;
-      const s = getComputedStyle(el);
-      return {
-        name: s.animationName,
-        running: el.getAnimations().filter((a) => a.playState === "running").length,
-      };
-    }, rm);
+    const resp = await open(page, url);
+    if (resp?.status() !== 200) return { status: resp?.status() };
+    return page.evaluate(
+      ({ suffix, selector, rest }) => {
+        const el = suffix
+          ? [...document.querySelectorAll("*")].find((e) => [...e.classList].some((c) => c.endsWith("__" + suffix)))
+          : document.querySelector(selector);
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return {
+          name: s.animationName,
+          running: el.getAnimations().filter((a) => a.playState === "running").length,
+          rest: Object.fromEntries(Object.keys(rest ?? {}).map((k) => [k, s.getPropertyValue(k)])),
+        };
+      },
+      { suffix: rm.suffix, selector: rm.selector, rest: rm.rest },
+    );
   };
+  const name = `${args.browser} reduced motion`;
   const normal = await read("no-preference");
+  if (normal?.status) {
+    check(name, false, `HTTP ${normal.status} ${url}`);
+    return;
+  }
   if (!normal) {
-    skip(`${args.browser} reduced motion`, `no ${where} on ${locale}${PAGE_PATH || "/"} (data or build)`);
+    skip(name, `no ${where} on ${locale}${PAGE_PATH || "/"} (data or build)`);
     return;
   }
   check(
@@ -566,15 +665,19 @@ async function runMotion() {
     JSON.stringify(normal),
   );
   const reduced = await read("reduce");
+  const restOk = !!reduced && Object.entries(rm.rest ?? {}).every(([k, v]) => reduced.rest?.[k] === v);
   check(
-    `${args.browser} reduced motion stops ${where}`,
-    !!reduced && reduced.running === 0,
+    `${name} stops ${where}`,
+    !!reduced && !reduced.status && reduced.running === 0 && restOk,
     JSON.stringify(reduced),
   );
 }
 
 const browser = await browserType.launch();
 setTimeout(() => {
+  // finish() may already be under way (waiting on browser.close()); a FAIL
+  // added now would print after the summary and miss the exit code.
+  if (finishing) return;
   check("run (timeout)", false, `whole run exceeded ${args["run-timeout"]} min; results so far kept`);
   finish({ closeBrowser: false });
 }, RUN_MS);
@@ -583,6 +686,12 @@ console.log(`${NAME}: ${BASE}/<locale>${PAGE_PATH || "/"} — ${args.browser}, $
 for (const locale of LOCALES) {
   for (const width of WIDTHS) {
     await section(`${args.browser} ${locale} ${width}`, () => runCell(locale, width), CELL_MS);
+  }
+}
+if (contrastRan) {
+  for (const p of scenario.contrast.pairs) {
+    const n = typeof p === "string" ? p : p.name;
+    if (!contrastSeen.has(n)) check(`${args.browser} contrast ${n} found`, false, `no .*__${n} at any width — typo or renamed class?`);
   }
 }
 if (scenario.reducedMotion) await section(`${args.browser} reduced motion`, runMotion, CHECK_MS * 4);
