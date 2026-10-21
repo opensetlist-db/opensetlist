@@ -343,7 +343,7 @@ function expireWarmPublicData(): void {
     );
   };
   const fail = (err: unknown) =>
-    console.error(`[dataCache] expireTag(${WARM_PUBLIC_DATA_TAG}) failed`, err);
+    console.error("[dataCache] expireTag(%s) failed", WARM_PUBLIC_DATA_TAG, err);
   let pending: Promise<void>;
   try {
     pending = warmEntryCache()
