@@ -53,6 +53,13 @@ reviews:
       "not called") need a positive control: the same test must show X was
       loaded, rendered, or reachable first. A fixture in the wrong storage
       shape loads nothing, and the absence check then passes vacuously
+    - A `.catch(() => null)` result (e.g. `await res.json().catch(() => null)`)
+      must be null-checked before an `as` cast and property access: the cast
+      hides the null, and the TypeError can leave the UI stuck in a pending
+      state (a cover editor locked on "saving")
+    - `??` on a nullable domain value where `null` itself means something
+      ("no cover", "cleared"): `fresh ?? older` replaces that null with the
+      older value. Branch on whether the object is present instead
     - Admin route translation writes are per-locale upserts (src/app/api/admin/stage-identities/[id]/route.ts), never `<x>Translation.deleteMany` + recreate: a partial save wipes the locales and columns it did not send
 
     Skip:

@@ -2,8 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { getSeriesLogoAdminState } from "@/lib/adminLogo";
+import { parseModeChange, readJsonObject } from "@/lib/adminLogoRequest";
 import {
-  UploadError,
   handleImageUpload,
   isUploadError,
   parseAttemptId,
@@ -14,7 +14,6 @@ import {
   verifySameOrigin,
   writeAssignment,
   writeLogoAssignment,
-  type LogoAssignment,
 } from "@/lib/imageUpload";
 
 // Series logo card endpoints (admin only, Korean messages per the admin
@@ -100,7 +99,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   try {
     verifySameOrigin(request);
     const seriesId = parseTargetId((await params).id);
-    const { expected, next } = parseModeChange(await readJson(request));
+    const { expected, next } = parseModeChange(await readJsonObject(request));
 
     // Shared non-upload writer: one transaction, CAS on the expected pair
     // (zero rows → 404/409 with the current value), and the commit-time
@@ -124,43 +123,4 @@ function safeRevalidate() {
   } catch (err) {
     console.error("[series-logo] revalidate failed", err instanceof Error ? err.name : typeof err);
   }
-}
-
-async function readJson(request: NextRequest): Promise<Record<string, unknown>> {
-  let raw: unknown;
-  try {
-    raw = await request.json();
-  } catch {
-    raw = null;
-  }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new UploadError("invalid_request", "요청 형식이 올바르지 않습니다.");
-  }
-  return raw as Record<string, unknown>;
-}
-
-/**
- * `{ expected: { mode, assetId }, next: { mode } }`. Both expected fields
- * must be present — `assetId` as a string or null — because the pair is
- * what the compare-and-set compares; a missing field silently defaulting
- * to "no asset" would let a stale form overwrite a custom logo.
- */
-function parseModeChange(body: Record<string, unknown>): {
-  expected: LogoAssignment;
-  next: { mode: "inherit" | "typography" };
-} {
-  const expected = body.expected as Record<string, unknown> | null | undefined;
-  const next = body.next as Record<string, unknown> | null | undefined;
-  if (!expected || typeof expected !== "object" || !("mode" in expected) || !("assetId" in expected)) {
-    throw new UploadError("invalid_request", "현재 로고 상태 값이 없습니다. 페이지를 새로고침해 주세요.");
-  }
-  const assetId = expected.assetId === null ? "" : expected.assetId;
-  const parsedExpected = parseExpectedLogo(expected.mode, assetId);
-  if (!next || typeof next !== "object" || (next.mode !== "inherit" && next.mode !== "typography")) {
-    throw new UploadError(
-      "invalid_request",
-      "변경할 로고 방식이 올바르지 않습니다. 직접 지정은 이미지 파일을 올려 저장합니다.",
-    );
-  }
-  return { expected: parsedExpected, next: { mode: next.mode } };
 }

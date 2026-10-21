@@ -180,3 +180,48 @@ export function resolutionText(mode: LogoMode, preview: AdminLogoPreview, imageF
       return "상위 시리즈에 로고가 없어 제목을 표시합니다. 하위 공연은 자체 설정이 없다면 이 규칙을 따릅니다.";
   }
 }
+
+/**
+ * Event-override wording of the explanation under the preview. Differs from the series wording where the path differs:
+ * an event inherits from ITS series (not a parent series), and nothing
+ * inherits from an event, so the series text's "하위 공연은…" line does
+ * not apply. `seriesName` is the event's own series (null = no series),
+ * named in the exhausted case ("공연 → <series> → 상속할 로고 없음") as
+ * in the approved design.
+ *
+ * The deciding series' name is expected for the custom / typography-mode
+ * / unusable-asset reasons (the resolver always has a source node then);
+ * if it is ever missing the sentence drops the name rather than leaving
+ * an empty 「」.
+ */
+export function eventResolutionText(seriesName: string | null): typeof resolutionText {
+  return (mode, preview, imageFailed) => {
+    if (imageFailed) {
+      return "선택된 로고를 불러올 수 없어 제목을 표시합니다. 상위 이미지나 포스터로 대체하지 않습니다.";
+    }
+    if (mode === "typography") {
+      return "시리즈 로고를 사용하지 않고 이 공연의 제목만 표시합니다.";
+    }
+    if (mode === "custom") {
+      return preview.imageUrl
+        ? "이 공연에 직접 지정한 로고를 사용합니다. 시리즈의 설정보다 우선합니다."
+        : "선택된 로고를 사용할 수 없어 제목을 표시합니다. 상위 이미지나 포스터로 대체하지 않습니다.";
+    }
+    const series = preview.source && !preview.source.isSelf ? `시리즈 「${preview.source.name}」` : "시리즈";
+    switch (preview.reason) {
+      case "custom":
+        return `${series}의 로고를 사용합니다. 시리즈 로고가 바뀌면 함께 바뀝니다.`;
+      case "typography-mode":
+        return `${series}에서 상속을 멈춰 공연 제목을 표시합니다.`;
+      case "unusable-asset":
+        return `${series}의 로고를 사용할 수 없어 공연 제목을 표시합니다.`;
+      case "broken-chain":
+        return "시리즈 연결이 끊겨(삭제·순환) 공연 제목을 표시합니다.";
+      case "exhausted":
+      default:
+        return seriesName
+          ? `공연 → ${seriesName} → 상속할 로고 없음. 공연 제목을 표시합니다.`
+          : "연결된 시리즈가 없어 공연 제목을 표시합니다.";
+    }
+  };
+}

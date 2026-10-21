@@ -60,6 +60,8 @@ know what each suite leaves behind:
 | `logo-resolution.test.ts` | **writes** | three series + two events keyed `logo-itest-<ts>-*`, `ImageAsset` rows keyed `itest/logo-itest-<ts>/…`, plus one admin `PUT /api/admin/event-series/[id]` and one `PUT /api/admin/events/[id]` on its own fixtures; creates its own coloured artist `logo-itest-<ts>-artist`; `afterAll` deletes them and asserts none are left |
 | `image-upload-service.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/upload-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
 | `album-cover.test.ts` | **writes** | one album with slug `cover-itest-<ts>`, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/cover-itest-<ts>/`; re-imports that one slug through the CSV importer; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `series-logo-route.test.ts` | **writes** | parent/child series (+ a soft-deleted one) and one event, all named `series-logo-itest-<ts> …`, through the admin handlers; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/series-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `event-logo-route.test.ts` | **writes** | parent/child series and events (one soft-deleted) named `event-logo-itest-<ts> …` through the admin handlers, with a fake poster URL; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/event-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
 | `global-search.test.ts` | **writes** | songs (one variant, one soft-deleted), artists, an album and events whose slug starts `srchitest<ts>`, plus their translations and one `SongArtist`; search reads only; `afterAll` deletes them and asserts none are left |
 | `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
@@ -68,6 +70,15 @@ A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`
 and leaves its fixture rows in dev. A new integration test must create
 its own fixtures and delete them in `afterAll`; never assert on, or
 mutate, rows another feature depends on.
+
+**Inspecting the dev DB by hand** (row counts, grants, RLS, before/after
+checks for a test or migration): use `node scripts/db-ro.mjs "<sql>"
+["<sql>" …]` (or `--file q.sql`, `--json`) instead of an ad-hoc `pg`
+script. It is dev-only (same URL guard as the integration setup, from
+`scripts/dev-db-guard.mjs`) and read-only (each statement runs inside
+`BEGIN READ ONLY … ROLLBACK`, writes and session `SET` are refused before
+connecting). It runs from any directory or task worktree and prints
+timestamps as UTC.
 
 ### E2E — through the app
 
@@ -116,6 +127,30 @@ scripts/ttfb-event-detail.sh http://localhost:3000 LOCAL
 Absolute numbers differ from the runner's (different network path to
 Supabase Seoul); compare a branch against its base on the same machine,
 as the workflow does.
+
+### Redesign captures and shell QA
+
+Both run against a production build like the TTFB script above
+(`npx next start -p 3110`), and their output stays out of the repo.
+
+`scripts/redesign-capture.mjs` captures screenshots and per-page metrics
+for the redesign page set. `--compare <captures.json>` diffs the new run
+against a baseline manifest (the ticket 02 one is in the wiki vault,
+`output/redesign/handoffs/02/captures/captures.json`) and prints the
+regressions: new horizontal scroll, CLS, console errors, `lang`, status.
+
+`scripts/redesign-shell-qa.mjs` checks the shared shell (header bands,
+overflow, menu keyboard behaviour, focus ring, locale switch, reduced
+motion) across locales × widths and exits 1 on any FAIL. Page tickets run
+it after any shared-style change (redesign spec story 51): chromium in
+full, `--browser webkit --quick` for Safari.
+
+Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
+(build + `next start`, Sentry blanked, refuses a foreign port holder,
+`--stop` kills only its own verified PID) and `scripts/admin-qa.mjs
+--scenario <name>`, which logs in, creates and always deletes a dev-DB
+fixture, and runs overflow/keyboard/label/motion/referrer checks; a page
+adds a scenario under `scripts/admin-qa/scenarios/` (copy `album-cover`).
 
 ---
 
