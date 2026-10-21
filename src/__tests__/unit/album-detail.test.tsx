@@ -306,6 +306,9 @@ describe("AlbumIdentity", () => {
     expect(links).toEqual(["/ko/artists/1/a1", "/ko/artists/2/a2"]);
     expect(screen.getByText("蓮ノ空")).toBeTruthy(); // original name as sub line
     expect(container.querySelector("time")?.getAttribute("datetime")).toBe("2026-07-29");
+    // Stored as a UTC midnight: the rendered day must not slide back on a
+    // host west of UTC.
+    expect(container.querySelector("time")?.textContent).toMatch(/29/);
     expect(container.querySelector("section")?.className).toMatch(/longTitle/);
   });
 });

@@ -6,6 +6,7 @@ import { displayOriginalName, resolveLocalizedField } from "@/lib/display";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { entityPath } from "@/lib/seo/entityUrl";
 import { formatDate } from "@/lib/utils";
+import { ALBUM_DATE_FORMAT } from "./albumDate";
 import styles from "./albumDetail.module.css";
 
 /*
@@ -126,7 +127,7 @@ export async function AlbumEventsPanel({
         { status: event.status, startTime: event.startTime },
         now,
       ),
-      formattedDate: formatDate(displayDate, locale),
+      formattedDate: formatDate(displayDate, locale, ALBUM_DATE_FORMAT),
       dateTime: String(displayDate).slice(0, 10),
       startMs: toMs(event.startTime),
     };

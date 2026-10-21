@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { displayOriginalTitle, displayOriginalName } from "@/lib/display";
 import { entityPath } from "@/lib/seo/entityUrl";
 import { formatDate, type BigIntStringified } from "@/lib/utils";
+import { ALBUM_DATE_FORMAT } from "./albumDate";
 import { AlbumCover } from "./AlbumCover";
 import styles from "./albumDetail.module.css";
 
@@ -98,7 +99,7 @@ export async function AlbumIdentity({
             </dt>
             <dd className={styles.metaValue}>
               <time dateTime={album.releaseDate.slice(0, 10)}>
-                {formatDate(album.releaseDate, locale)}
+                {formatDate(album.releaseDate, locale, ALBUM_DATE_FORMAT)}
               </time>
             </dd>
           </div>

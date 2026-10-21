@@ -242,6 +242,7 @@
 .panelHead h2 {
   margin: 0;
   font-size: 22px;
+  font-weight: 700;
 }
 .panelHead > span {
   color: #52617a;
@@ -259,6 +260,7 @@
 
 .disc {
   margin: 0;
+  font-weight: 700;
   padding: 12px 26px;
   border-top: 1px solid #dce3ef;
   background: #f0edff;
@@ -327,9 +329,11 @@ a.trackRow:focus-visible {
 
 /* ── Related events ───────────────────────────────────────────── */
 
+/* Tailwind preflight resets heading weight; 22-v1 headings are bold. */
 .sectionTitle {
   margin: 26px 0 8px;
   font-size: 22px;
+  font-weight: 700;
 }
 
 .sectionSub {
@@ -424,6 +428,7 @@ a.trackRow:focus-visible {
 .purchaseHeading {
   margin: 0 0 18px;
   font-size: 22px;
+  font-weight: 700;
 }
 
 .bonusSummary {
@@ -476,6 +481,7 @@ a.trackRow:focus-visible {
 .storeHeading h3 {
   margin: 0;
   font-size: 17px;
+  font-weight: 700;
 }
 
 .edition {
@@ -501,6 +507,7 @@ a.trackRow:focus-visible {
   flex: 1;
   margin: 0;
   padding: 0 0 0 20px;
+  list-style: disc; /* preflight strips list markers */
   font-size: 14px;
 }
 .bonusList li {
