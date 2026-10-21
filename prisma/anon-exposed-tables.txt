@@ -1,0 +1,64 @@
+# Public tables that the Supabase `anon` / `authenticated` roles may reach
+# (any table or column privilege). Checked by scripts/check-anon-exposure.mjs,
+# which migrate-dev.yml runs right after prisma/post-deploy.sql.
+#
+# A NEW table must not be added here by default. Lock it down in
+# prisma/post-deploy.sql instead — `ENABLE ROW LEVEL SECURITY` plus
+# `REVOKE ALL ... FROM PUBLIC, anon, authenticated` (see the ImageAsset
+# block): Supabase's default ACL grants those roles ALL on every new table
+# and the browser holds the anon key. Only when public exposure through the
+# anon key is truly intended, add the name here, so the diff shows it to
+# the reviewer.
+#
+# Initial list: every table exposed on the dev DB on 2026-10-20 (all public
+# tables except ImageAsset), generated with
+# `node scripts/check-anon-exposure.mjs --list`. Their grants are a pending
+# owner decision; when one is locked down, the check prints a note and its
+# line should be deleted.
+Album
+AlbumArtist
+AlbumBonusImportJob
+AlbumStoreBonus
+AlbumStoreBonusTranslation
+AlbumStoreListing
+AlbumStoreListingTranslation
+AlbumTrack
+AlbumTrackTranslation
+AlbumTranslation
+Artist
+ArtistGroup
+ArtistTranslation
+BoardPick
+Comment
+CommentEdit
+CommentLike
+CommentTranslation
+ContestReport
+Event
+EventImpression
+EventPerformer
+EventSeries
+EventSeriesTranslation
+EventTranslation
+Group
+GroupTranslation
+ImpressionTranslation
+RealPerson
+RealPersonStageIdentity
+RealPersonTranslation
+Report
+SetlistItem
+SetlistItemArtist
+SetlistItemConfirm
+SetlistItemMember
+SetlistItemReaction
+SetlistItemSong
+Song
+SongArtist
+SongTranslation
+SongWish
+StageIdentity
+StageIdentityArtist
+StageIdentityTranslation
+User
+UserRole

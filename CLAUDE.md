@@ -35,9 +35,9 @@ remembered App Router APIs.
 | Database | PostgreSQL (Supabase Seoul) | Free tier → Pro at Phase 2 |
 | Search | pg_tsvector → Meilisearch Cloud → self-hosted | Phased progression |
 | Cache | Redis (Upstash Seoul) | Phase 2 |
-| Images | Cloudflare R2 | Phase 2 — no self-hosted images in MVP |
+| Images | Cloudflare R2 | Provisioned: prod bucket on img.opensetlist.com, dev bucket for Preview/local; upload code (`src/lib/imageUpload/`) on feature/redesign only |
 | Hosting | Vercel (frontend) | Free tier |
-| CDN | Cloudflare | Free |
+| DNS / CDN | Cloudflare | DNS since 2026-10-21; Vercel records DNS-only (not proxied, so no Cloudflare CDN); help@ via Email Routing |
 
 ---
 
@@ -46,7 +46,7 @@ remembered App Router APIs.
 - `prisma.config.ts` — DB connection lives here, not in schema.prisma
 - `src/lib/prisma.ts` — singleton client with PrismaPg adapter
 - Key: use session pooler (port 5432) for migrations, transaction pooler (port 6543) for runtime
-- 읽기 전용 DB 조회는 `scripts/db-ro.mjs` (세션 풀러, BEGIN READ ONLY)
+- 읽기 전용 DB 조회는 `scripts/db-ro.mjs` (dev 전용, 세션 풀러, BEGIN READ ONLY; ad-hoc `pg` 스크립트 대신)
 - See `memory/prisma_config.md` for full code patterns and commands
 
 ---
