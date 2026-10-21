@@ -108,10 +108,9 @@ describe("AlbumEventsPanel", () => {
     expect(screen.getByText("Album.events.subtitle.bd")).toBeTruthy();
   });
 
-  it("renders the empty state under the heading", async () => {
+  it("renders the bare empty panel", async () => {
     const el = await AlbumEventsPanel({ locale: "ko", albumType: "album", events: [] });
     render(el as ReactElement);
-    expect(screen.getByRole("heading", { name: "Album.tab.events" })).toBeTruthy();
     expect(screen.getByText("Album.events.empty")).toBeTruthy();
   });
 });
@@ -145,6 +144,8 @@ describe("AlbumTracksPanel", () => {
     expect(links).toHaveLength(1);
     expect(links[0].getAttribute("href")).toBe("/ko/songs/7/dream");
     expect(screen.getByText("Drama Track").closest("a")).toBeNull();
+    // Both rows rendered, under no disc heading.
+    expect(container.querySelectorAll("li")).toHaveLength(2);
     expect(container.querySelector("h3")).toBeNull();
   });
 

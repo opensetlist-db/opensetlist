@@ -14,23 +14,23 @@ import styles from "./albumDetail.module.css";
  * Next keeps focus on the clicked link because it re-renders in place.
  */
 
-export interface AlbumTab {
-  key: string;
+export interface AlbumTab<K extends string = string> {
+  key: K;
   label: string;
   count: number;
   /** Active (non-ended) store bonuses exist — draws the accent dot. */
   indicator?: boolean;
 }
 
-export function AlbumTabs({
+export function AlbumTabs<K extends string>({
   tabs,
   active,
   basePath,
   ariaLabel,
   indicatorLabel,
 }: {
-  tabs: ReadonlyArray<AlbumTab>;
-  active: string;
+  tabs: ReadonlyArray<AlbumTab<K>>;
+  active: K;
   /** Canonical album path; each tab appends `?tab=<key>`. */
   basePath: string;
   ariaLabel: string;

@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { TrackedStoreLink } from "@/components/TrackedStoreLink";
 import {
+  countActiveBonuses,
   isEndedListing,
   mapStatusToUiKey,
   resolveBonusType,
@@ -57,21 +58,21 @@ export async function AlbumPurchasePanel({
 }) {
   const t = await getTranslations({ locale, namespace: "Album" });
 
+  // 22-v1 empty states are the bare panel, the same on all three tabs.
   if (album.listings.length === 0) {
     return (
-      <>
-        <h2 className={styles.purchaseHeading}>{t("tab.bonus")}</h2>
-        <div className={`${styles.panel} ${styles.empty}`}>
-          {t("bonus.empty")}
-        </div>
-      </>
+      <div className={`${styles.panel} ${styles.empty}`}>
+        {t("bonus.empty")}
+      </div>
     );
   }
 
   const current = album.listings.filter((l) => !isEndedListing(l));
   const ended = album.listings.filter(isEndedListing);
+  // Same partition the tab badge and dot use (`countActiveBonuses`), so
+  // the summary cannot drift from them.
   const total = album.listings.reduce((s, l) => s + l.bonuses.length, 0);
-  const endedBonuses = ended.reduce((s, l) => s + l.bonuses.length, 0);
+  const currentBonuses = countActiveBonuses(album.listings);
 
   const card = (listing: AlbumForPurchase["listings"][number]) => {
     const isEnded = isEndedListing(listing);
@@ -122,8 +123,10 @@ export async function AlbumPurchasePanel({
         <div className={styles.bonusSummary}>
           <strong>{t("stats.bonusSectionLabel")}</strong>
           <span>{t("bonus.summary.total", { count: total })}</span>
-          <span>{t("bonus.summary.current", { count: total - endedBonuses })}</span>
-          <span>{t("bonus.summary.ended", { count: endedBonuses })}</span>
+          <span>{t("bonus.summary.current", { count: currentBonuses })}</span>
+          <span>
+            {t("bonus.summary.ended", { count: total - currentBonuses })}
+          </span>
         </div>
       ) : null}
       {current.length > 0 ? (

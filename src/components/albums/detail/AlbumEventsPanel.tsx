@@ -69,32 +69,19 @@ export async function AlbumEventsPanel({
   locale,
 }: {
   events: RelatedEvent[];
-  albumType: AlbumType | string;
+  albumType: AlbumType;
   locale: string;
 }) {
   const t = await getTranslations({ locale, namespace: "Album" });
   const et = await getTranslations({ locale, namespace: "Event" });
   const st = await getTranslations({ locale, namespace: "EventSeries" });
 
-  const heading = (
-    <>
-      <h2 className={styles.sectionTitle}>{t("tab.events")}</h2>
-      <p className={styles.sectionSub}>
-        {albumType === AlbumType.live_album
-          ? t("events.subtitle.bd")
-          : t("events.subtitle.songsAppeared")}
-      </p>
-    </>
-  );
-
+  // 22-v1 empty states are the bare panel, the same on all three tabs.
   if (events.length === 0) {
     return (
-      <>
-        {heading}
-        <div className={`${styles.panel} ${styles.empty}`}>
-          {t("events.empty")}
-        </div>
-      </>
+      <div className={`${styles.panel} ${styles.empty}`}>
+        {t("events.empty")}
+      </div>
     );
   }
 
@@ -128,7 +115,9 @@ export async function AlbumEventsPanel({
         now,
       ),
       formattedDate: formatDate(displayDate, locale, ALBUM_DATE_FORMAT),
-      dateTime: String(displayDate).slice(0, 10),
+      // The wire type is an ISO string (serializeBigIntAsString), so the
+      // first 10 characters are the UTC calendar date.
+      dateTime: displayDate.slice(0, 10),
       startMs: toMs(event.startTime),
     };
     if (!event.eventSeries) {
@@ -170,7 +159,12 @@ export async function AlbumEventsPanel({
 
   return (
     <>
-      {heading}
+      <h2 className={styles.sectionTitle}>{t("tab.events")}</h2>
+      <p className={styles.sectionSub}>
+        {albumType === AlbumType.live_album
+          ? t("events.subtitle.bd")
+          : t("events.subtitle.songsAppeared")}
+      </p>
       {series.map((group) => (
         <details key={group.key} className={styles.eventGroup} open>
           <summary>

@@ -41,9 +41,9 @@
 
 /*
  * The cover spans both rows (title block + meta block) on desktop so the
- * square sits beside the whole identity, vertically centred. CoverImage
- * owns the square itself (fallback, no-referrer, onError); this wrapper
- * only places it.
+ * square sits beside the whole identity, vertically centred. The square
+ * steps 200 / 160 / 112 / 88px with the bands below; AlbumCover.tsx owns
+ * the fallback, no-referrer and onError behaviour.
  */
 .cover {
   grid-row: 1 / 3;
