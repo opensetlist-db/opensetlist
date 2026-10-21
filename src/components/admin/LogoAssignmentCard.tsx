@@ -444,6 +444,9 @@ export default function LogoAssignmentCard({
         afterLostReply: true,
       }),
     );
+    // Drop the unknown phase's message: it described the lost reply, not
+    // this conflict.
+    setMessage(null);
     setPhase("conflict");
   }
 

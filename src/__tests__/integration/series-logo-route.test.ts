@@ -332,6 +332,10 @@ describe("PATCH mode change / unlink", () => {
     const xo = await patch(parentId, INHERIT, { mode: "typography" }, "https://evil.example");
     expect(xo.status).toBe(403);
     expect(await logoOf(parentId)).toEqual(INHERIT);
+    // Positive control: the very same change from the right origin writes,
+    // so the rejections above were the route refusing, not a dead path.
+    expect((await patch(parentId, INHERIT, { mode: "typography" })).status).toBe(200);
+    expect(await logoOf(parentId)).toEqual({ mode: "typography", assetId: null });
   });
 
   it("404 for a soft-deleted series", async () => {
