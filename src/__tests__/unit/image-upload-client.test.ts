@@ -26,6 +26,12 @@ describe("startImageAttempt", () => {
     fetchSpy.mockRestore();
   });
 
+  it("(control) submitting an attempt does reach the network", async () => {
+    const fetchImpl = vi.fn(async () => json(201, { status: "created" }));
+    await startImageAttempt(file(), env).submit("/u", {}, { fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses to submit after cancel", async () => {
     const attempt = startImageAttempt(file(), env);
     attempt.cancel();

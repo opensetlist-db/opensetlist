@@ -34,7 +34,6 @@ import { revalidatePublicData } from "@/lib/dataCache";
 import { POST as SERIES_POST } from "@/app/api/admin/event-series/route";
 import { POST as EVENT_POST } from "@/app/api/admin/events/route";
 import {
-  MemoryImageStorage,
   UploadError,
   albumCoverTarget,
   conflictFor,
@@ -49,6 +48,7 @@ import {
   type TargetAdapter,
 } from "@/lib/imageUpload";
 import type { UploadDb } from "@/lib/imageUpload/service";
+import { MemoryImageStorage } from "@/lib/imageUpload/memoryStorage";
 
 const TAG = `upload-itest-${Date.now()}`;
 const BASE = `https://images.test.invalid/${TAG}`;
@@ -230,6 +230,12 @@ describe("failures preserve the previous assignment", () => {
     expect(mem.puts).toHaveLength(0);
     expect(await assetCount()).toBe(before);
     expect(await seriesLogo()).toEqual(INHERIT);
+    // Positive control: the same storage and target do take a valid file.
+    await uploadAndAssign(
+      { target: seriesLogoTarget(seriesId), expected: INHERIT, attemptId: randomUUID(), bytes: png, provenance: noProvenance },
+      { storage: mem, log: quietLog },
+    );
+    expect(mem.puts).toHaveLength(1);
   });
 
   it("storage failure: no row, previous assignment intact", async () => {
@@ -368,9 +374,10 @@ describe("concurrency and lost responses", () => {
   });
 
   it("a retry after a newer save never takes the assignment back", async () => {
+    const mem = storage();
     const attemptId = randomUUID();
     const req = { target: seriesLogoTarget(seriesId), expected: INHERIT, attemptId, bytes: png, provenance: noProvenance };
-    await codeOf(uploadAndAssign(req, { storage: storage(), db: losesReplyOfCall(2), log: quietLog }));
+    await codeOf(uploadAndAssign(req, { storage: mem, db: losesReplyOfCall(2), log: quietLog }));
     const mine = (await seriesLogo()).assetId!;
 
     // Another admin switches the series to typography meanwhile.
@@ -380,7 +387,7 @@ describe("concurrency and lost responses", () => {
 
     let err: unknown;
     try {
-      await uploadAndAssign(req, { storage: storage(), log: quietLog });
+      await uploadAndAssign(req, { storage: mem, log: quietLog });
     } catch (e) {
       err = e;
     }
@@ -389,26 +396,41 @@ describe("concurrency and lost responses", () => {
     expect(await seriesLogo()).toEqual({ mode: "typography", assetId: null });
   });
 
-  it("reusing an attempt id for a different file is refused", async () => {
+  it("reusing a committed attempt id for another file of the SAME size and type is refused", async () => {
+    // Uncompressed PNGs of equal dimensions differ only in pixel bytes and
+    // CRCs: same byteSize, same MIME — what a metadata-only check misses.
+    const uncompressed = (background: string) =>
+      sharp({ create: { width: 64, height: 64, channels: 3, background } })
+        .png({ compressionLevel: 0, adaptiveFiltering: false })
+        .toBuffer()
+        .then((b) => new Uint8Array(b));
+    const first = await uncompressed("#ff0000");
+    const second = await uncompressed("#00ff00");
+    expect(second.byteLength).toBe(first.byteLength);
+
+    const mem = storage();
     const attemptId = randomUUID();
     await uploadAndAssign(
-      { target: seriesLogoTarget(seriesId), expected: INHERIT, attemptId, bytes: png, provenance: noProvenance },
-      { storage: storage(), log: quietLog },
+      { target: seriesLogoTarget(seriesId), expected: INHERIT, attemptId, bytes: first, provenance: noProvenance },
+      { storage: mem, log: quietLog },
     );
     const committed = await seriesLogo();
-    // Same key only if same format; png2 is WebP → different key, so use
-    // a different PNG to collide on the key.
-    const otherPng = new Uint8Array(
-      await sharp({ create: { width: 64, height: 64, channels: 3, background: "#00ff00" } }).png().toBuffer(),
+    // Positive control: the same file under the same attempt reconciles.
+    const again = await uploadAndAssign(
+      { target: seriesLogoTarget(seriesId), expected: INHERIT, attemptId, bytes: first, provenance: noProvenance },
+      { storage: mem, log: quietLog },
     );
+    expect(again.status).toBe("reconciled");
+
     expect(
       await codeOf(
         uploadAndAssign(
-          { target: seriesLogoTarget(seriesId), expected: committed, attemptId, bytes: otherPng, provenance: noProvenance },
-          { storage: storage(), log: quietLog },
+          { target: seriesLogoTarget(seriesId), expected: committed, attemptId, bytes: second, provenance: noProvenance },
+          { storage: mem, log: quietLog },
         ),
       ),
     ).toBe("attempt_conflict");
+    expect(await seriesLogo()).toEqual(committed);
   });
 });
 
@@ -505,6 +527,42 @@ describe("HTTP boundary (handleImageUpload)", () => {
     );
     expect(res.status).toBe(403);
     expect((await res.json()).error).toBe("forbidden_origin");
+    expect(mem.puts).toHaveLength(0);
+    // Positive control: the identical request from the admin origin stores.
+    const ok = await handleImageUpload(
+      uploadReq({ file: new Blob([png as BlobPart]), attemptId: randomUUID(), expectedMode: "inherit", expectedAssetId: "" }),
+      resolve,
+      { storage: mem, log: quietLog },
+    );
+    expect(ok.status).toBe(201);
+    expect(mem.puts).toHaveLength(1);
+  });
+
+  it("bounds a chunked body that declares no Content-Length", async () => {
+    const mem = storage();
+    const chunk = new Uint8Array(1024 * 1024);
+    let sent = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        // 6 MiB in 1 MiB chunks: past the request cap.
+        if (sent++ < 6) controller.enqueue(chunk);
+        else controller.close();
+      },
+    });
+    const res = await handleImageUpload(
+      new NextRequest(
+        new Request(`http://admin.test/api/admin/event-series/${seriesId}/logo`, {
+          method: "POST",
+          headers: { Origin: "http://admin.test", "Content-Type": "multipart/form-data; boundary=x" },
+          body: stream,
+          duplex: "half",
+        } as RequestInit),
+      ),
+      resolve,
+      { storage: mem, log: quietLog },
+    );
+    expect(res.status).toBe(413);
+    expect(sent).toBeLessThan(7); // stopped reading before the end
     expect(mem.puts).toHaveLength(0);
   });
 

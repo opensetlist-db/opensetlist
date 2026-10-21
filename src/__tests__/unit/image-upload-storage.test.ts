@@ -8,11 +8,12 @@
 import { describe, it, expect } from "vitest";
 import {
   R2ImageStorage,
-  MemoryImageStorage,
   readR2Config,
   getImageStorage,
   type R2Config,
 } from "@/lib/imageUpload/storage";
+import { MemoryImageStorage } from "@/lib/imageUpload/memoryStorage";
+import { parseTargetId } from "@/lib/imageUpload/http";
 import { UploadError } from "@/lib/imageUpload/errors";
 import { buildObjectKey, parseAttemptId } from "@/lib/imageUpload/keys";
 
@@ -157,6 +158,13 @@ describe("object keys", () => {
     expect(
       buildObjectKey({ prefix: "test", segment: "series-logo", targetId: BigInt(7), attemptId, ext: "png" }),
     ).toBe(KEY);
+  });
+
+  it("accept target ids only within Postgres BIGINT", () => {
+    expect(parseTargetId("9223372036854775807")).toBe(BigInt("9223372036854775807"));
+    for (const bad of ["9223372036854775808", "9999999999999999999", "0", "-1", "01", "1e3", ""]) {
+      expect(() => parseTargetId(bad), bad).toThrow(UploadError);
+    }
   });
 
   it("reject attempt ids that are not UUIDs (path tricks included)", () => {

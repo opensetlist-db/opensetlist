@@ -22,13 +22,14 @@ import { UploadError } from "./errors";
 
 export type TargetSegment = "event-logo" | "series-logo" | "album-cover";
 
-const ATTEMPT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// Lower-case UUID (any version): attempt ids and ImageAsset ids.
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Validates and normalises a client-supplied attempt id (UUID). */
 export function parseAttemptId(value: unknown): string {
   if (typeof value === "string") {
     const id = value.trim().toLowerCase();
-    if (ATTEMPT_ID_RE.test(id)) return id;
+    if (UUID_RE.test(id)) return id;
   }
   throw new UploadError("invalid_request", "업로드 시도 ID가 올바르지 않습니다. 페이지를 새로고침해 주세요.");
 }
@@ -41,7 +42,7 @@ export function buildObjectKey(parts: {
   ext: string;
 }): string {
   const { prefix, segment, targetId, attemptId, ext } = parts;
-  if (!ATTEMPT_ID_RE.test(attemptId)) throw new Error("attemptId must be validated first");
+  if (!UUID_RE.test(attemptId)) throw new Error("attemptId must be validated first");
   if (targetId <= BigInt(0)) throw new Error("targetId must be positive");
   if (!/^[a-z0-9]+$/.test(ext)) throw new Error("ext must come from the decoded format");
   return `${prefix}/${segment}/${targetId.toString()}/${attemptId}.${ext}`;

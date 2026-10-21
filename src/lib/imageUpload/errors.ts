@@ -8,7 +8,8 @@
 //               assignment is intact. (A stored object may be left
 //               unassigned; see `storage_failed` / `not_saved` below.)
 //   conflict  — someone else changed the assignment since the form was
-//               loaded. Nothing of this attempt was committed; reload.
+//               loaded. Nothing of this attempt was committed by this
+//               request; reload.
 //   unknown   — the commit may or may not have happened (the connection
 //               dropped around COMMIT). Resubmit the SAME attempt, which
 //               reconciles instead of writing twice.
@@ -18,55 +19,25 @@
 
 export type UploadOutcome = "not_saved" | "conflict" | "unknown";
 
-export type UploadErrorCode =
-  | "invalid_request"
-  | "forbidden_origin"
-  | "request_too_large"
-  | "image_too_large"
-  | "unsupported_image_type"
-  | "invalid_image"
-  | "image_dimensions"
-  | "target_not_found"
-  | "assignment_conflict"
-  | "attempt_conflict"
-  | "storage_not_configured"
-  | "storage_failed"
-  | "not_saved"
-  | "outcome_unknown";
+// One table: adding a code is one line here.
+const CODES = {
+  invalid_request: { status: 400, outcome: "not_saved" },
+  forbidden_origin: { status: 403, outcome: "not_saved" },
+  request_too_large: { status: 413, outcome: "not_saved" },
+  image_too_large: { status: 413, outcome: "not_saved" },
+  unsupported_image_type: { status: 415, outcome: "not_saved" },
+  invalid_image: { status: 422, outcome: "not_saved" },
+  image_dimensions: { status: 422, outcome: "not_saved" },
+  target_not_found: { status: 404, outcome: "not_saved" },
+  assignment_conflict: { status: 409, outcome: "conflict" },
+  attempt_conflict: { status: 409, outcome: "conflict" },
+  storage_not_configured: { status: 503, outcome: "not_saved" },
+  storage_failed: { status: 502, outcome: "not_saved" },
+  not_saved: { status: 500, outcome: "not_saved" },
+  outcome_unknown: { status: 503, outcome: "unknown" },
+} as const satisfies Record<string, { status: number; outcome: UploadOutcome }>;
 
-const STATUS: Record<UploadErrorCode, number> = {
-  invalid_request: 400,
-  forbidden_origin: 403,
-  request_too_large: 413,
-  image_too_large: 413,
-  unsupported_image_type: 415,
-  invalid_image: 422,
-  image_dimensions: 422,
-  target_not_found: 404,
-  assignment_conflict: 409,
-  attempt_conflict: 409,
-  storage_not_configured: 503,
-  storage_failed: 502,
-  not_saved: 500,
-  outcome_unknown: 503,
-};
-
-const OUTCOME: Record<UploadErrorCode, UploadOutcome> = {
-  invalid_request: "not_saved",
-  forbidden_origin: "not_saved",
-  request_too_large: "not_saved",
-  image_too_large: "not_saved",
-  unsupported_image_type: "not_saved",
-  invalid_image: "not_saved",
-  image_dimensions: "not_saved",
-  target_not_found: "not_saved",
-  assignment_conflict: "conflict",
-  attempt_conflict: "conflict",
-  storage_not_configured: "not_saved",
-  storage_failed: "not_saved",
-  not_saved: "not_saved",
-  outcome_unknown: "unknown",
-};
+export type UploadErrorCode = keyof typeof CODES;
 
 export class UploadError extends Error {
   readonly code: UploadErrorCode;
@@ -83,12 +54,30 @@ export class UploadError extends Error {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "UploadError";
     this.code = code;
-    this.status = STATUS[code];
-    this.outcome = OUTCOME[code];
+    this.status = CODES[code].status;
+    this.outcome = CODES[code].outcome;
     this.detail = options.detail;
   }
 }
 
 export function isUploadError(err: unknown): err is UploadError {
   return err instanceof UploadError;
+}
+
+// Errors raised from more than one place, with one wording each.
+
+export function targetNotFound(): UploadError {
+  return new UploadError("target_not_found", "대상을 찾을 수 없습니다. 삭제되었을 수 있습니다.");
+}
+
+export function attemptConflict(): UploadError {
+  return new UploadError(
+    "attempt_conflict",
+    "같은 업로드 시도 ID로 다른 파일이 이미 저장되어 있습니다. 파일을 다시 선택해 주세요.",
+  );
+}
+
+/** "N MB" for messages, derived from a byte limit so the text cannot drift. */
+export function formatMiB(bytes: number): string {
+  return `${Math.floor(bytes / (1024 * 1024))}MB`;
 }

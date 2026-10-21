@@ -1,6 +1,6 @@
 // Server-side entry point of the shared admin image upload contract
-// (redesign ticket 08). Consumers: admin series logo (09), event logo
-// (10), album cover (11). Browser code imports `./client` directly — this
+// used by the admin series-logo, event-logo and album-cover routes.
+// Browser code imports `./client` directly — this
 // barrel pulls in sharp, Prisma and the R2 signer.
 
 export * from "./errors";
@@ -11,7 +11,6 @@ export {
   getImageStorage,
   readR2Config,
   R2ImageStorage,
-  MemoryImageStorage,
   type ImageStorage,
   type R2Config,
 } from "./storage";

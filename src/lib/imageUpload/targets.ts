@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { LogoDisplayMode } from "@/generated/prisma/enums";
-import { UploadError } from "./errors";
-import type { TargetSegment } from "./keys";
+import { UploadError, targetNotFound } from "./errors";
+import { UUID_RE, type TargetSegment } from "./keys";
 
 // Target adapters: the only three things an admin upload may be assigned
 // to, and the compare-and-set writes that every in-scope writer of those
@@ -161,14 +161,12 @@ export function albumCoverTarget(albumId: bigint): TargetAdapter<AlbumCoverAssig
 /**
  * After a CAS returned false: 404 when the target is gone, otherwise 409
  * carrying the current value. For the upload path the service does this
- * itself; 09/10/11 call it from their mode-change / URL-edit / unlink
- * handlers.
+ * itself; the admin mode-change / URL-edit / unlink handlers call it
+ * after their own CAS write.
  */
 export async function conflictFor<E>(tx: Tx, target: TargetAdapter<E>): Promise<UploadError> {
   const current = await target.read(tx);
-  if (!current) {
-    return new UploadError("target_not_found", "대상을 찾을 수 없습니다. 삭제되었을 수 있습니다.");
-  }
+  if (!current) return targetNotFound();
   return new UploadError(
     "assignment_conflict",
     "다른 곳에서 이미지 설정이 먼저 바뀌었습니다. 새로고침해 현재 상태를 확인한 뒤 다시 시도해 주세요.",
@@ -179,7 +177,6 @@ export async function conflictFor<E>(tx: Tx, target: TargetAdapter<E>): Promise<
 // ── Parsing the expected value a form submits ─────────────────────────
 
 const LOGO_MODES = new Set<string>(Object.values(LogoDisplayMode));
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
  * Expected logo assignment as the form loaded it. `assetId` must be

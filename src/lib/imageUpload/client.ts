@@ -1,5 +1,5 @@
-// Browser side of the shared admin upload contract, for the 09/10/11
-// forms. Plain module (no React): the forms own their UI and state.
+// Browser side of the shared admin upload contract, for the admin
+// logo/cover forms. Plain module (no React): the forms own their UI and state.
 //
 // Preview first, network later: `startImageAttempt(file)` only creates a
 // local object URL and an attempt id. Nothing is sent until `submit()`;
@@ -17,7 +17,13 @@
 // undone. If the bound is exhausted the result stays `unknown`: the form
 // must tell the operator to reload and check, not claim failure.
 
+import { formatMiB } from "./errors";
 import { IMAGE_INPUT_ACCEPT, MAX_IMAGE_BYTES, MAX_UPLOAD_RESUBMISSIONS } from "./limits";
+
+/** The two fields of a server reply this module branches on. */
+function replyFields(body: unknown): { status?: unknown; outcome?: unknown } {
+  return body !== null && typeof body === "object" ? (body as { status?: unknown; outcome?: unknown }) : {};
+}
 
 export type ClientUploadOutcome =
   | { kind: "saved"; status: "created" | "reconciled"; body: unknown }
@@ -47,7 +53,7 @@ export { IMAGE_INPUT_ACCEPT };
  * decodes and decides. Returns a Korean admin message or null.
  */
 export function precheckImageFile(file: File): string | null {
-  if (file.size > MAX_IMAGE_BYTES) return "이미지는 4MB 이하여야 합니다.";
+  if (file.size > MAX_IMAGE_BYTES) return `이미지는 ${formatMiB(MAX_IMAGE_BYTES)} 이하여야 합니다.`;
   if (!IMAGE_INPUT_ACCEPT.split(",").includes(file.type)) {
     return "PNG, JPEG, WebP 이미지만 올릴 수 있습니다.";
   }
@@ -93,11 +99,11 @@ export function startImageAttempt(
           continue;
         }
         const body: unknown = await res.json().catch(() => null);
+        const reply = replyFields(body);
         if (res.ok) {
-          const status = (body as { status?: string } | null)?.status === "reconciled" ? "reconciled" : "created";
-          return { kind: "saved", status, body };
+          return { kind: "saved", status: reply.status === "reconciled" ? "reconciled" : "created", body };
         }
-        const outcome = (body as { outcome?: string } | null)?.outcome;
+        const outcome = reply.outcome;
         // A 5xx without our JSON (platform timeout / gateway error) may
         // have cut off a request that went on to commit: unknown, not failed.
         if (outcome === "unknown" || (outcome === undefined && res.status >= 500)) {

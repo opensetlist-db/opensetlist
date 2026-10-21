@@ -9,7 +9,7 @@
 // that could later overwrite validated bytes, no bucket CORS rule and no
 // private staging prefix to clean up. The price is the hosting body limit:
 // a Vercel Function rejects a request body above 4.5 MB (vendor docs, not
-// verifiable locally — recorded in the 02 readiness audit), so the file cap
+// verifiable locally, not in the bundled Next.js docs), so the file cap
 // below plus the multipart framing and the small text fields must stay
 // under it. Logos and album covers fit comfortably; if a future image type
 // needs more, switch to a private staging upload instead of raising these.

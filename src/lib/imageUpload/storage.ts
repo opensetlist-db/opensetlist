@@ -1,5 +1,5 @@
 import { AwsClient } from "aws4fetch";
-import { UploadError } from "./errors";
+import { UploadError, attemptConflict } from "./errors";
 
 // Object storage behind admin image uploads: Cloudflare R2 through its
 // S3-compatible API, signed server-side with aws4fetch (SigV4 over
@@ -151,10 +151,7 @@ export class R2ImageStorage implements ImageStorage {
     const head = await this.send(url, { method: "HEAD" });
     if (!head.ok) throw storageFailure(head.status);
     if (head.headers.get("x-amz-meta-sha256") === sha256) return "already-present";
-    throw new UploadError(
-      "attempt_conflict",
-      "같은 업로드 시도 ID로 다른 파일이 이미 저장되어 있습니다. 파일을 다시 선택해 주세요.",
-    );
+    throw attemptConflict();
   }
 
   private async send(url: string, init: RequestInit): Promise<Response> {
@@ -213,34 +210,3 @@ export function getImageStorage(env: Record<string, string | undefined> = proces
   return new R2ImageStorage(config);
 }
 
-/**
- * In-memory storage with the same write-once semantics, for tests and
- * local development without R2. Never selected automatically.
- */
-export class MemoryImageStorage implements ImageStorage {
-  readonly keyPrefix: string;
-  readonly objects = new Map<string, { bytes: Uint8Array; contentType: string; sha256: string }>();
-  readonly puts: string[] = [];
-  /** Set to make the next writes fail like an unreachable bucket. */
-  failWith: UploadError | null = null;
-
-  constructor(keyPrefix = "test", private readonly publicBaseUrl = "https://images.test.invalid") {
-    this.keyPrefix = keyPrefix;
-  }
-
-  publicUrlFor(key: string): string {
-    return joinUrl(this.publicBaseUrl, key);
-  }
-
-  async putImmutable({ key, bytes, contentType, sha256 }: PutImmutableInput): Promise<PutResult> {
-    this.puts.push(key);
-    if (this.failWith) throw this.failWith;
-    const existing = this.objects.get(key);
-    if (existing) {
-      if (existing.sha256 === sha256) return "already-present";
-      throw new UploadError("attempt_conflict", "같은 업로드 시도 ID로 다른 파일이 이미 저장되어 있습니다.");
-    }
-    this.objects.set(key, { bytes, contentType, sha256 });
-    return "created";
-  }
-}
