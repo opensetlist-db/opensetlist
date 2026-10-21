@@ -150,7 +150,9 @@ const selected = prefixes.length
   : targets;
 
 if (args.list) {
-  for (const t of selected) console.log(t.key.padEnd(36), t.url);
+  // Constant format strings throughout: Semgrep's unsafe-formatstring rule
+  // (a blocking CI check) rejects a non-literal first console.log argument.
+  for (const t of selected) console.log("%s %s", t.key.padEnd(36), t.url);
   process.exit(0);
 }
 if (!args.out) {
@@ -318,7 +320,8 @@ async function capture({ key, url, admin }, vpKey) {
       consoleErrors,
       ...files,
     });
-    console.log(vpKey, key, resp?.status(), `${m.ttfbMs}ms`, "cls", m.cls, files.webp.length > 1 ? `${files.webp.length} parts` : "");
+    const parts = files.webp.length > 1 ? `${files.webp.length} parts` : "";
+    console.log("%s %s %s %sms cls %s %s", vpKey, key, resp?.status(), m.ttfbMs, m.cls, parts);
   } finally {
     await ctx.close();
   }
