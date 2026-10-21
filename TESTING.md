@@ -160,6 +160,17 @@ Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
 fixture, and runs overflow/keyboard/label/motion/referrer checks; a page
 adds a scenario under `scripts/admin-qa/scenarios/` (copy `album-cover`).
 
+Public pages (artist detail, album detail, …) use `scripts/page-qa.mjs
+--scenario <name>` against the same kind of build: it runs the locale ×
+width layout matrix (overflow, `<html lang>`, raw i18n keys, runtime
+errors), reduced motion with a positive control and canonical/404 checks
+through the request API, with a per-action `--timeout` and a whole-run
+`--timeout-min`, and writes a `.log` and `.json` per run. It never writes
+to the DB; fixture rows come in through `--fixture <json>`. A page ticket
+adds a scenario under `scripts/page-qa/scenarios/` (copy `artist-detail`)
+instead of its own QA script: chromium in full, `--browser webkit --quick`
+for Safari.
+
 ---
 
 ## What to test
