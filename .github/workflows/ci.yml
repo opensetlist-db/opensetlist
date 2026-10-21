@@ -31,6 +31,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Every integration test file and E2E spec needs a TESTING.md row
+      # saying what it writes to the shared dev DB; no deps, fails fast.
+      - name: TESTING.md lists every DB-touching suite
+        run: npm run check:testing-md
+
       - name: Typecheck
         run: npx tsc --noEmit
 

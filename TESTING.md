@@ -59,6 +59,10 @@ know what each suite leaves behind:
 | `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
+Every `*.test.ts` here needs a row, and every row a file:
+`npm run check:testing-md` (run in CI's lint job) fails otherwise. The
+same holds for the E2E table below.
+
 A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`
 and leaves its fixture rows in dev. A new integration test must create
 its own fixtures and delete them in `afterAll`; never assert on, or
