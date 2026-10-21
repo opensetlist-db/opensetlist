@@ -124,16 +124,14 @@ export function parseExpectedCoverJson(body: Record<string, unknown>): {
 /**
  * Host of the managed-upload public URL, for the admin source badge.
  * R2_PUBLIC_BASE_URL is what uploads build their URLs from; the older
- * badge-only variables stay as a fallback.
+ * server-only R2_PUBLIC_HOST stays as a fallback. (The client-side
+ * NEXT_PUBLIC_R2_PUBLIC_HOST fallback lives in classifyImageSource,
+ * which falls back to it when this returns null.)
  */
 export function r2PublicHost(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
-  for (const raw of [
-    env.R2_PUBLIC_BASE_URL,
-    env.R2_PUBLIC_HOST,
-    env.NEXT_PUBLIC_R2_PUBLIC_HOST,
-  ]) {
+  for (const raw of [env.R2_PUBLIC_BASE_URL, env.R2_PUBLIC_HOST]) {
     const value = raw?.trim();
     if (!value) continue;
     try {

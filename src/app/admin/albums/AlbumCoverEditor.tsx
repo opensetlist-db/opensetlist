@@ -325,10 +325,17 @@ export default function AlbumCoverEditor({
     const body: unknown = await res.json().catch(() => null);
     if (res.ok) {
       const b = body as {
-        imageUrl: string | null;
-        provenance: CoverProvenance | null;
-      };
-      applySaved(b.imageUrl, b.provenance ?? null, false);
+        imageUrl?: string | null;
+        provenance?: CoverProvenance | null;
+      } | null;
+      if (!b || !("imageUrl" in b)) {
+        // Saved, but the reply does not say to what: re-read rather than
+        // guess (and never stay locked on "saving").
+        setPhase({ kind: "unknown" });
+        focusNotice();
+        return;
+      }
+      applySaved(b.imageUrl ?? null, b.provenance ?? null, false);
       return;
     }
     handleFailure(res.status, body);
@@ -859,7 +866,8 @@ export default function AlbumCoverEditor({
               // The server-rendered <img> can fail before hydration
               // attaches onError; catch that case when React mounts it.
               ref={(el) => {
-                if (el && el.complete && el.naturalWidth === 0) setPreviewFailed(true);
+                if (el && el.complete && el.naturalWidth === 0)
+                  setPreviewFailed(true);
               }}
               className="h-40 w-40 object-contain"
             />
