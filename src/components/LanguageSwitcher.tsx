@@ -78,11 +78,17 @@ export function LanguageSwitcher({ variant = "header", onSelect }: Props) {
             }}
             // Inactive colours live in classes (not inline style) so the
             // hover/pressed classes can override them.
-            className={`flex min-h-11 items-center whitespace-nowrap rounded-lg py-2.5 text-[12px] ${
+            // Header variant drops to 11px in the tight 1100–1299px band
+            // (03 contract), 12px elsewhere.
+            className={`flex min-h-11 items-center whitespace-nowrap rounded-lg py-2.5 ${
               active
                 ? "font-bold"
-                : "text-[color:var(--foreground)] hover:bg-[#edf4ff] hover:text-[#104aa9] active:bg-[#dae7ff] active:text-[#0c3d8c]"
-            } ${variant === "header" ? "px-[5px] min-[1300px]:px-2" : "px-2"}`}
+                : "shell-interactive text-[color:var(--foreground)]"
+            } ${
+              variant === "header"
+                ? "px-[5px] text-[11px] min-[1300px]:px-2 min-[1300px]:text-[12px]"
+                : "px-2 text-[12px]"
+            }`}
             style={
               active
                 ? { background: colors.primaryBg, color: colors.primary }

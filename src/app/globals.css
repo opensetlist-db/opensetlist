@@ -17,6 +17,12 @@
   --foreground: #172445;
   /* Keyboard focus ring colour; mirrors `colors.focus`. */
   --focus-ring: #174faf;
+  /* Quiet-surface interaction states; mirror `colors.primaryHover`,
+     `primaryPressed`, `primaryHoverBg`, `primaryPressedBg`. */
+  --primary-hover: #104aa9;
+  --primary-pressed: #0c3d8c;
+  --primary-hover-bg: #edf4ff;
+  --primary-pressed-bg: #dae7ff;
   /* Body font stack. DM Sans first so Latin text and digits share one
      face across locales; then the CJK face matching the page language,
      so Han characters take Japanese glyph forms on ja/en and Korean
@@ -108,6 +114,20 @@ body {
     outline: 3px solid var(--focus-ring);
     outline-offset: 4px;
   }
+}
+
+/*
+ * Hover / pressed treatment for the quiet header controls (inactive nav
+ * links, locale buttons, icon buttons): pale-blue wash + darker blue text.
+ * One class so the four interaction colours live in exactly one place.
+ */
+.shell-interactive:hover {
+  background: var(--primary-hover-bg);
+  color: var(--primary-hover);
+}
+.shell-interactive:active {
+  background: var(--primary-pressed-bg);
+  color: var(--primary-pressed);
 }
 
 /*

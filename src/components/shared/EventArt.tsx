@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { colors } from "@/styles/tokens";
+import { useImageFallback } from "./useImageFallback";
 
 /*
  * Event/series art region — the shared image + fallback contract from
@@ -15,8 +16,8 @@ import { useState } from "react";
  *   compact   96×96 at ≥1100px, 76×120 below (taller than wide so
  *             localized short titles fit; the slot need not be square)
  *
- * Logo rendering: `object-fit: contain` inside a 16px safe inset (8px in
- * compact) — approved logos are never cropped, stretched or replaced by
+ * Logo rendering: `object-fit: contain` inside the contract's 16px safe
+ * inset — approved logos are never cropped, stretched or replaced by
  * posters.
  *
  * Fallback: when `logoUrl` is empty OR the image fails to load, the same
@@ -58,12 +59,13 @@ const REGION: Record<EventArtVariant, string> = {
     "h-[120px] w-[76px] rounded-lg p-2 min-[1100px]:h-24 min-[1100px]:w-24",
 };
 
-// 03 contract neutral wash (blue → lavender → pink). Artist/series
-// colour tints arrive with 07's colour source; until then every card
-// uses this neutral accent rather than an arbitrary performer colour.
-const WASH = "linear-gradient(130deg, #eaf1ff, #f1edff 60%, #ffedf5)";
+export function EventArt(props: EventArtProps) {
+  // `key` resets the failure state when the URL changes (e.g. an admin
+  // swaps the logo while a client page stays mounted).
+  return <EventArtInner key={props.logoUrl ?? ""} {...props} />;
+}
 
-export function EventArt({
+function EventArtInner({
   logoUrl,
   title,
   eyebrow,
@@ -72,33 +74,7 @@ export function EventArt({
   alt = "",
   className = "",
 }: EventArtProps) {
-  // `key` resets the failure state when the URL changes (e.g. an admin
-  // swaps the logo while a client page stays mounted).
-  return (
-    <EventArtInner
-      key={logoUrl ?? ""}
-      logoUrl={logoUrl}
-      title={title}
-      eyebrow={eyebrow}
-      caption={caption}
-      variant={variant}
-      alt={alt}
-      className={className}
-    />
-  );
-}
-
-function EventArtInner({
-  logoUrl,
-  title,
-  eyebrow,
-  caption,
-  variant,
-  alt,
-  className,
-}: Required<Pick<EventArtProps, "title" | "variant" | "alt" | "className">> &
-  Pick<EventArtProps, "logoUrl" | "eyebrow" | "caption">) {
-  const [failed, setFailed] = useState(false);
+  const { failed, imgProps } = useImageFallback();
   const showLogo = Boolean(logoUrl) && !failed;
   const compact = variant === "compact";
 
@@ -107,8 +83,24 @@ function EventArtInner({
       data-testid="event-art"
       data-state={showLogo ? "logo" : "fallback"}
       className={`relative flex shrink-0 items-center justify-center overflow-hidden text-center ${REGION[variant]} ${className}`}
-      style={{ background: WASH }}
+      // Artist/series colour tints arrive with 07's colour source; until
+      // then every card uses this neutral accent rather than an arbitrary
+      // performer colour.
+      style={{ background: colors.artWash }}
     >
+      {/* Two faint rings on the wash (03 mockup `.art:before/:after`). */}
+      {!compact && (
+        <>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-[50px] -top-[105px] h-[200px] w-[200px] rounded-full border border-white/70"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-[95px] -left-[50px] h-[140px] w-[140px] rounded-full border border-white/70"
+          />
+        </>
+      )}
       {showLogo ? (
         // Plain <img>: remote storage logo; next/image would need every
         // storage host whitelisted and adds nothing for a contain-fit
@@ -118,17 +110,8 @@ function EventArtInner({
           src={logoUrl ?? undefined}
           alt={alt}
           referrerPolicy="no-referrer"
-          // An image that already failed before hydration never fires
-          // React's onError; catch that case when the node attaches.
-          ref={(img) => {
-            if (img && img.complete && img.naturalWidth === 0) setFailed(true);
-          }}
-          onError={() => setFailed(true)}
-          className={`absolute object-contain ${
-            compact
-              ? "inset-2 h-[calc(100%-16px)] w-[calc(100%-16px)]"
-              : "inset-4 h-[calc(100%-32px)] w-[calc(100%-32px)]"
-          }`}
+          {...imgProps}
+          className="absolute inset-4 h-[calc(100%-32px)] w-[calc(100%-32px)] object-contain"
         />
       ) : (
         <div aria-hidden={alt ? undefined : true} className="relative w-full">
@@ -136,7 +119,7 @@ function EventArtInner({
           {!compact && eyebrow && (
             <small
               className="mb-1 block text-[10px] tracking-[0.14em]"
-              style={{ color: "#4f5781" }}
+              style={{ color: colors.artEyebrow }}
             >
               {eyebrow}
             </small>
@@ -147,14 +130,14 @@ function EventArtInner({
                 ? "text-[12px] leading-normal min-[700px]:text-[13px]"
                 : "text-[22px] leading-[1.35] tracking-[-0.04em] min-[700px]:text-[24px]"
             }`}
-            style={{ color: "#343b72" }}
+            style={{ color: colors.artTitle }}
           >
             {title}
           </strong>
           {!compact && caption && (
             <em
               className="mt-[7px] block text-[12px] not-italic"
-              style={{ color: "#575474" }}
+              style={{ color: colors.artCaption }}
             >
               {caption}
             </em>

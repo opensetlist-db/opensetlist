@@ -95,7 +95,7 @@ describe("<Nav />", () => {
     render(<Nav />);
     const toggle = screen.getByRole("button", { name: "openMenu" });
     fireEvent.click(toggle);
-    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
 });

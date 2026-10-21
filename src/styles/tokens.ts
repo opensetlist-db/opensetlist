@@ -78,6 +78,16 @@ export const colors = {
   accentPink: "#FFF0F6",
   accentLavender: "#F0EDFF",
   accentBlue: "#EAF2FF",
+
+  // EventArt typography-fallback surface (03 contract card art): neutral
+  // blue → lavender → pink wash plus its three text tones (eyebrow,
+  // title, caption), all ≥4.5:1 on the wash.
+  artWash: "linear-gradient(130deg, #eaf1ff, #f1edff 60%, #ffedf5)",
+  artEyebrow: "#4f5781",
+  artTitle: "#343b72",
+  artCaption: "#575474",
+  // Album-cover fallback fill.
+  coverFallbackBg: "#f2f4f9",
   borderLight: "#f1f5f9",
   borderFaint: "#f8fafc",
   // Slightly darker than `border` — used for the dashed empty-state
@@ -94,6 +104,10 @@ export const colors = {
   // Lighter than `primaryBg` so resting cards on a white page lift
   // without flashing a bright brand tint on hover.
   primaryHoverBg: "#EDF4FF",
+  // Pressed wash for the same quiet surfaces (nav links, locale and icon
+  // buttons). Paired with `primaryHoverBg`; both are mirrored as CSS
+  // variables in globals.css for the `.shell-interactive` class.
+  primaryPressedBg: "#DAE7FF",
 
   // Event status palette (consumed by <StatusBadge>)
   live: "#dc2626",
@@ -268,6 +282,13 @@ export const zIndex = {
   modal: 200,
   /** Toast / snackbar / inline announcement above modals. */
   toast: 300,
+  /**
+   * Site header (and its menu dropdown, which lives in the header's
+   * stacking context). Above page sticky chrome so a sticky sidebar in
+   * the 1024–1099px band cannot paint over the open menu; below the
+   * floating dropdown/modal layers.
+   */
+  header: 50,
 } as const;
 
 export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
@@ -418,7 +439,8 @@ export const shadows = {
   cardHover: "0 8px 24px #233C681B",
   nav: "0 1px 3px rgba(0,0,0,0.04)",
   // Heavier brand-color glow for the LIVE hero card on the home page.
-  // Same brand RGB as `card` (rgba of `colors.primary` #0277BD) but at
+  // Original brand blue (#0277BD, the pre-redesign primary — kept here
+  // because the home LIVE hero has not been redesigned yet) at
   // a deeper alpha + larger blur for a "lifted off the page" feel.
   heroLive: "0 8px 32px rgba(2,119,189,0.25)",
   // Neutral lift used by small image thumbnails (album covers, etc.)

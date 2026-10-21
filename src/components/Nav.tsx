@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
-import { breakpoint, colors } from "@/styles/tokens";
+import { breakpoint, colors, zIndex } from "@/styles/tokens";
 
 /*
  * Site header — redesign common contract 03-v1.1
@@ -83,9 +83,10 @@ function MenuIcon({ open }: { open: boolean }) {
 }
 
 // 44px square icon button surface shared by the search icon and the menu
-// toggle (contract: 44px touch targets, hover #EDF4FF / pressed #DAE7FF).
+// toggle (contract: 44px touch targets; hover/pressed via the shared
+// `.shell-interactive` class in globals.css).
 const ICON_BUTTON =
-  "grid h-11 w-11 place-items-center rounded-lg text-[color:var(--foreground)] hover:bg-[#edf4ff] active:bg-[#dae7ff]";
+  "shell-interactive grid h-11 w-11 place-items-center rounded-lg text-[color:var(--foreground)]";
 
 export function Nav() {
   const t = useTranslations("Header");
@@ -110,7 +111,7 @@ export function Nav() {
 
   useEffect(() => {
     if (!menuOpen) return;
-    function handleClickOutside(e: MouseEvent) {
+    function handleClickOutside(e: PointerEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
@@ -131,11 +132,13 @@ export function Nav() {
     function handleWide(e: MediaQueryListEvent) {
       if (e.matches) setMenuOpen(false);
     }
-    document.addEventListener("mousedown", handleClickOutside);
+    // pointerdown covers mouse, pen and touch without relying on the
+    // browser's synthesized mouse events.
+    document.addEventListener("pointerdown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
     wide.addEventListener("change", handleWide);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("pointerdown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
       wide.removeEventListener("change", handleWide);
     };
@@ -157,8 +160,13 @@ export function Nav() {
   return (
     <div
       ref={menuRef}
-      className="relative z-[5] bg-white"
-      style={{ borderBottom: `1px solid ${colors.border}` }}
+      className="relative bg-white"
+      style={{
+        borderBottom: `1px solid ${colors.border}`,
+        // The dropdown's own z-index only counts inside this stacking
+        // context, so the header itself must sit above sticky page chrome.
+        zIndex: zIndex.header,
+      }}
     >
       <header className="mx-auto flex h-16 w-full max-w-[1376px] items-center gap-1 px-4 min-[700px]:h-[68px] min-[700px]:gap-2 min-[700px]:px-6 min-[1100px]:h-20 min-[1100px]:gap-[22px] min-[1300px]:gap-8 min-[1300px]:px-8">
         <Link
@@ -203,7 +211,7 @@ export function Nav() {
                 className={`flex h-12 items-center border-b-2 text-[14px] ${
                   active
                     ? "font-medium"
-                    : "border-transparent text-[color:var(--foreground)] hover:bg-[#edf4ff] hover:text-[#104aa9] active:bg-[#dae7ff] active:text-[#0c3d8c]"
+                    : "shell-interactive border-transparent text-[color:var(--foreground)]"
                 }`}
                 style={
                   active
@@ -239,7 +247,7 @@ export function Nav() {
             <button
               type="submit"
               aria-label={t("search")}
-              className="absolute right-px grid h-[42px] w-11 place-items-center rounded-lg hover:bg-[#edf4ff] active:bg-[#dae7ff]"
+              className="shell-interactive absolute right-px grid h-[42px] w-11 place-items-center rounded-lg"
               style={{ color: colors.primary }}
             >
               <SearchIcon />

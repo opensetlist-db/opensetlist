@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { colors } from "@/styles/tokens";
+import { useImageFallback } from "./useImageFallback";
 
 /*
  * Square album-cover slot — shared fallback contract from redesign
@@ -47,7 +47,7 @@ function CoverImageInner({
   className = "",
 }: CoverImageProps) {
   const t = useTranslations("SharedImage");
-  const [failed, setFailed] = useState(false);
+  const { failed, imgProps } = useImageFallback();
   const showImage = Boolean(src) && !failed;
   // The visible label only fits from ~64px up; smaller thumbnails show
   // the glyph alone.
@@ -68,7 +68,7 @@ function CoverImageInner({
         width: size,
         height: size,
         borderRadius: radius,
-        background: showImage ? "transparent" : "#f2f4f9",
+        background: showImage ? "transparent" : colors.coverFallbackBg,
         border: showImage ? undefined : `1px solid ${colors.border}`,
         color: colors.textSecondary,
       }}
@@ -79,11 +79,7 @@ function CoverImageInner({
           src={src ?? undefined}
           alt={alt}
           referrerPolicy="no-referrer"
-          // An image that failed before hydration never fires onError.
-          ref={(img) => {
-            if (img && img.complete && img.naturalWidth === 0) setFailed(true);
-          }}
-          onError={() => setFailed(true)}
+          {...imgProps}
           className="h-full w-full object-cover"
         />
       ) : (
