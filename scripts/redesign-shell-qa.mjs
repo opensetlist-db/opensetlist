@@ -19,7 +19,9 @@
 //                      viewport — each element's box clipped by its
 //                      overflow-hidden/scroll ancestors inside <main>, so a row that
 //                      pokes out shows even when the document scrollWidth
-//                      does not (an ancestor's overflow-x: hidden masks it)
+//                      does not (an ancestor's overflow-x: hidden masks it);
+//                      visually hidden helpers (sr-only boxes, clipped
+//                      boxes, 1px aria-live regions) are skipped
 //            clamp     no visible h1–h6 in <main> is truncated: text-overflow
 //                      ellipsis or -webkit-line-clamp on it or inside it, or
 //                      its content wider than its box
@@ -315,10 +317,16 @@ function pageInvariants() {
   const main = document.querySelector("main");
   if (!main) return { missingMain: true };
   const vw = window.innerWidth;
+  // A bare `div` names nothing, so an element with neither class nor text
+  // falls back to its id and role (dnd-kit's live region is an id'd
+  // `div[role=status]` with no class and, between announcements, no text).
   const label = (el) => {
+    const tag = el.tagName.toLowerCase();
     const cls = typeof el.className === "string" ? el.className.trim().split(/\s+/)[0] : "";
     const text = (el.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 30);
-    return `${el.tagName.toLowerCase()}${cls ? "." + cls : ""}${text ? ` "${text}"` : ""}`;
+    if (cls || text) return `${tag}${cls ? "." + cls : ""}${text ? ` "${text}"` : ""}`;
+    const role = el.getAttribute("role");
+    return `${tag}${el.id ? "#" + el.id : ""}${role ? `[role=${role}]` : ""}`;
   };
   const visible = (el) => {
     const s = getComputedStyle(el);
@@ -333,11 +341,53 @@ function pageInvariants() {
   // decorative bleed inside an in-viewport wrapper is fine; a row whose
   // visible box ends past the viewport edge is not. Only the outermost
   // offender of a subtree is reported.
+  //
+  // Visually hidden helpers are skipped: they sit off-box on purpose and
+  // nobody sees them. dnd-kit's DndLiveRegion (position fixed, 1×1px,
+  // margin -1px, so its left edge is at -1) was reported as overflow on
+  // every width of a page with a prediction editor. Skipped are a box of at
+  // most 1px in both directions (the sr-only pattern), a box clipped away
+  // by `clip: rect(0 0 0 0)`-style or `clip-path: inset(≥50%)`, and an
+  // aria-live region at most 1px in either direction. A box that is 1px in
+  // one direction only is still checked: a hairline divider that runs past
+  // the viewport edge is a real, visible overflow.
+  const srHidden = (el, r) => {
+    if (r.width <= 1 && r.height <= 1) return true;
+    const s = getComputedStyle(el);
+    if (el.hasAttribute("aria-live") && (r.width <= 1 || r.height <= 1)) return true;
+    // Computed `clip` only applies to absolutely/fixed positioned boxes and
+    // reads "auto" otherwise; a rect whose two edges meet shows nothing.
+    const clip = /^rect\(\s*([-\d.]+)px,?\s*([-\d.]+)px,?\s*([-\d.]+)px,?\s*([-\d.]+)px\s*\)$/.exec(s.clip ?? "");
+    if (clip) {
+      const [top, right, bottom, left] = clip.slice(1).map(Number);
+      if (right <= left || bottom <= top) return true;
+    }
+    // inset(top right bottom left) with the shorthand's 1–4 values; only
+    // percentages are read (a px inset depends on the box size, and
+    // sr-only utilities use inset(50%)). Nothing shows once the two insets
+    // of one axis add up to the whole box.
+    const inset = /^inset\(([^)]*)\)/.exec(s.clipPath ?? "");
+    if (inset) {
+      const v = inset[1].split(/\s+round\s+/)[0].trim().split(/\s+/);
+      const pct = (x) => (/^[\d.]+%$/.test(x ?? "") ? Number(x.slice(0, -1)) : 0);
+      const [t, rt = t, b = t, l = rt] = v.map(pct);
+      if (t + b >= 100 || l + rt >= 100) return true;
+    }
+    return false;
+  };
+  // Descendants of a hidden helper are hidden with it (its overflow is
+  // usually hidden, which clips them to its 1px box — still at -1px).
+  const hidden = [];
   const overflow = [];
   for (const el of main.querySelectorAll("*")) {
     if (overflow.some((o) => o.contains(el))) continue;
+    if (hidden.some((h) => h.contains(el))) continue;
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) continue;
+    if (srHidden(el, r)) {
+      hidden.push(el);
+      continue;
+    }
     let left = r.left;
     let right = r.right;
     // Clippers between the element and <main> only: <main> or anything
