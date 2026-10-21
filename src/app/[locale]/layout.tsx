@@ -9,6 +9,7 @@ import { BASE_URL } from "@/lib/config";
 import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import FirstVisitTracker from "@/components/FirstVisitTracker";
+import { SkipLink } from "@/components/SkipLink";
 import "@fontsource-variable/noto-sans-kr";
 // Noto Sans JP — explicitly loaded so html2canvas captures of the
 // share card render Japanese glyphs with a real webfont instead of
@@ -79,15 +80,12 @@ export default async function LocaleLayout({
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>
           <FirstVisitTracker />
-          {/* Skip link (03 contract): first focusable element on every
-              page. The target is a zero-size marker after the header
-              rather than a wrapper around `children`: pages render
-              their own <main>, and wrapping them would insert a box
-              between body's flex column and each page's outer element
-              (whose width rules assume it is the direct flex item). */}
-          <a href="#main-content" className="skip-link">
-            {th("skipToContent")}
-          </a>
+          {/* Skip link (03 contract). Its fallback target is a zero-size
+              marker after the header rather than a wrapper around
+              `children`: wrapping would insert a box between body's flex
+              column and each page's outer element (whose width rules
+              assume it is the direct flex item). */}
+          <SkipLink label={th("skipToContent")} />
           <Nav />
           <span id="main-content" tabIndex={-1} className="outline-none" />
           {children}

@@ -205,3 +205,19 @@ describe("<CoverImage />", () => {
     expect(screen.getByRole("img", { name: "Album" })).toBe(slot);
   });
 });
+
+describe("<SkipLink />", () => {
+  it("focuses the page <main> landmark when one exists", async () => {
+    const { SkipLink } = await import("@/components/SkipLink");
+    render(
+      <>
+        <SkipLink label="skip" />
+        <main>content</main>
+      </>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "skip" }));
+    const main = screen.getByRole("main");
+    expect(document.activeElement).toBe(main);
+    expect(main).toHaveAttribute("tabindex", "-1");
+  });
+});

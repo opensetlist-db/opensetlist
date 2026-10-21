@@ -149,6 +149,11 @@ body {
 .skip-link:focus {
   top: 12px;
 }
+/* The skip link focuses the page <main> programmatically; the landmark
+   itself needs no ring around the whole page. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
 
 /*
  * Reduced motion (spec story 48): drop transitions and keyframe
