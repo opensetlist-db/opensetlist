@@ -232,7 +232,8 @@ type ArtistEvent = {
   id: number;
   slug: string;
   status: "scheduled" | "ongoing" | "completed" | "cancelled";
-  date: string;
+  // `Event.date` is `DateTime? @db.Date` — null for a TBA concert.
+  date: string | null;
   startTime: string;
   originalName: string | null;
   originalShortName: string | null;
@@ -517,15 +518,17 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     const songCount = songCountByEvent.get(String(event.id));
     const series = event.eventSeries;
     // serializeBigInt runs JSON.stringify, so `date` is an ISO string
-    // at runtime even though Prisma's type still says Date.
-    const isoDate = String(event.date);
+    // at runtime — or null for a TBA concert. Never stringify the null:
+    // `String(null)` would put `dateTime="null"` on the row and NaN into
+    // every sort below (a NaN comparator leaves the order undefined).
+    const isoDate = event.date ?? null;
     return {
       id: String(event.id),
       href: entityPath("events", locale, event.id, event.slug),
       status,
       statusLabel: statusLabels[status],
       formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
-      isoDate: isoDate.slice(0, 10),
+      isoDate: isoDate ? isoDate.slice(0, 10) : null,
       name:
         displayNameWithFallback(event, event.translations, locale) ||
         evT("unknownEvent"),
@@ -544,7 +547,8 @@ export default async function ArtistPage({ params, searchParams }: Props) {
           ? t("songCount", { count: songCount })
           : null,
       seriesKey: seriesKeyOf(event),
-      rawDateMs: new Date(isoDate).getTime(),
+      // Undated rows sort after every dated one in the date-desc lists.
+      rawDateMs: isoDate ? new Date(isoDate).getTime() : 0,
     };
   });
 

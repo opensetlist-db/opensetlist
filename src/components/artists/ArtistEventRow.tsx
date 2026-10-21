@@ -22,8 +22,9 @@ export interface ArtistEventView {
   statusLabel: string;
   /** Locale-formatted UTC date (`formatDate` + HISTORY_ROW_DATE_FORMAT). */
   formattedDate: string;
-  /** `YYYY-MM-DD` for the `<time datetime>` attribute. */
-  isoDate: string;
+  /** `YYYY-MM-DD` for the `<time datetime>` attribute; null when the
+   *  concert has no date yet (TBA). */
+  isoDate: string | null;
   name: string;
   nameLang?: string;
   seriesName: string | null;
@@ -40,7 +41,9 @@ export function ArtistEventRow({ event }: { event: ArtistEventView }) {
           <span className={styles.status} data-status={event.status}>
             {event.statusLabel}
           </span>{" "}
-          <time dateTime={event.isoDate}>{event.formattedDate}</time>
+          {event.isoDate && (
+            <time dateTime={event.isoDate}>{event.formattedDate}</time>
+          )}
         </span>
         <span>
           <span className={styles.eventName} lang={event.nameLang}>
