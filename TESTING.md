@@ -73,6 +73,16 @@ script. It is dev-only (same URL guard as the integration setup, from
 connecting). It runs from any directory or task worktree and prints
 timestamps as UTC.
 
+**Removing QA fixtures** an agent created through the admin UI / API
+(EventSeries, Event, Album, ImageAsset rows — the admin API only
+soft-deletes): use `node scripts/db-fixture-rm.mjs --prefix "<name
+prefix>" --expect <n> --series … --events … --albums … [--assets …
+--asset-prefix <objectKey prefix>] [--dry-run]` instead of an ad-hoc
+delete script. Same dev-only guard; one transaction that refuses unless
+every id exists, carries the prefix, the count matches, and nothing
+outside the fixture set references the rows. R2 objects stay — list
+them in the handoff.
+
 ### E2E — through the app
 
 `playwright.config.ts` starts `npm run dev` on `localhost:3000` unless
