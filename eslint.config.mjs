@@ -4,6 +4,7 @@ import nextTs from "eslint-config-next/typescript";
 import useClientExports from "./eslint-rules/use-client-exports.mjs";
 import noTicketIds from "./eslint-rules/no-ticket-ids.mjs";
 import consoleFormatString from "./eslint-rules/console-format-string.mjs";
+import imgOnErrorRef from "./eslint-rules/img-onerror-ref.mjs";
 import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
 import {
   hexColourAssertionRestrictions,
@@ -23,6 +24,9 @@ const eslintConfig = defineConfig([
   // (unsafe-formatstring). Scoped to src/ like the others: scripts/ and
   // tests/load/ hold 130+ such calls in operator-run tooling that ships
   // nothing, and Semgrep reports only findings a PR adds.
+  // `img-onerror-ref`: in a "use client" module an `<img onError>` also
+  // has a ref that checks the image on mount — a server-rendered image
+  // that fails before hydration never fires React's onError.
   {
     files: ["src/**/*.{ts,tsx}"],
     plugins: {
@@ -31,6 +35,7 @@ const eslintConfig = defineConfig([
           "use-client-exports": useClientExports,
           "no-ticket-ids": noTicketIds,
           "console-format-string": consoleFormatString,
+          "img-onerror-ref": imgOnErrorRef,
         },
       },
     },
@@ -38,6 +43,7 @@ const eslintConfig = defineConfig([
       "local/use-client-exports": "error",
       "local/no-ticket-ids": "error",
       "local/console-format-string": "error",
+      "local/img-onerror-ref": "error",
     },
   },
   // Admin routes save translations per locale (upsert), never by
