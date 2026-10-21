@@ -3,6 +3,7 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import useClientExports from "./eslint-rules/use-client-exports.mjs";
 import noTicketIds from "./eslint-rules/no-ticket-ids.mjs";
+import consoleFormatString from "./eslint-rules/console-format-string.mjs";
 import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
 import {
   hexColourAssertionRestrictions,
@@ -17,6 +18,11 @@ const eslintConfig = defineConfig([
   // in a plain module (they can resolve to undefined from a server
   // component). `no-ticket-ids`: comments keep the reason, not the
   // ticket id (`n15-03`) — the id belongs in the PR description.
+  // `console-format-string`: a console call's first argument is a
+  // constant format, not a `${…}` template — CI Semgrep blocks that form
+  // (unsafe-formatstring). Scoped to src/ like the others: scripts/ and
+  // tests/load/ hold 130+ such calls in operator-run tooling that ships
+  // nothing, and Semgrep reports only findings a PR adds.
   {
     files: ["src/**/*.{ts,tsx}"],
     plugins: {
@@ -24,12 +30,14 @@ const eslintConfig = defineConfig([
         rules: {
           "use-client-exports": useClientExports,
           "no-ticket-ids": noTicketIds,
+          "console-format-string": consoleFormatString,
         },
       },
     },
     rules: {
       "local/use-client-exports": "error",
       "local/no-ticket-ids": "error",
+      "local/console-format-string": "error",
     },
   },
   // Admin routes save translations per locale (upsert), never by
