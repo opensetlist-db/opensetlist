@@ -330,6 +330,13 @@
 .card:focus-visible {
   outline-offset: 3px;
 }
+/* Korean art titles break between words, not inside them (mockup
+   `html:lang(ko) .art-copy{word-break:keep-all}`); EventArt's
+   `overflow-wrap:anywhere` still rescues a single over-long word. */
+:global(html:lang(ko)) .page [data-testid="event-art"] strong {
+  word-break: keep-all;
+}
+
 /* EventArt fixes 24px at ≥700; the approved rail uses 22px. */
 .card [data-testid="event-art"] strong {
   font-size: 22px;
@@ -362,6 +369,7 @@
 .cardTitle {
   margin: 0;
   font-size: 15px;
+  font-weight: 700;
   line-height: 1.7;
   letter-spacing: -0.015em;
   overflow-wrap: anywhere;
