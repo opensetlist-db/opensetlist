@@ -187,6 +187,11 @@ describe("safe termination and failed assets", () => {
 
   it("an asset on a non-custom node is ignored", () => {
     // The DB CHECK forbids it; the resolver still never reads it.
+    // Positive controls: the same nodes in custom mode do yield their assets.
+    const custom = chain({}, {}, { logoMode: "custom", logoAsset: asset(3) });
+    expect(resolveEventLogo(leafEvent(), custom).image).toEqual(image(3));
+    expect(resolveEventLogo(leafEvent({ logoMode: "custom", logoAsset: asset(9) }), custom).image).toEqual(image(9));
+
     const g = chain({}, {}, { logoMode: "inherit", logoAsset: asset(3) });
     expect(resolveEventLogo(leafEvent({ logoAsset: asset(9) }), g).image).toBeNull();
   });
