@@ -5,11 +5,24 @@ import useClientExports from "./eslint-rules/use-client-exports.mjs";
 import noTicketIds from "./eslint-rules/no-ticket-ids.mjs";
 import consoleFormatString from "./eslint-rules/console-format-string.mjs";
 import imgOnErrorRef from "./eslint-rules/img-onerror-ref.mjs";
+import nonLiteralRegexp from "./eslint-rules/non-literal-regexp.mjs";
 import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
 import {
   hexColourAssertionRestrictions,
   hexColourLiteralRestrictions,
 } from "./eslint-rules/hex-colour-literals.mjs";
+
+// One plugin object for every block that uses it: flat config refuses a
+// plugin name bound to two different objects.
+const localPlugin = {
+  rules: {
+    "use-client-exports": useClientExports,
+    "no-ticket-ids": noTicketIds,
+    "console-format-string": consoleFormatString,
+    "img-onerror-ref": imgOnErrorRef,
+    "non-literal-regexp": nonLiteralRegexp,
+  },
+};
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -29,21 +42,24 @@ const eslintConfig = defineConfig([
   // that fails before hydration never fires React's onError.
   {
     files: ["src/**/*.{ts,tsx}"],
-    plugins: {
-      local: {
-        rules: {
-          "use-client-exports": useClientExports,
-          "no-ticket-ids": noTicketIds,
-          "console-format-string": consoleFormatString,
-          "img-onerror-ref": imgOnErrorRef,
-        },
-      },
-    },
+    plugins: { local: localPlugin },
     rules: {
       "local/use-client-exports": "error",
       "local/no-ticket-ids": "error",
       "local/console-format-string": "error",
       "local/img-onerror-ref": "error",
+    },
+  },
+  // `non-literal-regexp`: `new RegExp(x)` takes a literal pattern — CI
+  // Semgrep (detect-non-literal-regexp) blocks a pattern built from a
+  // value. Wider than the src/ rules above: Semgrep scans the whole repo,
+  // and scripts/ and tests/ hold only a handful of such calls, so each
+  // can carry its own reasoned disable instead of the rule skipping them.
+  {
+    files: ["{src,scripts,tests}/**/*.{ts,tsx,js,jsx,mjs,cjs}"],
+    plugins: { local: localPlugin },
+    rules: {
+      "local/non-literal-regexp": "error",
     },
   },
   // Admin routes save translations per locale (upsert), never by

@@ -301,7 +301,7 @@ export function applyGlossary(
       // `escapeRegExp` neutralizes regex metacharacters. The resulting pattern
       // is `\b<literal>\b` — no quantifiers, no backreferences → no ReDoS surface.
       // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      const re = new RegExp(`\\b${escapeRegExp(source)}\\b`, "g");
+      const re = new RegExp(`\\b${escapeRegExp(source)}\\b`, "g"); // eslint-disable-line local/non-literal-regexp -- escaped ASCII, see above
       const next = processed.replace(re, placeholder);
       if (next === processed) continue;
       processed = next;
