@@ -14,7 +14,6 @@ import {
   resolutionText,
   type LogoCardState,
 } from "@/lib/adminLogoCard";
-import { seriesLogoAttemptKeys } from "@/lib/adminLogo";
 import type { AdminAttemptEvidence, AdminLogoAssignment, AdminLogoPreview } from "@/lib/adminLogo";
 
 // Admin series logo card: the source explanation added next to the public
@@ -81,19 +80,6 @@ describe("explainSeriesLogo", () => {
     for (const g of graphs) {
       expect(explainSeriesLogo(BigInt(2), g).decision).toEqual(decideSeriesLogo(BigInt(2), g));
     }
-  });
-});
-
-describe("seriesLogoAttemptKeys", () => {
-  it("rebuilds every key the upload service could have written", () => {
-    const attempt = "3f0c6a1e-1111-4222-8333-944455556666";
-    expect(seriesLogoAttemptKeys("dev", BigInt(7), attempt).sort()).toEqual(
-      [
-        `dev/series-logo/7/${attempt}.jpg`,
-        `dev/series-logo/7/${attempt}.png`,
-        `dev/series-logo/7/${attempt}.webp`,
-      ].sort(),
-    );
   });
 });
 

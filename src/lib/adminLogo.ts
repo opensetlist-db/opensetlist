@@ -8,8 +8,7 @@ import {
   type LogoDecision,
   type LogoSeriesNode,
 } from "@/lib/logoResolution";
-import { ACCEPTED_IMAGE_FORMATS } from "@/lib/imageUpload/limits";
-import { buildObjectKey } from "@/lib/imageUpload/keys";
+import { findAttemptAsset } from "@/lib/imageUpload/attemptLookup";
 
 // Admin read model of a series' logo card: the local assignment, its
 // asset (WITH admin-only provenance), what the public resolver makes of
@@ -63,21 +62,10 @@ export type AdminLogoPreview = {
 };
 
 /**
- * What a re-read found out about one upload attempt (same vocabulary as
- * the album cover card):
- *   committed   — its ImageAsset row exists (asset and assignment commit
- *                 together, so the row proves the commit); `held` says
- *                 whether the series still holds it;
- *   not-observed — no row at read time. NOT proof of failure: a request
- *                 still in flight may commit later;
- *   ambiguous   — more than one row for the attempt (only objectKey is
- *                 unique, so two extensions of one attempt are not ruled
- *                 out by the schema); the form keeps the outcome unknown;
- *   unavailable — the storage namespace is not configured (or is
- *                 misconfigured) here, so the attempt's keys cannot be
- *                 rebuilt. NOT "could not have committed": an earlier
- *                 deployment, or the request itself, may have read a
- *                 working configuration.
+ * What a re-read found out about one upload attempt: the shared
+ * `findAttemptAsset` states (see imageUpload/attemptLookup.ts for their
+ * meaning), plus `held` — whether the series still holds the committed
+ * asset, read in the same snapshot.
  */
 export type AdminAttemptEvidence =
   | { state: "committed"; assetId: string; held: boolean }
@@ -106,15 +94,6 @@ const ADMIN_ASSET_SELECT = {
   createdAt: true,
 } as const;
 
-/** Every key the upload service could have written for this attempt. */
-export function seriesLogoAttemptKeys(keyPrefix: string, seriesId: bigint, attemptId: string): string[] {
-  // Built with the service's own key builder over the accepted formats'
-  // extensions, so the lookup can never drift from what POST writes.
-  return Object.values(ACCEPTED_IMAGE_FORMATS).map(({ ext }) =>
-    buildObjectKey({ prefix: keyPrefix, segment: "series-logo", targetId: seriesId, attemptId, ext }),
-  );
-}
-
 function withDraft(
   rows: LogoSeriesNode[],
   seriesId: bigint,
@@ -125,12 +104,12 @@ function withDraft(
 
 /**
  * Current logo state of a live series, or null when it is absent or
- * soft-deleted. `attempt` (validated attempt id + the storage key prefix)
- * adds the attempt evidence; pass it only when reconciling.
+ * soft-deleted. `attemptId` (validated) adds the attempt evidence; pass
+ * it only when reconciling.
  */
 export async function getSeriesLogoAdminState(
   seriesId: bigint,
-  attempt: { attemptId: string; keyPrefix: string | null } | null = null,
+  attemptId: string | null = null,
 ): Promise<AdminSeriesLogoState | null> {
   return prisma.$transaction(
     async (tx) => {
@@ -141,25 +120,16 @@ export async function getSeriesLogoAdminState(
       if (!series) return null;
 
       let evidence: AdminAttemptEvidence | null = null;
-      if (attempt) {
-        if (!attempt.keyPrefix) {
-          evidence = { state: "unavailable" };
-        } else {
-          const attemptRows = await tx.imageAsset.findMany({
-            where: { objectKey: { in: seriesLogoAttemptKeys(attempt.keyPrefix, seriesId, attempt.attemptId) } },
-            select: { id: true },
-          });
-          evidence =
-            attemptRows.length === 0
-              ? { state: "not-observed" }
-              : attemptRows.length === 1
-                ? {
-                    state: "committed",
-                    assetId: attemptRows[0].id,
-                    held: series.logoMode === "custom" && series.logoAssetId === attemptRows[0].id,
-                  }
-                : { state: "ambiguous" };
-        }
+      if (attemptId) {
+        const found = await findAttemptAsset(tx, "series-logo", seriesId, attemptId);
+        evidence =
+          found.state === "committed"
+            ? {
+                state: "committed",
+                assetId: found.assetId,
+                held: series.logoMode === "custom" && series.logoAssetId === found.assetId,
+              }
+            : found;
       }
 
       const rows = await tx.eventSeries.findMany({ select: LOGO_SERIES_SELECT });

@@ -1,20 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { revalidatePublicData } from "@/lib/dataCache";
-import { prisma } from "@/lib/prisma";
 import { getSeriesLogoAdminState } from "@/lib/adminLogo";
 import {
   UploadError,
-  conflictFor,
   handleImageUpload,
   isUploadError,
   parseAttemptId,
   parseExpectedLogo,
   parseTargetId,
-  readR2Config,
   seriesLogoTarget,
   uploadErrorResponse,
   verifySameOrigin,
+  writeAssignment,
   writeLogoAssignment,
   type LogoAssignment,
 } from "@/lib/imageUpload";
@@ -51,10 +49,9 @@ export async function GET(request: NextRequest, { params }: RouteProps) {
     const seriesId = parseTargetId((await params).id);
     const search = request.nextUrl.searchParams;
     const rawAttempt = search.get("attemptId");
-    const attempt =
-      rawAttempt === null ? null : { attemptId: parseAttemptId(rawAttempt), keyPrefix: storageKeyPrefix() };
+    const attemptId = rawAttempt === null ? null : parseAttemptId(rawAttempt);
 
-    const state = await getSeriesLogoAdminState(seriesId, attempt);
+    const state = await getSeriesLogoAdminState(seriesId, attemptId);
     if (!state) {
       return NextResponse.json(
         { error: "target_not_found", message: "시리즈를 찾을 수 없습니다. 삭제되었을 수 있습니다." },
@@ -100,47 +97,24 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
 
-  // Set once the transaction callback has finished: from then on COMMIT
-  // was (or may have been) sent, so a failure no longer proves the old
-  // assignment is intact. Same split as the upload service.
-  let callbackFinished = false;
   try {
     verifySameOrigin(request);
     const seriesId = parseTargetId((await params).id);
     const { expected, next } = parseModeChange(await readJson(request));
-    const target = seriesLogoTarget(seriesId);
 
-    await prisma.$transaction(async (tx) => {
-      if (!(await writeLogoAssignment(tx, "series-logo", seriesId, expected, next))) {
-        throw await conflictFor(tx, target);
-      }
-      callbackFinished = true;
-    });
+    // Shared non-upload writer: one transaction, CAS on the expected pair
+    // (zero rows → 404/409 with the current value), and the commit-time
+    // split — a failure before the callback finished is `not_saved`, after
+    // it `outcome_unknown` (the form then re-reads instead of retrying).
+    const committed = await writeAssignment(seriesLogoTarget(seriesId), (tx) =>
+      writeLogoAssignment(tx, "series-logo", seriesId, expected, next),
+    );
 
     // Committed: a cache failure must not turn into "not saved".
     safeRevalidate();
-    return NextResponse.json({ status: "saved", assignment: { mode: next.mode, assetId: null } });
+    return NextResponse.json({ status: "saved", assignment: committed });
   } catch (err) {
-    if (isUploadError(err) || !callbackFinished) return uploadErrorResponse(err);
-    console.warn("[series-logo] %s", "outcome-unknown", err instanceof Error ? err.name : typeof err);
-    return uploadErrorResponse(
-      new UploadError(
-        "outcome_unknown",
-        "저장 결과를 확인하지 못했습니다. 현재 상태를 확인한 뒤 다음 동작을 선택해 주세요.",
-        { cause: err },
-      ),
-    );
-  }
-}
-
-function storageKeyPrefix(): string | null {
-  // Only the namespace is needed to rebuild the attempt's keys. Absent or
-  // misconfigured storage → null → evidence "unavailable": the form keeps
-  // the outcome unknown instead of guessing a prefix.
-  try {
-    return readR2Config()?.keyPrefix ?? null;
-  } catch {
-    return null;
+    return uploadErrorResponse(err);
   }
 }
 
