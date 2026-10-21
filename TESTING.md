@@ -56,6 +56,7 @@ know what each suite leaves behind:
 | `n14-live-path.test.ts` | **writes** | event, setlist items, reactions, wishes, confirms; also joins the dev Supabase Realtime channel (anon key) and broadcasts; `afterAll` deletes the rows |
 | `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
+| `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
 A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`
