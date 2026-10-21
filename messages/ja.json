@@ -670,11 +670,15 @@
     "brandName": "OpenSetlist",
     "home": "ホーム",
     "artists": "アーティスト",
-    "events": "イベント",
+    "events": "公演",
     "albums": "アルバム",
     "signIn": "ログイン",
     "openMenu": "メニューを開く",
-    "closeMenu": "メニューを閉じる"
+    "closeMenu": "メニューを閉じる",
+    "mainNav": "メインメニュー",
+    "search": "検索",
+    "searchPlaceholder": "公演・アーティスト・曲・アルバムを検索",
+    "skipToContent": "本文へ移動"
   },
   "Hero": {
     "heading": "みんなでつなぐ、ライブの物語",
@@ -684,7 +688,12 @@
     "privacy": "プライバシーポリシー",
     "terms": "利用規約",
     "contact": "お問い合わせ",
-    "copyright": "© {year} OpenSetlist"
+    "copyright": "© {year} OpenSetlist",
+    "unofficial": "ファンによる非公式サイトです。出演者・主催者・権利者とは関係ありません。",
+    "navLabel": "サイト情報"
+  },
+  "SharedImage": {
+    "noImage": "画像なし"
   },
   "legal": {
     "privacyTitle": "プライバシーポリシー",

@@ -4,27 +4,42 @@
  * `shared-components-handoff.md` §1.
  *
  * Use `as const` so consumers get literal-typed values (e.g.
- * `typeof colors.primary` is `"#0277BD"`, not `string`) — this lets
+ * `typeof colors.primary` is `"#165DCC"`, not `string`) — this lets
  * `<StatusBadge size="sm" | "md">` style switches type-narrow correctly
  * when keyed off a token.
  */
 
 export const colors = {
-  // Brand
-  primary: "#0277BD",
+  // Brand. Values from the approved redesign common contract (ticket 03,
+  // packet 03-v1.1 — `wiki/output/redesign/handoffs/03/v1.1/design-contract.md`).
+  // Swapped site-wide in one place so every page picks up the new
+  // palette without per-page rewrites; page layouts change only in their
+  // own redesign tickets. `primaryLight` and the two gradients keep the
+  // original symbol-derived hues on purpose: they paint the brand mark
+  // and existing hero surfaces, and the contract does not restate them.
+  primary: "#165DCC",
+  // Interaction states for primary buttons/links (white text on all three
+  // passes 4.5:1 — measured in the 03 packet's qa-report.json).
+  primaryHover: "#104AA9",
+  primaryPressed: "#0C3D8C",
   primaryLight: "#4FC3F7",
-  primaryBg: "#e8f4fd",
-  primaryBorder: "#bfdbfe",
+  primaryBg: "#EAF2FF",
+  primaryBorder: "#D2E1FA",
   brandGradient: "linear-gradient(135deg, #4FC3F7, #0277BD)",
   // CTA-emphasis gradient (purple terminal — used for "join the live"
   // / share buttons in mockups, not the regular primary).
   darkGradient: "linear-gradient(135deg, #4FC3F7, #7B1FA2)",
 
   // Text
-  textPrimary: "#0f172a",
-  textSecondary: "#475569",
-  textMuted: "#94a3b8",
-  textSubtle: "#64748b",
+  // Main / secondary text per the 03 contract. `textSecondary` and
+  // `textSubtle` collapse onto the contract's single secondary tone
+  // (#52617A, 4.5:1+ on white and on bgPage). `textMuted` was #94a3b8
+  // (≈2.6:1 on white — below body-text contrast); it now takes the
+  // contract's disabled/meta tone so captions stay readable.
+  textPrimary: "#172445",
+  textSecondary: "#52617A",
+  textMuted: "#67758B",
+  textSubtle: "#52617A",
   // On-dark text variants for surfaces that sit on a dark gradient
   // (e.g. the series-page LIVE banner). These read as alpha-blended
   // white because the dark backgrounds vary per surface — a static
@@ -36,7 +51,7 @@ export const colors = {
   onDarkMuted: "rgba(255,255,255,0.5)",
 
   // Backgrounds
-  bgPage: "#f0f4f8",
+  bgPage: "#F7F9FD",
   bgCard: "#ffffff",
   bgSubtle: "#f8fafc",
   bgFaint: "#fafbfc",
@@ -48,8 +63,31 @@ export const colors = {
   // two endpoints.
   navyDeep: "#1e3a5f",
 
-  // Borders
-  border: "#e2e8f0",
+  // Borders. `border` is the decorative hairline; `borderStrong` is the
+  // functional boundary (inputs, secondary buttons) that must reach 3:1
+  // against the surface so the control edge is perceivable.
+  border: "#DCE3EF",
+  borderStrong: "#7C8BA3",
+
+  // Keyboard focus ring (3px, 4px offset on light surfaces — applied
+  // globally via `:focus-visible` in globals.css).
+  focus: "#174FAF",
+
+  // Supporting pastel accents from the 03 contract. Backgrounds only —
+  // never used as text colour.
+  accentPink: "#FFF0F6",
+  accentLavender: "#F0EDFF",
+  accentBlue: "#EAF2FF",
+
+  // EventArt typography-fallback surface (03 contract card art): neutral
+  // blue → lavender → pink wash plus its three text tones (eyebrow,
+  // title, caption), all ≥4.5:1 on the wash.
+  artWash: "linear-gradient(130deg, #eaf1ff, #f1edff 60%, #ffedf5)",
+  artEyebrow: "#4f5781",
+  artTitle: "#343b72",
+  artCaption: "#575474",
+  // Album-cover fallback fill.
+  coverFallbackBg: "#f2f4f9",
   borderLight: "#f1f5f9",
   borderFaint: "#f8fafc",
   // Slightly darker than `border` — used for the dashed empty-state
@@ -65,7 +103,11 @@ export const colors = {
   // Card-hover wash for primary-themed surfaces (UpcomingCard).
   // Lighter than `primaryBg` so resting cards on a white page lift
   // without flashing a bright brand tint on hover.
-  primaryHoverBg: "#f0f7ff",
+  primaryHoverBg: "#EDF4FF",
+  // Pressed wash for the same quiet surfaces (nav links, locale and icon
+  // buttons). Paired with `primaryHoverBg`; both are mirrored as CSS
+  // variables in globals.css for the `.shell-interactive` class.
+  primaryPressedBg: "#DAE7FF",
 
   // Event status palette (consumed by <StatusBadge>)
   live: "#dc2626",
@@ -240,6 +282,13 @@ export const zIndex = {
   modal: 200,
   /** Toast / snackbar / inline announcement above modals. */
   toast: 300,
+  /**
+   * Site header (and its menu dropdown, which lives in the header's
+   * stacking context). Above page sticky chrome so a sticky sidebar in
+   * the 1024–1099px band cannot paint over the open menu; below the
+   * floating dropdown/modal layers.
+   */
+  header: 50,
 } as const;
 
 export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
@@ -385,10 +434,13 @@ export const unitFallbackPalette = [
 ] as const;
 
 export const shadows = {
-  card: "0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(2,119,189,0.06)",
+  // 03 contract card shadow (navy-tinted, low alpha) and its hover lift.
+  card: "0 5px 18px #233C6810",
+  cardHover: "0 8px 24px #233C681B",
   nav: "0 1px 3px rgba(0,0,0,0.04)",
   // Heavier brand-color glow for the LIVE hero card on the home page.
-  // Same brand RGB as `card` (rgba of `colors.primary` #0277BD) but at
+  // Original brand blue (#0277BD, the pre-redesign primary — kept here
+  // because the home LIVE hero has not been redesigned yet) at
   // a deeper alpha + larger blur for a "lifted off the page" feel.
   heroLive: "0 8px 32px rgba(2,119,189,0.25)",
   // Neutral lift used by small image thumbnails (album covers, etc.)
@@ -419,16 +471,24 @@ export const radius = {
 
 export const breakpoint = {
   desktop: 1024,
+  // Header-only threshold from the 03 contract: the full desktop header
+  // (four links + search field + three native locale labels) needs
+  // ~1100px. Page layouts (sidebars, grids) keep `desktop` (1024) — this
+  // value moves only the Nav between its desktop and menu forms.
+  nav: 1100,
 } as const;
 
 /*
- * Layout-scale constants. `navHeight` is the sticky `<Nav>` height
- * (mobile/desktop) — surfaces below the nav that need to clear it
- * (sticky sidebars, anchor-link `scroll-margin-top`) derive from
- * here so a future nav-height change propagates to all consumers.
+ * Layout-scale constants. `navHeight` is the `<Nav>` header height per
+ * width band (03 contract): mobile <700px = 64, tablet 700–1099 = 68,
+ * desktop ≥1100 (`breakpoint.nav`) = 80. The header is NOT sticky (it
+ * never was — the 02 baseline and the approved mockup both scroll it
+ * away), so these are clearances for sticky sidebars and anchor
+ * `scroll-margin-top`, which keep a header-sized gap. Mirrored by the
+ * `--legal-anchor-offset` values in globals.css.
  */
 export const layout = {
-  navHeight: { mobile: 52, desktop: 56 },
+  navHeight: { mobile: 64, tablet: 68, desktop: 80 },
 } as const;
 
 // Border-width scale. `emphasis` is the slightly heavier stroke used on

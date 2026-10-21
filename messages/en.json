@@ -670,11 +670,15 @@
     "brandName": "OpenSetlist",
     "home": "Home",
     "artists": "Artists",
-    "events": "Events",
+    "events": "Concerts",
     "albums": "Albums",
     "signIn": "Sign in",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "mainNav": "Main menu",
+    "search": "Search",
+    "searchPlaceholder": "Search concerts, artists, songs, albums",
+    "skipToContent": "Skip to content"
   },
   "Hero": {
     "heading": "The live story we keep together",
@@ -684,7 +688,12 @@
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
     "contact": "Contact",
-    "copyright": "© {year} OpenSetlist"
+    "copyright": "© {year} OpenSetlist",
+    "unofficial": "An unofficial fan site. Not affiliated with performers, organizers or rights holders.",
+    "navLabel": "Site information"
+  },
+  "SharedImage": {
+    "noImage": "No image"
   },
   "legal": {
     "privacyTitle": "Privacy Policy",
