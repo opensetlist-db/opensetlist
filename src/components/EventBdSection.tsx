@@ -49,8 +49,8 @@ import { colors, radius, shadows } from "@/styles/tokens";
 // EventBdSection mount comment for why), so every `bigint` arrives as
 // `string` and every `Date` arrives as ISO `string`. The
 // `BigIntStringified<T>` type companion mirrors that exact runtime
-// shape — used identically by AlbumInfoCard / ListingCard /
-// AlbumBonusTab so the bonus-display helpers
+// shape — used identically by the album page's AlbumIdentity /
+// AlbumPurchasePanel so the bonus-display helpers
 // (resolveStoreName / resolveBonusType) type-check cleanly here.
 export type EventBdAlbumInput = BigIntStringified<
   Prisma.AlbumGetPayload<{
@@ -199,8 +199,8 @@ async function FullVariant({
   const titleParts = displayOriginalTitle(album, album.translations, locale);
 
   // Primary artist for the album. AlbumArtist junction has no role
-  // column; pick the first credited row. Matches AlbumInfoCard's
-  // policy.
+  // column; pick the first credited row. Matches the album page's
+  // breadcrumb/analytics policy.
   const primaryArtistRow = album.artists[0] ?? null;
   const primaryArtist = primaryArtistRow?.artist ?? null;
   const primaryArtistName = primaryArtist

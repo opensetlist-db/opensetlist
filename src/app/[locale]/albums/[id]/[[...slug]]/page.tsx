@@ -3,18 +3,23 @@ import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import {
+  entityAlternates,
+  entityPath,
+  enforceCanonicalSlug,
+} from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import { serializeBigIntAsString } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
-import { AlbumInfoCard } from "@/components/AlbumInfoCard";
 import { FireAlbumView } from "@/components/FireAlbumView";
 import { resolveStoreKey, countActiveBonuses } from "@/lib/albumBonusDisplay";
-import { AlbumBonusTab } from "@/components/AlbumBonusTab";
-import { AlbumTracksTab } from "@/components/AlbumTracksTab";
-import { AlbumRelatedEventsTab } from "@/components/AlbumRelatedEventsTab";
-import { TabBar } from "@/components/TabBar";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import { AlbumIdentity } from "@/components/albums/detail/AlbumIdentity";
+import { AlbumTabs } from "@/components/albums/detail/AlbumTabs";
+import { AlbumTracksPanel } from "@/components/albums/detail/AlbumTracksPanel";
+import { AlbumEventsPanel } from "@/components/albums/detail/AlbumEventsPanel";
+import { AlbumPurchasePanel } from "@/components/albums/detail/AlbumPurchasePanel";
+import styles from "@/components/albums/detail/albumDetail.module.css";
 import {
   getAlbumRelatedEvents,
   getAlbumRelatedEventsCount,
@@ -23,27 +28,14 @@ import {
 import { resolveLocalizedField, displayOriginalName } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
-import { colors } from "@/styles/tokens";
 
 /*
- * Tab discriminator. `live_bd` albums skip the Tracks tab entirely
- * (the BD doesn't carry a recorded-song tracklist in the same sense
- * an audio album does) and default to the Related Events tab so the
- * first thing a viewer lands on is the show(s) the BD captures.
- * Every other album type defaults to the Bonus tab — the primary
- * purchase surface and the win-win monetization landing per the
- * monetization-economics 매장特典 framing.
+ * Tab discriminator. Audio albums show tracks → events → purchase and
+ * open on tracks; `live_album` (BD) has no audio tracklist, hides the
+ * tracks tab and opens on events. `bonus` is the purchase tab's key —
+ * kept as the URL value so existing `?tab=bonus` links still land there.
  */
 type AlbumTabKey = "bonus" | "tracks" | "events";
-
-/*
- * Shared max-width for the breadcrumb + content column. Both the
- * `<nav>` (breadcrumb) and the `<main>` (sidebar + tab body grid)
- * read from this constant so a future tweak ripples through both
- * surfaces and they never silently misalign at the column edge.
- * Picked literal from raw/mockups/album-page-mockup.jsx line 595.
- */
-const ALBUM_PAGE_MAX_WIDTH = 1280;
 
 /*
  * Album detail page — `/[locale]/albums/[id]/[[...slug]]/`.
@@ -237,9 +229,6 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
 
   const t = await getTranslations({ locale, namespace: "Album" });
 
-  // Tab order (Sprint B2 QA pass): 수록곡 → 관련 공연 → 구입. live_album
-  // hides 수록곡 (BDs carry no audio tracklist). Default tab is the first
-  // visible one — tracks for audio albums, events for live_album.
   const showTracks = album.type !== AlbumType.live_album;
   const visibleTabs: AlbumTabKey[] = [];
   if (showTracks) visibleTabs.push("tracks");
@@ -249,41 +238,29 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const activeTab = resolveActiveTab(rawTab, visibleTabs, defaultTab);
 
   // Derive Pattern 1 song ids once from the already-loaded album.tracks
-  // (getAlbum's include carries them). Both the count helper and the
-  // full-fetch helper take this array — the two `react.cache` wraps
-  // are independent identities, so without forwarding the ids the
-  // events-tab view ran `albumTrack.findMany` twice (once per helper).
-  // Caller-side derive + pass = single derive, zero duplicate DB hits.
-  //
-  // album.tracks come through serializeBigIntAsString — `songId` is
-  // either a numeric-string or null. `BigInt(stringId)` reverses the
-  // string back to a bigint without rounding (the precision survives
-  // because we never went through Number()).
+  // and hand them to both related-event helpers: their two `react.cache`
+  // wraps are separate identities, so letting each derive its own would
+  // run `albumTrack.findMany` twice. `songId` arrives as a numeric
+  // string (serializeBigIntAsString), so `BigInt(...)` restores it
+  // without a lossy Number() hop.
   const pattern1SongIds: bigint[] = album.tracks
     .map((t) => t.songId)
     .filter((sid): sid is string => sid !== null)
     .map((sid) => BigInt(sid));
 
-  // Events tab needs its count for the tab-label string regardless of
-  // which tab is active (per mockup tab format "관련 공연 (N)"). Use
-  // the dedicated COUNT-only helper instead of the full fetch — the
-  // tab body's `getAlbumRelatedEvents(...)` below only fires when the
-  // user actually lands on the events tab, so the COUNT query is the
-  // cheap always-on companion. The two helpers share WHERE shape so
-  // the badge stays consistent with the rendered list.
+  // The events badge is needed on every tab, so it comes from the cheap
+  // COUNT helper (same WHERE as the list, uncapped). The full list (with
+  // its include tree and take: 50) is fetched only when the events tab
+  // is the one being rendered.
   const eventsCount = await getAlbumRelatedEventsCount(
     BigInt(id),
     album.type as AlbumType,
     pattern1SongIds,
   );
 
-  // Tab counts surfaced inline in the tab labels per mockup
-  // (`매장特典 (8) / 수록곡 (17) / 관련 공연 (2)` form). Same
-  // discipline as the mockup's `tokutenData.length` / `tracks.length`
-  // / `performances.reduce(...)` computations. `bonusTotal` is the
-  // single source of truth — passed through to AlbumInfoCard so the
-  // sidebar's bonus-stat chip section can't silently diverge from the
-  // tab badge.
+  // Purchase badge = every bonus including ended ones (the summary box
+  // repeats the split); the dot marks that at least one bonus is still
+  // current — distinct from the count, visible from any tab.
   const bonusTotal = album.listings.reduce(
     (sum, l) => sum + l.bonuses.length,
     0,
@@ -293,27 +270,14 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
     tracks: album.tracks.length,
     events: eventsCount,
   };
-  // `tab.withCount` is the locale-localized "{label} ({count})"
-  // pattern — the parens + spacing are an i18n concern (some locales
-  // would prefer full-width parens or no space), not hard-coded
-  // formatting, so route the composition through next-intl.
-  // Active (non-ended) bonus count drives the 구입 tab's "특전 있음"
-  // indicator dot — distinct from the `(N)` count, which is the total
-  // bonus count incl. ended. Shows only when ≥1 bonus is currently live.
   const activeBonusCount = countActiveBonuses(album.listings);
   const tabs = visibleTabs.map((key) => ({
     key,
-    label: t("tab.withCount", {
-      label: t(`tab.${key}`),
-      count: tabCounts[key],
-    }),
+    label: t(`tab.${key}`),
+    count: tabCounts[key],
     indicator: key === "bonus" && activeBonusCount > 0,
   }));
 
-  // Full events fetch is lazy — only the events tab body needs the
-  // include tree + sort + take:50. react.cache inside the helper means
-  // generateMetadata-style double calls still collapse to one DB
-  // roundtrip if a future caller asks twice.
   let relatedEvents: RelatedEvent[] = [];
   if (activeTab === "events") {
     relatedEvents = await getAlbumRelatedEvents(
@@ -324,168 +288,60 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
     );
   }
 
-  // Primary artist drives the breadcrumb middle segment + the artist
-  // anchor inside InfoCard. AlbumArtist has no `role` column (unlike
-  // SongArtist's primary/featured/cover) so we pick the first row
-  // deterministically — matches AlbumInfoCard's own selection so the
-  // two surfaces never disagree on which artist is "primary."
+  // AlbumArtist has no role column, so the first credited row is the
+  // album's primary artist for analytics (`artist_id`). The identity
+  // card itself lists every credited artist.
   const primaryArtist = album.artists[0]?.artist ?? null;
-  // Same display helper as AlbumInfoCard's sidebar artist row —
-  // `.main` reads as the breadcrumb segment, which keeps the
-  // crumb text consistent with the InfoCard label for the same
-  // artist. A bare `displayNameWithFallback` would silently drift
-  // off into a different locale fallback chain.
-  const primaryArtistName = primaryArtist
-    ? displayOriginalName(primaryArtist, primaryArtist.translations, locale).main
-    : null;
 
-  // Breadcrumb items — same shape the artist + member + song pages
-  // pass to the shared <Breadcrumb> component (left-aligned `Home ›
-  // <artist> › Albums`). Mid-segment Drops cleanly when the album
-  // has no resolved primary artist; the Albums leaf is the current
-  // page (no href).
+  // 22-v1 breadcrumb: Home / Albums / <album>. The leaf is the original
+  // title, the same string as the H1.
   const breadcrumbItems: BreadcrumbItem[] = [
     { label: t("breadcrumb.home"), href: `/${locale}` },
+    { label: t("breadcrumb.albums"), href: `/${locale}/albums` },
+    { label: album.originalTitle },
   ];
-  if (primaryArtist && primaryArtistName) {
-    breadcrumbItems.push({
-      label: primaryArtistName,
-      href: `/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`,
-    });
-  }
-  breadcrumbItems.push({ label: t("breadcrumb.albums") });
 
   return (
-    // Outer `<main>` carries the page background + min-height so the
-    // bgPage tint extends edge-to-edge of the viewport (matches the
-    // artist / song / member detail pages — operator wanted visual
-    // parity with the artist page's blue-tinted background). The
-    // block-level `<main>` also serves as the structural answer to
-    // the earlier flex-item width bug: `<body>` is `flex flex-col`,
-    // so previously when this page's `mx-auto` wrapper was the
-    // direct flex child, mx-auto without an explicit cross-axis
-    // size shrank the wrapper to content-fit width — the page
-    // visibly resized across tab switches (events tab's wide
-    // PerformanceGroup widened the wrapper; bonus / tracks tabs
-    // narrow content collapsed it to half-viewport). Wrapping in
-    // `<main>` puts a block element between the flex column and
-    // the mx-auto div, restoring the standard
-    // mx-auto + max-width centering behavior the other detail
-    // pages rely on — no `width: 100%` defense needed on the
-    // inner div anymore. See [[feedback-flex-body-mx-auto]].
-    <main style={{ minHeight: "100vh", background: colors.bgPage }}>
-      {/* `mx-auto + maxWidth` centers the content column inside the
-          full-bleed background; breadcrumb sits left-aligned at the
-          same column edge as the main content.
-          `overflowX: clip` is the events-tab width-leak guard. The
-          events-tab PerformanceGroup row uses a 5-track grid with
-          two `auto` columns (chip + chevron), whose intrinsic min
-          sizes sum to ~216 px. On mobile this can push the inner
-          grid column wider than the viewport — which manifested as
-          the sidebar visibly shrinking on the bonus / tracks tabs
-          (no wide intrinsic content there) vs the events tab (wide
-          intrinsic content expands the column). Clipping here kills
-          the horizontal-bleed surface so the column width stays a
-          function of the viewport, not the active tab's content. */}
-      <div
-        className="mx-auto px-4"
-        style={{
-          maxWidth: ALBUM_PAGE_MAX_WIDTH,
-          overflowX: "clip",
-        }}
-      >
-        <div style={{ paddingTop: 14 }}>
-          <Breadcrumb
-            ariaLabel={t("breadcrumb.aria")}
-            items={breadcrumbItems}
-          />
-        </div>
-        {/* Same `grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]`
-            pattern the artist page uses — `grid` at every breakpoint,
-            not just lg. Mobile uses `grid-cols-1` which Tailwind
-            compiles to `grid-template-columns: minmax(0, 1fr)`; that
-            single-track form clamps the column to the viewport width
-            and lets the inner content's `overflow: hidden` / ellipsis
-            actually engage. A bare `block` would default children to
-            `min-width: auto` = intrinsic content size, dragging the
-            page into horizontal scroll on mobile.
-            Desktop track `minmax(0, 1fr)` on the main column is the
-            same defensive clamp — a bare `1fr` would let a wide
-            intrinsic child grow the column past the maxWidth.
-            alignItems sits on inline style so the same value applies
-            at every breakpoint.
-            This div is no longer a `<main>` (the outer `<main>` now
-            owns the page semantic landmark + bg). It stays a `<div>`
-            because nesting two `<main>` elements is invalid. */}
-        <div
-          className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-7"
-          style={{
-            paddingBottom: 60,
-            alignItems: "start",
-          }}
-        >
-        {/* `lg:sticky lg:top-[72px]` mirrors the song page's sidebar
-            pattern (song page.tsx ~line 644) so the InfoCard pins under
-            the global nav on desktop while scrolling the tab body. The
-            Tailwind class evaluates at the lg breakpoint (≥1024px).
-            On mobile the sidebar stacks above the tab section
-            (single-track grid) with a 12px gap before the TabBar
-            (matches artist page's `marginBottom: 12` on its sidebar
-            div). */}
-        <aside
-          className="lg:sticky lg:top-[72px]"
-          style={{ marginBottom: 12 }}
-        >
-          <AlbumInfoCard
-            album={album}
-            locale={locale}
-            totalBonusCount={bonusTotal}
-          />
-        </aside>
-        {/* `minWidth: 0` is the mobile-overflow guard: block layout
-            on phones defaults child block elements to a min-width of
-            their intrinsic content, so a PerformanceGroup row with
-            wide grid columns inside (the events tab) was making the
-            entire section box wider than the viewport and dragging
-            a horizontal scroll bar onto the page. Pinning the
-            section to `min-width: 0` (matching the same fix on
-            PerformanceGroup's own grid container) lets the inner
-            grid honour its own `minmax(0, 1fr)` track + clip with
-            `overflow: hidden` instead of overflowing outward. */}
-        <section style={{ minWidth: 0, width: "100%" }}>
-          <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
-          {/* All three tabs now render real data panels (b03 / b04).
-              Explicit per-activeTab branches stay verbose rather than
-              collapsing into a map so a future revisit of any single
-              tab's component swap doesn't ripple through the others. */}
-          {activeTab === "bonus" ? (
-            <AlbumBonusTab album={album} locale={locale} />
-          ) : activeTab === "tracks" ? (
-            <AlbumTracksTab tracks={album.tracks} locale={locale} />
-          ) : (
-            <AlbumRelatedEventsTab
-              events={relatedEvents}
-              albumType={album.type as AlbumType}
-              locale={locale}
-            />
-          )}
-        </section>
-        {/* b10c: fire `album_view` on client mount. Renders nothing.
-            `has_amazon_listing` reflects whether any store listing
-            resolves to Amazon JP (there's no ASIN column — store data
-            lives on AlbumStoreListing.productUrl). artist_id falls back
-            to "" when the album has no credited artist. */}
-        <FireAlbumView
-          albumId={String(album.id)}
-          albumType={album.type}
-          artistId={primaryArtist ? String(primaryArtist.id) : ""}
-          locale={locale}
-          hasAmazonListing={album.listings.some(
-            (l) => resolveStoreKey(l.originalStoreName) === "amazon_jp",
-          )}
-        />
-        </div>
+    // `<main>` is the landmark the skip link targets. It is a block
+    // element between body's flex column and the centred column, so
+    // `max-width` + auto margins centre normally (a direct flex child
+    // with mx-auto alone would shrink to content width — see
+    // feedback-flex-body-mx-auto); `.page` also pins width: 100%.
+    <main className={styles.page}>
+      <div className={styles.breadcrumb}>
+        <Breadcrumb ariaLabel={t("breadcrumb.aria")} items={breadcrumbItems} />
       </div>
+      <AlbumIdentity album={album} locale={locale} />
+      <AlbumTabs
+        tabs={tabs}
+        active={activeTab}
+        basePath={entityPath("albums", locale, album.id, album.slug)}
+        ariaLabel={t("tabsAriaLabel")}
+        indicatorLabel={t("stats.bonusSectionLabel")}
+      />
+      {activeTab === "tracks" ? (
+        <AlbumTracksPanel tracks={album.tracks} locale={locale} />
+      ) : activeTab === "events" ? (
+        <AlbumEventsPanel
+          events={relatedEvents}
+          albumType={album.type as AlbumType}
+          locale={locale}
+        />
+      ) : (
+        <AlbumPurchasePanel album={album} locale={locale} />
+      )}
+      {/* `album_view` on client mount; renders nothing.
+          `has_amazon_listing` = any listing resolves to Amazon JP (no
+          ASIN column — store data lives on productUrl). */}
+      <FireAlbumView
+        albumId={String(album.id)}
+        albumType={album.type}
+        artistId={primaryArtist ? String(primaryArtist.id) : ""}
+        locale={locale}
+        hasAmazonListing={album.listings.some(
+          (l) => resolveStoreKey(l.originalStoreName) === "amazon_jp",
+        )}
+      />
     </main>
   );
 }

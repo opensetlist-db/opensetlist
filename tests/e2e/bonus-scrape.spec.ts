@@ -47,14 +47,13 @@ test.describe("Album 매장特典 tab — bonus-scrape public output (b10)", () 
     const resp = await page.goto(`/ko/albums/${bonusAlbumId}?tab=bonus`);
     expect(resp?.ok()).toBeTruthy();
 
-    // The bonus tab is the active tab. The label renders with a count
-    // suffix (`매장特典 (N)` via Album.tab.withCount), so match the prefix
-    // rather than asserting exact text.
+    // The bonus tab is the active tab. The link also carries a count
+    // chip (and the active-bonus dot), so match the label as a substring.
     await expect(
-      page.locator(`${ALBUM_TAB_NAV} button[aria-current="page"]`),
+      page.locator(`${ALBUM_TAB_NAV} a[aria-current="page"]`),
     ).toContainText(BONUS_TAB_LABEL);
 
-    // ListingCard renders each store as an <article> with a store-name
+    // The purchase panel renders each store as an <article> with a store-name
     // heading + (for active listings) a 구매하기 buy link. Assert ≥1 buy
     // link resolves to an external store URL — the concrete signal that
     // an applied listing rendered (an empty bonus tab shows the

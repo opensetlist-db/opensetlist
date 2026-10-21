@@ -183,16 +183,12 @@
     "tab": {
       "bonus": "購入",
       "tracks": "収録曲",
-      "events": "関連公演",
-      "withCount": "{label} ({count})"
+      "events": "関連公演"
     },
     "stats": {
       "trackCount": "{count, plural, other {#曲}}",
       "bonusCount": "{count, plural, other {特典 #}}",
-      "endedBonusCount": "{count, plural, other {終了 #}}",
       "listingCount": "{count, plural, other {店舗 #}}",
-      "totalBonusCount": "{count, plural, other {計 #件}}",
-      "activeBonusCount": "{count, plural, other {受付中 #}}",
       "bonusSectionLabel": "店舗特典"
     },
     "breadcrumb": {
@@ -223,6 +219,11 @@
       },
       "buy": "購入する",
       "showEnded": "{count, plural, other {終了済みの店舗を見る (#)}}",
+      "summary": {
+        "total": "合計 {count}",
+        "current": "現在 {count}",
+        "ended": "終了 {count}"
+      },
       "empty": "登録された店舗情報がありません。"
     },
     "tracks": {

@@ -183,16 +183,12 @@
     "tab": {
       "bonus": "구입",
       "tracks": "수록곡",
-      "events": "관련 공연",
-      "withCount": "{label} ({count})"
+      "events": "관련 공연"
     },
     "stats": {
       "trackCount": "{count, plural, other {#곡}}",
       "bonusCount": "{count, plural, other {특전 #}}",
-      "endedBonusCount": "{count, plural, other {종료 #}}",
       "listingCount": "{count, plural, other {매장 #}}",
-      "totalBonusCount": "{count, plural, other {총 #개}}",
-      "activeBonusCount": "{count, plural, other {활성 #}}",
       "bonusSectionLabel": "매장특전"
     },
     "breadcrumb": {
@@ -223,6 +219,11 @@
       },
       "buy": "구매하기",
       "showEnded": "{count, plural, other {종료된 매장 보기 (#)}}",
+      "summary": {
+        "total": "전체 {count}",
+        "current": "현재 {count}",
+        "ended": "종료 {count}"
+      },
       "empty": "등록된 매장 정보가 없습니다."
     },
     "tracks": {

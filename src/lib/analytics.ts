@@ -29,7 +29,7 @@ export function trackEvent(eventName: string, params?: GtagParams): void {
 // site before they reach here.
 
 // Where a store_click originated. Only `album_page` is wired at b10c
-// (the album-page ListingCard buy button is the sole external store
+// (the album-page purchase-card buy button is the sole external store
 // link in the album surfaces). `event_bd_section` / `song_page` are
 // kept for forward use — b07's BD bonus cards are non-links and b08's
 // song-page cards link internally today, but the discriminator is here

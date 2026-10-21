@@ -22,7 +22,7 @@ import type {
 import { isKnownAlbumTrackVariant } from "@/lib/albumTrackVariants";
 import type { BigIntStringified } from "@/lib/utils";
 
-// BigIntStringified-wrapped — `AlbumTracksTab` receives tracks via
+// BigIntStringified-wrapped — `AlbumTracksPanel` receives tracks via
 // page.tsx's `serializeBigIntAsString(album)` JSON boundary, so the
 // `id` / `albumId` / `songId` / `parentSongId` fields arrive as
 // strings and `Date` columns as ISO strings. The Prisma-generated
