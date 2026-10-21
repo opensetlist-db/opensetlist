@@ -226,6 +226,35 @@ export function decideSeriesLogo(
   return walkSeriesChain(seriesId, graph, decideNode, EXHAUSTED, BROKEN);
 }
 
+/**
+ * Admin explanation of a series' logo: the same decision as
+ * `decideSeriesLogo`, plus WHICH series node decided it. Server-only,
+ * for the admin logo card ("상위 시리즈 X의 로고를 사용"), never for a
+ * public projection — the deciding node is internal by the module
+ * contract above.
+ *
+ * `sourceSeriesId` is the node whose own mode ended the walk (its custom
+ * logo, its typography stop, or its unusable custom asset). It is null
+ * when no node decided: every node inherited (`exhausted`) or the chain
+ * broke (`broken-chain`). Built on the same walk as the public rule, so
+ * deletion / cycle / depth handling can never diverge from it.
+ */
+export function explainSeriesLogo(
+  seriesId: bigint,
+  graph: LogoSeriesGraph,
+): { decision: LogoDecision; sourceSeriesId: bigint | null } {
+  return walkSeriesChain<{ decision: LogoDecision; sourceSeriesId: bigint | null }>(
+    seriesId,
+    graph,
+    (node) => {
+      const decision = decideNode(node);
+      return decision ? { decision, sourceSeriesId: node.id } : undefined;
+    },
+    { decision: EXHAUSTED, sourceSeriesId: null },
+    { decision: BROKEN, sourceSeriesId: null },
+  );
+}
+
 function artistColor(artist: ColorArtistRow | null): string | null {
   if (!artist || artist.isDeleted) return null;
   return artist.color && HEX_COLOR.test(artist.color) ? artist.color : null;
