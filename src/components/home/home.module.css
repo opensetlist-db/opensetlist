@@ -1,0 +1,753 @@
+/*
+ * Home page (approved 14-v1.3, on the 03-v1.1 shell). The approved
+ * browser mockup is the comparison baseline, so this module mirrors its
+ * geometry rule for rule: three bands (≥1100 desktop, 700–1099 tablet,
+ * <700 mobile, plus the shell's ≤1300 side gutters), hover/pressed
+ * pairs, the ongoing palette and the dot-only LIVE pulse. Tailwind
+ * utilities would need arbitrary values for nearly every declaration
+ * here, so the page keeps one readable module instead (same pattern as
+ * `search.module.css`).
+ *
+ * Colours that are not shared tokens (the lavender ongoing card, the
+ * raspberry LIVE capsule, Hero gradient) are home-only by the 14
+ * contract ("No global shared token changes"), so they stay local.
+ */
+
+.page {
+  flex: 1 1 auto;
+  width: 100%;
+  background: #f7f9fd;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+
+.hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 1280px;
+  min-height: 420px;
+  margin: 28px auto 0;
+  overflow: hidden;
+  border-radius: 24px;
+  color: #fff;
+  background: #0e133d;
+}
+
+.heroPicture,
+.heroPicture img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.heroPicture img {
+  object-fit: cover;
+  object-position: 50% 57%;
+}
+
+/* Left-to-right navy fade keeps the heading and actions legible while
+   the lightsticks and stage lights stay visible on the right. */
+.hero::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(9, 17, 53, 0.89),
+    rgba(14, 19, 61, 0.55) 52%,
+    rgba(18, 20, 62, 0.13)
+  );
+}
+
+.heroContent {
+  position: relative;
+  z-index: 2;
+  max-width: 740px;
+  padding: 40px 48px 54px;
+}
+
+.heroEyebrow {
+  margin: 0 0 10px;
+  color: #d7e5ff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+
+.heroTitle {
+  max-width: 620px;
+  margin: 0 0 12px;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: -0.035em;
+}
+:global(html:lang(ko)) .heroTitle {
+  word-break: keep-all;
+}
+
+.heroLead {
+  margin: 0;
+  color: #f0f3ff;
+  font-size: 14px;
+}
+
+.heroSearch {
+  position: relative;
+  display: flex;
+  max-width: 540px;
+  margin-top: 24px;
+}
+.heroInput {
+  width: 100%;
+  min-width: 0;
+  height: 50px;
+  padding: 0 48px 0 16px;
+  border: 1px solid #7c8ba3;
+  border-radius: 8px;
+  background: #fff;
+  color: #172445;
+  font-size: 14px;
+}
+.heroInput::placeholder {
+  color: #52617a;
+}
+.heroInput::-webkit-search-cancel-button {
+  display: none;
+}
+.heroSubmit {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 48px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #165dcc;
+  cursor: pointer;
+}
+.heroSubmit:hover {
+  background: #edf4ff;
+}
+.heroSubmit:active {
+  background: #dae7ff;
+}
+.heroSubmit svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* Hero controls sit on the dark image: white ring + navy halo instead of
+   the global blue focus ring (03 contract). */
+.heroInput:focus-visible,
+.heroSubmit:focus-visible,
+.button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px #172445;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 11px 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.buttonPrimary {
+  background: #165dcc;
+  color: #fff;
+}
+.buttonPrimary:hover {
+  background: #104aa9;
+}
+.buttonPrimary:active {
+  background: #0c3d8c;
+}
+.buttonGlass {
+  background: #ffffffee;
+  color: #172445;
+}
+.buttonGlass:hover {
+  background: #fff;
+}
+.buttonGlass:active {
+  background: #dae7ff;
+}
+
+/* Fictional-artwork notice — never implies a listed concert. */
+.heroCaption {
+  position: absolute;
+  z-index: 2;
+  right: 18px;
+  bottom: 12px;
+  max-width: calc(100% - 28px);
+  padding: 5px 9px;
+  border-radius: 4px;
+  background: #0b1538;
+  color: #f4f6ff;
+  font-size: 12px;
+}
+
+/* ── Sections ─────────────────────────────────────────────────────── */
+
+.content {
+  width: 100%;
+  max-width: 1200px;
+  margin: auto;
+  padding: 40px 0 56px;
+}
+.section + .section {
+  margin-top: 44px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+.eyebrow {
+  margin: 0 0 10px;
+  color: #165dcc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+.sectionTitle {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: -0.025em;
+}
+.liveTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.liveTitle::before {
+  content: "";
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d12c74;
+}
+
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 0;
+  color: #165dcc;
+  font-size: 13px;
+  font-weight: 700;
+}
+.textLink:hover {
+  text-decoration: underline;
+}
+.textLink:active {
+  color: #0c3d8c;
+  text-decoration: underline;
+}
+
+.sectionIntro {
+  margin: -10px 0 20px;
+  color: #52617a;
+  font-size: 13px;
+}
+.railHint {
+  display: none;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  padding: 20px 24px;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+  color: #52617a;
+}
+.empty p {
+  margin: 0 0 8px;
+}
+
+/* ── Upcoming rail / grid ─────────────────────────────────────────── */
+
+.rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin: -7px;
+  padding: 7px;
+}
+.rail:focus-visible {
+  outline-offset: 1px;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px #233c6810;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.card:hover {
+  border-color: #a8bce5;
+  box-shadow: 0 8px 24px #233c681b;
+}
+.card:focus-visible {
+  outline-offset: 3px;
+}
+/* EventArt fixes 24px at ≥700; the approved rail uses 22px. */
+.card [data-testid="event-art"] strong {
+  font-size: 22px;
+}
+
+.cardBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+.dateLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  color: #165dcc;
+  font-size: 14px;
+  font-weight: 700;
+}
+.day {
+  padding: 3px 7px;
+  border: 1px solid #d2e1fa;
+  border-radius: 6px;
+  background: #edf3ff;
+  color: #2457a6;
+  font-size: 12px;
+}
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.7;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.venue {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: #52617a;
+  font-size: 12px;
+}
+.venue svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 18px;
+}
+.icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cardBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.cardBottom > svg,
+.compact > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: #165dcc;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: #2457a6;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.badgeWish {
+  border: 1px solid #eab7cd;
+  background: #fff0f6;
+  color: #a61d55;
+}
+
+/* ── Past / ongoing compact cards ─────────────────────────────────── */
+
+.compactGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.compact {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 18px #233c6810;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.compact:hover {
+  border-color: #a8bce5;
+  box-shadow: 0 8px 24px #233c681b;
+}
+.compact .dateLine {
+  font-size: 13px;
+}
+.compact .cardTitle {
+  margin: 9px 0;
+  font-size: 14px;
+}
+.meta {
+  margin: 10px 0 0;
+  color: #52617a;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.metaLink {
+  color: #165dcc;
+  font-weight: 700;
+}
+.compact:hover .metaLink {
+  text-decoration: underline;
+}
+
+/* Ongoing: lavender card, raspberry LIVE capsule, white text. Only the
+   small dot pulses (existing `live-pulse`, 1.2s); reduced motion leaves
+   it solid. Text and backgrounds never animate. */
+.live {
+  gap: 20px;
+  padding: 24px;
+  border-color: #3e4266;
+  background: linear-gradient(115deg, #3e4266, #525b80);
+  box-shadow: 0 6px 18px #33344f1a;
+  color: #fff;
+}
+.live:hover {
+  border-color: #3e4266;
+  background: linear-gradient(115deg, #363a5a, #48507a);
+  box-shadow: 0 6px 18px #33344f1a;
+}
+.live:focus-visible {
+  outline: 3px solid #174faf;
+  outline-offset: 3px;
+}
+.live .cardTitle {
+  font-size: 18px;
+  line-height: 1.6;
+  color: #fff;
+}
+:global(html:lang(ko)) .live .cardTitle {
+  word-break: keep-all;
+}
+.live .dateLine,
+.live .venue,
+.live .meta,
+.live > svg {
+  color: #f0eefa;
+}
+.live .day {
+  border-color: #a39fc1;
+  background: #494e73;
+  color: #f0eefa;
+}
+.live [data-testid="event-art"] {
+  border: 1px solid #a39fc1;
+  background: #494e73 !important;
+}
+.live [data-testid="event-art"] strong {
+  color: #fff !important;
+}
+.live .meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+}
+.liveCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: #f0edff;
+  color: #172445;
+  font-size: 13px;
+  font-weight: 700;
+}
+.liveBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  border: 1px solid #ffb9d8;
+  border-radius: 999px;
+  background: #d12c74;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  /* The pulse itself is `motion.livePulse` set inline: CSS Modules would
+     rename a keyframe referenced here, and the global `live-pulse` is
+     the one StatusBadge already uses. */
+}
+@media (prefers-reduced-motion: reduce) {
+  .liveDot {
+    animation: none !important;
+    opacity: 1;
+  }
+}
+
+/* ── ≤1300: shell side gutters ────────────────────────────────────── */
+
+@media (max-width: 1300px) {
+  .hero {
+    margin: 24px 24px 0;
+  }
+  .content {
+    padding: 36px 32px 48px;
+  }
+}
+
+/* ── ≥1100: five upcoming cards share one row ─────────────────────── */
+
+@media (min-width: 1100px) {
+  .rail[data-count="5"] {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .rail[data-count="5"] [data-testid="event-art"] strong {
+    font-size: 19px;
+  }
+  .rail[data-count="5"] .cardBody {
+    padding: 15px;
+  }
+}
+
+/* ── 700–1099: tablet ─────────────────────────────────────────────── */
+
+@media (min-width: 700px) and (max-width: 1099px) {
+  .hero {
+    min-height: 410px;
+  }
+  .rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .compactGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── <700: mobile ─────────────────────────────────────────────────── */
+
+@media (max-width: 699px) {
+  .hero {
+    margin: 16px 16px 0;
+    border-radius: 18px;
+  }
+  .heroPicture img {
+    object-position: 55% center;
+  }
+  .hero::before {
+    background: linear-gradient(
+      90deg,
+      rgba(9, 17, 53, 0.87),
+      rgba(14, 19, 61, 0.58)
+    );
+  }
+  .heroContent {
+    width: 100%;
+    max-width: 100%;
+    padding: 28px 22px 56px;
+  }
+  .heroEyebrow {
+    margin-bottom: 6px;
+    font-size: 10px;
+  }
+  .heroTitle {
+    font-size: 24px;
+    line-height: 1.6;
+    letter-spacing: -0.045em;
+  }
+  .heroTitleLine {
+    display: block;
+  }
+  .heroLead {
+    font-size: 13px;
+  }
+  .heroSearch {
+    margin-top: 20px;
+  }
+  .heroInput {
+    height: 48px;
+    padding-left: 12px;
+    font-size: 12px;
+  }
+  .heroSubmit {
+    height: 46px;
+  }
+  .heroActions {
+    gap: 8px;
+  }
+  .heroActions .button {
+    flex-grow: 1;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  .heroCaption {
+    right: 10px;
+    bottom: 9px;
+  }
+
+  .content {
+    padding: 30px 16px 36px;
+  }
+  .section + .section {
+    margin-top: 32px;
+  }
+  .sectionHead {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    margin-bottom: 16px;
+  }
+  .eyebrow {
+    margin-bottom: 6px;
+    font-size: 9px;
+  }
+  .sectionTitle {
+    font-size: 21px;
+  }
+  .sectionHead > .textLink {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .sectionIntro {
+    margin: 0 0 16px;
+    font-size: 12px;
+  }
+  .railHint {
+    display: block;
+    margin: -6px 0 14px;
+    color: #52617a;
+    font-size: 12px;
+  }
+  .empty {
+    padding: 18px;
+  }
+
+  /* The only horizontally scrolling region on the page. */
+  .rail {
+    display: flex;
+    gap: 14px;
+    margin: -7px;
+    padding: 7px 7px 18px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding: 7px;
+  }
+  .rail .card {
+    flex: 0 0 min(82vw, 310px);
+    scroll-snap-align: start;
+  }
+
+  .compactGrid {
+    grid-template-columns: 1fr;
+  }
+  .compact {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+  }
+  .compact > svg {
+    display: none;
+  }
+  .compact .dateLine {
+    font-size: 12px;
+  }
+  .compact .cardTitle {
+    font-size: 13px;
+  }
+  .live {
+    gap: 14px;
+    padding: 18px;
+  }
+  .live .cardTitle {
+    font-size: 16px;
+  }
+  .liveCta {
+    width: 100%;
+    padding: 9px 10px;
+  }
+}

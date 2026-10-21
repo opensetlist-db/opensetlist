@@ -2,21 +2,30 @@
   "Home": {
     "title": "오픈세트리스트",
     "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
-    "ongoingTitle": "🔴 지금 진행 중",
-    "ongoingSubtitle": "실시간 세트리스트 업데이트 중",
-    "upcomingTitle": "다가오는 공연",
-    "recentTitle": "최근 공연",
-    "viewAllSchedule": "전체 일정 보기 ›",
-    "viewAllEvents": "전체 이벤트 보기 ›",
-    "songCountOngoing": "{count, plural, other {🎵 #곡 진행 중}}",
-    "songCount": "{count, plural, other {🎵 #곡}}",
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, other {#시간 남음}}",
     "minutesLeft": "{minutes, plural, other {#분 남음}}",
     "wishOpen": "세트리스트 예상 가능",
-    "noEvents": "곧 공연 정보가 업데이트됩니다.",
-    "noUpcoming": "앞으로 30일 이내 예정된 공연이 없어요.",
-    "noRecent": "최근 30일 이내 진행된 공연이 없어요."
+    "liveEyebrow": "LIVE NOW",
+    "liveTitle": "지금 공연 중",
+    "upcomingEyebrow": "LIVE DISCOVERY",
+    "upcomingTitle": "다가오는 공연",
+    "allConcerts": "모든 공연",
+    "railHint": "옆으로 넘겨 다음 공연을 만나보세요 →",
+    "pastEyebrow": "SETLIST ARCHIVE",
+    "recentTitle": "최근 세트리스트",
+    "archiveTitle": "지난 세트리스트에서",
+    "recentNote": "최근 30일 동안 열린 공연 중 세트리스트가 있는 공연입니다.",
+    "archiveNote": "최근 30일 공연의 세트리스트가 없어, 이전 공연을 보여드립니다.",
+    "emptyUpcoming": "현재 등록된 예정 공연이 없습니다.",
+    "emptyPast": "아직 곡이 등록된 세트리스트가 없습니다.",
+    "browse": "공연 찾아보기",
+    "liveBadge": "공연 중",
+    "scheduled": "공연 예정 · {label}",
+    "setlistSongs": "{count, plural, other {#곡의 세트리스트}}",
+    "setlistWaiting": "세트리스트 업데이트를 기다리고 있어요",
+    "viewSetlist": "세트리스트 보기",
+    "pastLink": "지난 세트리스트"
   },
   "Common": {
     "notFound": "페이지를 찾을 수 없습니다.",
@@ -732,8 +741,12 @@
     }
   },
   "Hero": {
+    "eyebrow": "OPENSETLIST",
     "heading": "모두가 이어가는 공연의 이야기",
-    "searchPlaceholder": "아티스트, 이벤트, 곡 검색..."
+    "lead": "공연을 찾고, 세트리스트를 만나세요. 함께 쌓아가는 라이브의 기록.",
+    "browse": "공연 찾아보기",
+    "pastSetlists": "지난 세트리스트",
+    "caption": "가상의 공연장 이미지"
   },
   "Footer": {
     "privacy": "개인정보처리방침",
