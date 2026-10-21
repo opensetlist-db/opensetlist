@@ -73,6 +73,11 @@ script. It is dev-only (same URL guard as the integration setup, from
 connecting). It runs from any directory or task worktree and prints
 timestamps as UTC.
 
+**Removing QA fixtures** (EventSeries / Event / Album / ImageAsset rows
+made through the admin UI, which only soft-deletes): `node
+scripts/db-fixture-rm.mjs --dry-run …` — guarded hard delete, usage in
+its header; never an ad-hoc delete script.
+
 ### E2E — through the app
 
 `playwright.config.ts` starts `npm run dev` on `localhost:3000` unless
