@@ -17,7 +17,8 @@ import { buildLogoSeriesGraph } from "@/lib/logoResolution";
 // afterAll hard-deletes them and asserts nothing is left. No existing
 // record is written.
 
-const TOKEN = `home-itest${Date.now()}`;
+const PREFIX = "home-itest";
+const TOKEN = `${PREFIX}${Date.now()}`;
 const NOW = new Date("2099-06-01T00:00:00Z");
 const LATER = new Date("2099-12-01T00:00:00Z");
 const created = { events: [] as bigint[], songs: [] as bigint[] };
@@ -65,7 +66,30 @@ async function item(
   }
 }
 
+// An interrupted run (Ctrl-C, hook timeout) skips afterAll and leaves its
+// 2099 rows behind; the exact-list assertions below would then fail on
+// every later run. Remove any earlier run's rows first — the prefix is
+// this file's own, so nothing else matches it.
+async function purge(prefix: string) {
+  const events = await prisma.event.findMany({
+    where: { slug: { startsWith: prefix } },
+    select: { id: true },
+  });
+  const eventIds = events.map((e) => e.id);
+  const items = await prisma.setlistItem.findMany({
+    where: { eventId: { in: eventIds } },
+    select: { id: true },
+  });
+  const itemIds = items.map((i) => i.id);
+  await prisma.setlistItemSong.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+  await prisma.setlistItem.deleteMany({ where: { id: { in: itemIds } } });
+  await prisma.event.deleteMany({ where: { id: { in: eventIds } } });
+  await prisma.song.deleteMany({ where: { slug: { startsWith: prefix } } });
+}
+
 beforeAll(async () => {
+  await purge(PREFIX);
+
   const song = await prisma.song.create({
     data: { slug: `${TOKEN}-song`, originalTitle: `${TOKEN} Song` },
   });

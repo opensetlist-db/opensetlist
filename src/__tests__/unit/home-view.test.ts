@@ -92,20 +92,21 @@ describe("projectHomeCard", () => {
     expect(none.place).toBeNull();
   });
 
+  const TINT = "#E50080";
   it("passes through only the resolved logo URL", () => {
     const v = projectHomeCard(
       {
         ...base,
         logo: {
           image: { url: "https://img.example/l.webp", width: 300, height: 100 },
-          color: "#E50080",
+          color: TINT,
         },
       },
       "ko",
       "?",
     );
     expect(v.logoUrl).toBe("https://img.example/l.webp");
-    expect(v.tint).toBe("#E50080");
+    expect(v.tint).toBe(TINT);
   });
 });
 

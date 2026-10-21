@@ -60,11 +60,15 @@ test.describe("home", () => {
     );
     expect(overflow).toBeLessThanOrEqual(0);
 
-    const rail = page.getByRole("region", { name: "これからの公演" });
+    // Test ids, not copy: a translation change must not silently route
+    // the test into the empty branch.
+    const rail = page.getByTestId("home-upcoming-rail");
     if ((await rail.count()) === 0) {
       // No upcoming concerts in this catalog: the empty notice keeps a
       // browse link instead.
-      await expect(page.getByRole("main").getByRole("link", { name: /公演を探す/ }).first()).toBeVisible();
+      await expect(
+        page.getByTestId("home-empty-notice").first().getByRole("link"),
+      ).toBeVisible();
       return;
     }
     const cards = rail.getByRole("link");

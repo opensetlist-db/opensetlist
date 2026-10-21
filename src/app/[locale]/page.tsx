@@ -118,6 +118,7 @@ export default async function HomePage({
             // also walks it).
             <div
               className={styles.rail}
+              data-testid="home-upcoming-rail"
               data-count={upcoming.length}
               role="region"
               aria-labelledby="upcoming-title"
@@ -185,7 +186,7 @@ function EmptyNotice({
   label: string;
 }) {
   return (
-    <div className={styles.empty}>
+    <div className={styles.empty} data-testid="home-empty-notice">
       <p>{message}</p>
       <Link href={href} className={styles.textLink}>
         {label} →
