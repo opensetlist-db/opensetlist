@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
-import { colors, radius } from "@/styles/tokens";
 import type { ArtistsListFilter } from "@/lib/artists";
+import styles from "./artistList.module.css";
 
 /*
  * Six-chip category filter for the artists list page.
@@ -17,8 +17,8 @@ import type { ArtistsListFilter } from "@/lib/artists";
  * triggers a normal Next.js navigation that re-runs the server
  * fetch with the new ?category=... param. No client-side state.
  *
- * Active visual: blue border + light blue bg + blue text per
- * mockup §1; inactive: gray border + white bg + dark gray text.
+ * Visual (24-v1): 44px-tall pills; active = solid primary with white
+ * text, inactive = white with a slate outline.
  */
 
 type FilterTranslationKey =
@@ -63,15 +63,7 @@ export default async function FilterBar({ active, available }: Props) {
   if (visibleFilters.length <= 1) return null;
 
   return (
-    <nav
-      aria-label={t("filterAriaLabel")}
-      style={{
-        display: "flex",
-        gap: 8,
-        padding: "12px 16px 16px",
-        flexWrap: "wrap",
-      }}
-    >
+    <nav aria-label={t("filterAriaLabel")} className={styles.filters}>
       {visibleFilters.map(({ value, key }) => {
         const isActive = active === value;
         const href =
@@ -84,18 +76,7 @@ export default async function FilterBar({ active, available }: Props) {
             key={value}
             href={href}
             aria-current={isActive ? "page" : undefined}
-            style={{
-              padding: "6px 14px",
-              borderRadius: radius.button,
-              fontSize: 13,
-              fontWeight: 600,
-              border: `1.5px solid ${isActive ? colors.primary : colors.border}`,
-              background: isActive ? colors.primaryBg : colors.bgCard,
-              color: isActive ? colors.primary : colors.textSecondary,
-              textDecoration: "none",
-              lineHeight: 1.4,
-              whiteSpace: "nowrap",
-            }}
+            className={styles.filter}
           >
             {t(key)}
           </Link>
