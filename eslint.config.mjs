@@ -52,11 +52,11 @@ const eslintConfig = defineConfig([
   },
   // `non-literal-regexp`: `new RegExp(x)` takes a literal pattern — CI
   // Semgrep (detect-non-literal-regexp) blocks a pattern built from a
-  // value. Wider than the src/ rules above: Semgrep scans the whole repo,
-  // and scripts/ and tests/ hold only a handful of such calls, so each
-  // can carry its own reasoned disable instead of the rule skipping them.
+  // value. Repo-wide, unlike the src/ rules above: Semgrep scans the whole
+  // checkout, and outside src/ such calls are rare enough that each can
+  // be rewritten or carry its own reasoned disable.
   {
-    files: ["{src,scripts,tests}/**/*.{ts,tsx,js,jsx,mjs,cjs}"],
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs}"],
     plugins: { local: localPlugin },
     rules: {
       "local/non-literal-regexp": "error",

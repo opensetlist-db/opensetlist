@@ -37,6 +37,24 @@ function isLiteralPattern(arg) {
   return arg.type === "TemplateLiteral" && arg.expressions.length === 0;
 }
 
+// `RegExp`, or the same constructor reached through a global object
+// (`globalThis.RegExp`, `window.RegExp`, …). A local binding named
+// RegExp would also match; none exists, and shadowing the global is
+// worth a lint error anyway.
+const GLOBAL_OBJECTS = new Set(["globalThis", "window", "self", "global"]);
+
+function isRegExpCallee(callee) {
+  if (callee.type === "Identifier") return callee.name === "RegExp";
+  return (
+    callee.type === "MemberExpression" &&
+    !callee.computed &&
+    callee.object.type === "Identifier" &&
+    GLOBAL_OBJECTS.has(callee.object.name) &&
+    callee.property.type === "Identifier" &&
+    callee.property.name === "RegExp"
+  );
+}
+
 const rule = {
   meta: {
     type: "problem",
@@ -52,9 +70,7 @@ const rule = {
   },
   create(context) {
     function check(node) {
-      if (node.callee.type !== "Identifier" || node.callee.name !== "RegExp") {
-        return;
-      }
+      if (!isRegExpCallee(node.callee)) return;
       const first = node.arguments[0];
       // `new RegExp()` is an empty pattern — nothing to steer.
       if (!first || isLiteralPattern(first)) return;

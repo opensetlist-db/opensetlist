@@ -21,8 +21,8 @@ const error = { messageId: "nonLiteral" };
 
 tester.run("non-literal-regexp", rule, {
   valid: [
-    // Positive control: a regex literal is what the message points to.
-    "const re = /^\\[liveWarm\\] start /;",
+    // Positive controls: the rule does look at these calls (the invalid
+    // cases below share their shape) and lets a literal pattern through.
     // A string-literal pattern, with or without flags.
     'new RegExp("^[a-z]+$");',
     'new RegExp("^[a-z]+$", flags);',
@@ -33,8 +33,10 @@ tester.run("non-literal-regexp", rule, {
     "new RegExp(/a+/, 'g');",
     // An empty pattern has nothing to steer.
     "new RegExp();",
+    'new globalThis.RegExp("^a$");',
     // Not the global RegExp.
     "new SafeRegExp(name);",
+    "new lib.RegExp(name);",
   ],
   invalid: [
     {
@@ -59,6 +61,15 @@ tester.run("non-literal-regexp", rule, {
     },
     {
       code: 'new RegExp("^" + prefix);',
+      errors: [error],
+    },
+    {
+      // The constructor reached through a global object.
+      code: "new globalThis.RegExp(name);",
+      errors: [error],
+    },
+    {
+      code: "window.RegExp(name);",
       errors: [error],
     },
   ],
