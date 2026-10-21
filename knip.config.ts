@@ -15,6 +15,7 @@ const config: KnipConfig = {
     // (node / tsx / npm script), so each is an entry.
     "scripts/*.{mjs,ts}",
     "scripts/admin-qa/scenarios/*.mjs",
+    "scripts/redesign-page-qa/scenarios/*.mjs",
     "scripts/translation-bakeoff/run.ts",
   ],
   project: [

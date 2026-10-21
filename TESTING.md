@@ -160,6 +160,18 @@ Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
 fixture, and runs overflow/keyboard/label/motion/referrer checks; a page
 adds a scenario under `scripts/admin-qa/scenarios/` (copy `album-cover`).
 
+Public redesign pages use `scripts/redesign-page-qa.mjs --scenario <name>
+--out <dir>` against the same kind of build. Per locale × width it checks
+page overflow, `lang`, one h1, 24px targets and errors (responses ≥400 by
+URL, except the local `_vercel/speed-insights` 404), captures the page
+before any focus step, then runs the scenario's focus rings, scroll
+regions, contrast pairs (by CSS-module class suffix `__<name>`) and a
+reduced-motion check with a positive control. A page ticket adds a
+scenario under `scripts/redesign-page-qa/scenarios/` (copy `home`);
+checks whose subject is absent on the build print SKIP. Run chromium in
+full and `--browser webkit --quick`; `--locales`/`--widths` narrow a
+rerun.
+
 ---
 
 ## What to test
