@@ -33,6 +33,9 @@ interface Props {
   startTime: Date | string | null;
   venue: string | null;
   city: string | null;
+  /** Series artist (linked) — or, without one, the festival organizer. */
+  artist?: { id: string; slug: string; name: string } | null;
+  organizerName?: string | null;
   series: { id: string; slug: string; name: string } | null;
   /** Song-typed items with a song; the row hides at 0. */
   songsCount: number;
@@ -46,6 +49,8 @@ export function EventInfoCard({
   startTime,
   venue,
   city,
+  artist = null,
+  organizerName = null,
   series,
   songsCount,
   reactionsValue,
@@ -53,6 +58,7 @@ export function EventInfoCard({
   const t = useTranslations("EventDetail");
   const et = useTranslations("Event");
   const ct = useTranslations("Common");
+  const est = useTranslations("EventSeries");
 
   const rows: Array<{ key: string; label: string; value: ReactNode }> = [
     { key: "date", label: t("factDate"), value: formatVenueDate(date, locale) || null },
@@ -63,6 +69,17 @@ export function EventInfoCard({
     },
     { key: "venue", label: ct("venue"), value: venue },
     { key: "city", label: et("iconLabelCity"), value: city },
+    artist
+      ? {
+          key: "artist",
+          label: ct("artist"),
+          value: (
+            <Link href={entityPath("artists", locale, artist.id, artist.slug)}>
+              {artist.name}
+            </Link>
+          ),
+        }
+      : { key: "organizer", label: est("organizer"), value: organizerName },
     {
       key: "series",
       label: ct("series"),

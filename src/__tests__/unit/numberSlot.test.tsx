@@ -12,7 +12,7 @@ describe("NumberSlot — confirmed state (no buttons)", () => {
         disagreeAriaLabel="d"
       />,
     );
-    expect(screen.getByText("5")).toBeTruthy();
+    expect(screen.getByText("05")).toBeTruthy();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 

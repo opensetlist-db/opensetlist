@@ -251,7 +251,7 @@ describe("SetlistRow", () => {
     // position number.
     expect(screen.queryByRole("button", { name: "confirmAria" })).toBeNull();
     expect(screen.queryByRole("button", { name: "disagreeAria" })).toBeNull();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("01")).toBeInTheDocument();
   });
 
   describe("group badge on multi-group events", () => {
@@ -847,7 +847,7 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
       />,
     );
     // Position 3 (index + 1) renders as a span, not a button.
-    const position = screen.getByText("3");
+    const position = screen.getByText("03");
     expect(position.tagName.toLowerCase()).toBe("span");
     // No interactive ARIA labels for the rumoured/my-confirmed
     // states.

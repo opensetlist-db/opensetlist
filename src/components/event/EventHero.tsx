@@ -8,7 +8,9 @@ import styles from "./eventDetail.module.css";
 /*
  * Concert-detail Hero (18-v3 `.event-hero`): the event's logo slot beside
  * the series link, the per-day title (the page's only h1), date + venue,
- * and the status pill with the venue-local start time.
+ * and the status pill with the venue-local start time. The artist /
+ * organizer credit and the city sit in the sidebar facts
+ * (`<EventInfoCard>`), as the approved hero carries neither.
  *
  * Server component: every value is resolved and formatted on the server
  * (venue-local, so SSR and hydration print the same text). The only
@@ -34,8 +36,6 @@ interface Props {
   /** Typography fallback inside the logo slot. */
   artTitle: string;
   series: { href: string; name: string } | null;
-  artist: { href: string; name: string } | null;
-  organizerName: string | null;
   title: string;
   dateLabel: string | null;
   venueLine: string | null;
@@ -50,8 +50,6 @@ export function EventHero({
   logoTint,
   artTitle,
   series,
-  artist,
-  organizerName,
   title,
   dateLabel,
   venueLine,
@@ -72,16 +70,6 @@ export function EventHero({
             {series.name}
           </Link>
         )}
-        {/* Artist / organizer credit, kept from the old header card:
-            the series link names the tour, this line names who plays
-            it (or the festival organizer when there is no artist). */}
-        {artist ? (
-          <Link href={artist.href} className={styles.artistLine}>
-            {artist.name}
-          </Link>
-        ) : organizerName ? (
-          <span className={styles.artistLine}>{organizerName}</span>
-        ) : null}
         <h1 className={styles.title}>{title}</h1>
         {(dateLabel || venueLine) && (
           <p className={styles.meta}>

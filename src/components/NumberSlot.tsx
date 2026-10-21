@@ -100,8 +100,13 @@ export function NumberSlot({
     // bumping to 52px adds ~16px blank space on confirmed rows but
     // avoids a per-row variable-width layout that would jiggle
     // alignment across the table. Visual cost accepted.
-    // 18-v3 `.song-num`: a small tinted chip in the row's 30px column.
-    return <span className={styles.songNum}>{position}</span>;
+    // 18-v3 `.song-num`: a small tinted chip in the row's 30px column,
+    // two digits ("01") like the approved rows.
+    return (
+      <span className={styles.songNum}>
+        {position < 10 ? `0${position}` : position}
+      </span>
+    );
   }
   // Two 22×22 vote buttons. Geometry locked across both buttons;
   // only border + bg + glyph differ per active state.

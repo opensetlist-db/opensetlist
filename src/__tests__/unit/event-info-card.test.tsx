@@ -88,6 +88,21 @@ describe("EventInfoCard", () => {
     );
   });
 
+  it("links the series artist, or names the organizer when there is none", () => {
+    const { rerender } = render(
+      <EventInfoCard
+        {...baseProps}
+        artist={{ id: "42", slug: "hasunosora", name: "蓮ノ空" }}
+        organizerName="Bandai Namco"
+      />,
+    );
+    expect(screen.getByText("蓮ノ空").getAttribute("href")).toBe("/ko/artists/42/hasunosora");
+    expect(screen.queryByText("Bandai Namco")).toBeNull();
+    rerender(<EventInfoCard {...baseProps} artist={null} organizerName="Bandai Namco" />);
+    expect(screen.getByText("Bandai Namco").tagName).toBe("DD");
+    expect(screen.getByText("organizer")).toBeInTheDocument();
+  });
+
   it("renders the start row only when startTime is set", () => {
     const { rerender } = render(<EventInfoCard {...baseProps} />);
     expect(screen.getByTestId("event-start-time")).toBeInTheDocument();

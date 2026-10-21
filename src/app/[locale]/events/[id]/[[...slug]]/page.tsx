@@ -1290,7 +1290,6 @@ export default async function EventPage({ params }: Props) {
   const heroLogo =
     logoRow && logoGraph ? resolveEventLogo(logoRow, logoGraph) : null;
   const heroStart = formatVenueStart(event.startTime, event.country, locale);
-  const heroVenueLine = [venue, city].filter(Boolean).join(" · ") || null;
 
   // In-page jump links (18-v3 `.jump`). The first entry is the fan
   // board while it is mounted (upcoming in the open window, or
@@ -1376,23 +1375,9 @@ export default async function EventPage({ params }: Props) {
               }
             : null
         }
-        artist={
-          headerArtist
-            ? {
-                href: entityPath(
-                  "artists",
-                  locale,
-                  headerArtist.id,
-                  headerArtist.slug,
-                ),
-                name: headerArtist.name,
-              }
-            : null
-        }
-        organizerName={headerOrganizerName}
         title={headerTitle}
         dateLabel={event.date ? formatVenueDate(event.date, locale) : null}
-        venueLine={heroVenueLine}
+        venueLine={venue}
       />
 
       {/* Cancelled: say so before anything else on the page (18-v3
@@ -1486,6 +1471,7 @@ export default async function EventPage({ params }: Props) {
         date={event.date}
         startTime={event.startTime}
         artist={headerArtist}
+        organizerName={headerOrganizerName}
         series={
           // EventHeader's series link shows the FULL localized
           // series name (operator preference: the sidebar's first

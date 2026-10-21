@@ -76,6 +76,8 @@ interface Props {
   date: Date | string | null;
   startTime: Date | string | null;
   artist: { id: string; slug: string; name: string } | null;
+  /** Festival organizer, shown when there is no series artist. */
+  organizerName: string | null;
   series: { id: string; slug: string; name: string } | null;
   title: string;
   venue: string | null;
@@ -208,6 +210,7 @@ export function LiveEventLayout({
   date,
   startTime,
   artist,
+  organizerName,
   series,
   title,
   venue,
@@ -473,6 +476,8 @@ export function LiveEventLayout({
           startTime={startTime}
           venue={venue}
           city={city}
+          artist={artist}
+          organizerName={organizerName}
           series={series}
           songsCount={songsCount}
           reactionsValue={reactionsValue}
