@@ -57,7 +57,7 @@ know what each suite leaves behind:
 | `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
 | `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
-| `logo-resolution.test.ts` | **writes** | three series + two events keyed `logo-itest-<ts>-*`, `ImageAsset` rows keyed `itest/logo-itest-<ts>/…`, and one admin `PUT /api/admin/event-series/[id]` on its own series; reads one existing coloured artist; `afterAll` deletes them and asserts none are left |
+| `logo-resolution.test.ts` | **writes** | three series + two events keyed `logo-itest-<ts>-*`, `ImageAsset` rows keyed `itest/logo-itest-<ts>/…`, plus one admin `PUT /api/admin/event-series/[id]` and one `PUT /api/admin/events/[id]` on its own fixtures; reads one existing coloured artist; `afterAll` deletes them and asserts none are left |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
 A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`

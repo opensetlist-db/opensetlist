@@ -3,7 +3,7 @@ import {
   buildLogoSeriesGraph,
   decideEventLogo,
   decideSeriesLogo,
-  eventColorSource,
+  eventLogoColor,
   resolveEventLogo,
   resolveSeriesLogo,
   type LogoEventInput,
@@ -69,7 +69,7 @@ describe("logo inheritance", () => {
 
   it("inherits the nearest custom ancestor", () => {
     const g = chain({ logoMode: "custom", logoAsset: asset(1) }, { logoMode: "custom", logoAsset: asset(2) });
-    expect(decideEventLogo(leafEvent(), g)).toEqual({ kind: "custom", from: "series", image: image(2) });
+    expect(decideEventLogo(leafEvent(), g)).toEqual({ kind: "custom", image: image(2) });
   });
 
   it("inherits a grandparent logo through inheriting nodes", () => {
@@ -81,7 +81,6 @@ describe("logo inheritance", () => {
     const g = chain({ logoMode: "custom", logoAsset: asset(1) });
     expect(decideEventLogo(leafEvent({ logoMode: "custom", logoAsset: asset(9) }), g)).toEqual({
       kind: "custom",
-      from: "event",
       image: image(9),
     });
   });
@@ -199,10 +198,7 @@ describe("typography colour source", () => {
 
   it("prefers the series representative artist", () => {
     const g = chain({}, {}, { artistId: BigInt(7), artist: red });
-    expect(eventColorSource(leafEvent({ artist: blue }), g)).toEqual({
-      kind: "series-artist",
-      color: "#E50080",
-    });
+    expect(eventLogoColor(leafEvent({ artist: blue }), g)).toBe("#E50080");
   });
 
   it("takes the representative from the nearest series up the chain", () => {
@@ -213,35 +209,24 @@ describe("typography colour source", () => {
 
   it("a nearer representative without colour does not reach an ancestor's artist", () => {
     const g = chain({ artistId: BigInt(7), artist: red }, { artistId: BigInt(8), artist: { color: null, isDeleted: false } });
-    expect(eventColorSource(leafEvent({ artist: blue }), g)).toEqual({
-      kind: "event-artist",
-      color: "#165DCC",
-    });
+    expect(eventLogoColor(leafEvent({ artist: blue }), g)).toBe("#165DCC");
   });
 
   it("falls back to the event representative artist, then the brand", () => {
-    expect(eventColorSource(leafEvent({ artist: blue }), chain())).toEqual({
-      kind: "event-artist",
-      color: "#165DCC",
-    });
-    expect(eventColorSource(leafEvent(), chain())).toEqual({ kind: "brand" });
+    expect(eventLogoColor(leafEvent({ artist: blue }), chain())).toBe("#165DCC");
+    expect(eventLogoColor(leafEvent(), chain())).toBeNull();
     expect(resolveEventLogo(leafEvent(), chain()).color).toBeNull();
     expect(resolveSeriesLogo(BigInt(1), chain()).color).toBeNull();
   });
 
   it("ignores deleted artists and malformed colours", () => {
     const g = chain({}, {}, { artistId: BigInt(7), artist: { color: "#E50080", isDeleted: true } });
-    expect(eventColorSource(leafEvent({ artist: { color: "red", isDeleted: false } }), g)).toEqual({
-      kind: "brand",
-    });
+    expect(eventLogoColor(leafEvent({ artist: { color: "red", isDeleted: false } }), g)).toBeNull();
   });
 
   it("a cyclic chain yields no series colour but keeps the event artist", () => {
     const g = buildLogoSeriesGraph([series(1, { parentSeriesId: BigInt(2) }), series(2, { parentSeriesId: BigInt(1) })]);
-    expect(eventColorSource(event({ eventSeriesId: BigInt(1), artist: blue }), g)).toEqual({
-      kind: "event-artist",
-      color: "#165DCC",
-    });
+    expect(eventLogoColor(event({ eventSeriesId: BigInt(1), artist: blue }), g)).toBe("#165DCC");
   });
 });
 

@@ -13,7 +13,7 @@ import {
  * Why one graph of every series instead of walking parents per event:
  * a page lists events from many series (home, concert list, search),
  * and per-event ancestor queries would be N round trips. The whole
- * EventSeries table is small (27 rows on dev, 2026-10) and the select
+ * EventSeries table is small (a few dozen rows) and the select
  * is a handful of scalars plus the asset's URL/size and the artist's
  * colour, so one read covers every chain on the page. Deleted series
  * are included on purpose: the resolver must SEE a deleted node to stop

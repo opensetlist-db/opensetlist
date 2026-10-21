@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { devPgClient } from "./devPg";
 
 // Logo resolution against the DEV database: real LogoDisplayMode rows,
@@ -11,8 +11,8 @@ import { devPgClient } from "./devPg";
 //
 // Fixtures (per-run TAG): three series root ← mid ← leaf, two events on
 // leaf, ImageAsset rows under `itest/<TAG>/`. No existing record is
-// written. afterAll resets logo references (FKs are Restrict) and
-// hard-deletes the fixtures.
+// written. beforeEach resets the fixture state; afterAll resets logo
+// references (FKs are Restrict) and hard-deletes by slug / key prefix.
 
 vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }));
 
@@ -32,6 +32,7 @@ vi.mock("@/lib/dataCache", async (importOriginal) => ({
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PUT as SERIES_PUT } from "@/app/api/admin/event-series/[id]/route";
+import { PUT as EVENT_PUT } from "@/app/api/admin/events/[id]/route";
 import { getLogoSeriesGraph, fetchLogoSeriesGraphRows } from "@/lib/logoSeriesGraph";
 import {
   LOGO_EVENT_SELECT,
@@ -109,6 +110,14 @@ async function resolved(id = eventId) {
   return { event, graph, logo: resolveEventLogo(event, graph) };
 }
 
+const req = (url: string, body: unknown) =>
+  new NextRequest(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+const idParams = (id: bigint) => ({ params: Promise.resolve({ id: id.toString() }) });
+
 beforeAll(async () => {
   await pg.connect();
   rootId = await createSeries("root", null);
@@ -133,27 +142,48 @@ beforeAll(async () => {
   }
 });
 
+// Every test starts from the same fixture state — root ← mid ← leaf, all
+// inherit, nothing deleted, no artist — so tests don't depend on order
+// (or on `-t` filtering).
+beforeEach(async () => {
+  await prisma.event.updateMany({
+    where: { id: { in: [eventId, otherEventId] } },
+    data: { logoMode: "inherit", logoAssetId: null },
+  });
+  await prisma.eventSeries.updateMany({
+    where: { id: { in: [rootId, midId, leafId] } },
+    data: { logoMode: "inherit", logoAssetId: null, isDeleted: false, artistId: null },
+  });
+  await prisma.eventSeries.update({ where: { id: rootId }, data: { parentSeriesId: null } });
+  await prisma.eventSeries.update({ where: { id: midId }, data: { parentSeriesId: rootId } });
+  await prisma.eventSeries.update({ where: { id: leafId }, data: { parentSeriesId: midId } });
+});
+
 afterAll(async () => {
-  const ids = [eventId, otherEventId].filter(Boolean).map(String);
-  const sids = [leafId, midId, rootId].filter(Boolean).map(String);
-  if (ids.length) {
-    await pg.query(`UPDATE "Event" SET "logoMode" = 'inherit', "logoAssetId" = NULL WHERE id = ANY($1::bigint[])`, [ids]);
-    await pg.query(`DELETE FROM "Event" WHERE id = ANY($1::bigint[])`, [ids]);
-  }
-  if (sids.length) {
-    await pg.query(
-      `UPDATE "EventSeries" SET "logoMode" = 'inherit', "logoAssetId" = NULL, "parentSeriesId" = NULL WHERE id = ANY($1::bigint[])`,
-      [sids],
-    );
-    await pg.query(`DELETE FROM "EventSeriesTranslation" WHERE "eventSeriesId" = ANY($1::bigint[])`, [sids]);
-    await pg.query(`DELETE FROM "EventSeries" WHERE id = ANY($1::bigint[])`, [sids]);
-  }
+  // By slug / key prefix, not by captured ids: a beforeAll that failed
+  // halfway leaves rows whose ids were never captured.
+  const slug = `${TAG}-%`;
+  await pg.query(`UPDATE "Event" SET "logoMode" = 'inherit', "logoAssetId" = NULL WHERE slug LIKE $1`, [slug]);
+  await pg.query(
+    `DELETE FROM "EventTranslation" WHERE "eventId" IN (SELECT id FROM "Event" WHERE slug LIKE $1)`,
+    [slug],
+  );
+  await pg.query(`DELETE FROM "Event" WHERE slug LIKE $1`, [slug]);
+  await pg.query(
+    `UPDATE "EventSeries" SET "logoMode" = 'inherit', "logoAssetId" = NULL, "parentSeriesId" = NULL WHERE slug LIKE $1`,
+    [slug],
+  );
+  await pg.query(
+    `DELETE FROM "EventSeriesTranslation" WHERE "eventSeriesId" IN (SELECT id FROM "EventSeries" WHERE slug LIKE $1)`,
+    [slug],
+  );
+  await pg.query(`DELETE FROM "EventSeries" WHERE slug LIKE $1`, [slug]);
   await pg.query(`DELETE FROM "ImageAsset" WHERE "objectKey" LIKE $1`, [`itest/${TAG}/%`]);
   const left = await pg.query(
     `SELECT (SELECT count(*) FROM "ImageAsset" WHERE "objectKey" LIKE $1)
           + (SELECT count(*) FROM "EventSeries" WHERE slug LIKE $2)
           + (SELECT count(*) FROM "Event" WHERE slug LIKE $2) AS n`,
-    [`itest/${TAG}/%`, `${TAG}-%`],
+    [`itest/${TAG}/%`, slug],
   );
   await pg.end();
   expect(Number(left.rows[0].n)).toBe(0);
@@ -187,13 +217,14 @@ describe("logo resolution on real rows", () => {
   });
 
   it("a series typography stop wins over the ancestor; a nearer custom beats both", async () => {
+    await setSeries(rootId, "custom", assets[0].id);
     await setSeries(midId, "typography");
     expect((await resolved()).logo.image).toBeNull();
     await setSeries(leafId, "custom", assets[1].id);
     expect((await resolved()).logo.image?.url).toBe(assets[1].publicUrl);
+    // Unlinking the leaf returns to the stop, not to root's logo.
     await setSeries(leafId, "inherit");
-    await setSeries(midId, "inherit");
-    expect((await resolved()).logo.image?.url).toBe(assets[0].publicUrl);
+    expect((await resolved()).logo.image).toBeNull();
   });
 
   it("the DB rejects custom without an asset, so a half-written unlink can't happen", async () => {
@@ -203,25 +234,24 @@ describe("logo resolution on real rows", () => {
   });
 
   it("deleted and cyclic relations terminate with typography", async () => {
+    await setSeries(rootId, "custom", assets[0].id);
     await prisma.eventSeries.update({ where: { id: midId }, data: { isDeleted: true } });
     const deleted = await resolved();
     expect(decideEventLogo(deleted.event, deleted.graph)).toEqual({
       kind: "typography",
       reason: "broken-chain",
     });
-    await prisma.eventSeries.update({ where: { id: midId }, data: { isDeleted: false } });
 
     // root → leaf closes root ← mid ← leaf into a cycle.
-    await prisma.eventSeries.update({ where: { id: rootId }, data: { parentSeriesId: leafId } });
+    await prisma.eventSeries.update({ where: { id: midId }, data: { isDeleted: false } });
     await setSeries(rootId, "inherit");
+    await prisma.eventSeries.update({ where: { id: rootId }, data: { parentSeriesId: leafId } });
     const r = await resolved();
     expect(decideEventLogo(r.event, r.graph)).toEqual({ kind: "typography", reason: "broken-chain" });
-    await prisma.eventSeries.update({ where: { id: rootId }, data: { parentSeriesId: null } });
-    await setSeries(rootId, "custom", assets[0].id);
   });
 
-  it("colours come from the series representative artist, never a performer", async () => {
-    if (!artistId) return; // no coloured artist on dev: nothing to prove here
+  it("colours come from the series representative artist, never a performer", async (ctx) => {
+    if (!artistId) ctx.skip(); // no coloured artist on dev: nothing to prove here
     await prisma.eventSeries.update({ where: { id: rootId }, data: { artistId } });
     expect((await resolved()).logo.color).toBe(artistColor);
     await prisma.eventSeries.update({ where: { id: rootId }, data: { artistId: null } });
@@ -229,13 +259,16 @@ describe("logo resolution on real rows", () => {
   });
 
   it("reads and projections never carry private asset columns", async () => {
+    await setSeries(rootId, "custom", assets[0].id);
+    await setEvent(eventId, "custom", assets[2].id);
     const rows = await fetchLogoSeriesGraphRows();
     const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId }, select: LOGO_EVENT_SELECT });
-    const projected = JSON.stringify((await resolved()).logo);
+    const projected = (await resolved()).logo;
+    expect(projected.image?.url).toBe(assets[2].publicUrl); // positive control
     for (const text of [
       JSON.stringify(rows, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
       JSON.stringify(event, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
-      projected,
+      JSON.stringify(projected),
     ]) {
       expect(text).not.toContain("private.example");
       expect(text).not.toContain("private note");
@@ -248,31 +281,49 @@ describe("logo resolution on real rows", () => {
   it("logo writes leave setlistRevision alone", async () => {
     const before = (await prisma.event.findUniqueOrThrow({ where: { id: eventId } })).setlistRevision;
     await setEvent(eventId, "typography");
+    await setEvent(eventId, "custom", assets[0].id);
     await setEvent(eventId, "inherit");
     const after = (await prisma.event.findUniqueOrThrow({ where: { id: eventId } })).setlistRevision;
     expect(after).toBe(before);
   });
 
   it("the series writer expires the public cache that carries every descendant", async () => {
+    await setSeries(rootId, "custom", assets[0].id);
+    expect((await resolved()).logo.image?.url).toBe(assets[0].publicUrl);
     revalidatePublicData.mockClear();
     const res = await SERIES_PUT(
-      new NextRequest(`http://x/api/admin/event-series/${midId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "standalone",
-          originalName: `${TAG} mid v2`,
-          originalLanguage: "ja",
-          parentSeriesId: null, // re-parent: leaf's events lose root's logo
-          translations: [{ locale: "ja", name: `${TAG} mid v2` }],
-        }),
+      req(`http://x/api/admin/event-series/${midId}`, {
+        type: "standalone",
+        originalName: `${TAG} mid v2`,
+        originalLanguage: "ja",
+        parentSeriesId: null, // re-parent: leaf's events lose root's logo
+        translations: [{ locale: "ja", name: `${TAG} mid v2` }],
       }),
-      { params: Promise.resolve({ id: midId.toString() }) },
+      idParams(midId),
     );
     expect(res.status).toBe(200);
     expect(revalidatePublicData).toHaveBeenCalled();
     expect((await resolved()).logo.image).toBeNull();
     expect((await resolved(otherEventId)).logo.image).toBeNull();
+  });
+
+  it("the event writer expires the public cache, not only the event tag", async () => {
+    revalidatePublicData.mockClear();
+    revalidateEventData.mockClear();
+    const res = await EVENT_PUT(
+      req(`http://x/api/admin/events/${eventId}`, {
+        type: "concert",
+        startTime: START.toISOString(), // unchanged: no live-field write
+        eventSeriesId: midId.toString(), // re-home the event onto mid
+        originalName: `${TAG} day1 v2`,
+        originalLanguage: "ja",
+        translations: [{ locale: "ja", name: `${TAG} day1 v2` }],
+      }),
+      idParams(eventId),
+    );
+    expect(res.status).toBe(200);
+    expect(revalidatePublicData).toHaveBeenCalled();
+    expect((await resolved()).event.eventSeriesId).toBe(midId);
   });
 
   it("every real series and event resolves without throwing", async () => {

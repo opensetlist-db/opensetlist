@@ -57,6 +57,8 @@ export const LOGO_ASSET_SELECT = {
   height: true,
 } as const;
 
+const LOGO_ARTIST_SELECT = { color: true, isDeleted: true } as const;
+
 type LogoAssetRow = { publicUrl: string; width: number; height: number };
 type ColorArtistRow = { color: string | null; isDeleted: boolean };
 
@@ -87,10 +89,10 @@ export const LOGO_EVENT_SELECT = {
   eventSeriesId: true,
   logoMode: true,
   logoAsset: { select: LOGO_ASSET_SELECT },
-  artist: { select: { color: true, isDeleted: true } },
+  artist: { select: LOGO_ARTIST_SELECT },
 } as const;
 
-/** Prisma `select` for the series graph rows (see `fetchLogoSeriesGraph`). */
+/** Prisma `select` for the series graph rows (see `logoSeriesGraph.ts`). */
 export const LOGO_SERIES_SELECT = {
   id: true,
   parentSeriesId: true,
@@ -98,10 +100,15 @@ export const LOGO_SERIES_SELECT = {
   logoMode: true,
   logoAsset: { select: LOGO_ASSET_SELECT },
   artistId: true,
-  artist: { select: { color: true, isDeleted: true } },
+  artist: { select: LOGO_ARTIST_SELECT },
 } as const;
 
-/** Every series by id. Build once per request with `buildLogoSeriesGraph`. */
+/**
+ * Every series by id (key: `id.toString()`). Build once per request
+ * with `buildLogoSeriesGraph`. Server-only — it holds internal fields
+ * (parent ids, deletion flags, artist ids): hand clients `PublicLogo`
+ * values, never the graph.
+ */
 export type LogoSeriesGraph = ReadonlyMap<string, LogoSeriesNode>;
 
 export function buildLogoSeriesGraph(
@@ -110,9 +117,12 @@ export function buildLogoSeriesGraph(
   return new Map(rows.map((row) => [row.id.toString(), row]));
 }
 
+/** A usable managed logo: delivery URL plus intrinsic size. */
+export type LogoImage = { url: string; width: number; height: number };
+
 /** What a public renderer receives. `image: null` = typography. */
 export type PublicLogo = {
-  image: { url: string; width: number; height: number } | null;
+  image: LogoImage | null;
   /**
    * Typography source colour (`#RRGGBB`), or null for the brand
    * fallback. Not a text colour — see the module comment.
@@ -121,11 +131,11 @@ export type PublicLogo = {
 };
 
 /**
- * Where the decision came from. Server-side only (tests, a future
- * admin preview); `toPublicLogo` drops it.
+ * The decision with its reason. Server-side only: the tests pin the
+ * reason, and `resolve*Logo` drops it for the public projection.
  */
 export type LogoDecision =
-  | { kind: "custom"; from: "event" | "series"; image: PublicLogo["image"] & object }
+  | { kind: "custom"; image: LogoImage }
   | {
       kind: "typography";
       reason:
@@ -135,18 +145,13 @@ export type LogoDecision =
         | "broken-chain"; // missing / deleted / cyclic series relation
     };
 
-export type ColorSource =
-  | { kind: "series-artist"; color: string }
-  | { kind: "event-artist"; color: string }
-  | { kind: "brand" };
-
 // Defence in depth on top of the series-depth guard in src/lib/artists.ts
 // and src/lib/events.ts: real chains are 1–3 deep.
 const MAX_SERIES_DEPTH = 32;
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
-function usableImage(asset: LogoAssetRow | null): PublicLogo["image"] {
+function usableImage(asset: LogoAssetRow | null): LogoImage | null {
   if (!asset) return null;
   const { publicUrl, width, height } = asset;
   // The DB already enforces positive sizes (post-deploy CHECK); these
@@ -158,54 +163,59 @@ function usableImage(asset: LogoAssetRow | null): PublicLogo["image"] {
 }
 
 /**
- * Walk series nodes starting at `startSeriesId`. `null` start = the
- * event has no series: inheritance is exhausted immediately.
+ * The one series-chain walk both rules share. Visits `start`, then each
+ * parent, until `visit` returns a result (stop) or the chain ends
+ * (`onEnd`). A missing, soft-deleted or already-visited node, or a
+ * chain deeper than MAX_SERIES_DEPTH, ends the walk with `onBroken` —
+ * a broken relation never lets the walk skip past it to an ancestor.
  */
-function walkSeries(
-  startSeriesId: bigint | null,
+function walkSeriesChain<T>(
+  start: bigint | null,
   graph: LogoSeriesGraph,
-): LogoDecision {
+  visit: (node: LogoSeriesNode) => T | undefined,
+  onEnd: T,
+  onBroken: T,
+): T {
   const visited = new Set<string>();
-  let cur = startSeriesId;
+  let cur = start;
   for (let depth = 0; cur != null; depth++) {
     const key = cur.toString();
-    if (depth >= MAX_SERIES_DEPTH || visited.has(key)) {
-      return { kind: "typography", reason: "broken-chain" };
-    }
+    if (depth >= MAX_SERIES_DEPTH || visited.has(key)) return onBroken;
     visited.add(key);
     const node = graph.get(key);
-    if (!node || node.isDeleted) {
-      return { kind: "typography", reason: "broken-chain" };
-    }
-    if (node.logoMode === "custom") {
-      const image = usableImage(node.logoAsset);
-      return image
-        ? { kind: "custom", from: "series", image }
-        : { kind: "typography", reason: "unusable-asset" };
-    }
-    if (node.logoMode === "typography") {
-      return { kind: "typography", reason: "typography-mode" };
-    }
+    if (!node || node.isDeleted) return onBroken;
+    const result = visit(node);
+    if (result !== undefined) return result;
     cur = node.parentSeriesId;
   }
-  return { kind: "typography", reason: "exhausted" };
+  return onEnd;
 }
+
+/** One node's own mode; `undefined` = inherit (keep walking). */
+function decideNode(node: {
+  logoMode: LogoDisplayMode;
+  logoAsset: LogoAssetRow | null;
+}): LogoDecision | undefined {
+  if (node.logoMode === "custom") {
+    const image = usableImage(node.logoAsset);
+    return image ? { kind: "custom", image } : { kind: "typography", reason: "unusable-asset" };
+  }
+  if (node.logoMode === "typography") return { kind: "typography", reason: "typography-mode" };
+  return undefined;
+}
+
+const EXHAUSTED: LogoDecision = { kind: "typography", reason: "exhausted" };
+const BROKEN: LogoDecision = { kind: "typography", reason: "broken-chain" };
 
 /** Logo decision for an event (starts at the event's own mode). */
 export function decideEventLogo(
   event: LogoEventInput,
   graph: LogoSeriesGraph,
 ): LogoDecision {
-  if (event.logoMode === "custom") {
-    const image = usableImage(event.logoAsset);
-    return image
-      ? { kind: "custom", from: "event", image }
-      : { kind: "typography", reason: "unusable-asset" };
-  }
-  if (event.logoMode === "typography") {
-    return { kind: "typography", reason: "typography-mode" };
-  }
-  return walkSeries(event.eventSeriesId, graph);
+  return (
+    decideNode(event) ??
+    walkSeriesChain(event.eventSeriesId, graph, decideNode, EXHAUSTED, BROKEN)
+  );
 }
 
 /** Logo decision for a series page (starts at the series itself). */
@@ -213,7 +223,7 @@ export function decideSeriesLogo(
   seriesId: bigint,
   graph: LogoSeriesGraph,
 ): LogoDecision {
-  return walkSeries(seriesId, graph);
+  return walkSeriesChain(seriesId, graph, decideNode, EXHAUSTED, BROKEN);
 }
 
 function artistColor(artist: ColorArtistRow | null): string | null {
@@ -224,7 +234,8 @@ function artistColor(artist: ColorArtistRow | null): string | null {
 /**
  * Representative artist colour of a series: the nearest series up the
  * chain that names an artist decides (same rule as the owning artist in
- * src/lib/artists.ts). That artist's colour or nothing — a nearer
+ * src/lib/artists.ts — a sub-series without its own artist belongs to
+ * its parent's). That artist's colour or nothing: a nearer
  * representative without a colour does not fall through to an
  * ancestor's different artist.
  */
@@ -232,44 +243,25 @@ function seriesArtistColor(
   startSeriesId: bigint | null,
   graph: LogoSeriesGraph,
 ): string | null {
-  const visited = new Set<string>();
-  let cur = startSeriesId;
-  for (let depth = 0; cur != null && depth < MAX_SERIES_DEPTH; depth++) {
-    const key = cur.toString();
-    if (visited.has(key)) return null;
-    visited.add(key);
-    const node = graph.get(key);
-    if (!node || node.isDeleted) return null;
-    if (node.artistId != null) return artistColor(node.artist);
-    cur = node.parentSeriesId;
-  }
-  return null;
+  return walkSeriesChain<string | null>(
+    startSeriesId,
+    graph,
+    (node) => (node.artistId != null ? artistColor(node.artist) : undefined),
+    null,
+    null,
+  );
 }
 
-export function eventColorSource(
+/** Typography source colour for an event; null = brand. */
+export function eventLogoColor(
   event: LogoEventInput,
   graph: LogoSeriesGraph,
-): ColorSource {
-  const fromSeries = seriesArtistColor(event.eventSeriesId, graph);
-  if (fromSeries) return { kind: "series-artist", color: fromSeries };
-  const fromEvent = artistColor(event.artist);
-  if (fromEvent) return { kind: "event-artist", color: fromEvent };
-  return { kind: "brand" };
+): string | null {
+  return seriesArtistColor(event.eventSeriesId, graph) ?? artistColor(event.artist);
 }
 
-export function seriesColorSource(
-  seriesId: bigint,
-  graph: LogoSeriesGraph,
-): ColorSource {
-  const fromSeries = seriesArtistColor(seriesId, graph);
-  return fromSeries ? { kind: "series-artist", color: fromSeries } : { kind: "brand" };
-}
-
-export function toPublicLogo(decision: LogoDecision, color: ColorSource): PublicLogo {
-  return {
-    image: decision.kind === "custom" ? { ...decision.image } : null,
-    color: color.kind === "brand" ? null : color.color,
-  };
+function toPublicLogo(decision: LogoDecision, color: string | null): PublicLogo {
+  return { image: decision.kind === "custom" ? { ...decision.image } : null, color };
 }
 
 /** Public logo for an event card/heading. */
@@ -277,7 +269,7 @@ export function resolveEventLogo(
   event: LogoEventInput,
   graph: LogoSeriesGraph,
 ): PublicLogo {
-  return toPublicLogo(decideEventLogo(event, graph), eventColorSource(event, graph));
+  return toPublicLogo(decideEventLogo(event, graph), eventLogoColor(event, graph));
 }
 
 /** Public logo for a series page/card. */
@@ -285,5 +277,5 @@ export function resolveSeriesLogo(
   seriesId: bigint,
   graph: LogoSeriesGraph,
 ): PublicLogo {
-  return toPublicLogo(decideSeriesLogo(seriesId, graph), seriesColorSource(seriesId, graph));
+  return toPublicLogo(decideSeriesLogo(seriesId, graph), seriesArtistColor(seriesId, graph));
 }

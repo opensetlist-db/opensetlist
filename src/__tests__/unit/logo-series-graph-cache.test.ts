@@ -35,7 +35,13 @@ vi.mock("@/lib/prisma", () => ({
   prisma: { eventSeries: { findMany: (...args: unknown[]) => rows(...args) } },
 }));
 
-import { PUBLIC_DATA_TAG, revalidateEventData, revalidatePublicData } from "@/lib/dataCache";
+import {
+  PUBLIC_DATA_TAG,
+  cachedQuery,
+  eventTag,
+  revalidateEventData,
+  revalidatePublicData,
+} from "@/lib/dataCache";
 import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
 import { resolveSeriesLogo } from "@/lib/logoResolution";
 
@@ -91,5 +97,41 @@ describe("logo series graph cache", () => {
     // … the public expiry every series/event writer calls is.
     revalidatePublicData();
     expect(resolveSeriesLogo(BigInt(2), await getLogoSeriesGraph()).image?.url).toBe(logo.publicUrl);
+  });
+
+  it("surface entries that embed a resolved logo refresh with the graph", async () => {
+    // Stand-ins for the consuming surfaces' own cached reads, built the
+    // way they are today: home (`home-events`, no extra tag), series
+    // detail (`series-detail`) and event detail (`event-detail`, plus
+    // eventTag). Each embeds the resolved logo in its cached payload.
+    // The concert list (`getEventsListGrouped`) is uncached and search
+    // has no page yet; both resolve per request, so they need no entry.
+    const surface = (name: string, tags?: (id: bigint) => string[]) =>
+      cachedQuery(
+        name,
+        async (id: bigint) => ({ logo: resolveSeriesLogo(id, await getLogoSeriesGraph()) }),
+        { revalidate: 300, tags },
+      );
+    const home = surface("t-home-events");
+    const seriesDetail = surface("t-series-detail");
+    const eventDetail = surface("t-event-detail", (id) => [eventTag(id)]);
+    const all = async () =>
+      Promise.all([home, seriesDetail, eventDetail].map(async (read) => (await read(BigInt(2))).logo.image?.url ?? null));
+
+    rows.mockResolvedValue([node({ id: BigInt(1) }), node({ id: BigInt(2), parentSeriesId: BigInt(1) })]);
+    expect(await all()).toEqual([null, null, null]);
+
+    // The ancestor gets a logo in the DB.
+    rows.mockResolvedValue([
+      node({ id: BigInt(1), logoMode: "custom", logoAsset: logo }),
+      node({ id: BigInt(2), parentSeriesId: BigInt(1) }),
+    ]);
+    revalidateEventData(BigInt(2));
+    // Event-scoped expiry: the event entry re-reads, but the graph inside
+    // it is still the cached one, and home/series are untouched.
+    expect(await all()).toEqual([null, null, null]);
+
+    revalidatePublicData();
+    expect(await all()).toEqual([logo.publicUrl, logo.publicUrl, logo.publicUrl]);
   });
 });
