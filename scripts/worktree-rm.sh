@@ -13,6 +13,10 @@
 #     recurse through it into the main checkout's node_modules.
 #   - Every other link in the worktree (the junctions `next build` puts
 #     under .next/node_modules/) is unlinked next; if one survives, stop.
+#     That covers a symlinked .env / .env.local too. The usual Windows
+#     form, a hard link, is no link to `find`: deleting it with the
+#     worktree removes only the worktree's name for the file, and the
+#     main checkout's copy keeps its contents.
 #   - After the removal, the main checkout's node_modules is checked
 #     (exit 3 if packages vanished).
 #   - The branch is deleted only if git agrees it is merged
