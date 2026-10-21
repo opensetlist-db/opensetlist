@@ -189,19 +189,21 @@ const scenario = {
       h.check("fallback: en page without en name marks lang=ja", fb.h1Lang === "ja", JSON.stringify(fb));
       h.check("empty artist: no-events message, no overflow", fb.empty.length >= 1 && fb.overflow, JSON.stringify(fb.empty));
 
-      ({ page } = await h.open("/ja/artists/24/nijigasaki", { width: 390, hydrate: null }));
-      const ja = await page.evaluate(() => ({
-        lang: document.querySelector("h1")?.getAttribute("lang"),
-        sub: document.querySelector('p[class*="original"]')?.textContent ?? null,
-      }));
-      h.check("ja page, original-language name: no lang override, no duplicate line", ja.lang === null && ja.sub === null, JSON.stringify(ja));
-
+      // en first: it shows the original-name line is found by this
+      // selector, so its absence on the ja page below means something.
       ({ page } = await h.open(`/en${A1}`, { hydrate: null }));
       const en = await page.evaluate(() => ({
         lang: document.querySelector("h1")?.getAttribute("lang"),
         subLang: document.querySelector('p[class*="original"]')?.getAttribute("lang"),
       }));
       h.check("en page with translation: original line lang=ja", en.lang === null && en.subLang === "ja", JSON.stringify(en));
+
+      ({ page } = await h.open("/ja/artists/24/nijigasaki", { width: 390, hydrate: null }));
+      const ja = await page.evaluate(() => ({
+        lang: document.querySelector("h1")?.getAttribute("lang"),
+        sub: document.querySelector('p[class*="original"]')?.textContent ?? null,
+      }));
+      h.check("ja page, original-language name: no lang override, no duplicate line", ja.lang === null && ja.sub === null, JSON.stringify(ja));
     });
 
     await h.section("canonical + 404", async () => {

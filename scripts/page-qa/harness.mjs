@@ -29,7 +29,8 @@
 //   check(name, ok, detail)    record PASS/FAIL (printed and logged at once)
 //   section(name, fn, {ms})    run fn as one unit: a throw or a timeout is a
 //                              FAIL "<name> (threw|timeout)" and the run moves
-//                              on; contexts opened inside are closed after
+//                              on; contexts opened inside are closed after.
+//                              Sections do not nest (an inner one throws)
 //   open(path, opts)           new context + page, goto base+path; returns
 //                              { ctx, page, resp, errors } (opts below)
 //   layoutMatrix(opts)         locales × widths; the generic checks per cell
@@ -129,7 +130,10 @@ export async function runScenario({
   namespaces = [],
 }) {
   fs.mkdirSync(outDir, { recursive: true });
-  const stem = `${scenario.name}-${browserName}${quick ? "-quick" : ""}${onlyFixture ? "-fixture" : ""}`;
+  // A fixture run (with or without --only-fixture) gets its own files, so
+  // it never overwrites the plain run's report in the same --out.
+  const suffix = `${quick ? "-quick" : ""}${fixture ? "-fixture" : ""}`;
+  const stem = `${scenario.name}-${browserName}${suffix}`;
   const logFile = path.join(outDir, `${stem}.log`);
   const jsonFile = path.join(outDir, `${stem}.json`);
   fs.writeFileSync(logFile, "");
@@ -198,19 +202,25 @@ export async function runScenario({
     process.exit(1);
   }, runMs);
 
-  const browser = await BROWSERS[browserName].launch({ timeout: timeoutMs });
+  // Set inside the try below, so a launch failure is reported like any
+  // other and still writes the JSON.
+  let browser;
+  let api;
 
   const newContext = async (opts) => {
+    const scope = scopeStore.getStore();
     const ctx = await browser.newContext(opts);
+    // A section that already ended (an abandoned body still running after
+    // its timeout) gets no new context: nobody would close it.
+    if (scope?.closed) {
+      await withTimeout(ctx.close(), 10_000).catch(() => {});
+      throw new Error("section already ended");
+    }
     ctx.setDefaultTimeout(timeoutMs);
     ctx.setDefaultNavigationTimeout(timeoutMs);
-    scopeStore.getStore()?.contexts.add(ctx);
+    scope?.contexts.add(ctx);
     return ctx;
   };
-
-  // One run-wide request context for status/redirect checks; maxRedirects
-  // is set per call so a 308 is seen, not followed.
-  const api = (await newContext({})).request;
 
   const h = {
     check,
@@ -226,8 +236,11 @@ export async function runScenario({
 
     async section(name, fn, { ms = timeoutMs * 4 } = {}) {
       if (finished) return false;
+      // One level only: an inner scope would hide the outer one's
+      // abandoned flag and contexts.
+      if (scopeStore.getStore()) throw new Error(`h.section("${name}") inside another section`);
       log(`» ${name} (${elapsed()})`);
-      const scope = { abandoned: false, contexts: new Set() };
+      const scope = { abandoned: false, closed: false, contexts: new Set() };
       let ok = true;
       try {
         await withTimeout(scopeStore.run(scope, fn), ms);
@@ -239,6 +252,7 @@ export async function runScenario({
       }
       // Closing the contexts also makes a hung Playwright call in an
       // abandoned body throw and stop. Bounded: WebKit's close can hang.
+      scope.closed = true;
       for (const ctx of scope.contexts) await withTimeout(ctx.close(), 10_000).catch(() => {});
       return ok;
     },
@@ -279,7 +293,7 @@ export async function runScenario({
     },
 
     async shot(page, label) {
-      const file = path.join(outDir, `${scenario.name}-${browserName}-${label}.png`);
+      const file = path.join(outDir, `${scenario.name}-${browserName}${suffix}-${label}.png`);
       await page.screenshot({ path: file, fullPage: true });
       return file;
     },
@@ -296,7 +310,8 @@ export async function runScenario({
     },
 
     // Per cell (its own section, 2 × --timeout): open path(locale) at the
-    // width, then the generic checks
+    // width — a non-2xx answer fails the cell as "(threw)" — then the
+    // generic checks
     //   "<prefix> <loc> <w>: no page overflow"      document scrollWidth
     //   "<prefix> <loc> <w>: html lang"             <html lang> = locale
     //   "<prefix> <loc> <w>: no raw keys / errors"  no visible
@@ -311,7 +326,10 @@ export async function runScenario({
           await h.section(
             `${prefix} ${loc} ${width}`,
             async () => {
-              const { page, errors } = await h.open(pathFor(loc), { width, height });
+              const { page, resp, errors } = await h.open(pathFor(loc), { width, height });
+              // Positive control for every check below: on an error page
+              // (a wrong path, a 404) they would pass for the wrong reason.
+              if (!resp?.ok()) throw new Error(`${pathFor(loc)} answered ${resp?.status() ?? "nothing"}`);
               // Every dotted "Word.word…" token, kept when its first part is a
               // message namespace: a fixed pattern plus a lookup, not a RegExp
               // built from the namespace list (CI Semgrep blocks those), and
@@ -343,9 +361,10 @@ export async function runScenario({
     // `selectors` should each match an element that has a transition or
     // animation normally. Two checks: "<label>: transitions off" (every
     // selector present and not moving under reduce) and "<label>: positive
-    // control (transition present otherwise)" (at least one moves without
+    // control (transition present otherwise)" (every one moves without
     // reduce) — without the control, a selector that never animated would
-    // pass the first check for the wrong reason.
+    // pass the first check for the wrong reason, so the control covers each
+    // selector, not just one of them.
     async reducedMotion({ path: p, selectors, width = 390, label = "reduced motion" }) {
       const read = (page) =>
         page.evaluate((sels) => {
@@ -362,15 +381,20 @@ export async function runScenario({
       const reduced = await read((await h.open(p, { width, reducedMotion: "reduce", hydrate: null })).page);
       check(`${label}: transitions off`, reduced.every((r) => !r.missing && !r.moving), show(reduced));
       const normal = await read((await h.open(p, { width, hydrate: null })).page);
-      check(`${label}: positive control (transition present otherwise)`, normal.some((r) => r.moving), show(normal));
+      check(`${label}: positive control (transition present otherwise)`, normal.every((r) => !r.missing && r.moving), show(normal));
     },
   };
 
   try {
+    browser = await BROWSERS[browserName].launch({ timeout: timeoutMs });
+    // One run-wide request context for status/redirect checks; maxRedirects
+    // is set per call so a 308 is seen, not followed.
+    api = (await newContext({})).request;
     if (!onlyFixture) await scenario.run(h);
     if (fixture) await scenario.fixture.run(h, fixture);
   } catch (e) {
-    // A throw outside any section (a scenario bug) still ends with results.
+    // A throw outside any section (a browser that failed to launch, a
+    // scenario bug) still ends with results.
     check("run completed", false, String(e?.stack ?? e).slice(0, 600));
   }
   if (finished) return null;
@@ -379,6 +403,6 @@ export async function runScenario({
   // Results first: Playwright's WebKit on Windows can hang in
   // browser.close() (its network process lingers), so the close is bounded.
   const summary = summarize();
-  await withTimeout(browser.close(), 10_000).catch(() => log("browser.close() did not return in 10s; exiting anyway"));
+  if (browser) await withTimeout(browser.close(), 10_000).catch(() => log("browser.close() did not return in 10s; exiting anyway"));
   return summary;
 }

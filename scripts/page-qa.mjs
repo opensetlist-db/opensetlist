@@ -34,7 +34,8 @@
 //
 // Writes, as it goes, every line to stdout AND <out>/<stem>.log, then
 // <out>/<stem>.json (summary + every check), where <stem> is
-// <scenario>-<browser>[-quick][-fixture]. Exits 1 on any FAIL (including a
+// <scenario>-<browser>[-quick][-fixture] (-fixture whenever --fixture is
+// given). Exits 1 on any FAIL (including a
 // timeout), 2 on a usage error.
 import fs from "node:fs";
 import path from "node:path";
@@ -89,14 +90,20 @@ if (!(timeoutMs > 0) || !(runMs > 0) || timeoutMs > 86_400_000 || runMs > 86_400
   usage("--timeout and --timeout-min must be positive numbers, at most one day");
 }
 
-const scenario = await load(
-  args.scenario.endsWith(".mjs") ? path.resolve(args.scenario) : path.join(scenarioDir, `${args.scenario}.mjs`),
-);
+const scenarioPath = args.scenario.endsWith(".mjs")
+  ? path.resolve(args.scenario)
+  : path.join(scenarioDir, `${args.scenario}.mjs`);
+if (!fs.existsSync(scenarioPath)) usage(`no scenario at ${scenarioPath} (--list shows the names)`);
+const scenario = await load(scenarioPath);
 
 let fixture = null;
 if (args.fixture) {
   if (!scenario.fixture) usage(`scenario ${scenario.name} has no fixture checks`);
-  fixture = JSON.parse(fs.readFileSync(args.fixture, "utf8"));
+  try {
+    fixture = JSON.parse(fs.readFileSync(args.fixture, "utf8"));
+  } catch (e) {
+    usage(`--fixture ${args.fixture}: ${e.message}`);
+  }
   const missing = scenario.fixture.needs.filter((k) => fixture[k] == null);
   if (missing.length) usage(`--fixture ${args.fixture} lacks ${missing.join(", ")}`);
 } else if (args["only-fixture"]) {
