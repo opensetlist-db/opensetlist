@@ -1,113 +1,58 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
-import { InitialAvatar } from "@/components/InitialAvatar";
-import { colors } from "@/styles/tokens";
+import styles from "./artistDetail.module.css";
+import { accentStyle, firstGrapheme } from "./artistDetail";
 
 /*
- * Member chip on the artist detail page (overview tab).
+ * Member entry on the artist detail overview (approved packet 20-v1):
+ * a 40px initial circle ringed in the member's colour, the full name,
+ * and the owning unit's name underneath.
  *
- * Per `raw/mockups/artist-page-mockup.jsx` lines 136-171, hovering
- * the chip paints the border + background tint with the owning
- * unit's color (`unitColor + "40"` for border, `unitColor + "12"`
- * for bg). Resting state is neutral (`colors.bgSubtle` bg,
- * `colors.borderLight` border).
+ * No portrait: members have no managed photos, and the redesign
+ * deliberately does not add photo management. The initial is drawn in
+ * ink on a faint wash of the colour (not in the colour itself) so a
+ * pastel unit colour never carries text.
  *
- * Client component because hover paints with a dynamically-derived
- * unit color — same constraint as `<UnitCard>`. Resolved labels
- * (`memberName`, `unitName`) come pre-cascaded from the page so this
- * component stays out of i18n + locale logic.
+ * Server component — the hover/focus wash is plain CSS now, so the old
+ * client-side hover state is gone.
  */
+
+interface Name {
+  text: string;
+  lang?: string;
+}
 
 interface Props {
   href: string;
-  memberName: string;
-  /** Optional short-name string used as the avatar's initial source.
-   *  When omitted, falls back to `memberName`. Lets the page pre-pick
-   *  a recognized handle (locale shortName cascade) so the round chip
-   *  reads as e.g. `K` for `Kaho` instead of the full-name lead
-   *  character (which on Japanese-style names is the surname's first
-   *  kanji — too formal for a mini chip). The body text below the
-   *  avatar still shows the full name. */
-  avatarLabel?: string | null;
-  /** Sub-unit name shown below the member name (e.g. "DOLLCHESTRA"),
-   *  or null if the member has no owning sub-unit. */
-  unitName: string | null;
-  /** Solid color for the avatar + unit-name text + hover treatment.
-   *  Page resolves: owning unit's color → member's own color →
-   *  `colors.textMuted`. */
-  unitColor: string;
+  name: Name;
+  /** Initial source (locale short-name cascade); falls back to `name`. */
+  avatarLabel?: Name | null;
+  /** Owning unit, or null when the member belongs to no sub-unit. */
+  unitName: Name | null;
+  /** Page resolves: owning unit colour → stage-identity colour → muted. */
+  color: string;
 }
 
-export function MemberChip({
-  href,
-  memberName,
-  avatarLabel,
-  unitName,
-  unitColor,
-}: Props) {
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  // Keyboard focus mirrors hover so tab-navigated users see the same
-  // unit-color emphasis. See UnitCard for the same pattern.
-  const active = hovered || focused;
+export function MemberChip({ href, name, avatarLabel, unitName, color }: Props) {
+  const initialSource = avatarLabel?.text ? avatarLabel : name;
   return (
-    <Link
-      href={href}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        // Active (hover or focus) paints both border and bg with the
-        // unit color at low alpha. Resting state stays in the
-        // project's neutral chip palette so a long row of chips
-        // reads cleanly.
-        background: active ? `${unitColor}12` : colors.bgSubtle,
-        border: `1px solid ${active ? `${unitColor}40` : colors.borderLight}`,
-        borderRadius: 12,
-        padding: "8px 12px",
-        flex: "1 1 140px",
-        minWidth: 0,
-        textDecoration: "none",
-        color: "inherit",
-        transition: "background 0.12s ease, border-color 0.12s ease",
-      }}
-    >
-      <InitialAvatar
-        label={avatarLabel || memberName}
-        color={unitColor}
-        size={32}
-      />
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: colors.textPrimary,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {memberName}
-        </div>
+    <Link href={href} className={styles.member} style={accentStyle(color)}>
+      <span
+        className={styles.initial}
+        aria-hidden="true"
+        lang={initialSource.lang}
+      >
+        {firstGrapheme(initialSource.text)}
+      </span>
+      <span className={styles.memberCopy}>
+        <span className={styles.memberName} lang={name.lang}>
+          {name.text}
+        </span>
         {unitName && (
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: unitColor,
-            }}
-          >
-            {unitName}
-          </div>
+          <span className={styles.memberUnit} lang={unitName.lang}>
+            {unitName.text}
+          </span>
         )}
-      </div>
+      </span>
     </Link>
   );
 }

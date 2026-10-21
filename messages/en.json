@@ -42,7 +42,8 @@
     "title": "Artists",
     "albums": {
       "latest": "Latest album",
-      "discography": "Discography"
+      "discography": "Discography",
+      "empty": "No albums registered."
     },
     "noArtists": "No artists to show",
     "unknown": "Unknown Artist",
@@ -98,7 +99,15 @@
     "ungroupedNoCategorySection": "Uncategorized",
     "showOtherUnits": "Show other units ({count})",
     "hideOtherUnits": "Hide other units",
-    "songCount": "🎵 {count}"
+    "songCount": "🎵 {count}",
+    "tabsAriaLabel": "Artist information",
+    "viewAllAlbums": "View all albums",
+    "viewAllHistory": "View all concert history",
+    "historyColumns": {
+      "dateStatus": "Date · status",
+      "event": "Concert",
+      "songs": "Songs"
+    }
   },
   "Song": {
     "title": "Songs",

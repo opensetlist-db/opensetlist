@@ -42,7 +42,8 @@
     "title": "アーティスト",
     "albums": {
       "latest": "最新アルバム",
-      "discography": "ディスコグラフィー"
+      "discography": "ディスコグラフィー",
+      "empty": "登録されたアルバムはありません。"
     },
     "noArtists": "表示できるアーティストはありません",
     "unknown": "不明なアーティスト",
@@ -98,7 +99,15 @@
     "ungroupedNoCategorySection": "未分類",
     "showOtherUnits": "その他のユニットを表示 ({count})",
     "hideOtherUnits": "その他のユニットを隠す",
-    "songCount": "🎵 {count}"
+    "songCount": "🎵 {count}",
+    "tabsAriaLabel": "アーティストの情報",
+    "viewAllAlbums": "アルバムをすべて見る",
+    "viewAllHistory": "公演履歴をすべて見る",
+    "historyColumns": {
+      "dateStatus": "日付・状態",
+      "event": "公演",
+      "songs": "楽曲"
+    }
   },
   "Song": {
     "title": "楽曲",

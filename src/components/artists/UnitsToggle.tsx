@@ -1,20 +1,18 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import { colors } from "@/styles/tokens";
+import styles from "./artistDetail.module.css";
 
 /*
- * Layout wrapper for the artist detail page's sub-unit list.
+ * Main / other unit split on the artist detail overview.
  *
- * Default behavior (operator preference, 2026-04-28): show only main
- * units (`Artist.isMainUnit = true`). The non-main units stay hidden
- * behind a toggle so a tour-heavy parent like 蓮ノ空 doesn't bury its
- * canonical Cerise Bouquet / DOLLCHESTRA / Mira-Cra Park / Edel Note
- * cards under every event-specific or member-pair sub-configuration.
- *
- * Layout: a single flex-wrap row that holds main cards (always) and
- * other cards (gated on toggle). Toggle button sits below the flex
- * row so the relayout is contained.
+ * Only main units (`Artist.isMainUnit = true`) show by default
+ * (operator preference, 2026-04-28) so a tour-heavy parent like 蓮ノ空
+ * doesn't bury its canonical units under every event-specific
+ * configuration. The rest sit in a second grid behind a disclosure
+ * button placed between the two grids (20-v1 order: main grid →
+ * button → other grid), so opening it grows the list downward from
+ * where the user's focus already is.
  */
 
 interface Props {
@@ -32,55 +30,41 @@ export function UnitsToggle({
 }: Props) {
   const [showOthers, setShowOthers] = useState(false);
   const hasOthers = otherCards.length > 0;
-  // Stable id pairs the disclosure button with its controlled region
-  // for `aria-controls`. `useId` is React's collision-safe generator;
-  // multiple <UnitsToggle> instances on a page get distinct ids
-  // automatically.
+  // `useId` pairs the button with its region for `aria-controls`.
   const otherCardsId = useId();
   return (
     <>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {mainCards}
-      </div>
-      {hasOthers && (
-        <div
-          id={otherCardsId}
-          // Use the `hidden` attribute (not `display: none` via CSS)
-          // so the controlled region stays in the DOM tree at a stable
-          // id; assistive tech still resolves `aria-controls` even
-          // while the region is collapsed.
-          hidden={!showOthers}
-          style={{
-            display: showOthers ? "flex" : undefined,
-            gap: 10,
-            flexWrap: "wrap",
-            marginTop: 10,
-          }}
-        >
-          {otherCards}
-        </div>
+      {mainCards.length > 0 && (
+        <ul className={`${styles.list} ${styles.unitGrid}`}>
+          {mainCards.map((card, i) => (
+            <li key={i}>{card}</li>
+          ))}
+        </ul>
       )}
       {hasOthers && (
         <button
           type="button"
+          className={styles.toggle}
           aria-expanded={showOthers}
           aria-controls={otherCardsId}
           onClick={() => setShowOthers((v) => !v)}
-          style={{
-            marginTop: 12,
-            padding: "6px 14px",
-            border: `1px solid ${colors.border}`,
-            borderRadius: 20,
-            background: colors.bgCard,
-            color: colors.textSecondary,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
         >
           {showOthers ? hideLabel : showLabel}
         </button>
+      )}
+      {hasOthers && (
+        // `hidden` (not CSS display) keeps the region in the DOM at a
+        // stable id, so `aria-controls` always resolves.
+        <ul
+          id={otherCardsId}
+          hidden={!showOthers}
+          className={`${styles.list} ${styles.unitGrid}`}
+          style={{ marginTop: 14 }}
+        >
+          {otherCards.map((card, i) => (
+            <li key={i}>{card}</li>
+          ))}
+        </ul>
       )}
     </>
   );
