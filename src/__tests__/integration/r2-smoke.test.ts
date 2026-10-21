@@ -29,10 +29,12 @@ describe.skipIf(!enabled)("R2 transport smoke (writes one object under test/)", 
     );
     const image = await validateImage(png);
     const key = `test/smoke/${randomUUID()}.png`;
-    // process.stdout.write, not console.info: vitest's default reporter
-    // drops console.info (and test annotations) for a passing test, but
-    // lets raw stdout through. Written before the first PUT so the key is
-    // in the output even when a later assertion fails.
+    // process.stdout.write, not console.info: with vitest 4.1.4's default
+    // reporter console.info shows only when the test fails (and test
+    // annotations not at all), while raw stdout shows for pass and fail.
+    // Re-check this if vitest is upgraded. Written before the first PUT
+    // so the key is in the output even when a later assertion fails; the
+    // surrounding newlines keep the line apart from reporter output.
     process.stdout.write(`
 [r2-smoke] writing ${key}
 `);
