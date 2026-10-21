@@ -46,7 +46,7 @@ remembered App Router APIs.
 - `prisma.config.ts` — DB connection lives here, not in schema.prisma
 - `src/lib/prisma.ts` — singleton client with PrismaPg adapter
 - Key: use session pooler (port 5432) for migrations, transaction pooler (port 6543) for runtime
-- 읽기 전용 DB 조회는 `scripts/db-ro.mjs` (세션 풀러, BEGIN READ ONLY)
+- 읽기 전용 DB 조회는 `scripts/db-ro.mjs` (dev 전용, 세션 풀러, BEGIN READ ONLY; ad-hoc `pg` 스크립트 대신)
 - See `memory/prisma_config.md` for full code patterns and commands
 
 ---
