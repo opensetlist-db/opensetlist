@@ -155,6 +155,16 @@ export const colors = {
   completedBg: "#f8fafc",
   completedBorder: "#e2e8f0",
 
+  // Concert-list palette (approved packet 16-v1, all text pairs ≥4.5:1
+  // in its contrast.json). Separate from the status family above, which
+  // the detail/home surfaces still use until their own page tickets.
+  listCompletedBg: "#EEF1F6",
+  listCancelledText: "#9D2450",
+  // Solid raspberry LIVE pill with white text (14-v1.3 home contract).
+  listLive: "#AD1B57",
+  listGroupWash: "linear-gradient(110deg, #F2F5FF, #FFF7FB)",
+  listLiveGroupBg: "#E9E3FF",
+
   // Trending TOP3 card (consumed by <TrendingSongs>)
   trendingBg: "#fffbeb",
   trendingBorder: "#fde68a",
@@ -432,6 +442,26 @@ export const unitFallbackPalette = [
   "#FCD34D", // 15 amber-300 — soft yellow
   "#A3A3A3", // 16 neutral-400 — soft gray
 ] as const;
+
+/*
+ * Search result accents from the approved 12-v1.2 design (ticket 13).
+ * Inks are the readable foregrounds on the 03 pastel accent washes
+ * (all ≥ 5.6:1 on their backgrounds); they are role accents, not artist
+ * colours. Search-only for now — a page ticket that needs the same role
+ * should reuse these rather than add near-duplicates.
+ */
+export const searchColors = {
+  artistInk: "#80344F", // artist icon chip + initial avatar, on accentPink
+  songInk: "#594392", // song icon chip, on accentLavender
+  variantInk: "#58417D", // version chip text, on accentLavender
+  baseChipBg: "#EEF3F9", // "base version" chip, with textSecondary
+  dayChipBg: "#EDF3FF", // concert "Day.N" chip
+  dayChipInk: "#2457A6",
+  matchedInk: "#53527D", // "matched name" line
+  errorBorder: "#DAA6B7", // error state panel
+  errorBg: "#FFF9FB",
+  errorInk: "#80344F", // error state icon, on accentPink
+} as const;
 
 export const shadows = {
   // 03 contract card shadow (navy-tinted, low alpha) and its hover lift.

@@ -262,8 +262,6 @@
   },
   "Event": {
     "title": "イベント",
-    "allEvents": "イベント一覧",
-    "subtitle": "公演のセットリストとリアクションをチェック",
     "ongoing": "開催中",
     "upcoming": "今後のイベント",
     "past": "過去のイベント",
@@ -277,14 +275,12 @@
       "upcoming": "開催予定",
       "completed": "終了"
     },
-    "emptyFilterState": "該当する公演がありません",
     "eventCount": "{count, plural, other {#公演}}",
     "songCount": "{count, plural, other {🎵 #}}",
     "tableHeader": {
       "date": "日付",
       "status": "ステータス",
       "name": "公演名",
-      "venue": "会場",
       "songs": "曲数"
     },
     "setlist": "セットリスト",
@@ -342,6 +338,32 @@
       "purchaseCta": "BDを購入する →",
       "detailsCta": "アルバム詳細を見る →"
     }
+  },
+  "EventList": {
+    "eyebrow": "CONCERTS & SETLISTS",
+    "title": "公演一覧",
+    "subtitle": "公演を見つけて、ライブの記録をたどる。",
+    "filterLabel": "公演の絞り込み",
+    "activeHeading": "開催中・これからの公演",
+    "pastHeading": "過去の公演",
+    "seriesType": {
+      "concert_tour": "ツアー",
+      "festival": "フェス"
+    },
+    "eventCount": "{count, plural, other {# 公演}}",
+    "songCount": "{count, plural, other {# 曲}}",
+    "status": {
+      "upcoming": "開催予定",
+      "completed": "終了",
+      "cancelled": "開催中止"
+    },
+    "collapseGroup": "{title}を折りたたむ",
+    "expandGroup": "{title}を展開する",
+    "empty": "該当する公演がありません",
+    "viewAll": "すべての公演を見る",
+    "prev": "前へ",
+    "next": "次へ",
+    "pageStatus": "{current} / {total}"
   },
   "EventDateTime": {
     "localTime": "現地時刻"
@@ -680,6 +702,57 @@
     "search": "検索",
     "searchPlaceholder": "公演・アーティスト・曲・アルバムを検索",
     "skipToContent": "本文へ移動"
+  },
+  "Search": {
+    "title": "検索",
+    "subtitle": "公演、アーティスト、アルバム、曲を検索",
+    "metaTitle": "「{q}」の検索結果",
+    "inputLabel": "サイト内検索",
+    "placeholder": "公演・アーティスト・曲・アルバムを検索",
+    "submit": "検索",
+    "clear": "検索語を消去",
+    "formLabel": "コンテンツ検索",
+    "typesLabel": "検索対象",
+    "all": "すべて",
+    "events": "公演",
+    "artists": "アーティスト",
+    "songs": "曲",
+    "albums": "アルバム",
+    "results": "検索結果 · “{q}”",
+    "more": "{type} · もっと見る",
+    "noGroup": "該当する結果はありません。",
+    "emptyTitle": "探したい名前を入力してください",
+    "emptyBody": "公演名、アーティスト名、曲名、アルバム名から探せます。",
+    "noneTitle": "一致する結果が見つかりませんでした",
+    "noneBody": "名前の一部や別の登録言語の表記で、もう一度お試しください。",
+    "errorTitle": "検索結果を読み込めませんでした",
+    "errorBody": "検索語はそのままです。時間をおいて、もう一度お試しください。",
+    "retry": "もう一度試す",
+    "longTitle": "検索語が長すぎます",
+    "longBody": "{max}文字以内に短くして検索してください。",
+    "edit": "検索語を編集",
+    "rangeTitle": "このページには結果がありません",
+    "rangeBody": "最初のページから、もう一度ご確認ください。",
+    "first": "最初のページへ",
+    "prev": "前へ",
+    "next": "次へ",
+    "page": "ページ {page}",
+    "pagination": "検索結果のページ移動",
+    "matched": "一致した表記",
+    "base": "基本バージョン",
+    "variant": "別バージョン",
+    "artistType": {
+      "solo": "ソロ",
+      "group": "グループ",
+      "unit": "ユニット"
+    },
+    "albumType": {
+      "single": "シングル",
+      "album": "アルバム",
+      "ep": "EP",
+      "live_album": "ライブアルバム",
+      "soundtrack": "サウンドトラック"
+    }
   },
   "Hero": {
     "heading": "みんなでつなぐ、ライブの物語",

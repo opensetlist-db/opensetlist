@@ -1,0 +1,79 @@
+/*
+ * Search page interaction states (approved 12-v1.2). Geometry and colours
+ * live in the components as Tailwind classes / token values; this module
+ * holds only what utilities cannot express cleanly: hover/pressed pairs,
+ * descendant hover (row → title), and the WebKit search-cancel glyph that
+ * would otherwise duplicate the custom clear button.
+ */
+
+.input::-webkit-search-cancel-button {
+  display: none;
+}
+.input::placeholder {
+  color: #52617a;
+}
+
+.primary {
+  background: #165dcc;
+  color: #fff;
+  transition: background 0.15s;
+}
+.primary:hover {
+  background: var(--primary-hover);
+}
+.primary:active {
+  background: var(--primary-pressed);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 11px 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.secondary {
+  composes: button;
+  border-color: #8b99b0;
+  background: #fff;
+  color: #165dcc;
+  transition: background 0.15s;
+}
+.secondary:hover {
+  background: var(--primary-hover-bg);
+}
+.secondary:active {
+  background: var(--primary-pressed-bg);
+  color: var(--primary-hover);
+}
+.disabled {
+  composes: button;
+  border-color: #dce3ef;
+  background: #edf0f5;
+  color: #67758b;
+}
+
+.typeLink:hover {
+  box-shadow: 0 0 0 1px #165dcc;
+}
+
+.row:hover .title {
+  color: #165dcc;
+  text-decoration: underline;
+}
+
+.more:hover {
+  background: #f2f6ff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary,
+  .secondary {
+    transition: none;
+  }
+}
