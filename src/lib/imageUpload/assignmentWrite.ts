@@ -3,9 +3,8 @@ import { prisma as defaultDb } from "@/lib/prisma";
 import { UploadError, isUploadError } from "./errors";
 import { conflictFor, type TargetAdapter } from "./targets";
 
-// Non-upload assignment writes (album cover URL edit / unlink; the logo
-// mode changes of the series and event forms can reuse it) with the same
-// outcome vocabulary as the upload service:
+// Non-upload assignment writes (album cover URL edit / unlink) with the
+// same outcome vocabulary as the upload service:
 //
 //   - the CAS write runs inside one interactive transaction; zero rows
 //     updated → `conflictFor` (404 gone / 409 with the current value);

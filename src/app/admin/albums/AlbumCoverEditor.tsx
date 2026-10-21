@@ -157,22 +157,30 @@ export default function AlbumCoverEditor({
     onDirtyChange?.(dirty || locked);
   }, [dirty, locked, onDirtyChange]);
 
-  // Release the local preview when the attempt is dropped or on unmount.
-  const attemptRef = useRef<ImageAttempt | null>(null);
+  // Local preview lifetime: every attempt this editor created stays in
+  // `liveAttempts` until neither the draft nor the submitted request
+  // (still awaiting a definite outcome) refers to it; then its blob URL
+  // is released. Unmount releases whatever is left.
+  const liveAttempts = useRef(new Set<ImageAttempt>());
   useEffect(() => {
-    const next = draft.kind === "upload" ? draft.attempt : null;
-    const prev = attemptRef.current;
-    // An attempt still awaiting a definite outcome keeps its blob alive.
-    if (
-      prev &&
-      prev !== next &&
-      !(submitted?.kind === "upload" && submitted.attempt === prev)
-    ) {
-      prev.cancel();
+    const keep = new Set<ImageAttempt>();
+    if (draft.kind === "upload") keep.add(draft.attempt);
+    if (submitted?.kind === "upload") keep.add(submitted.attempt);
+    for (const a of liveAttempts.current) {
+      if (!keep.has(a)) {
+        a.cancel();
+        liveAttempts.current.delete(a);
+      }
     }
-    attemptRef.current = next;
+    for (const a of keep) liveAttempts.current.add(a);
   }, [draft, submitted]);
-  useEffect(() => () => attemptRef.current?.cancel(), []);
+  useEffect(() => {
+    const live = liveAttempts.current;
+    return () => {
+      for (const a of live) a.cancel();
+      live.clear();
+    };
+  }, []);
 
   function focusNotice() {
     // After React commits the new notice.
@@ -271,15 +279,29 @@ export default function AlbumCoverEditor({
     }
   }
 
+  /** The upload request, identical on every resend of the attempt. */
+  function submitUpload(sub: Extract<Submitted, { kind: "upload" }>) {
+    return sub.attempt.submit(coverUrl, {
+      expectedImageUrl: sub.expected ?? "",
+      sourceUrl: sub.sourceUrl,
+      usageNote: sub.usageNote,
+    });
+  }
+
   async function send(sub: Submitted) {
     setSubmitted(sub);
     setPhase({ kind: "saving" });
     if (sub.kind === "upload") {
-      const outcome = await sub.attempt.submit(coverUrl, {
-        expectedImageUrl: sub.expected ?? "",
-        sourceUrl: sub.sourceUrl,
-        usageNote: sub.usageNote,
-      });
+      let outcome: Awaited<ReturnType<ImageAttempt["submit"]>>;
+      try {
+        outcome = await submitUpload(sub);
+      } catch {
+        // submit() itself threw (e.g. the attempt was released). Never
+        // leave the editor locked on "saving"; a re-read settles it.
+        setPhase({ kind: "unknown" });
+        focusNotice();
+        return;
+      }
       handleUploadOutcome(outcome);
       return;
     }
@@ -318,9 +340,15 @@ export default function AlbumCoverEditor({
     if (outcome.kind === "saved") {
       const asset = (outcome.body as { asset?: { publicUrl?: string } } | null)
         ?.asset;
-      const publicUrl = asset?.publicUrl ?? null;
-      applySaved(publicUrl, null, outcome.status === "reconciled");
-      void refreshProvenance(publicUrl);
+      if (!asset?.publicUrl) {
+        // A success without the assigned URL cannot be shown as "no
+        // cover" - that would claim an unlink. Re-read instead.
+        setPhase({ kind: "unknown" });
+        focusNotice();
+        return;
+      }
+      applySaved(asset.publicUrl, null, outcome.status === "reconciled");
+      void refreshProvenance(asset.publicUrl);
       return;
     }
     if (outcome.kind === "unknown") {
@@ -424,13 +452,7 @@ export default function AlbumCoverEditor({
           // may never have reached. Its result cannot undo the confirmed
           // save. Started before the draft is cleared below, which
           // releases the attempt's local preview.
-          void submitted.attempt
-            .submit(coverUrl, {
-              expectedImageUrl: submitted.expected ?? "",
-              sourceUrl: submitted.sourceUrl,
-              usageNote: submitted.usageNote,
-            })
-            .catch(() => undefined);
+          void submitUpload(submitted).catch(() => undefined);
           applySaved(state.imageUrl, state.provenance, true);
           return;
         }

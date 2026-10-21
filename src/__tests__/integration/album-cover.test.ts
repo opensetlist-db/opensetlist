@@ -147,7 +147,11 @@ describe("album info PATCH and the cover", () => {
     );
     expect(res.status).toBe(409);
     const body = await res.json();
-    expect(body).toMatchObject({ code: "assignment_conflict", current: { imageUrl: EXTERNAL_B } });
+    expect(body).toMatchObject({
+      error: "assignment_conflict",
+      outcome: "conflict",
+      current: { imageUrl: EXTERNAL_B },
+    });
     expect(await cover()).toBe(EXTERNAL_B);
     expect((await prisma.album.findUniqueOrThrow({ where: { id: albumId } })).labelName).toBe("Lantis");
   });

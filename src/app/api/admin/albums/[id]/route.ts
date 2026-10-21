@@ -8,7 +8,11 @@ import { ALBUM_TYPE_SET } from "@/lib/albumConstants";
 import { parseBigInt } from "@/lib/adminParsers";
 import type { AlbumType } from "@/generated/prisma/enums";
 import { revalidatePublicData } from "@/lib/dataCache";
-import { isUploadError, writeAlbumImageUrl } from "@/lib/imageUpload";
+import {
+  isUploadError,
+  writeAlbumImageUrl,
+  type AlbumCoverAssignment,
+} from "@/lib/imageUpload";
 import { parseCoverUrl, parseExpectedCoverJson } from "@/lib/albumCover";
 
 type RouteProps = { params: Promise<{ id: string }> };
@@ -48,12 +52,14 @@ type PatchBody = {
  *   → 400 invalid input
  *   → 401 unauthorized
  *   → 404 not found
- *   → 409 slug conflict, or cover conflict (`code: "assignment_conflict"`)
+ *   → 409 slug conflict `{ error: <message> }`, or cover conflict in the
+ *     shared image-write shape `{ error: "assignment_conflict",
+ *     outcome: "conflict", message, current }` (same as the cover route)
  *
  * The cover (Album.imageUrl) is the album's only current cover source.
  * The admin form saves it through `/api/admin/albums/[id]/cover` and
  * leaves it out of this body; an info edit that omits `imageUrl` must
- * never touch the cover (it used to null it). A caller that does send
+ * never touch the cover. A caller that does send
  * `imageUrl` must also send the value it loaded as `expectedImageUrl`:
  * the write is then a compare-and-set inside this same transaction, and
  * a mismatch rolls back every field of the request. A body with
@@ -174,7 +180,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     typeof body.labelName === "string" && body.labelName.trim()
       ? body.labelName.trim()
       : null;
-  let coverChange: { expected: { imageUrl: string | null }; next: string | null } | null = null;
+  let coverChange: { expected: AlbumCoverAssignment; next: string | null } | null = null;
   if (body.imageUrl !== undefined) {
     try {
       coverChange = {
@@ -329,16 +335,17 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
     if (e instanceof CoverConflict) {
-      const current = await prisma.album.findUnique({
-        where: { id: albumId },
-        select: { imageUrl: true },
-      });
+      // The current value is a courtesy for the caller; failing to read
+      // it must not turn a definite conflict into a 500.
+      const current = await prisma.album
+        .findUnique({ where: { id: albumId }, select: { imageUrl: true } })
+        .catch(() => null);
       return NextResponse.json(
         {
-          error:
-            "다른 곳에서 표지가 먼저 바뀌어 저장하지 않았습니다. 새로고침해 현재 표지를 확인한 뒤 다시 시도해 주세요.",
-          code: "assignment_conflict",
+          error: "assignment_conflict",
           outcome: "conflict",
+          message:
+            "다른 곳에서 표지가 먼저 바뀌어 저장하지 않았습니다. 새로고침해 현재 표지를 확인한 뒤 다시 시도해 주세요.",
           current: current ? { imageUrl: current.imageUrl } : null,
         },
         { status: 409 },
