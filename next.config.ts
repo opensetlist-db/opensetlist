@@ -4,6 +4,18 @@ import { OG_FONTS } from "./src/lib/ogFonts";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
+// Source-map upload and release creation run only on CI and Vercel builds.
+// The local `.env` carries SENTRY_AUTH_TOKEN, so without this gate every
+// local `next build` (perf baselines, redesign QA) silently uploads source
+// maps and creates or touches a release named after the local git SHA —
+// noise in the Sentry project that is indistinguishable from a deployed
+// build.
+// Vercel sets VERCEL=1 and GitHub Actions sets CI=true during builds, so
+// deployed bundles keep their source maps. Only the build plugin is gated:
+// the runtime SDK, DSN and /monitoring tunnel behave the same everywhere.
+// To upload from a local build on purpose, run it with CI=1.
+const uploadToSentry = Boolean(process.env.CI || process.env.VERCEL);
+
 export default withSentryConfig(withNextIntl({
   serverExternalPackages: ["kuromoji"],
   // Two tracing gaps break /api/og/* on Vercel, and both surface as the same
@@ -65,6 +77,17 @@ export default withSentryConfig(withNextIntl({
 
   // Only print logs for uploading source maps in CI
   silent: !process.env.CI,
+
+  // See `uploadToSentry` above. The empty token is what actually stops the
+  // plugin from talking to Sentry: it falls back to SENTRY_AUTH_TOKEN only
+  // when `authToken` is undefined (`??`), and every API step (release
+  // create, set-commits, upload) returns early without a token.
+  // `release.create: false` alone is not enough — the SDK then drops the
+  // release options, and the plugin core still derives a release from the
+  // git SHA and runs `set-commits` on it. `sourcemaps.disable` additionally
+  // skips source-map generation and debug-ID injection locally.
+  authToken: uploadToSentry ? process.env.SENTRY_AUTH_TOKEN : "",
+  sourcemaps: { disable: !uploadToSentry },
 
   // For all available options, see:
   // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
