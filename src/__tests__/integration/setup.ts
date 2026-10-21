@@ -1,4 +1,7 @@
 import { config } from "dotenv";
+import { DEV_PROJECT_REF, pointsAtDevProject } from "../../../scripts/dev-db-guard.mjs";
+
+export { DEV_PROJECT_REF };
 
 // Same precedence as Next: `.env.local` overrides `.env`. Loaded before
 // any test module imports `@/lib/prisma`, which reads DATABASE_URL at
@@ -7,27 +10,9 @@ config({ path: [".env.local", ".env"], quiet: true });
 
 // Guard rail: these suites write (and then delete) rows and emit
 // broadcasts. Refuse to run against anything that is not the dev
-// project. The check parses the URL and looks at the place Supabase
-// actually puts the project ref, rather than `includes(ref)` over the
-// whole string — a password or query string that happened to contain
-// the dev ref would otherwise let a prod URL through:
-//   direct:  postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
-//   pooler:  postgresql://postgres.<ref>:<pw>@<region>.pooler.supabase.com:6543/postgres
-// Any URL that does not parse fails closed.
-export const DEV_PROJECT_REF = "nddawybyuedsrshhxikx";
-function pointsAtDevProject(raw: string): boolean {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return false;
-  }
-  const direct = url.hostname === `db.${DEV_PROJECT_REF}.supabase.co`;
-  const pooler =
-    url.hostname.endsWith(".pooler.supabase.com") &&
-    decodeURIComponent(url.username) === `postgres.${DEV_PROJECT_REF}`;
-  return direct || pooler;
-}
+// project. The parsing rule (which part of the URL carries the project
+// ref, and why) lives in scripts/dev-db-guard.mjs, shared with
+// scripts/db-ro.mjs.
 for (const name of ["DATABASE_URL", "DATABASE_URL_UNPOOLED"] as const) {
   if (!pointsAtDevProject(process.env[name] ?? "")) {
     throw new Error(

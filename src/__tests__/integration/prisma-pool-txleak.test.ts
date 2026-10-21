@@ -105,7 +105,7 @@ describe("pool hygiene after a maxWait give-up", () => {
       SELECT pg_current_xact_id()::text AS xid`;
     const [second] = await prisma.$queryRaw<{ xid: string }[]>`
       SELECT pg_current_xact_id()::text AS xid`;
-    console.log(`[txleak] probe xid1=${first.xid} xid2=${second.xid}`);
+    console.log("[txleak] probe xid1=%s xid2=%s", first.xid, second.xid);
     expect(second.xid).not.toBe(first.xid);
 
     // 5. The snapshot builder's shape: a REPEATABLE READ transaction

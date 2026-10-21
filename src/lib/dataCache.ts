@@ -334,12 +334,19 @@ export function warmEntryCache(): RuntimeCache {
  */
 function expireWarmPublicData(): void {
   const startedAt = Date.now();
-  console.log(`[dataCache] expire-warm phase=start at=${startedAt} instance=${INSTANCE_ID}`);
+  console.log(
+    "[dataCache] expire-warm phase=start at=%s instance=%s",
+    startedAt,
+    INSTANCE_ID,
+  );
   const settled = (ok: boolean) => {
     const at = Date.now();
     console.log(
-      `[dataCache] expire-warm phase=done ok=${ok} ms=${at - startedAt} at=${at} ` +
-        `instance=${INSTANCE_ID}`,
+      "[dataCache] expire-warm phase=done ok=%s ms=%s at=%s instance=%s",
+      ok,
+      at - startedAt,
+      at,
+      INSTANCE_ID,
     );
   };
   const fail = (err: unknown) =>

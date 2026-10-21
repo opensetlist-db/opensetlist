@@ -37,3 +37,12 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL_UNPOOLED }}
         run: npx prisma db execute --file prisma/post-deploy.sql
+      - name: Check anon/authenticated exposure of public tables
+        env:
+          DATABASE_URL: ${{ secrets.DEV_DATABASE_URL_UNPOOLED }}
+        # Supabase grants anon/authenticated ALL on every new public table
+        # and the browser holds the anon key. Fails when a table reachable
+        # by those roles is not in prisma/anon-exposed-tables.txt — lock it
+        # down in post-deploy.sql (see the ImageAsset block) instead.
+        # Read-only (BEGIN READ ONLY, no session SET).
+        run: node scripts/check-anon-exposure.mjs
