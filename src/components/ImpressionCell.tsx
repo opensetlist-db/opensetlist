@@ -145,6 +145,11 @@ export function ImpressionCell({
         {displayText}
       </div>
       <div className="mt-1 flex items-center justify-between text-xs text-zinc-400">
+        {/* UTC day (formatDate's default), not the viewer's zone: this
+            client component is server-rendered first, and a
+            viewer-zone date would differ from the SSR markup for
+            anyone outside UTC and fail hydration. A Korean viewer
+            sees the previous day for posts made 00:00-08:59 KST. */}
         <span>{formatDate(impression.createdAt, locale)}</span>
         <div className="flex items-center gap-3">
           {canTranslate && (

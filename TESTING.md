@@ -22,6 +22,13 @@ CI (`.github/workflows/ci.yml`) runs only lint, the TESTING.md row
 check, `tsc --noEmit`, the unit suite and a report-only dead-code pass. Integration and E2E run
 locally, by hand.
 
+The unit suite runs with `TZ=America/Los_Angeles` (set in
+`vitest.config.ts`), on every machine and in CI. A stored UTC date
+formatted without `timeZone: "UTC"` therefore renders a day early and
+fails, instead of passing on UTC hosts (Vercel, CI) and drifting only on
+a developer's machine. Write date tests against that zone, never by
+reading the host's. `tz-pin.test.ts` fails if the pin stops taking effect.
+
 `npm run lint` is ESLint plus `npm run lint:css` (stylelint over
 `src/**/*.module.css`, `stylelint.config.mjs`: hex colour literals
 warn). `npm run lint:dead` (knip, `knip.config.ts`) lists files nothing
