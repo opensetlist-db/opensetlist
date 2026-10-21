@@ -99,8 +99,10 @@ export default async function EditAlbumPage({ params }: Props) {
           artistIds: artistIdStrs,
         }}
         cover={{
-          imageUrl: coverState?.imageUrl ?? album.imageUrl,
-          provenance: coverState?.provenance ?? null,
+          // A null imageUrl from the snapshot means "no cover" — never
+          // fall back to the earlier row read.
+          imageUrl: coverState ? coverState.imageUrl : album.imageUrl,
+          provenance: coverState ? coverState.provenance : null,
           r2PublicHost: r2PublicHost(),
           uploadConfigured: isUploadStorageConfigured(),
         }}
