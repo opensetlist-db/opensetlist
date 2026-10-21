@@ -444,7 +444,9 @@ async function runCell(locale, width) {
   let errorsOpen = true;
   page.on("pageerror", (e) => errorsOpen && errors.push(String(e).split("\n")[0]));
   page.on("response", (r) => {
-    if (errorsOpen && r.status() >= 400 && !/\/_vercel\/speed-insights\//.test(r.url()))
+    // Exactly the known exception: a 404 for our own origin's script.
+    const speedInsights404 = r.status() === 404 && r.url().startsWith(`${BASE}/_vercel/speed-insights/`);
+    if (errorsOpen && r.status() >= 400 && !speedInsights404)
       errors.push(`${r.status()} ${r.url()}`);
   });
   page.on("console", (m) => {
