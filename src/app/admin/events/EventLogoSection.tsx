@@ -55,7 +55,7 @@ export default function EventLogoSection({ eventId, initialState, typography, se
   }, [guard]);
 
   return (
-    <div className="max-w-[576px]">
+    <div className="max-w-[576px]" data-testid="event-logo-section">
       <LogoAssignmentCard
         endpoint={`/api/admin/events/${eventId}/logo`}
         initialState={initialState}
