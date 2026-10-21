@@ -1,15 +1,20 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
-import { colors, radius } from "@/styles/tokens";
 import type { AlbumArtistFilterOption } from "@/lib/albums";
+import styles from "./albumList.module.css";
 
 /*
- * Artist filter for the `/[locale]/albums` list page (Sprint B2 QA
- * pass). Mirrors the artists list FilterBar: each chip is a plain
- * navigation <Link> (not a button) carrying `?artist=<id>`, so the
- * server re-fetches the filtered list on click — no client state. "전체"
- * (no param) clears the filter. Only artists that have ≥1 album appear
- * (resolved by getAlbumArtistFilters).
+ * Artist filter for the `/[locale]/albums` list page. Mirrors the
+ * artists list FilterBar: each pill is a plain navigation <Link> (not a
+ * button) carrying `?artist=<id>`, so the server re-fetches the filtered
+ * list on click — no client state. "전체" (no param) clears the filter.
+ * Only top-level artists whose family has ≥1 album appear (resolved by
+ * getAlbumArtistFilters).
+ *
+ * Visual (26-v1): 44px-tall pills that wrap within the page and show the
+ * complete name — the earlier 200px ellipsis cap is gone, so a locale
+ * without a `shortName` shows the full translated name, wrapping inside
+ * the pill when it is wider than the page.
  */
 
 interface Props {
@@ -22,10 +27,10 @@ export async function AlbumArtistFilter({ active, options }: Props) {
   const t = await getTranslations("Album");
 
   // Nothing to filter by (0 or 1 artist in the catalog) → omit the bar
-  // entirely rather than show just the "전체" chip.
+  // entirely rather than show just the "전체" pill.
   if (options.length <= 1) return null;
 
-  const chip = (
+  const pill = (
     key: string,
     href:
       | { pathname: "/albums" }
@@ -37,50 +42,17 @@ export async function AlbumArtistFilter({ active, options }: Props) {
       key={key}
       href={href}
       aria-current={isActive ? "page" : undefined}
-      // Full name on hover / long-press when the label is truncated.
-      title={label}
-      style={{
-        // Cap + ellipsis so one long label can't claim a whole row on
-        // mobile. The label is the artist's *short* name, but it falls
-        // back to the full translated name when a locale has no
-        // `shortName` (e.g. 蓮ノ空女学院スクールアイドルクラブ ≈ 250px),
-        // which pushed the next chip onto its own line. 200px fits
-        // ~12 CJK chars at 13px — every real short name — and keeps
-        // two chips per row at 390px. Inline-block is required for
-        // max-width / overflow to apply to the inline <a>.
-        display: "inline-block",
-        maxWidth: 200,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        padding: "6px 14px",
-        borderRadius: radius.button,
-        fontSize: 13,
-        fontWeight: 600,
-        border: `1.5px solid ${isActive ? colors.primary : colors.border}`,
-        background: isActive ? colors.primaryBg : colors.bgCard,
-        color: isActive ? colors.primary : colors.textSecondary,
-        textDecoration: "none",
-        lineHeight: 1.4,
-        whiteSpace: "nowrap",
-      }}
+      className={styles.filter}
     >
       {label}
     </Link>
   );
 
   return (
-    <nav
-      aria-label={t("artistFilterAria")}
-      style={{
-        display: "flex",
-        gap: 8,
-        padding: "0 16px 16px",
-        flexWrap: "wrap",
-      }}
-    >
-      {chip("all", { pathname: "/albums" }, active === null, t("filterAll"))}
+    <nav aria-label={t("artistFilterAria")} className={styles.filters}>
+      {pill("all", { pathname: "/albums" }, active === null, t("filterAll"))}
       {options.map((o) =>
-        chip(
+        pill(
           o.id,
           { pathname: "/albums", query: { artist: o.id } },
           active === o.id,
