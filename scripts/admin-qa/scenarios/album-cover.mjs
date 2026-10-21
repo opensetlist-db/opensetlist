@@ -1,16 +1,15 @@
-// admin-qa scenario: the album cover editor on /admin/albums/<id>/edit
-// (redesign ticket 11). Ported from the ticket's hand-written QA script;
-// copy this file as the starting point for the series-logo (09) and
-// event-logo (10) editors.
+// admin-qa scenario: the album cover editor on /admin/albums/<id>/edit.
+// The reference scenario — copy it as the starting point for another
+// image editor (series logo, event logo, …).
 //
 // Fixture: one NEW Album (slug `cover-qa-<ms>`, title TOKIMEKI Runners,
-// an Amazon cover URL from the 04 design packet). States that need a
-// "concurrent" change or a specific starting cover write only this row.
-// The "empty" state views an existing album without a cover READ-ONLY.
+// an external Amazon cover URL). States that need a "concurrent" change
+// or a specific starting cover write only this row, directly. The
+// "empty" state views an existing album without a cover READ-ONLY.
 //
 // `--upload` adds one real upload (chromium, 1440 only) to the dev bucket
 // under the server's R2_KEY_PREFIX; its ImageAsset row is deleted with the
-// fixture, the R2 object stays (record it in the ticket handoff).
+// fixture, the R2 object stays (record its key with the QA evidence).
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
@@ -102,8 +101,11 @@ const scenario = {
         const referer = t.refererTo("https://m.media-amazon.com/");
         await t.open(editPath(t.fixture.albumId));
         await t.checkImgNoReferrer('[data-testid="cover-preview"] img', "default");
+        // "unset" means no request reached the host at all — a FAIL, or
+        // the no-Referer check would pass vacuously.
         const r = referer();
-        t.check(`default@${t.width} no Referer sent to external host`, r === "" || r === "unset", r);
+        t.check(`default@${t.width} external host requested`, r !== "unset");
+        t.check(`default@${t.width} no Referer sent to external host`, r === "", r);
         t.check(`default@${t.width} badge`, /URL · Amazon/.test(await badge(t).innerText()));
         await t.shot("default");
       },
@@ -246,14 +248,21 @@ const scenario = {
         await t.page.getByText("저장되었습니다").waitFor({ timeout: 30000 });
         const managed = await getCover(t);
         t.check(`upload@${t.width} assigns managed URL`, managed && managed.startsWith(t.env.R2_PUBLIC_BASE_URL), managed);
-        await t.page.waitForFunction(
-          () => /업로드 이미지 · R2/.test(document.querySelector('[data-testid="cover-current-badge"]')?.textContent ?? ""),
-          null,
-          { timeout: 10000 },
-        );
+        const r2Badge = await t.page
+          .waitForFunction(
+            () => /업로드 이미지 · R2/.test(document.querySelector('[data-testid="cover-current-badge"]')?.textContent ?? ""),
+            null,
+            { timeout: 10000 },
+          )
+          .then(() => true, () => false);
+        t.check(`upload@${t.width} badge R2`, r2Badge);
         await t.shot("success-upload");
         await t.page.getByRole("button", { name: "URL 입력" }).click();
-        await t.page.getByText(/관리 업로드 · 600×600/).waitFor({ timeout: 10000 });
+        const provenance = await t.page
+          .getByText(/관리 업로드 · 600×600/)
+          .waitFor({ timeout: 10000 })
+          .then(() => true, () => false);
+        t.check(`upload@${t.width} provenance by exact URL`, provenance);
         await t.shot("success-upload-provenance");
         fs.writeFileSync(path.join(t.outDir, "uploaded-url.txt"), managed);
         // The public album page renders the new cover (the save expired its cache).
@@ -267,7 +276,7 @@ const scenario = {
             return img ? { found: true, w: img.naturalWidth, rp: img.referrerPolicy } : { found: false };
           }, managed);
           t.check(`public ${loc}@${w} renders uploaded cover`, ok.found && ok.w > 0, JSON.stringify(ok));
-          await p2.screenshot({ path: path.join(t.outDir, `album-cover-public-${loc}-${w}.png`), fullPage: true });
+          await t.capture(p2, `public-${loc}`, w);
           await p2.close();
         }
         // Upload → URL replaces it; the asset row is retained.

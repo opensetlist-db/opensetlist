@@ -97,7 +97,10 @@ is_ours() {
   else
     want="$root/node_modules/"
   fi
-  [[ "${cl,,}" == *"${want,,}"* && "${cl,,}" =~ next.*start ]]
+  # tr, not ${x,,}: macOS ships bash 3.2.
+  cl="$(printf '%s' "$cl" | tr '[:upper:]' '[:lower:]')"
+  want="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')"
+  [[ "$cl" == *"$want"* && "$cl" =~ next.*start ]]
 }
 
 kill_tree() {
@@ -181,10 +184,13 @@ fi
 echo "$pid" > "$pidfile"
 echo "started next start pid $pid on :$port (log $logfile)"
 
-for i in $(seq 1 120); do
+# A wall-clock deadline: on Windows each liveness check below starts
+# PowerShell, so counting iterations would understate the wait.
+SECONDS=0
+while ((SECONDS < 120)); do
   code="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/robots.txt" || true)"
   if [ "$code" = "200" ]; then
-    echo "ready: http://localhost:$port (/robots.txt 200 after ${i}s)"
+    echo "ready: http://localhost:$port (/robots.txt 200 after ${SECONDS}s)"
     echo "stop: (cd $root && bash scripts/serve-build.sh --stop $port)"
     exit 0
   fi

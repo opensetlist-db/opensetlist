@@ -38,6 +38,9 @@
 //   check(name, ok, detail)       record PASS/FAIL
 //   open(path)                    goto base+path, wait for `ready`
 //   shot(state)                   full-page PNG + whole-page overflow check
+//   capture(otherPage, label, w)  full-page PNG of another page (e.g. the
+//                                 public page after a save), recorded with
+//                                 the run's captures
 //   refererTo(prefix)             start watching requests to an external
 //                                 host; returns () => last Referer seen
 //                                 ("unset" when no request went out)
@@ -45,14 +48,19 @@
 //                                    and actually rendered
 //   keyboardActivate(locator, label) focus directly + Enter (WebKit skips
 //                                    buttons on Tab) and check the focus
-//                                    ring; assert the effect afterwards
+//                                    ring (outline or box-shadow); assert
+//                                    the effect afterwards
 //   checkNamedControls(label)     every input/textarea/button/select in
 //                                 `container` has an accessible name
 //   checkNoAnimations(label)      reduced motion → nothing in `container`
-//                                 animates or transitions
+//                                 animates OR transitions. Transitions
+//                                 count too: globals.css turns both off
+//                                 under prefers-reduced-motion, so one
+//                                 that survives is a page override.
 //
 // Shared dev DB rules (wiki output/redesign/session-start.md): fixtures
-// are NEW rows with a unique tag, edited only through the app; existing
+// are NEW rows with a unique tag. A scenario may write its own fixture
+// rows directly (a "concurrent" change, a starting value); existing
 // records are at most read. The caller must hold the execution-board DB
 // mutation slot — the CLI prints a reminder. The DB URL must be the DEV
 // project (scripts/dev-db-guard.mjs) and only the session pooler
@@ -74,6 +82,10 @@ export const BROWSERS = { chromium, webkit };
 const WEBP_MAX_PART_HEIGHT = 16000;
 const WEBP_QUALITY = 90;
 const SHARP_INPUT = { limitInputPixels: false };
+
+// pg returns int8 ids as strings, but a scenario fixture may hold a real
+// BigInt, and JSON.stringify throws on one.
+const jsonSafe = (_, v) => (typeof v === "bigint" ? String(v) : v);
 
 /** `.env.local` wins over `.env`, as in Next and scripts/db-ro.mjs. */
 export function loadEnv(repoRoot) {
@@ -142,7 +154,7 @@ export async function runScenario({ scenario, browserName, mode, base, outDir, e
   let browser;
   try {
     fixture = await scenario.fixture.create({ db, tag, outDir, env, opts });
-    log(`fixture ${tag} ${JSON.stringify(fixture, (_, v) => (typeof v === "bigint" ? String(v) : v))}`);
+    log(`fixture ${tag} ${JSON.stringify(fixture, jsonSafe)}`);
     browser = await BROWSERS[browserName].launch();
 
     // One fresh context per page so cookies/cache never carry over.
@@ -202,6 +214,11 @@ export async function runScenario({ scenario, browserName, mode, base, outDir, e
           shots.push(file);
           await t.overflow(state);
         },
+        async capture(otherPage, label, w) {
+          const file = pngPath(label, w);
+          await otherPage.screenshot({ path: file, fullPage: true });
+          shots.push(file);
+        },
         refererTo(prefix) {
           let referer = "unset";
           page.on("request", (r) => {
@@ -227,8 +244,15 @@ export async function runScenario({ scenario, browserName, mode, base, outDir, e
           // as it would for a keyboard user.
           await page.keyboard.press("Shift");
           await locator.focus();
-          const outline = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
-          check(`kbd ${label}@${width} focus indicator`, outline !== "none", outline);
+          const ring = await page.evaluate(() => {
+            const s = getComputedStyle(document.activeElement);
+            return { outline: s.outlineStyle, shadow: s.boxShadow };
+          });
+          check(
+            `kbd ${label}@${width} focus indicator`,
+            ring.outline !== "none" || ring.shadow !== "none",
+            `outline=${ring.outline} box-shadow=${ring.shadow}`,
+          );
           await page.keyboard.press("Enter");
         },
         async checkNamedControls(label = "controls") {
@@ -327,9 +351,13 @@ export async function runScenario({ scenario, browserName, mode, base, outDir, e
     } catch (e) {
       check("fixture remove ran", false, String(e?.message ?? e).slice(0, 300));
     }
-    const left = await scenario.fixture.remaining({ db, tag, fixture });
-    check("fixture deleted (0 rows left)", left === 0, `remaining=${left}`);
-    await db.end();
+    try {
+      const left = await scenario.fixture.remaining({ db, tag, fixture });
+      check("fixture deleted (0 rows left)", left === 0, `remaining=${left}`);
+    } catch (e) {
+      check("fixture deleted (0 rows left)", false, `count failed — check ${tag} by hand: ${String(e?.message ?? e).slice(0, 300)}`);
+    }
+    await db.end().catch(() => {});
   }
 
   let webp = [];
@@ -350,7 +378,7 @@ export async function runScenario({ scenario, browserName, mode, base, outDir, e
   };
   fs.writeFileSync(
     path.join(outDir, `results-${scenario.name}-${browserName}-${mode}.json`),
-    JSON.stringify(summary, (_, v) => (typeof v === "bigint" ? String(v) : v), 2),
+    JSON.stringify(summary, jsonSafe, 2),
   );
   return summary;
 }
