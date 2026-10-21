@@ -16,6 +16,13 @@
 // therefore never overwrite a newer assignment, and a commit is never
 // undone. If the bound is exhausted the result stays `unknown`: the form
 // must tell the operator to reload and check, not claim failure.
+//
+// "Unknown" is a property of the ATTEMPT, not of one submit() call: once
+// any send of this attempt had an unobservable outcome, a later plain
+// failure (even from a separate, manual submit() — e.g. a "다시 저장"
+// button) cannot prove the earlier send never committed, so it is still
+// reported as `unknown`. Only stronger evidence — a success or a conflict
+// answered by the server — replaces it.
 
 import { formatMiB } from "./errors";
 import { IMAGE_INPUT_ACCEPT, MAX_IMAGE_BYTES, MAX_UPLOAD_RESUBMISSIONS } from "./limits";
@@ -71,6 +78,7 @@ export function startImageAttempt(
   const attemptId = randomUUID();
   const previewUrl = createObjectURL(file);
   let cancelled = false;
+  let everUnknown = false;
 
   return {
     attemptId,
@@ -96,6 +104,7 @@ export function startImageAttempt(
           res = await fetchImpl(url, { method: "POST", body: form, credentials: "same-origin" });
         } catch {
           last = { kind: "unknown", body: null };
+          everUnknown = true;
           continue;
         }
         const body: unknown = await res.json().catch(() => null);
@@ -108,13 +117,15 @@ export function startImageAttempt(
         // have cut off a request that went on to commit: unknown, not failed.
         if (outcome === "unknown" || (outcome === undefined && res.status >= 500)) {
           last = { kind: "unknown", body };
+          everUnknown = true;
           continue;
         }
         if (outcome === "conflict" || res.status === 409) return { kind: "conflict", body };
         // A failed RESUBMISSION does not prove the first send never
         // committed (e.g. the retry hit the same DB outage before it could
-        // reconcile). Once an outcome was unobservable, it stays unknown.
-        if (sent > 0) return { kind: "unknown", body };
+        // reconcile). Once an outcome was unobservable, it stays unknown —
+        // across submit() calls too.
+        if (everUnknown) return { kind: "unknown", body };
         return { kind: "not_saved", httpStatus: res.status, body };
       }
       return last;

@@ -8,8 +8,13 @@ import { ALBUM_TYPE_SET } from "@/lib/albumConstants";
 import { parseBigInt } from "@/lib/adminParsers";
 import type { AlbumType } from "@/generated/prisma/enums";
 import { revalidatePublicData } from "@/lib/dataCache";
+import { isUploadError, writeAlbumImageUrl } from "@/lib/imageUpload";
+import { parseCoverUrl, parseExpectedCoverJson } from "@/lib/albumCover";
 
 type RouteProps = { params: Promise<{ id: string }> };
+
+/** Thrown inside the transaction to roll it back on a cover CAS miss. */
+class CoverConflict extends Error {}
 
 type PatchBody = {
   slug?: unknown;
@@ -19,6 +24,7 @@ type PatchBody = {
   releaseDate?: unknown;
   labelName?: unknown;
   imageUrl?: unknown;
+  expectedImageUrl?: unknown;
   translations?: unknown;
   artistIds?: unknown;
 };
@@ -33,7 +39,8 @@ type PatchBody = {
  *     originalLanguage: string,
  *     releaseDate: string | null,   // YYYY-MM-DD
  *     labelName: string | null,
- *     imageUrl: string | null,
+ *     imageUrl?: string | null,          // omit = cover untouched
+ *     expectedImageUrl?: string | null, // required with imageUrl
  *     translations: { locale, title }[],
  *     artistIds: number[],
  *   }
@@ -41,7 +48,18 @@ type PatchBody = {
  *   → 400 invalid input
  *   → 401 unauthorized
  *   → 404 not found
- *   → 409 slug conflict
+ *   → 409 slug conflict, or cover conflict (`code: "assignment_conflict"`)
+ *
+ * The cover (Album.imageUrl) is the album's only current cover source.
+ * The admin form saves it through `/api/admin/albums/[id]/cover` and
+ * leaves it out of this body; an info edit that omits `imageUrl` must
+ * never touch the cover (it used to null it). A caller that does send
+ * `imageUrl` must also send the value it loaded as `expectedImageUrl`:
+ * the write is then a compare-and-set inside this same transaction, and
+ * a mismatch rolls back every field of the request. A body with
+ * `imageUrl` but no expected value is rejected rather than written
+ * blindly — that is the shape an old, still-open form tab sends, and
+ * writing it would bring back a cover someone has since replaced.
  *
  * Translations + artists are replaced delete-then-create (mirrors
  * `PUT /api/admin/songs/[id]`). This is the only Album mutation
@@ -156,10 +174,20 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     typeof body.labelName === "string" && body.labelName.trim()
       ? body.labelName.trim()
       : null;
-  const imageUrl =
-    typeof body.imageUrl === "string" && body.imageUrl.trim()
-      ? body.imageUrl.trim()
-      : null;
+  let coverChange: { expected: { imageUrl: string | null }; next: string | null } | null = null;
+  if (body.imageUrl !== undefined) {
+    try {
+      coverChange = {
+        expected: parseExpectedCoverJson(body as Record<string, unknown>),
+        next: parseCoverUrl(body.imageUrl),
+      };
+    } catch (e) {
+      if (isUploadError(e)) {
+        return NextResponse.json({ error: e.message, code: e.code }, { status: 400 });
+      }
+      throw e;
+    }
+  }
 
   // Translations field is optional. "Missing" = preserve existing
   // rows (a thin client editing only the slug shouldn't wipe locale
@@ -251,7 +279,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         await tx.albumArtist.deleteMany({ where: { albumId } });
       }
 
-      return tx.album.update({
+      const row = await tx.album.update({
         where: { id: albumId },
         data: {
           slug,
@@ -260,7 +288,6 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
           originalLanguage: body.originalLanguage as string,
           releaseDate,
           labelName,
-          imageUrl,
           translations:
             translationsProvided && translations.length
               ? {
@@ -282,6 +309,14 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         // noise once serializeBigInt-coerced.
         include: { translations: true },
       });
+      if (
+        coverChange &&
+        !(await writeAlbumImageUrl(tx, albumId, coverChange.expected, coverChange.next))
+      ) {
+        // Throwing rolls back the info update above as well.
+        throw new CoverConflict();
+      }
+      return coverChange ? { ...row, imageUrl: coverChange.next } : row;
     });
 
     if (!updated) {
@@ -293,6 +328,22 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
+    if (e instanceof CoverConflict) {
+      const current = await prisma.album.findUnique({
+        where: { id: albumId },
+        select: { imageUrl: true },
+      });
+      return NextResponse.json(
+        {
+          error:
+            "다른 곳에서 표지가 먼저 바뀌어 저장하지 않았습니다. 새로고침해 현재 표지를 확인한 뒤 다시 시도해 주세요.",
+          code: "assignment_conflict",
+          outcome: "conflict",
+          current: current ? { imageUrl: current.imageUrl } : null,
+        },
+        { status: 409 },
+      );
+    }
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       if (e.code === "P2002") {
         // Unique constraint — `slug` is the only @unique on Album

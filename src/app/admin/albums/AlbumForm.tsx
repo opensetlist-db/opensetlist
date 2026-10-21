@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { classifyImageSource } from "@/lib/imageSourceBadge";
+import AlbumCoverEditor, { type CoverProvenance } from "./AlbumCoverEditor";
 import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
 import { ALBUM_TYPES } from "@/lib/albumConstants";
 import { UnlistedArtistOption } from "@/components/admin/artistPicker";
@@ -18,7 +18,6 @@ type AlbumFormProps = {
     originalLanguage: string;
     releaseDate: string | null;
     labelName: string | null;
-    imageUrl: string | null;
     translations: Translation[];
     // String[] to keep Artist.id (BigInt server-side) safe through
     // JSON serialization. Earlier version used number[]; that path
@@ -26,17 +25,60 @@ type AlbumFormProps = {
     // ids via parseBigInt's string branch.
     artistIds: string[];
   };
+  // The cover is edited and saved separately (AlbumCoverEditor); the
+  // info save below never sends it, so it cannot overwrite a cover that
+  // changed after this page loaded.
+  cover: {
+    imageUrl: string | null;
+    provenance: CoverProvenance | null;
+    r2PublicHost: string | null;
+    uploadConfigured: boolean;
+  };
 };
-
 
 type ArtistOption = {
   id: string;
   translations: { locale: string; name: string }[];
 };
 
-export default function AlbumForm({ initialData }: AlbumFormProps) {
+export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const infoFormId = useId();
+
+  // Unsaved (or unresolved) cover draft: warn before leaving the page,
+  // for a reload/close (beforeunload) and for in-app links (a capture
+  // listener, since the App Router has no navigation-blocking hook).
+  const coverPendingRef = useRef(false);
+  const onCoverDirtyChange = useCallback((pending: boolean) => {
+    coverPendingRef.current = pending;
+  }, []);
+  useEffect(() => {
+    const message =
+      "저장하지 않았거나 결과를 확인하지 않은 표지 변경이 있습니다. 이 페이지를 떠날까요?";
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!coverPendingRef.current) return;
+      e.preventDefault();
+    }
+    function onClick(e: MouseEvent) {
+      if (!coverPendingRef.current || e.defaultPrevented || e.button !== 0)
+        return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as Element | null)?.closest?.("a[href]");
+      if (!(a instanceof HTMLAnchorElement) || a.target === "_blank") return;
+      if (a.origin !== window.location.origin) return;
+      if (!window.confirm(message)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, []);
 
   const [slug, setSlug] = useState(initialData.slug);
   const [type, setType] = useState(initialData.type);
@@ -46,7 +88,6 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
   );
   const [releaseDate, setReleaseDate] = useState(initialData.releaseDate ?? "");
   const [labelName, setLabelName] = useState(initialData.labelName ?? "");
-  const [imageUrl, setImageUrl] = useState(initialData.imageUrl ?? "");
   const [translations, setTranslations] = useState<Translation[]>(
     initialData.translations.length
       ? initialData.translations
@@ -66,13 +107,21 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
     fetch("/api/admin/artists")
       .then((r) => (r.ok ? r.json() : []))
       .then(
-        (data: { id: number | string; translations: ArtistOption["translations"] }[]) =>
-          setArtistOptions(data.map((a) => ({ ...a, id: String(a.id) }))),
+        (
+          data: {
+            id: number | string;
+            translations: ArtistOption["translations"];
+          }[],
+        ) => setArtistOptions(data.map((a) => ({ ...a, id: String(a.id) }))),
       )
       .catch(() => setArtistOptions([]));
   }, []);
 
-  function updateTranslation(index: number, field: keyof Translation, value: string) {
+  function updateTranslation(
+    index: number,
+    field: keyof Translation,
+    value: string,
+  ) {
     setTranslations((prev) =>
       prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)),
     );
@@ -101,7 +150,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
       originalLanguage,
       releaseDate: releaseDate || null,
       labelName: labelName.trim() || null,
-      imageUrl: imageUrl.trim() || null,
+      // imageUrl deliberately absent: the server leaves the cover alone.
       translations: translations.filter((t) => t.title.trim()),
       artistIds,
     };
@@ -114,7 +163,11 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
       });
       if (res.ok) {
         router.refresh();
-        alert("저장되었습니다.");
+        alert(
+          coverPendingRef.current
+            ? "앨범 정보를 저장했습니다. 표지 변경은 아직 저장 전입니다 — 표지 저장을 눌러 주세요."
+            : "앨범 정보를 저장했습니다.",
+        );
         return;
       }
       const body = await res.json().catch(() => null);
@@ -126,115 +179,105 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
     }
   }
 
-  const imgSrc = classifyImageSource(imageUrl);
-
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-      <div className="grid grid-cols-[1fr_auto] gap-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium">원제</label>
-          <input
-            value={originalTitle}
-            onChange={(e) => setOriginalTitle(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-3 py-2"
-            required
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">원어</label>
-          <select
-            value={originalLanguage}
-            onChange={(e) => setOriginalLanguage(e.target.value)}
-            className="rounded border border-zinc-300 px-3 py-2"
-          >
-            {ADMIN_LANGUAGES.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium">슬러그</label>
-          <div className="flex gap-2">
+    <div className="max-w-2xl space-y-6">
+      <form id={infoFormId} onSubmit={handleSubmit} className="space-y-6">
+        <div className="grid grid-cols-[1fr_auto] gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium">원제</label>
             <input
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              className="flex-1 rounded border border-zinc-300 px-3 py-2 font-mono text-sm"
+              value={originalTitle}
+              onChange={(e) => setOriginalTitle(e.target.value)}
+              className="w-full rounded border border-zinc-300 px-3 py-2"
               required
             />
-            <a
-              href="/admin/slug-generator"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded border border-zinc-300 px-2 py-2 text-xs text-zinc-600 hover:bg-zinc-50"
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">원어</label>
+            <select
+              value={originalLanguage}
+              onChange={(e) => setOriginalLanguage(e.target.value)}
+              className="rounded border border-zinc-300 px-3 py-2"
             >
-              생성기
-            </a>
+              {ADMIN_LANGUAGES.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">타입</label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-3 py-2"
-          >
-            {ALBUM_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium">발매일 (선택)</label>
-          <input
-            type="date"
-            value={releaseDate}
-            onChange={(e) => setReleaseDate(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-3 py-2"
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium">슬러그</label>
+            <div className="flex gap-2">
+              <input
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                className="flex-1 rounded border border-zinc-300 px-3 py-2 font-mono text-sm"
+                required
+              />
+              <a
+                href="/admin/slug-generator"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded border border-zinc-300 px-2 py-2 text-xs text-zinc-600 hover:bg-zinc-50"
+              >
+                생성기
+              </a>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">타입</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="w-full rounded border border-zinc-300 px-3 py-2"
+            >
+              {ALBUM_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">레이블 (선택)</label>
-          <input
-            value={labelName}
-            onChange={(e) => setLabelName(e.target.value)}
-            placeholder="레이블 (예: 란티스 / BNML / 에이벡스)"
-            className="w-full rounded border border-zinc-300 px-3 py-2"
-          />
-        </div>
-      </div>
 
-      <div>
-        <div className="mb-1 flex items-center justify-between">
-          <label className="text-sm font-medium">표지 이미지 URL</label>
-          <span
-            className={`rounded px-2 py-0.5 text-xs font-medium ${imgSrc.color}`}
-          >
-            {imgSrc.label}
-          </span>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              발매일 (선택)
+            </label>
+            <input
+              type="date"
+              value={releaseDate}
+              onChange={(e) => setReleaseDate(e.target.value)}
+              className="w-full rounded border border-zinc-300 px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              레이블 (선택)
+            </label>
+            <input
+              value={labelName}
+              onChange={(e) => setLabelName(e.target.value)}
+              placeholder="레이블 (예: 란티스 / BNML / 에이벡스)"
+              className="w-full rounded border border-zinc-300 px-3 py-2"
+            />
+          </div>
         </div>
-        <input
-          value={imageUrl}
-          onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="R2 URL 또는 Amazon CDN URL (m.media-amazon.com)"
-          className="w-full rounded border border-zinc-300 px-3 py-2 font-mono text-xs"
-        />
-        {imgSrc.warn && (
-          <p className="mt-1 text-xs text-red-600">
-            정책 외 URL입니다. 임시 placeholder라면 wiki/log.md 에 기록하세요
-            (album-image-source-policy).
-          </p>
-        )}
-      </div>
+      </form>
+
+      <AlbumCoverEditor
+        albumId={initialData.id}
+        albumTitle={initialData.originalTitle}
+        initial={{ imageUrl: cover.imageUrl, provenance: cover.provenance }}
+        r2PublicHost={cover.r2PublicHost}
+        uploadConfigured={cover.uploadConfigured}
+        onDirtyChange={onCoverDirtyChange}
+      />
 
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -354,13 +397,20 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
         </div>
       </div>
 
+      {/* Outside the info <form> element (the cover editor's own form
+          sits between them and forms cannot nest); `form=` attaches it.
+          Translations/artists are read from state, not form data. */}
       <button
         type="submit"
+        form={infoFormId}
         disabled={loading}
         className="rounded bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {loading ? "저장 중..." : "저장"}
+        {loading ? "저장 중..." : "앨범 정보 저장"}
       </button>
-    </form>
+      <p className="text-xs text-zinc-500">
+        앨범 정보 저장은 표지를 저장하지 않습니다.
+      </p>
+    </div>
   );
 }

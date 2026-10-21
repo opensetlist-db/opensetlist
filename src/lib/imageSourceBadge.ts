@@ -27,7 +27,16 @@ const AMAZON_HOSTS = new Set([
   "m.media-amazon.com",
 ]);
 
-export function classifyImageSource(url: string): ImageSource {
+/**
+ * `options.r2Host` lets a server component pass the managed-upload host
+ * it derived from `R2_PUBLIC_BASE_URL` (what uploads actually build their
+ * URLs from) down to a client form, so an uploaded cover is never shown
+ * as "External" just because the badge-only env vars are unset.
+ */
+export function classifyImageSource(
+  url: string,
+  options: { r2Host?: string | null } = {},
+): ImageSource {
   if (!url) {
     return { label: "비어있음", color: "bg-zinc-100 text-zinc-500", warn: false };
   }
@@ -56,7 +65,9 @@ export function classifyImageSource(url: string): ImageSource {
   // doesn't fail on a scheme prefix and accidentally re-classify a
   // legitimate R2 image as External.
   const r2HostRaw =
-    process.env.R2_PUBLIC_HOST ?? process.env.NEXT_PUBLIC_R2_PUBLIC_HOST;
+    options.r2Host ??
+    process.env.R2_PUBLIC_HOST ??
+    process.env.NEXT_PUBLIC_R2_PUBLIC_HOST;
   const r2Host = (() => {
     if (!r2HostRaw) return null;
     try {
