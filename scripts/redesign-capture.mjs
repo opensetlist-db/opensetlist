@@ -35,7 +35,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import dotenv from "dotenv";
-import { chromium, webkit } from "playwright";
+// @playwright/test is the declared dependency and re-exports the browser types.
+import { chromium, webkit } from "@playwright/test";
 import sharp from "sharp";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -177,6 +178,13 @@ if (selected.some((t) => t.admin)) {
 const outDir = path.resolve(args.out);
 fs.mkdirSync(outDir, { recursive: true });
 
+// limitInputPixels off: a long 2× mobile page (the baseline's longest is
+// ~41000 CSS px → 82000 device px) exceeds sharp's default pixel cap long
+// before it is a problem for memory.
+const SHARP_INPUT = { limitInputPixels: false };
+
+// `png` in the manifest is null unless --png was passed; comparisons should
+// read the `webp` array, which every run fills (unless --no-webp).
 async function writeImages(png, stem) {
   const files = { png: null, webp: [] };
   if (PNG) {
@@ -184,14 +192,12 @@ async function writeImages(png, stem) {
     fs.writeFileSync(path.join(outDir, files.png), png);
   }
   if (!WEBP) return files;
-  // limitInputPixels off: a long 2× mobile page exceeds sharp's default
-  // pixel cap long before it is a problem for memory.
-  const { width, height } = await sharp(png, { limitInputPixels: false }).metadata();
+  const { width, height } = await sharp(png, SHARP_INPUT).metadata();
   const parts = Math.ceil(height / WEBP_MAX_PART_HEIGHT);
   for (let i = 0; i < parts; i++) {
     const top = i * WEBP_MAX_PART_HEIGHT;
     const file = parts === 1 ? `${stem}.webp` : `${stem}.part${i + 1}.webp`;
-    await sharp(png, { limitInputPixels: false })
+    await sharp(png, SHARP_INPUT)
       .extract({ left: 0, top, width, height: Math.min(WEBP_MAX_PART_HEIGHT, height - top) })
       .webp({ quality: WEBP_QUALITY })
       .toFile(path.join(outDir, file));
@@ -249,20 +255,28 @@ async function capture({ key, url, admin }, vpKey) {
     let reqs = 0;
     const writes = [];
     const failedResponses = [];
+    // Body reads finish asynchronously; collect them so the byte totals are
+    // complete before the manifest entry is written.
+    const bodyReads = [];
     page.on("request", (rq) => {
       if (rq.method() !== "GET" && rq.method() !== "HEAD")
         writes.push(`${rq.method()} ${rq.url().replace(BASE, "")}`.slice(0, 200));
     });
-    page.on("response", async (res) => {
+    page.on("response", (res) => {
       if (!res.url().startsWith(BASE)) return;
       reqs++;
       if (res.status() >= 400)
         failedResponses.push(`${res.status()} ${res.url().replace(BASE, "")}`.slice(0, 200));
-      try {
-        const len = (await res.body()).length;
-        bytes += len;
-        if (res.request().resourceType() === "script") jsBytes += len;
-      } catch {}
+      bodyReads.push(
+        res
+          .body()
+          .then((b) => {
+            bytes += b.length;
+            if (res.request().resourceType() === "script") jsBytes += b.length;
+          })
+          // Redirects and aborted requests have no body to count.
+          .catch(() => {}),
+      );
     });
     const capturedAt = new Date().toISOString();
     const resp = await page.goto(BASE + url, { waitUntil: "load", timeout: 60000 });
@@ -285,6 +299,7 @@ async function capture({ key, url, admin }, vpKey) {
       };
     });
     const png = await page.screenshot({ fullPage: true });
+    await Promise.all(bodyReads);
     const files = await writeImages(png, `${key}__${vpKey}`);
     manifest.push({
       key,
@@ -319,8 +334,12 @@ for (const t of selected) {
     }
   }
 }
-await browser.close();
+// Manifest first: Playwright's WebKit on Windows can hang in
+// browser.close() (its network process lingers), and a run that captured
+// everything must not lose its manifest to that. The close is bounded and
+// process.exit below ends the run either way.
 fs.writeFileSync(path.join(outDir, "captures.json"), JSON.stringify(manifest, null, 2));
+await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
 const errors = manifest.filter((e) => e.error).length;
 console.log(`done: ${manifest.length} captures, ${errors} errors → ${outDir}`);
 process.exit(errors ? 1 : 0);
