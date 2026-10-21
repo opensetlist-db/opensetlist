@@ -47,7 +47,11 @@
 #     (no branch to match a PR against), are always kept as active.
 #   - an unregistered leftover folder is handed over as is: it is deleted
 #     only when empty (a non-empty one is a real refusal).
-# Summary: removed N / locked M (empty folders Windows still holds open,
+# A clean worktree whose branch tip matches a merged PR is removed even
+# if another session still has it open, as the manual rule always did.
+# Dry-run skips the link scan and does not look inside a real node_modules
+# folder, so it can over-report "would remove".
+# Summary: removed N / locked M (folders Windows still holds open — exit 2,
 # names on one line) / active A / refused K (with the reason). Exit 0 unless
 # something was refused; locked and active folders alone are not a failure.
 set -euo pipefail
@@ -75,7 +79,8 @@ if [ -n "$sweep" ]; then
   main="$(cd "$main" && pwd -P)"
   here="$(git rev-parse --show-toplevel 2> /dev/null || true)"
   [ -z "$here" ] || here="$(cd "$here" && pwd -P)"
-  self="$0"
+  # Absolute path, run through bash: $0 may be a bare name or lack the exec bit.
+  self="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
   removed=0 locked_n=0 active_n=0 refused_n=0
   locked="" active="" refused=""
   for dir in "$main"/.claude/worktrees/*/; do
@@ -88,10 +93,10 @@ if [ -n "$sweep" ]; then
     top="$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null || true)"
     if [ -n "$top" ] && [ "$(cd "$top" && pwd -P | tr '[:upper:]' '[:lower:]')" = "$(printf %s "$dir" | tr '[:upper:]' '[:lower:]')" ]; then
       br="$(git -C "$dir" symbolic-ref --quiet --short HEAD || true)"
-      tip="$(git -C "$dir" rev-parse HEAD)"
-      if [ -z "$br" ]; then
+      tip="$(git -C "$dir" rev-parse HEAD 2> /dev/null || true)"
+      if [ -z "$br" ] || [ -z "$tip" ]; then
         # No branch to match a PR against; the commits may exist nowhere else.
-        active_n=$((active_n + 1)); active="$active $name(detached)"; continue
+        active_n=$((active_n + 1)); active="$active $name($([ -n "$br" ] && echo unreadable || echo detached))"; continue
       else
         merged="$(gh pr list --head "$br" --state merged --json headRefOid --jq "map(select(.headRefOid==\"$tip\"))|length" 2> /dev/null || true)"
       fi
@@ -100,8 +105,9 @@ if [ -n "$sweep" ]; then
       fi
     fi
     rc=0
-    out="$("$self" ${dry:+--dry-run} "$dir" 2>&1)" || rc=$?
+    out="$(bash "$self" ${dry:+--dry-run} "$dir" 2>&1)" || rc=$?
     case "$rc" in
+      3) echo "$out" >&2; echo "worktree sweep aborted: the main checkout lost files (exit 3 from $name)" >&2; exit 3 ;;
       0) removed=$((removed + 1)) ;;
       2) locked_n=$((locked_n + 1)); locked="$locked $name" ;;
       *) refused_n=$((refused_n + 1)); refused="$refused
@@ -113,8 +119,7 @@ if [ -n "$sweep" ]; then
   [ -z "$refused" ] || printf '%s
 ' "${refused#
 }"
-  [ "$refused_n" -eq 0 ]
-  exit
+  exit $((refused_n > 0))
 fi
 
 [ -n "$target" ] || { echo "usage: worktree-rm.sh [--force] [--dry-run] <path>  |  --sweep [--dry-run]" >&2; exit 1; }
