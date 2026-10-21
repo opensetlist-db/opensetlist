@@ -34,6 +34,20 @@ slug="${branch#*/}"
 slug="${slug//\//-}"   # feature/a/b → a-b: one folder level
 path="$main/.claude/worktrees/$slug"
 
+# Refuse to hand out a damaged node_modules: the link below shares the
+# main checkout's copy with every worktree, and an emptied package there
+# only shows up later as a confusing `Cannot find module` or a wall of
+# tsc errors. Checked before `worktree add` so a failure leaves nothing
+# to clean up. The checker comes from THIS script's checkout — the main
+# checkout may sit on a branch that predates it.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "$main/node_modules" ] && [ -f "$main/package-lock.json" ]; then
+  node "$script_dir/check-node-modules.mjs" "$main" || {
+    echo "worktree-new: main checkout's node_modules is damaged — repair it, then rerun" >&2
+    exit 1
+  }
+fi
+
 # Only a remote-tracking base needs refreshing; a local base (HEAD, a
 # local branch) must not depend on the network.
 case "$base" in
