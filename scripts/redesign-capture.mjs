@@ -17,7 +17,8 @@
 //     [--png]                        also keep the full-size PNG
 //     [--no-webp]                    skip WebP (then --png is implied)
 //     [--env <path>]                 dotenv file with ADMIN_PASSWORD
-//                                    (default: <repo>/.env)
+//                                    (default: <repo>/.env); it must match
+//                                    the server's ADMIN_PASSWORD
 //     [--list]                       print the keys that would be captured
 //     [--compare <captures.json>]    after writing this run's manifest,
 //                                    compare it entry by entry (key + vp)
@@ -32,6 +33,15 @@
 // variables emptied so nothing uploads:
 //   SENTRY_AUTH_TOKEN= SENTRY_DSN= NEXT_PUBLIC_SENTRY_DSN= npm run build
 //   npx next start -p 3110
+//
+// Admin keys log in once per capture context. A production build marks the
+// admin cookie Secure, which WebKit drops on http://localhost (Chromium
+// keeps it), so over plain http the script re-adds the cookie without the
+// Secure flag. A wrong ADMIN_PASSWORD fails at the login call (401). An
+// admin capture that logged in but still ends on /admin-login — a dropped
+// cookie, a session the server rejects — is recorded as an error and fails
+// the run (exit 1) on either browser, rather than passing with the login
+// form as evidence.
 //
 // Known local-only noise: `/_vercel/speed-insights/script.js` 404s outside
 // Vercel, which shows up as one "Failed to load resource … 404" console
@@ -249,6 +259,29 @@ async function capture({ key, url, admin }, vpKey) {
         data: { password: adminPassword },
       });
       if (!r.ok()) throw new Error(`admin login ${r.status()}`);
+      // A production build (`next start`) sets the admin cookie Secure
+      // (NODE_ENV === "production" in the login route). Chromium keeps a
+      // Secure cookie on http://localhost, WebKit discards it, so without
+      // this every WebKit admin capture is the login page. Over plain http,
+      // re-add each cookie from its name=value pair alone: addCookies with a
+      // `url` and no `secure` stores it non-Secure for this origin (also
+      // without httpOnly and maxAge, which a one-page capture context never
+      // needs). Only the pair is parsed; the value is never logged or
+      // written anywhere.
+      if (new URL(BASE).protocol === "http:") {
+        const cookies = r
+          .headersArray()
+          .filter((h) => h.name.toLowerCase() === "set-cookie")
+          .map((h) => {
+            const nv = h.value.split(";")[0];
+            const i = nv.indexOf("=");
+            return { name: nv.slice(0, i).trim(), value: nv.slice(i + 1) };
+          })
+          .filter((c) => c.name)
+          .map((c) => ({ ...c, url: BASE, sameSite: "Lax" }));
+        if (cookies.length === 0) throw new Error("admin login answered OK without a cookie");
+        await ctx.addCookies(cookies);
+      }
     }
     // WebKit lacks the layout-shift / LCP entry types (observe() on an
     // unsupported type is a silent no-op, not an error); report null there
@@ -304,6 +337,21 @@ async function capture({ key, url, admin }, vpKey) {
     const resp = await page.goto(BASE + url, { waitUntil: "load", timeout: 60000 });
     // Settle time for hydration, client fetches and late layout shifts.
     await page.waitForTimeout(2500);
+    // An admin page without a valid session redirects to /admin-login and
+    // answers 200, so the capture would otherwise "succeed" with the login
+    // form as its evidence. Fail it instead: no screenshot is written, the
+    // manifest entry carries the error, and the run exits non-zero. Both the
+    // final URL (read after the settle wait, so a client-side redirect
+    // counts too) and the server redirect chain are checked.
+    if (admin) {
+      const onLogin = (u) => new URL(u).pathname.replace(/\/+$/, "") === "/admin-login";
+      const hops = [];
+      for (let rq = resp?.request(); rq; rq = rq.redirectedFrom()) hops.push(rq.url());
+      if (onLogin(page.url()) || hops.some(onLogin))
+        throw new Error(
+          `${key} landed on /admin-login: the admin session did not stick (cookie dropped, or rejected by this server)`,
+        );
+    }
     const m = await page.evaluate(() => {
       const n = performance.getEntriesByType("navigation")[0];
       return {
