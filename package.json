@@ -9,6 +9,7 @@
     "lint": "eslint && npm run lint:css",
     "lint:css": "stylelint \"src/**/*.module.css\" --allow-empty-input",
     "lint:dead": "knip --include files,exports,types",
+    "check:testing-md": "node scripts/check-testing-md.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

@@ -18,8 +18,8 @@
 | Event-detail TTFB | `scripts/ttfb-event-detail.sh <base-url> [label]` | — | `scripts/` | dev DB through the app (reads) |
 | Load (manual) | see `tests/load/README.md` | — | `tests/load/` | some scripts write to dev |
 
-CI (`.github/workflows/ci.yml`) runs only lint, `tsc --noEmit`, the
-unit suite and a report-only dead-code pass. Integration and E2E run
+CI (`.github/workflows/ci.yml`) runs only lint, the TESTING.md row
+check, `tsc --noEmit`, the unit suite and a report-only dead-code pass. Integration and E2E run
 locally, by hand.
 
 `npm run lint` is ESLint plus `npm run lint:css` (stylelint over
@@ -65,6 +65,10 @@ know what each suite leaves behind:
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
 | `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
+
+Every `*.test.ts` here needs a row, and every row a file:
+`npm run check:testing-md` (a CI step right after Lint) fails otherwise. The
+same holds for the E2E table below.
 
 A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`
 and leaves its fixture rows in dev. A new integration test must create
