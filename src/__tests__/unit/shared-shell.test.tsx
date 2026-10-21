@@ -10,8 +10,8 @@ import type { ReactNode } from "react";
 
 const replace = vi.fn();
 let pathname = "/events";
-// Mutable flag set so the search-slot test can show both states.
-const flags = vi.hoisted(() => ({ showSignIn: false, showSearch: false }));
+const flags = vi.hoisted(() => ({ showSignIn: false }));
+let searchQuery = "";
 
 vi.mock("@/lib/launchFlags", () => ({ LAUNCH_FLAGS: flags }));
 
@@ -35,6 +35,11 @@ vi.mock("@/i18n/navigation", () => ({
   useRouter: () => ({ replace }),
 }));
 
+// HeaderSearchInput mirrors `q` from the URL on the search page.
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(searchQuery ? { q: searchQuery } : {}),
+}));
+
 vi.mock("next/image", () => ({
   default: ({ src, alt }: { src: string; alt: string }) => (
     // eslint-disable-next-line @next/next/no-img-element
@@ -50,7 +55,7 @@ import { CoverImage } from "@/components/shared/CoverImage";
 
 beforeEach(() => {
   pathname = "/events";
-  flags.showSearch = false;
+  searchQuery = "";
   // jsdom has no matchMedia; Nav subscribes to the header threshold.
   window.matchMedia = vi.fn().mockReturnValue({
     matches: false,
@@ -74,23 +79,26 @@ describe("<Nav />", () => {
     expect(current.map((a) => a.getAttribute("href"))).toEqual(["/events"]);
   });
 
-  it("renders the search slot only while showSearch is on", () => {
-    // Positive control first: with the flag on, both entry points exist
-    // and point at the shared search page.
-    flags.showSearch = true;
-    const { unmount } = render(<Nav />);
+  it("renders both search entry points pointing at the shared search page", () => {
+    searchQuery = "Dream";
+    render(<Nav />);
     expect(screen.getByRole("search")).toHaveAttribute("action", "/ko/search");
-    expect(screen.getByRole("searchbox")).toHaveAttribute("name", "q");
+    const field = screen.getByRole("searchbox");
+    expect(field).toHaveAttribute("name", "q");
+    // Outside the search page the field starts empty even if some other
+    // page happens to carry a `q` parameter.
+    expect(field).toHaveValue("");
     expect(screen.getByRole("link", { name: "search" })).toHaveAttribute(
       "href",
       "/search",
     );
-    unmount();
+  });
 
-    flags.showSearch = false;
+  it("mirrors the current query in the header field on the search page", () => {
+    pathname = "/search";
+    searchQuery = "Dream";
     render(<Nav />);
-    expect(screen.queryByRole("search")).toBeNull();
-    expect(screen.queryByRole("link", { name: "search" })).toBeNull();
+    expect(screen.getByRole("searchbox")).toHaveValue("Dream");
   });
 
   it("opens the menu, then Escape closes it and returns focus to the toggle", () => {
@@ -221,6 +229,13 @@ describe("<CoverImage />", () => {
     // Small slot: glyph only, but the named cover keeps its accessible name.
     expect(slot).not.toHaveTextContent("noImage");
     expect(screen.getByRole("img", { name: "Album" })).toBe(slot);
+  });
+
+  it("shows the label below 64px only when a fallbackLabel size is given", () => {
+    render(<CoverImage size={56} fallbackLabel={{ size: 12 }} />);
+    const slot = screen.getByTestId("cover-image");
+    expect(slot).toHaveTextContent("noImage");
+    expect(screen.getByText("noImage").style.fontSize).toBe("12px");
   });
 });
 
