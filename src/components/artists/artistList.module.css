@@ -189,6 +189,9 @@
   line-height: 1;
   user-select: none;
 }
+/* Must equal `colors.textPrimary`: `avatarGlyphTone` measures contrast
+   against that token, so a drift here would paint a colour the check
+   never measured. */
 .glyphInk {
   color: #172445;
 }

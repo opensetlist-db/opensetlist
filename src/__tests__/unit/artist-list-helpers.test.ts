@@ -1,11 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { avatarGlyphTone } from "@/components/artists/artistList";
+import { avatarAccent, avatarGlyphTone } from "@/components/artists/artistList";
+import { BRAND_GRADIENT } from "@/lib/artistColor";
 
 // Input colours are artist data (series colours from the official
 // sites), not palette copies — see eslint-rules/hex-colour-literals.mjs.
 const NIJIGASAKI_YELLOW = "#FBB906";
 const MUSE_PINK = "#E50080";
 const MID_GREY = "#777777";
+
+describe("avatarAccent", () => {
+  it("paints a stored #RRGGBB colour as is", () => {
+    expect(avatarAccent(MUSE_PINK)).toBe(MUSE_PINK);
+  });
+
+  it("falls back to the brand gradient for no or malformed colour", () => {
+    expect(avatarAccent(null)).toBe(BRAND_GRADIENT);
+    expect(avatarAccent("red")).toBe(BRAND_GRADIENT);
+  });
+});
 
 describe("avatarGlyphTone", () => {
   it("keeps the white glyph on the brand gradient (no stored colour)", () => {

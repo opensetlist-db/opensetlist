@@ -1,16 +1,19 @@
-import type { CSSProperties } from "react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { displayNameWithFallback } from "@/lib/display";
-import { BRAND_GRADIENT, getArtistColor } from "@/lib/artistColor";
+import { getArtistColor } from "@/lib/artistColor";
 import { entityPath } from "@/lib/seo/entityUrl";
 import type { ArtistRowData } from "@/lib/artists";
 import {
+  accentStyle,
   fallbackNameLang,
   firstGrapheme,
   originalLang,
 } from "@/components/artists/artistDetail";
-import { avatarGlyphTone } from "@/components/artists/artistList";
+import {
+  avatarAccent,
+  avatarGlyphTone,
+} from "@/components/artists/artistList";
 import styles from "./artistList.module.css";
 
 /*
@@ -74,9 +77,6 @@ export default async function ArtistListRow({ artist, locale }: Props) {
   }));
 
   const color = getArtistColor(artist);
-  const avatarStyle = {
-    "--accent": color ?? BRAND_GRADIENT,
-  } as CSSProperties;
 
   return (
     <li>
@@ -87,7 +87,7 @@ export default async function ArtistListRow({ artist, locale }: Props) {
         <span
           aria-hidden="true"
           className={`${styles.avatar} ${GLYPH_CLASS[avatarGlyphTone(color)]}`}
-          style={avatarStyle}
+          style={accentStyle(avatarAccent(color))}
         >
           {firstGrapheme(initialSource)}
         </span>

@@ -1,3 +1,4 @@
+import { BRAND_GRADIENT } from "@/lib/artistColor";
 import { colors } from "@/styles/tokens";
 
 /*
@@ -10,6 +11,16 @@ import { colors } from "@/styles/tokens";
 export type AvatarGlyphTone = "ink" | "white" | "black";
 
 const HEX6 = /^#[0-9a-f]{6}$/i;
+
+/**
+ * Avatar fill: the stored colour when it is `#RRGGBB`, else the brand
+ * gradient. Uses the same hex test as `avatarGlyphTone` so the fill and
+ * the glyph colour always agree (24-v1 `avatarStyle`): a malformed
+ * value never paints raw while the glyph assumes the gradient.
+ */
+export function avatarAccent(color: string | null): string {
+  return color && HEX6.test(color) ? color : BRAND_GRADIENT;
+}
 
 /** WCAG relative luminance of a `#RRGGBB` colour. */
 function relativeLuminance(hex: string): number {

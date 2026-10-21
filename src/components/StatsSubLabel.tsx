@@ -3,8 +3,8 @@ import { colors } from "@/styles/tokens";
 /*
  * Small uppercase caption that sits below a big stat number — the
  * "TOTAL EVENTS" / "COMPLETED" / "CITIES" labels in the artist /
- * member / series detail sidebars. Visual: 10px regular weight, `colors.textMuted`,
- * letter-spacing 0.04em, uppercase. Distinct from `<SectionLabel>`
+ * member / series detail sidebars. Visual: 10px regular weight,
+ * `colors.textMuted`, letter-spacing 0.04em, uppercase. Distinct from `<SectionLabel>`
  * (13px / 700 / has bottom border by default) — section labels
  * head a section, stats sub-labels caption a number.
  *
