@@ -560,3 +560,85 @@ WHERE e.id = sub."eventId"
 CREATE UNIQUE INDEX IF NOT EXISTS "AlbumStoreListing_album_store_null_edition_key"
   ON "AlbumStoreListing" ("albumId", "originalStoreName")
   WHERE "originalEditionLabel" IS NULL;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Redesign managed images — ImageAsset and the logo mode/asset pairing.
+--
+-- 1. Mode ↔ asset pairing on EventSeries and Event (see the
+--    LogoDisplayMode comment in schema.prisma): `custom` exactly when an
+--    asset is referenced. Rejects custom/null (a logo with no image) and
+--    inherit|typography/non-null (a hidden retained reference that a
+--    later mode flip would silently resurrect). Writers that leave
+--    `custom` must clear `logoAssetId` in the same UPDATE.
+--    Every row that predates the columns is inherit/null, so adding the
+--    constraint validates trivially; a violation here means some writer
+--    broke the pairing and must be fixed before re-running.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'event_series_logo_mode_asset_check'
+      AND conrelid = '"EventSeries"'::regclass
+  ) THEN
+    ALTER TABLE "EventSeries"
+      ADD CONSTRAINT event_series_logo_mode_asset_check
+      CHECK (("logoMode" = 'custom') = ("logoAssetId" IS NOT NULL));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'event_logo_mode_asset_check'
+      AND conrelid = '"Event"'::regclass
+  ) THEN
+    ALTER TABLE "Event"
+      ADD CONSTRAINT event_logo_mode_asset_check
+      CHECK (("logoMode" = 'custom') = ("logoAssetId" IS NOT NULL));
+  END IF;
+END $$;
+
+-- 2. Stored-image measurements are positive. Decoding, the upload size
+--    cap and the MIME allow-list are application checks; this is only
+--    the part the DB can verify.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'image_asset_positive_measurements_check'
+      AND conrelid = '"ImageAsset"'::regclass
+  ) THEN
+    ALTER TABLE "ImageAsset"
+      ADD CONSTRAINT image_asset_positive_measurements_check
+      CHECK ("byteSize" > 0 AND "width" > 0 AND "height" > 0);
+  END IF;
+END $$;
+
+-- 3. Server-only access to ImageAsset. The Supabase default ACL on
+--    `public` grants anon and authenticated ALL on every new table, and
+--    RLS is off by default — so without this block the admin-only
+--    sourceUrl / usageNote would be readable (and the table writable)
+--    by anyone holding the browser anon key, through the Data API.
+--    Revoke those grants and enable RLS with NO policy (deny-all for
+--    any role subject to RLS). Server Prisma connects as `postgres`,
+--    the table owner with BYPASSRLS, and keeps full access;
+--    service_role (also BYPASSRLS) keeps its grants as a trusted
+--    server key. FORCE is deliberately not set.
+--    Scoped to this table only: existing tables keep their current
+--    grants. db push creates the table before this file runs, so for
+--    the seconds in between the empty table carries the default grants.
+--    The DO block skips roles that don't exist (a non-Supabase Postgres).
+--    Do NOT add ImageAsset to the supabase_realtime publication.
+ALTER TABLE "ImageAsset" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE "ImageAsset" FROM PUBLIC;
+DO $$
+DECLARE
+  r TEXT;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('REVOKE ALL ON TABLE "ImageAsset" FROM %I', r);
+    END IF;
+  END LOOP;
+END $$;
