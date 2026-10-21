@@ -111,6 +111,10 @@ export function startImageAttempt(
           continue;
         }
         if (outcome === "conflict" || res.status === 409) return { kind: "conflict", body };
+        // A failed RESUBMISSION does not prove the first send never
+        // committed (e.g. the retry hit the same DB outage before it could
+        // reconcile). Once an outcome was unobservable, it stays unknown.
+        if (sent > 0) return { kind: "unknown", body };
         return { kind: "not_saved", httpStatus: res.status, body };
       }
       return last;

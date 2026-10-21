@@ -84,6 +84,18 @@ describe("startImageAttempt", () => {
     expect(gateway).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps 'unknown' when a resubmission after a lost response fails", async () => {
+    // The first send may have committed; the retry failing (e.g. the DB is
+    // still down) is no evidence it did not.
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("network"))
+      .mockResolvedValueOnce(json(500, { outcome: "not_saved", error: "not_saved" }));
+    const out = await startImageAttempt(file(), env).submit("/u", {}, { fetchImpl });
+    expect(out.kind).toBe("unknown");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("does not retry a known failure", async () => {
     const fetchImpl = vi.fn(async () => json(415, { outcome: "not_saved", error: "unsupported_image_type" }));
     const out = await startImageAttempt(file(), env).submit("/u", {}, { fetchImpl });
