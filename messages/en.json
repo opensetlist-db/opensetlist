@@ -261,8 +261,6 @@
   },
   "Event": {
     "title": "Events",
-    "allEvents": "All Events",
-    "subtitle": "Check setlists and reactions for each event",
     "ongoing": "Live Now",
     "upcoming": "Upcoming Events",
     "past": "Past Events",
@@ -272,18 +270,16 @@
     "noEvents": "No events to show",
     "filter": {
       "all": "All",
-      "ongoing": "Live now",
+      "ongoing": "Live",
       "upcoming": "Upcoming",
       "completed": "Completed"
     },
-    "emptyFilterState": "No events match",
     "eventCount": "{count, plural, one {# event} other {# events}}",
     "songCount": "{count, plural, other {🎵 #}}",
     "tableHeader": {
       "date": "Date",
       "status": "Status",
       "name": "Event",
-      "venue": "Venue",
       "songs": "Songs"
     },
     "setlist": "Setlist",
@@ -341,6 +337,32 @@
       "purchaseCta": "Buy BD →",
       "detailsCta": "View album details →"
     }
+  },
+  "EventList": {
+    "eyebrow": "CONCERTS & SETLISTS",
+    "title": "Concerts",
+    "subtitle": "Find a concert. Explore the live archive.",
+    "filterLabel": "Filter concerts",
+    "activeHeading": "Live & upcoming concerts",
+    "pastHeading": "Past concerts",
+    "seriesType": {
+      "concert_tour": "Tour",
+      "festival": "Festival"
+    },
+    "eventCount": "{count, plural, one {# concert} other {# concerts}}",
+    "songCount": "{count, plural, one {# song} other {# songs}}",
+    "status": {
+      "upcoming": "Upcoming",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "collapseGroup": "Collapse {title}",
+    "expandGroup": "Expand {title}",
+    "empty": "No events match",
+    "viewAll": "View all concerts",
+    "prev": "Previous",
+    "next": "Next",
+    "pageStatus": "{current} / {total}"
   },
   "EventDateTime": {
     "localTime": "local time"

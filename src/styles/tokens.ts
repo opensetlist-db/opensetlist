@@ -155,6 +155,16 @@ export const colors = {
   completedBg: "#f8fafc",
   completedBorder: "#e2e8f0",
 
+  // Concert-list palette (approved packet 16-v1, all text pairs ≥4.5:1
+  // in its contrast.json). Separate from the status family above, which
+  // the detail/home surfaces still use until their own page tickets.
+  listCompletedBg: "#EEF1F6",
+  listCancelledText: "#9D2450",
+  // Solid raspberry LIVE pill with white text (14-v1.3 home contract).
+  listLive: "#AD1B57",
+  listGroupWash: "linear-gradient(110deg, #F2F5FF, #FFF7FB)",
+  listLiveGroupBg: "#E9E3FF",
+
   // Trending TOP3 card (consumed by <TrendingSongs>)
   trendingBg: "#fffbeb",
   trendingBorder: "#fde68a",

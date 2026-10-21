@@ -50,8 +50,18 @@ export interface EventArtProps {
   variant?: EventArtVariant;
   /** Accessible name when the art is the only identifier. Default decorative. */
   alt?: string;
+  /**
+   * Representative colour (`#RRGGBB`, 07's `PublicLogo.color`). Washes the
+   * region at low opacity (hex alpha 0x18 ≈ 9%) into the lavender accent.
+   * Background only: the typography keeps its fixed dark tones whatever
+   * the raw artist colour is, so contrast never depends on it. Anything
+   * other than a 6-digit hex falls back to the neutral wash.
+   */
+  tint?: string | null;
   className?: string;
 }
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 const REGION: Record<EventArtVariant, string> = {
   standard: "h-[126px] w-full px-[22px] py-5 min-[700px]:h-[156px]",
@@ -72,6 +82,7 @@ function EventArtInner({
   caption,
   variant = "standard",
   alt = "",
+  tint,
   className = "",
 }: EventArtProps) {
   const { failed, imgProps } = useImageFallback();
@@ -83,10 +94,14 @@ function EventArtInner({
       data-testid="event-art"
       data-state={showLogo ? "logo" : "fallback"}
       className={`relative flex shrink-0 items-center justify-center overflow-hidden text-center ${REGION[variant]} ${className}`}
-      // Artist/series colour tints arrive with 07's colour source; until
-      // then every card uses this neutral accent rather than an arbitrary
-      // performer colour.
-      style={{ background: colors.artWash }}
+      // No tint (or an unusable value) → the neutral accent wash rather
+      // than an arbitrary performer colour.
+      style={{
+        background:
+          tint && HEX_COLOR.test(tint)
+            ? `linear-gradient(135deg, ${tint}18, ${colors.accentLavender})`
+            : colors.artWash,
+      }}
     >
       {/* Two faint rings on the wash (03 mockup `.art:before/:after`). */}
       {!compact && (
