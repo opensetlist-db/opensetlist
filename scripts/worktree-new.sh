@@ -20,7 +20,8 @@
 #     silently turns into a copy when either side is replaced rather
 #     than rewritten in place (an editor's write-to-temp-then-rename
 #     save); `ls -l` shows a link count of 1 then — relink by hand
-#     (`rm .env.local && cmd //c mklink //H .env.local <main>\.env.local`).
+#     (`rm .env.local && cmd //c mklink //H .env.local
+#     "$(cygpath -w <main>/.env.local)"`).
 #     Removing the worktree deletes only its own name for the file.
 #   - src/generated/ (the gitignored Prisma client — normally produced by
 #     `npm ci`'s postinstall, which a linked node_modules never runs).
@@ -153,15 +154,21 @@ if [ -d "$main/node_modules" ]; then
   esac
 
   # The check above ran against the MAIN checkout's lockfile; this one
-  # runs against the worktree's, through the link. Exit 2 cannot happen
-  # here (both the lockfile and the link exist), so anything but 0/3 is
-  # the checker itself failing. Its report goes to a file outside the
-  # worktree so a failure here leaves no untracked file behind.
+  # runs against the worktree's, through the link. Exit 2 here means the
+  # base has no usable lockfile, so there is nothing to compare against:
+  # the link stays, with a note. Anything but 0/2/3 is the checker itself
+  # failing. Its report goes to a file outside the worktree so a failure
+  # here leaves no untracked file behind.
   report="$(mktemp)"
   rc=0
   node "$script_dir/check-node-modules.mjs" "$path" > /dev/null 2> "$report" || rc=$?
   case "$rc" in
     0) rm -f "$report" ;;
+    2)
+      cat "$report" >&2
+      rm -f "$report"
+      echo "note: node_modules is linked to the main checkout's but could not be checked against $base (see above)" >&2
+      ;;
     3)
       # Remove the LINK only — the same commands the header gives (rmdir
       # without /s refuses a real non-empty folder, so it cannot empty
