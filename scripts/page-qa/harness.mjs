@@ -116,16 +116,22 @@ const knownNoiseResponse = (r, base) =>
 // In-page (serialised into page.evaluate): layoutMatrix `basics`. Targets
 // are visible a/button/input/select/textarea in <main> under 24×24 CSS px
 // (WCAG 2.2 target size, minimum); sr-only controls (1px, clipped) are not
-// pointer targets.
+// pointer targets. Links inside running prose count too, although WCAG
+// exempts them — a prose-heavy page would need its own filter. `targets`
+// (how many were inspected) is the check's positive control.
 function basicsInPage() {
   const main = document.querySelector("main");
-  const small = [...(main?.querySelectorAll("a, button, input, select, textarea") ?? [])].filter((el) => {
+  const targets = [...(main?.querySelectorAll("a, button, input, select, textarea") ?? [])].filter((el) => {
     if (el.type === "hidden") return false;
     const r = el.getBoundingClientRect();
-    if (getComputedStyle(el).visibility === "hidden" || r.width <= 1 || r.height <= 1) return false;
+    return getComputedStyle(el).visibility !== "hidden" && r.width > 1 && r.height > 1;
+  });
+  const small = targets.filter((el) => {
+    const r = el.getBoundingClientRect();
     return r.width < 24 || r.height < 24;
   });
   return {
+    targets: targets.length,
     h1: main ? main.querySelectorAll("h1").length : 0,
     small: small.slice(0, 3).map((el) => {
       const r = el.getBoundingClientRect();
@@ -501,7 +507,11 @@ export async function runScenario({
               if (basics) {
                 const b = await page.evaluate(basicsInPage);
                 check(name("one h1"), b.h1 === 1, String(b.h1));
-                check(name("no target under 24px"), b.smallCount === 0, b.smallCount ? `${b.smallCount}: ${b.small.join(", ")}` : "0");
+                check(
+                  name("no target under 24px"),
+                  b.targets > 0 && b.smallCount === 0,
+                  `${b.smallCount}/${b.targets}${b.smallCount ? ": " + b.small.join(", ") : ""}`,
+                );
               }
               if (capture) await h.shot(page, `${prefix}-${loc}-${width}`);
               if (cell) await cell({ page, loc, width, name, check, errors });
@@ -525,8 +535,9 @@ export async function runScenario({
     // `rest` (computed property → value) is also required of every selector
     // under reduce: an animation removed mid-cycle can leave an element at a
     // keyframe's value (a pulsing dot frozen half-transparent). `optional`
-    // turns a selector missing from either load into one SKIP for both
-    // checks — for elements that exist only on some data (a LIVE badge).
+    // turns a selector missing from the NORMAL load into one SKIP for both
+    // checks — for elements that exist only on some data (a LIVE badge);
+    // one present normally but missing under reduce still FAILs.
     async reducedMotion({ path: p, selectors, width = 390, label = "reduced motion", rest = null, optional = false }) {
       const read = (page) =>
         page.evaluate(
@@ -549,13 +560,14 @@ export async function runScenario({
           .join(" ");
       const reduced = await read((await h.open(p, { width, reducedMotion: "reduce", hydrate: null })).page);
       const normal = await read((await h.open(p, { width, hydrate: null })).page);
-      if (optional && [...reduced, ...normal].some((r) => r.missing)) {
+      if (optional && normal.some((r) => r.missing)) {
         skip(`${label}`, `not on this page/data: ${show(normal)}`);
         return;
       }
       const atRest = (r) => Object.entries(rest ?? {}).every(([k, v]) => r.rest[k] === v);
-      check(`${label}: transitions off`, reduced.every((r) => !r.missing && !r.moving && atRest(r)), show(reduced));
+      // Control first, so the log reads in the order the claim depends on.
       check(`${label}: positive control (transition present otherwise)`, normal.every((r) => !r.missing && r.moving), show(normal));
+      check(`${label}: transitions off`, reduced.every((r) => !r.missing && !r.moving && atRest(r)), show(reduced));
     },
 
     // Focus `selector` as a keyboard user would reach it — Shift first, so
@@ -630,8 +642,11 @@ export async function runScenario({
         );
       check(`${name} last link in view on focus`, inView);
       if (!narrow) return;
+      // The fresh page exists only for the key press; its console is not
+      // judged (the cell's own page already was).
       const fresh = (await h.open(p, { width })).page;
       const r2 = fresh.locator(selector).first();
+      if (!(await r2.count())) return check(`${name} ArrowRight scrolls`, false, `${selector} absent after a fresh load of ${p}`);
       await r2.focus();
       const before = await r2.evaluate((el) => el.scrollLeft);
       await fresh.keyboard.press("ArrowRight");
@@ -648,10 +663,11 @@ export async function runScenario({
     // reported. The background is the element's own — with `bg`, its
     // nearest `__<bg>` ancestor's — composited over the layers behind it up
     // to the first opaque one, so a translucent fill counts as it looks.
+    // Ancestor `opacity` is not composited and can overstate the ratio.
     // SKIP when no element matches, or when text sits over a background
     // image (no single colour to compare; judge it from the capture).
-    // Returns the pair names found, so a scenario can FAIL a pair that is
-    // found nowhere in a whole run (a typo, a renamed class).
+    // Returns the pair names measured, so a scenario can FAIL a pair that is
+    // measured nowhere in a whole run (a typo, a renamed class).
     async contrast(page, pairs, name) {
       const list = pairs.map((x) => (typeof x === "string" ? { name: x } : x));
       const found = [];
@@ -661,7 +677,6 @@ export async function runScenario({
           skip(n, `no visible .*__${pr.name}`);
           continue;
         }
-        found.push(pr.name);
         let worst = null;
         const unmeasured = [];
         for (const it of pr.items) {
@@ -680,6 +695,9 @@ export async function runScenario({
           skip(n, `cannot measure: ${unmeasured[0]}`);
           continue;
         }
+        // Found = measured: a pair that only ever SKIPs as unmeasurable must
+        // not satisfy a scenario's "found at some width" control.
+        found.push(pr.name);
         check(
           n,
           worst.v >= 4.5,

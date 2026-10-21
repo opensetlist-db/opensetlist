@@ -2,9 +2,10 @@
 // the upcoming rail.
 //
 // Everything page-specific hangs off the hero search input: a build
-// without the redesigned home (dev until the redesign merges) reports
-// those checks as SKIP and runs only the generic ones (overflow, lang,
-// raw keys, errors, one h1, 24px targets).
+// without the redesigned home (no #hero-search) reports those checks as
+// SKIP and runs only the generic ones (overflow, lang, raw keys, errors,
+// one h1, 24px targets). On a build that has it, a run should show no
+// "home checks" SKIP — if every cell SKIPs there, the id was renamed.
 //
 // Data-dependent parts SKIP rather than fail: the ongoing section and the
 // LIVE dot exist only while a show is on, and the rail needs at least two
