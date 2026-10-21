@@ -137,6 +137,13 @@ motion) across locales × widths and exits 1 on any FAIL. Page tickets run
 it after any shared-style change (redesign spec story 51): chromium in
 full, `--browser webkit --quick` for Safari.
 
+Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
+(build + `next start`, Sentry blanked, refuses a foreign port holder,
+`--stop` kills only its own verified PID) and `scripts/admin-qa.mjs
+--scenario <name>`, which logs in, creates and always deletes a dev-DB
+fixture, and runs overflow/keyboard/label/motion/referrer checks; a page
+adds a scenario under `scripts/admin-qa/scenarios/` (copy `album-cover`).
+
 ---
 
 ## What to test
