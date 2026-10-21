@@ -617,6 +617,16 @@ async function runDesign() {
     ],
   ];
 
+  // `v1.1-ja-390-menu` → `menu`; a stem without `<locale>-<width>-` keeps
+  // its whole name. String search, not a RegExp built from packet values
+  // (the repo's lint forbids non-literal RegExp).
+  const scenarioKey = (stem, locale, width) => {
+    const lw = `${locale}-${width}-`;
+    if (stem.startsWith(lw)) return stem.slice(lw.length);
+    const i = stem.indexOf(`-${lw}`);
+    return i < 0 ? stem : stem.slice(i + 1 + lw.length);
+  };
+
   const scenarios = [];
   const skipped = [];
   for (const c of packet.captures) {
@@ -624,12 +634,14 @@ async function runDesign() {
     const locale = c.locale ?? u.pathname.split("/")[1];
     const width = c.viewport?.width;
     const height = c.viewport?.height ?? 1000;
+    // Fail on the packet, not later as one opaque Playwright error per
+    // scenario.
+    if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) {
+      console.error(`--design: ${c.file} has no usable viewport {width,height}`);
+      process.exit(1);
+    }
     const stem = path.basename(c.file).replace(/\.[a-z0-9]+$/i, "");
-    const lw = `${locale}-${width}-`;
-    // String search, not a RegExp built from packet values (the repo's lint
-    // forbids non-literal RegExp).
-    const cut = stem.startsWith(lw) ? lw.length : stem.indexOf(`-${lw}`) + 1 + lw.length;
-    const key = cut > lw.length || stem.startsWith(lw) ? stem.slice(cut) : stem;
+    const key = scenarioKey(stem, locale, width);
     const name = `${locale}-${width}-${key}`;
     const reason = SKIPS.find(([test]) => test(u))?.[1];
     if (reason) {
@@ -656,7 +668,6 @@ async function runDesign() {
     .split(",")
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isInteger(n) && n > 0);
-  const extraHeight = scenarios[0]?.height ?? 1000;
   const seen = new Set();
   for (const s of [...scenarios]) {
     if (seen.has(s.url)) continue;
@@ -665,15 +676,13 @@ async function runDesign() {
       // A distinct URL keeps its first key, so `ja-375-dream` names the
       // same page as `ja-390-dream`.
       scenarios.push({
+        ...s,
         name: `${s.locale}-${w}-${s.key}`,
-        key: s.key,
-        locale: s.locale,
         width: w,
-        height: extraHeight,
-        url: s.url,
         action: null,
         ids: null,
         baseline: null,
+        listedBaseline: null,
         extra: true,
       });
     }
@@ -717,12 +726,19 @@ async function runDesign() {
     try {
       const page = await ctx.newPage();
       const consoleErrors = [];
-      page.on("console", (m) => {
-        if (m.type() !== "error") return;
+      page.on("console", (msg) => {
+        if (msg.type() !== "error") return;
         // The 404 console text omits the URL; the location carries it.
-        const at = m.location()?.url?.replace(BASE, "") ?? "";
-        if (at.includes("/_vercel/speed-insights/script.js")) return; // local-only
-        consoleErrors.push({ text: m.text().slice(0, 200), at: at.slice(0, 200) });
+        const text = msg.text();
+        const at = msg.location()?.url?.replace(BASE, "") ?? "";
+        // Local-only: the script exists only on Vercel. Just its 404 — any
+        // other error from it still counts.
+        if (at.includes("/_vercel/speed-insights/script.js") && text.includes("404")) return;
+        consoleErrors.push({ text: text.slice(0, 200), at: at.slice(0, 200) });
+      });
+      // Uncaught exceptions never reach the console listener.
+      page.on("pageerror", (err) => {
+        consoleErrors.push({ text: `pageerror: ${String(err.message ?? err).slice(0, 190)}`, at: "" });
       });
       const resp = await page.goto(BASE + s.url, { waitUntil: "networkidle", timeout: 60000 });
       await page.evaluate(() => document.fonts.ready);
@@ -734,7 +750,7 @@ async function runDesign() {
       }
       // Settle time for the opened menu / client fetches after networkidle.
       await page.waitForTimeout(500);
-      const m = await page.evaluate((scope) => {
+      const metrics = await page.evaluate((scope) => {
         const KIND = /^\/[^/]+\/(events|artists|songs|albums|members|series)\/([^/?#]+)(?:[/?#]|$)/;
         const ids = [];
         for (const a of document.querySelectorAll(`${scope} a[href]`)) {
@@ -765,7 +781,12 @@ async function runDesign() {
           await writeCompare(src, png, path.join(dir, compare));
         } else baselineMissing = true;
       }
-      const idsMatch = s.ids ? JSON.stringify(s.ids) === JSON.stringify(m.ids) : null;
+      const idsMatch = s.ids ? JSON.stringify(s.ids) === JSON.stringify(metrics.ids) : null;
+      // [] === [] proves nothing on its own: a 200 error page, or an
+      // --ids-scope that misses the results, also reads no links. The
+      // summary counts these apart so an empty-state match is checked
+      // against its compare image instead of being trusted.
+      const idsEmpty = idsMatch === true && metrics.ids.length === 0;
       results.push({
         name: s.name,
         key: s.key,
@@ -776,9 +797,10 @@ async function runDesign() {
         action: s.action,
         status: resp?.status() ?? null,
         finalUrl: page.url().replace(BASE, ""),
-        ...m,
+        ...metrics,
         expectedIds: s.ids,
         idsMatch,
+        idsEmpty,
         consoleErrors,
         webp: files.webp,
         png: files.png,
@@ -790,9 +812,9 @@ async function runDesign() {
         "%s %s overflow=%d ids=%d%s",
         s.name,
         resp?.status(),
-        m.overflow,
-        m.ids.length,
-        idsMatch === null ? "" : idsMatch ? " match" : " MISMATCH",
+        metrics.overflow,
+        metrics.ids.length,
+        idsMatch === null ? "" : idsEmpty ? " match (empty)" : idsMatch ? " match" : " MISMATCH",
       );
     } catch (e) {
       results.push({ name: s.name, url: s.url, extra: !!s.extra, error: String(e).slice(0, 300) });
@@ -860,7 +882,15 @@ function summarizeDesign(results, skipped, manifestFile) {
     skipped.length,
     results.length - ok.length,
   );
-  console.log("ids: %d match, %d mismatch (of %d with packet ids)", judged.length - mismatches.length, mismatches.length, judged.length);
+  const empty = judged.filter((r) => r.idsEmpty);
+  console.log(
+    "ids: %d match (%d of them both empty — check the compare image), %d mismatch (of %d with packet ids)",
+    judged.length - mismatches.length,
+    empty.length,
+    mismatches.length,
+    judged.length,
+  );
+  if (empty.length) console.log("  empty: %s", empty.map((r) => r.name).join(", "));
   for (const r of mismatches) {
     console.log("  MISMATCH %s", r.name);
     console.log("    packet: %s", r.expectedIds.join(" "));
