@@ -59,11 +59,11 @@ reviews:
     - `??` on a nullable domain value where `null` itself means something
       ("no cover", "cleared"): `fresh ?? older` replaces that null with the
       older value. Branch on whether the object is present instead
-    - Serialized Prisma rows: a nullable column (e.g. `Event.date DateTime?
-      @db.Date`) must be null-checked before `String(...)`, a template
-      literal, or `new Date(...)`: `String(null)` yields "null" and
-      `new Date(null)` the epoch, so a TBA concert renders `dateTime="null"`
-      and sorts on a NaN or 1970 key
+    - Serialized Prisma rows: a nullable column (e.g.
+      `Event.date DateTime? @db.Date`) must be null-checked before
+      `String(...)`, a template literal, or `new Date(...)`: `String(null)`
+      yields "null" and `new Date(null)` the epoch, so an event without a
+      date renders `dateTime="null"` and sorts on a NaN or 1970 key
     - Admin route translation writes are per-locale upserts (src/app/api/admin/stage-identities/[id]/route.ts), never `<x>Translation.deleteMany` + recreate: a partial save wipes the locales and columns it did not send
 
     Skip:
