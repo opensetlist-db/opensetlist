@@ -98,6 +98,16 @@ async function createAsset(overrides: Record<string, unknown> = {}) {
   return asset;
 }
 
+/** Raw ImageAsset INSERT (bypasses Prisma, so the DB's own constraints
+ *  answer) — returns the SQLSTATE, or "succeeded". */
+function insertAssetRaw(key: string, url: string, [byteSize, width, height] = [1, 1, 1]) {
+  return sqlState(
+    `INSERT INTO "ImageAsset" (id, "objectKey", "publicUrl", "mimeType", "byteSize", width, height)
+     VALUES (gen_random_uuid()::text, $1, $2, 'image/webp', $3, $4, $5)`,
+    [key, url, byteSize, width, height],
+  );
+}
+
 /** SQLSTATE of a raw statement that is expected to fail. */
 async function sqlState(sql: string, params: unknown[] = []): Promise<string> {
   try {
@@ -266,20 +276,24 @@ describe("mode / asset pairing (post-deploy CHECKs)", () => {
     });
   }
 
-  it("a referenced asset cannot be deleted; an unlinked one can", async () => {
-    const asset = await createAsset();
-    await prisma.event.update({
-      where: { id: eventId },
-      data: { logoMode: "custom", logoAssetId: asset.id },
-    });
-    expect(await sqlState(`DELETE FROM "ImageAsset" WHERE id = $1`, [asset.id])).toBe("23503");
+  for (const table of ["EventSeries", "Event"] as const) {
+    it(`${table}: a referenced asset cannot be deleted; an unlinked one can`, async () => {
+      const asset = await createAsset();
+      const id = (table === "Event" ? eventId : seriesId).toString();
+      const link = (mode: string, assetId: string | null) =>
+        pg.query(`UPDATE "${table}" SET "logoMode" = $1, "logoAssetId" = $2 WHERE id = $3`, [
+          mode,
+          assetId,
+          id,
+        ]);
 
-    await prisma.event.update({
-      where: { id: eventId },
-      data: { logoMode: "inherit", logoAssetId: null },
+      await link("custom", asset.id);
+      expect(await sqlState(`DELETE FROM "ImageAsset" WHERE id = $1`, [asset.id])).toBe("23503");
+
+      await link("inherit", null);
+      expect(await sqlState(`DELETE FROM "ImageAsset" WHERE id = $1`, [asset.id])).toBe("succeeded");
     });
-    expect(await sqlState(`DELETE FROM "ImageAsset" WHERE id = $1`, [asset.id])).toBe("succeeded");
-  });
+  }
 
   it("the same asset may back several rows (references are not unique)", async () => {
     const asset = await createAsset();
@@ -291,6 +305,12 @@ describe("mode / asset pairing (post-deploy CHECKs)", () => {
       where: { id: eventId },
       data: { logoMode: "custom", logoAssetId: asset.id },
     });
+    const users = await prisma.imageAsset.findUniqueOrThrow({
+      where: { id: asset.id },
+      select: { _count: { select: { eventSeriesLogos: true, eventLogos: true } } },
+    });
+    expect(users._count).toEqual({ eventSeriesLogos: 1, eventLogos: 1 });
+
     await prisma.event.update({
       where: { id: eventId },
       data: { logoMode: "inherit", logoAssetId: null },
@@ -301,24 +321,22 @@ describe("mode / asset pairing (post-deploy CHECKs)", () => {
 describe("ImageAsset row invariants", () => {
   it("rejects a duplicate objectKey or publicUrl", async () => {
     const a = await createAsset();
-    const insert = (key: string, url: string) =>
-      sqlState(
-        `INSERT INTO "ImageAsset" (id, "objectKey", "publicUrl", "mimeType", "byteSize", width, height)
-         VALUES (gen_random_uuid()::text, $1, $2, 'image/webp', 1, 1, 1)`,
-        [key, url],
-      );
-    expect(await insert(a.objectKey, `https://example.com/itest/${TAG}/other-url`)).toBe("23505");
-    expect(await insert(`itest/${TAG}/other-key`, a.publicUrl)).toBe("23505");
+    expect(await insertAssetRaw(a.objectKey, `https://example.com/itest/${TAG}/other-url`)).toBe("23505");
+    expect(await insertAssetRaw(`itest/${TAG}/other-key`, a.publicUrl)).toBe("23505");
   });
 
   it("rejects a non-positive byteSize, width or height", async () => {
-    for (const [col, i] of [["byteSize", 0], ["width", 1], ["height", 2]] as const) {
-      const vals = [10, 10, 10];
-      vals[i] = 0;
-      const state = await sqlState(
-        `INSERT INTO "ImageAsset" (id, "objectKey", "publicUrl", "mimeType", "byteSize", width, height)
-         VALUES (gen_random_uuid()::text, $1, $2, 'image/webp', $3, $4, $5)`,
-        [`itest/${TAG}/bad-${col}`, `https://example.com/itest/${TAG}/bad-${col}`, ...vals],
+    // Positive control: the same insert with all-positive values lands.
+    expect(
+      await insertAssetRaw(`itest/${TAG}/ok`, `https://example.com/itest/${TAG}/ok`, [10, 10, 10]),
+    ).toBe("succeeded");
+    const cols = ["byteSize", "width", "height"] as const;
+    for (const col of cols) {
+      const vals = cols.map((c) => (c === col ? 0 : 10)) as [number, number, number];
+      const state = await insertAssetRaw(
+        `itest/${TAG}/bad-${col}`,
+        `https://example.com/itest/${TAG}/bad-${col}`,
+        vals,
       );
       expect(state, col).toBe("23514");
     }
@@ -335,23 +353,34 @@ describe("server-only access boundary", () => {
       `SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ImageAsset'`,
     );
     expect(policies.rowCount).toBe(0);
-    const realtime = await pg.query(
-      `SELECT 1 FROM pg_publication_tables WHERE tablename = 'ImageAsset'`,
+    // Positive control: the publication exists and lists SetlistItem.
+    const realtime = await pg.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_publication_tables WHERE pubname = 'supabase_realtime'`,
     );
-    expect(realtime.rowCount).toBe(0);
+    const published = realtime.rows.map((r) => r.tablename);
+    expect(published).toContain("SetlistItem");
+    expect(published).not.toContain("ImageAsset");
   });
 
   it("anon, authenticated and PUBLIC hold no privilege on it", async () => {
-    const grants = await pg.query(
-      `SELECT grantee, privilege_type FROM information_schema.role_table_grants
-       WHERE table_schema = 'public' AND table_name = 'ImageAsset'
-         AND grantee IN ('anon', 'authenticated', 'PUBLIC')`,
+    const grants = await pg.query<{ grantee: string }>(
+      `SELECT DISTINCT grantee FROM information_schema.role_table_grants
+       WHERE table_schema = 'public' AND table_name = 'ImageAsset'`,
     );
-    expect(grants.rows).toEqual([]);
+    const grantees = grants.rows.map((r) => r.grantee);
+    // Positive control: the owner's grants are visible to this query.
+    expect(grantees).toContain("postgres");
+    for (const role of ["anon", "authenticated", "PUBLIC"]) {
+      expect(grantees).not.toContain(role);
+    }
   });
 
   it("anon and authenticated are refused at the DB", async () => {
     for (const role of ["anon", "authenticated"]) {
+      // Positive control: the role switch itself works and the role can
+      // read an existing table (their current grants), so the refusal
+      // below is about ImageAsset, not a failed SET ROLE.
+      expect(await asRole(role, `SELECT 1 FROM "Event" LIMIT 1`), role).toBe("succeeded");
       expect(await asRole(role, `SELECT * FROM "ImageAsset" LIMIT 1`), role).toBe("42501");
       expect(
         await asRole(
