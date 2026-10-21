@@ -8,8 +8,7 @@
 #   e.g. scripts/ttfb-event-detail.sh http://localhost:3000 LOCAL
 #
 # Prints the mean TTFB in seconds (e.g. `0.412`) on stdout and one line
-# per sample on stderr. Shape, unchanged since the manual validation of
-# PR #260: one warm-up pass to discard cold-start timing, then 2
+# per sample on stderr. One warm-up pass discards cold-start timing, then 2
 # measurement passes over ko/ja/en × PERF_EVENT_IDS, each sample being
 # curl's `time_starttransfer`. Only HTTP 200 samples enter the mean;
 # when more than half the samples are non-200 the script exits 1 instead
