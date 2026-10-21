@@ -701,9 +701,11 @@ export async function runScenario({
         check(
           n,
           worst.v >= 4.5,
-          `${worst.v.toFixed(2)}, worst of ${pr.items.length} (${worst.fg} on ${worst.bg}, bg ${worst.from})` +
-            (unmeasured.length ? `; ${unmeasured.length} not measured` : ""),
+          `${worst.v.toFixed(2)}, worst of ${pr.items.length - unmeasured.length} measured (${worst.fg} on ${worst.bg}, bg ${worst.from})`,
         );
+        // The rest of the matches stay visible as their own SKIP, so a pass
+        // on the measurable ones never hides an unchecked one.
+        if (unmeasured.length) skip(`${n} (${unmeasured.length} not measured)`, unmeasured[0]);
       }
       return found;
     },
