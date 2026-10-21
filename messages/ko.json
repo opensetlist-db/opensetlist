@@ -98,7 +98,14 @@
     "ungroupedNoCategorySection": "분류 미정",
     "showOtherUnits": "기타 유닛 보기 ({count})",
     "hideOtherUnits": "기타 유닛 숨기기",
-    "songCount": "🎵 {count}"
+    "songCount": "🎵 {count}",
+    "tabsAriaLabel": "아티스트 정보",
+    "viewAllAlbums": "앨범 전체 보기",
+    "viewAllHistory": "공연 이력 전체 보기",
+    "historyColumns": {
+      "dateStatus": "날짜·상태",
+      "event": "공연"
+    }
   },
   "Song": {
     "title": "곡",

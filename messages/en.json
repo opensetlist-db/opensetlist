@@ -98,7 +98,14 @@
     "ungroupedNoCategorySection": "Uncategorized",
     "showOtherUnits": "Show other units ({count})",
     "hideOtherUnits": "Hide other units",
-    "songCount": "🎵 {count}"
+    "songCount": "🎵 {count}",
+    "tabsAriaLabel": "Artist information",
+    "viewAllAlbums": "View all albums",
+    "viewAllHistory": "View all concert history",
+    "historyColumns": {
+      "dateStatus": "Date · status",
+      "event": "Concert"
+    }
   },
   "Song": {
     "title": "Songs",

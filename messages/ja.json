@@ -98,7 +98,14 @@
     "ungroupedNoCategorySection": "未分類",
     "showOtherUnits": "その他のユニットを表示 ({count})",
     "hideOtherUnits": "その他のユニットを隠す",
-    "songCount": "🎵 {count}"
+    "songCount": "🎵 {count}",
+    "tabsAriaLabel": "アーティストの情報",
+    "viewAllAlbums": "アルバムをすべて見る",
+    "viewAllHistory": "公演履歴をすべて見る",
+    "historyColumns": {
+      "dateStatus": "日付・状態",
+      "event": "公演"
+    }
   },
   "Song": {
     "title": "楽曲",

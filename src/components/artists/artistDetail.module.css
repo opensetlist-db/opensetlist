@@ -1,0 +1,759 @@
+/*
+ * Artist detail page — layout from the approved redesign packet 20-v1
+ * (wiki `output/redesign/handoffs/20/v1/style.css` + design-contract.md).
+ *
+ * A CSS module rather than the inline-style + Tailwind mix the older
+ * pages use: the approved layout switches at four widths (1100 / 768 /
+ * 700 plus the 06 shell's 1100 header band) and several elements change
+ * display mode, padding and type size together. Expressing that as
+ * per-element arbitrary variants would scatter one breakpoint across
+ * dozens of class strings; one rule block per band keeps each band
+ * reviewable against the mockup line by line.
+ *
+ * Colours mirror `src/styles/tokens.ts` (03 contract). Hex literals
+ * appear here only where the token module has no CSS variable; the
+ * status-pill tones are page-local because 20-v1 fixed them with
+ * measured contrast (6.0–7.2:1, packet qa-summary.md).
+ *
+ * Unit/member colours arrive as the `--accent` custom property set
+ * inline per element; `--wash` is the same colour at ~9% alpha. Raw
+ * artist colours only ever paint stripes, rings and washes — all text
+ * stays on the ink/secondary tones so an unverified pastel never
+ * carries copy.
+ */
+
+.page {
+  width: 100%;
+  max-width: 1264px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+.breadcrumb > nav {
+  margin-bottom: 20px;
+}
+
+/* ── Identity panel ───────────────────────────────────────────── */
+
+.identity {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  padding: 28px 32px;
+  border: 1px solid #dce3ef;
+  border-radius: 20px;
+  background: linear-gradient(110deg, #fff 42%, #fff4f9 80%, #f0edff);
+}
+.identity::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--accent);
+}
+.identityCopy {
+  flex: 1;
+  min-width: 0;
+}
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #165dcc;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #244f92;
+  background: #eaf2ff;
+}
+.eyebrow .badge {
+  margin-left: 10px;
+}
+.title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+}
+.original {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #52617a;
+  overflow-wrap: anywhere;
+}
+.bio {
+  margin: 14px 0 0;
+  color: #52617a;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.stats {
+  display: flex;
+  flex-shrink: 0;
+  gap: 22px;
+  margin: 0;
+  padding-left: 28px;
+  border-left: 1px solid #dce3ef;
+}
+.stats > div {
+  display: flex;
+  flex-direction: column-reverse;
+}
+.stats dt {
+  font-size: 12px;
+  color: #52617a;
+}
+.stats dd {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--foreground);
+}
+
+/* ── Tabs (server-routed links, not ARIA tabs) ────────────────── */
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin: 24px 0;
+  border-bottom: 1px solid #dce3ef;
+}
+.tab {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px;
+  font-weight: 700;
+  color: #52617a;
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+  transition: background 0.15s;
+}
+.tab:hover {
+  background: #eaf2ff;
+  color: #165dcc;
+}
+.tab[aria-current] {
+  color: #165dcc;
+  border-color: #165dcc;
+}
+
+/* ── Overview grid + panels ───────────────────────────────────── */
+
+.overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.panel {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px #233c6810;
+}
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.sectionTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+.more {
+  flex-shrink: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #165dcc;
+  text-decoration: none;
+}
+.more:hover {
+  color: var(--primary-hover);
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.empty {
+  margin: 0;
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: #52617a;
+}
+.arrow {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: #165dcc;
+}
+
+/* Shared hover wash for every row/card link on the page. */
+.unitCard:hover,
+.member:hover,
+.albumRow:hover,
+.eventRow:hover {
+  background: var(--primary-hover-bg);
+  box-shadow: 0 4px 12px #233c6810;
+}
+
+/* ── Units ────────────────────────────────────────────────────── */
+
+.unitGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.unitGrid[hidden] {
+  display: none;
+}
+.otherUnits {
+  margin-top: 14px;
+}
+.unitCard {
+  display: block;
+  min-width: 0;
+  height: 100%;
+  padding: 17px;
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+  background: linear-gradient(140deg, #fff, var(--wash));
+  color: var(--foreground);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: background 0.15s;
+}
+.unitTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 22px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.unitName {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.unitMembers {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+  font-size: 13px;
+  color: #52617a;
+}
+.toggle {
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 8px 14px;
+  border: 1px solid #dce3ef;
+  border-radius: 24px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  color: #165dcc;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.toggle:hover {
+  background: var(--primary-hover-bg);
+}
+
+/* ── Members ──────────────────────────────────────────────────── */
+
+.memberGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.member {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px;
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+  color: var(--foreground);
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.initial {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--wash);
+  font-size: 17px;
+  color: var(--foreground);
+}
+.memberCopy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.memberName {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.memberUnit {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #52617a;
+}
+
+/* ── Album rows ───────────────────────────────────────────────── */
+
+.albumRow {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid #dce3ef;
+  color: var(--foreground);
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.list > li:first-child > .albumRow {
+  border-top: 0;
+  padding-top: 0;
+}
+.albumCopy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.albumTitle {
+  display: block;
+  margin: 5px 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.translation {
+  display: block;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #52617a;
+}
+.albumMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #52617a;
+}
+.bonus {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #176547;
+  background: #eaf8f0;
+}
+.discography {
+  max-width: 900px;
+}
+.discography .albumRow {
+  padding: 18px 0;
+}
+.discography .albumTitle {
+  font-size: 16px;
+}
+
+/* ── Event rows ───────────────────────────────────────────────── */
+
+.eventRow {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px 0;
+  border-top: 1px solid #dce3ef;
+  color: var(--foreground);
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.list > li:first-child > .eventRow {
+  border-top: 0;
+}
+.eventContent {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.eventMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #52617a;
+}
+.eventName {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.series {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #52617a;
+}
+.songCount {
+  margin-top: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #52617a;
+}
+.status {
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #52617a;
+  background: #f0f3f8;
+}
+.status[data-status="upcoming"] {
+  color: #176547;
+  background: #eaf8f0;
+}
+.status[data-status="ongoing"] {
+  color: #a91d45;
+  background: #fff0f3;
+}
+.status[data-status="cancelled"] {
+  color: #8b4a0c;
+  background: #fff2e4;
+}
+
+/* ── History ──────────────────────────────────────────────────── */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.historyGroup {
+  overflow: hidden;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+}
+.groupHeading {
+  margin: 0;
+}
+.groupToggle {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border: 0;
+  border-radius: 0;
+  background: #edf2fb;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.groupToggle:focus-visible {
+  outline-offset: -5px;
+}
+.groupName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.groupCount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  color: #52617a;
+}
+.groupBody {
+  padding: 0 22px;
+}
+.groupBody[hidden] {
+  display: none;
+}
+/*
+ * Column heading and rows share ONE grid template, including the
+ * trailing arrow track, and the heading carries no horizontal padding
+ * of its own — both sit inside `.groupBody`'s 22px inset. In the 20-v1
+ * mockup the heading had an extra 22px inset and no arrow track, so
+ * its first column started 22px right of the row content (Claude
+ * review, handoff 20 disposition); the shared template fixes that.
+ */
+.historyColumns,
+.history .eventRow {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 55px 20px;
+  gap: 18px;
+}
+.historyColumns {
+  padding: 12px 0;
+  border-bottom: 1px solid #dce3ef;
+  font-size: 12px;
+  color: #52617a;
+}
+.history .eventRow {
+  align-items: start;
+  padding: 16px 0;
+}
+/*
+ * Rows sit inside the group's `overflow: hidden` card, so the global
+ * 4px-offset ring would be clipped on the last row (20 review). An inset
+ * ring keeps the whole indicator inside the row box.
+ */
+.history .eventRow:focus-visible {
+  outline-offset: -3px;
+}
+.history .eventContent {
+  display: contents;
+}
+.history .eventMeta {
+  display: block;
+  margin: 0;
+}
+.history .eventMeta time {
+  display: block;
+  margin-top: 6px;
+}
+.history .series {
+  display: none;
+}
+.history .songCount {
+  margin-top: 5px;
+}
+
+/* ── <1100: header switches to the menu band; side column narrows ── */
+
+@media (max-width: 1099px) {
+  .overview {
+    grid-template-columns: minmax(0, 1fr) 310px;
+    gap: 18px;
+  }
+  .identity {
+    display: block;
+  }
+  .stats {
+    margin-top: 20px;
+    padding: 18px 0 0;
+    border-left: 0;
+    border-top: 1px solid #dce3ef;
+  }
+  .title {
+    font-size: 30px;
+  }
+  .panel {
+    padding: 18px;
+  }
+  .memberGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── <768: one column ─────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .page {
+    padding: 20px 24px 40px;
+  }
+  .overview {
+    grid-template-columns: 1fr;
+  }
+  .memberGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .identity {
+    padding: 24px;
+  }
+  .title {
+    font-size: 26px;
+  }
+  .tab {
+    flex: 1;
+    padding: 10px 8px;
+    font-size: 14px;
+  }
+  .historyColumns {
+    display: none;
+  }
+  .history .eventRow {
+    display: flex;
+  }
+  .history .eventContent {
+    display: block;
+  }
+  .history .eventMeta {
+    display: flex;
+    margin-bottom: 6px;
+  }
+  .history .eventMeta time {
+    display: inline;
+    margin: 0;
+  }
+}
+
+/* ── <700: phone band (06 shell's 64px header) ────────────────── */
+
+@media (max-width: 699px) {
+  .page {
+    padding: 16px 16px 40px;
+  }
+  .breadcrumb > nav {
+    margin-bottom: 16px;
+  }
+  .identity {
+    padding: 22px 20px;
+    border-radius: 16px;
+  }
+  .title {
+    font-size: 25px;
+  }
+  .original {
+    font-size: 13px;
+  }
+  .stats {
+    gap: 28px;
+    margin-top: 18px;
+    padding-top: 16px;
+  }
+  .stats dd {
+    font-size: 25px;
+  }
+  .tabs {
+    gap: 2px;
+    margin: 18px 0;
+  }
+  .tab {
+    padding-inline: 4px;
+    font-size: 13px;
+  }
+  .panel {
+    padding: 18px 16px;
+  }
+  .sectionHead {
+    gap: 8px;
+  }
+  .sectionTitle {
+    font-size: 18px;
+  }
+  .unitGrid {
+    grid-template-columns: 1fr;
+  }
+  .unitCard {
+    padding: 14px 16px;
+  }
+  .unitMembers {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 3px 12px;
+    font-size: 12px;
+  }
+  .memberGrid {
+    gap: 8px;
+  }
+  .member {
+    display: block;
+  }
+  .initial {
+    margin-bottom: 8px;
+  }
+  .memberName {
+    font-size: 13px;
+  }
+  .memberUnit {
+    font-size: 11px;
+  }
+  .stack,
+  .overview {
+    gap: 18px;
+  }
+  .discography .albumTitle {
+    font-size: 14px;
+  }
+  .groupToggle {
+    padding: 16px;
+    font-size: 14px;
+  }
+  .groupBody {
+    padding: 0 16px;
+  }
+  .history .eventRow .arrow {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .toggle,
+  .unitCard,
+  .member,
+  .albumRow,
+  .eventRow {
+    transition: none;
+  }
+}
