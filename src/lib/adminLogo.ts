@@ -145,18 +145,18 @@ export async function getSeriesLogoAdminState(
         if (!attempt.keyPrefix) {
           evidence = { state: "unavailable" };
         } else {
-          const rows = await tx.imageAsset.findMany({
+          const attemptRows = await tx.imageAsset.findMany({
             where: { objectKey: { in: seriesLogoAttemptKeys(attempt.keyPrefix, seriesId, attempt.attemptId) } },
             select: { id: true },
           });
           evidence =
-            rows.length === 0
+            attemptRows.length === 0
               ? { state: "not-observed" }
-              : rows.length === 1
+              : attemptRows.length === 1
                 ? {
                     state: "committed",
-                    assetId: rows[0].id,
-                    held: series.logoMode === "custom" && series.logoAssetId === rows[0].id,
+                    assetId: attemptRows[0].id,
+                    held: series.logoMode === "custom" && series.logoAssetId === attemptRows[0].id,
                   }
                 : { state: "ambiguous" };
         }
@@ -190,7 +190,9 @@ export async function getSeriesLogoAdminState(
         attempt: evidence,
       };
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    // The series table is small (a few dozen rows); the default 5s budget
+    // is tight only on a cold pooler connection.
+    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 10_000 },
   );
 }
 

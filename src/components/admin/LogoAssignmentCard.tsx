@@ -8,6 +8,7 @@ import {
   assignmentLabel,
   attemptCommittedFromConflict,
   classifyModeChangeReply,
+  modeLabel,
   reconcileModeChange,
   reconcileUpload,
   resolutionText,
@@ -123,6 +124,20 @@ type Frozen =
 
 const LOCKED: ReadonlySet<Phase> = new Set(["saving", "unknown", "checking", "unchanged", "conflict", "refreshing"]);
 const BUSY: ReadonlySet<Phase> = new Set(["saving", "unknown", "checking", "unchanged", "refreshing"]);
+/** The reply of the last send is lost and not yet classified. */
+const UNSETTLED: ReadonlySet<Phase> = new Set(["unknown", "checking", "unchanged"]);
+/** Phases whose notice takes focus (screen readers hear the outcome). */
+const FOCUS_NOTICE: ReadonlySet<Phase> = new Set([
+  "failure",
+  "unknown",
+  "unchanged",
+  "conflict",
+  "saved",
+  "savedStay",
+  "reconciled",
+  "refreshed",
+  "invalid",
+]);
 
 function draftPreview(state: LogoCardState, mode: LogoMode): AdminLogoPreview {
   if (mode === "inherit") return state.previews.inherit;
@@ -207,7 +222,7 @@ export default function LogoAssignmentCard({
   }, [refreshKey]);
 
   useEffect(() => {
-    if (["failure", "unknown", "unchanged", "conflict", "saved", "savedStay", "reconciled", "refreshed", "invalid"].includes(phase)) {
+    if (FOCUS_NOTICE.has(phase)) {
       noticeRef.current?.focus();
     }
   }, [phase]);
@@ -444,13 +459,13 @@ export default function LogoAssignmentCard({
     !(draftMode === "custom" && !attempt && confirmed.assignment.mode !== "custom");
 
   // ── What the preview shows ────────────────────────────────────────
-  const showingSubmitted = (phase === "unknown" || phase === "checking" || phase === "unchanged") && frozen?.kind === "upload";
+  const unsettled = UNSETTLED.has(phase);
+  const showingSubmitted = unsettled && frozen?.kind === "upload";
   const preview = draftPreview(confirmed, draftMode);
   const previewImage = attempt ? attempt.previewUrl : preview.imageUrl;
   const previewTitle =
     showingSubmitted ? "제출한 이미지 · 결과 확인 필요" : dirty ? "저장 후 적용될 모습" : "적용 결과";
-  const previewBadge =
-    phase === "unknown" || phase === "checking" || phase === "unchanged"
+  const previewBadge = unsettled
       ? "미확정"
       : phase === "saving"
         ? "처리 중"
@@ -475,10 +490,9 @@ export default function LogoAssignmentCard({
     resolution = describeResolution(draftMode, preview, imageFailed);
   }
 
-  const lastConfirmed = phase === "unknown" || phase === "checking" || phase === "unchanged" || phase === "conflict";
+  const lastConfirmed = unsettled || phase === "conflict";
   const currentLabel = assignmentLabel(confirmed.assignment, confirmed.applied);
-  const headBadge =
-    phase === "unknown" || phase === "checking" || phase === "unchanged"
+  const headBadge = unsettled
       ? "결과 미확정"
       : phase === "conflict"
         ? "다른 곳에서 변경됨"
@@ -510,7 +524,6 @@ export default function LogoAssignmentCard({
         createPortal(
           <form
             id={formId}
-            noValidate={false}
             onSubmit={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -768,13 +781,6 @@ function replyMessage(body: unknown): string | null {
   return typeof m === "string" ? m : null;
 }
 
-function describe(a: AdminLogoAssignment | null): string {
-  if (!a) return "알 수 없음";
-  if (a.mode === "custom") return "직접 지정 이미지";
-  if (a.mode === "typography") return "타이포그래피만";
-  return "상속";
-}
-
 function Notice({
   refEl,
   phase,
@@ -866,9 +872,9 @@ function Notice({
       action = (
         <>
           <div className="mt-2.5 border-t border-black/10 pt-[9px] text-[11px]">
-            내 변경: {frozen?.kind === "upload" ? "새 이미지" : describe(frozen?.kind === "mode" ? frozen.next : null)}
+            내 변경: {frozen?.kind === "upload" ? "새 이미지" : modeLabel(frozen?.kind === "mode" ? frozen.next : null)}
             <br />
-            서버 최신값: {describe(conflictCurrent)}
+            서버 최신값: {modeLabel(conflictCurrent)}
           </div>
           <button type="button" className={button} onClick={onLoadLatest} disabled={phase === "refreshing"}>
             {phase === "refreshing" ? "불러오는 중…" : "최신 값 불러오기 · 이미지 초안 폐기"}

@@ -171,7 +171,6 @@ beforeAll(async () => {
 beforeEach(async () => {
   r2.configured = true;
   vi.mocked(revalidatePublicData).mockClear();
-  vi.restoreAllMocks();
   await prisma.eventSeries.updateMany({
     where: { id: { in: [parentId, childId] } },
     data: { logoMode: "inherit", logoAssetId: null },
@@ -297,10 +296,14 @@ describe("PATCH mode change / unlink", () => {
   it("unlink (custom → inherit) keeps the asset row; the event falls back", async () => {
     const up = await upload(parentId, INHERIT);
     const before = await assetCount();
+    // Positive control for the invalidation below: the upload itself
+    // invalidated; clear it so only the PATCH can satisfy the assertion.
+    expect(revalidatePublicData).toHaveBeenCalled();
+    vi.mocked(revalidatePublicData).mockClear();
     const res = await patch(parentId, { mode: "custom", assetId: up.body.asset.id }, { mode: "inherit" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: "saved", assignment: INHERIT });
-    expect(revalidatePublicData).toHaveBeenCalled();
+    expect(revalidatePublicData).toHaveBeenCalledTimes(1);
     expect(await logoOf(parentId)).toEqual(INHERIT);
     expect(await assetCount()).toBe(before);
     expect(await prisma.imageAsset.count({ where: { id: up.body.asset.id } })).toBe(1);
@@ -345,25 +348,36 @@ describe("PATCH mode change / unlink", () => {
 
   it("failure before the callback finished → not_saved; after it → outcome_unknown", async () => {
     const real = prisma.$transaction.bind(prisma);
-    vi.spyOn(prisma, "$transaction").mockImplementationOnce((async () => {
-      throw new Error("connection reset before commit");
-    }) as never);
-    const pre = await patch(parentId, INHERIT, { mode: "typography" });
-    expect(pre.status).toBe(500);
-    expect(await pre.json()).toMatchObject({ outcome: "not_saved" });
-    expect(await logoOf(parentId)).toEqual(INHERIT);
+    const spy = vi.spyOn(prisma, "$transaction");
+    try {
+      spy.mockImplementationOnce((async () => {
+        throw new Error("connection reset before commit");
+      }) as never);
+      const pre = await patch(parentId, INHERIT, { mode: "typography" });
+      expect(pre.status).toBe(500);
+      expect(await pre.json()).toMatchObject({ outcome: "not_saved" });
+      expect(await logoOf(parentId)).toEqual(INHERIT);
 
-    // Commit really happens, then the reply is lost.
-    vi.spyOn(prisma, "$transaction").mockImplementationOnce((async (fn: never) => {
-      await real(fn);
-      throw new Error("reply lost after commit");
-    }) as never);
-    const lost = await patch(parentId, INHERIT, { mode: "typography" });
-    expect(lost.status).toBe(503);
-    expect(await lost.json()).toMatchObject({ outcome: "unknown" });
+      // Commit really happens, then the reply is lost.
+      spy.mockImplementationOnce((async (fn: never) => {
+        await real(fn);
+        throw new Error("reply lost after commit");
+      }) as never);
+      const lost = await patch(parentId, INHERIT, { mode: "typography" });
+      expect(lost.status).toBe(503);
+      expect(await lost.json()).toMatchObject({ outcome: "unknown" });
+    } finally {
+      spy.mockRestore();
+    }
+    // The lost reply skipped the route's invalidation; the reconcile read
+    // must expire the public cache itself.
+    expect(revalidatePublicData).not.toHaveBeenCalled();
     // The form reconciles by reading: current == next → reflected.
     expect((await getState(parentId, "?reconcile=1")).body.assignment).toEqual({ mode: "typography", assetId: null });
-    expect(revalidatePublicData).toHaveBeenCalled();
+    expect(revalidatePublicData).toHaveBeenCalledTimes(1);
+    // A plain read does not invalidate.
+    await getState(parentId);
+    expect(revalidatePublicData).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -111,6 +111,14 @@ export function classifyModeChangeReply(
   return { kind: "not_saved", message };
 }
 
+/** Mode-only label (no resolved result), e.g. for a 409 comparison. */
+export function modeLabel(a: AdminLogoAssignment | null): string {
+  if (!a) return "알 수 없음";
+  if (a.mode === "custom") return "직접 지정 이미지";
+  if (a.mode === "typography") return "타이포그래피만";
+  return "상속";
+}
+
 /** Short Korean label of an assignment for the card's badge/summary. */
 export function assignmentLabel(assignment: AdminLogoAssignment, applied: AdminLogoPreview): string {
   if (assignment.mode === "custom") return applied.imageUrl ? "직접 지정" : "직접 지정 · 이미지 사용 불가";

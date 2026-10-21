@@ -135,6 +135,10 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
   const [logoRefreshKey, setLogoRefreshKey] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const mainDirty = JSON.stringify(buildPayload()) !== savedPayload;
+  const savedTitles = JSON.parse(savedPayload) as {
+    originalName: string;
+    originalShortName: string | null;
+  };
 
   useEffect(() => {
     if (!mainDirty && !logoStatus.dirty && !logoStatus.busy) return;
@@ -368,9 +372,11 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
             inheritTitle: "상위 시리즈에서 상속",
             customDescription: "이 시리즈와 상속하는 하위 공연에 사용할 로고입니다.",
           }}
+          // The SAVED titles (not the live inputs): the preview shows what
+          // the public pages render, which changes only on the main save.
           typography={{
-            title: initialData.originalShortName || initialData.originalName,
-            caption: initialData.originalShortName ? initialData.originalName : null,
+            title: savedTitles.originalShortName || savedTitles.originalName,
+            caption: savedTitles.originalShortName ? savedTitles.originalName : null,
           }}
           otherDirty={mainDirty}
           externalBusy={loading}
