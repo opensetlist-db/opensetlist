@@ -61,7 +61,9 @@ export function ConcertGroup({
         boxShadow: shadows.card,
       }}
     >
-      <header
+      {/* A div, not <header>: the page keeps one header with a menu
+          toggle (the site banner), which shell QA and AT rely on. */}
+      <div
         className="flex items-center gap-2 rounded-t-2xl p-4 min-[700px]:gap-4 min-[700px]:p-[18px] min-[1100px]:px-6 min-[1100px]:py-5"
         style={{
           background: live ? colors.listLiveGroupBg : colors.listGroupWash,
@@ -118,7 +120,7 @@ export function ConcertGroup({
             />
           </button>
         )}
-      </header>
+      </div>
       <div id={rowsId} hidden={!expanded}>
         {children}
       </div>
