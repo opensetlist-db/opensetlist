@@ -7,8 +7,9 @@
  * load fails in that window, the `error` event fires on an element React
  * has not attached its listener to yet, and React's `onError` never runs
  * — the failure UI (a placeholder, a "could not load" note) never
- * appears, and the page shows a broken image instead. Browser QA caught
- * this on the admin album cover editor after two code reviews passed it.
+ * appears, and the page shows a broken image instead. Code review rarely
+ * catches it: the handler reads as complete, and only a browser that
+ * loads a broken URL before hydration shows the gap.
  *
  * The fix is a mount-time check in a callback ref, which runs when React
  * attaches to the element during hydration:
@@ -28,9 +29,11 @@
  * The rule asks only that a `ref` is there, not what it does — the check
  * can also live in a hook (`ref={imgRef}` plus a `useEffect`). It skips an
  * `<img>` with a spread attribute (`{...props}`), which may carry the ref.
- * Modules without "use client" are skipped: a server component cannot
- * pass an event handler, so `onError` there already fails the build.
- * `next/image` (`<Image>`) is not covered.
+ * Modules without "use client" as their first statement are skipped.
+ * Rendered as a server component, such a module cannot pass an event
+ * handler at all; but a directive-less module imported from a client one
+ * is client code too, and its `<img onError>` goes unchecked — the rule
+ * cannot see the import graph. `next/image` (`<Image>`) is not covered.
  */
 
 function isClientModule(program) {
@@ -60,7 +63,7 @@ const rule = {
     schema: [],
     messages: {
       missingRef:
-        "<img onError> needs a ref that checks `el.complete && el.naturalWidth === 0` on mount: a server-rendered image that fails before hydration never fires React's onError.",
+        "<img onError> needs a ref that checks the image on mount (e.g. `el.complete && el.naturalWidth === 0`): a server-rendered image that fails before hydration never fires React's onError.",
     },
   },
   create(context) {
