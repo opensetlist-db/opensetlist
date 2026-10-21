@@ -249,6 +249,8 @@ describe("public projection", () => {
     };
     const g = chain({ logoMode: "custom", logoAsset: leaky });
     const json = JSON.stringify(resolveEventLogo(leafEvent(), g));
+    // Positive control: the leaky asset was actually resolved.
+    expect(JSON.parse(json).image.url).toBe(asset(1).publicUrl);
     for (const secret of ["asset-uuid", "redesign/logo-1.webp", "source.example", "internal note"]) {
       expect(json).not.toContain(secret);
     }
