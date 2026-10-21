@@ -378,21 +378,23 @@ export default async function EventsPage({
                   {tl("pastHeading")}
                 </h2>
                 {pastSlice.map(renderGroup)}
-                <Pagination
-                  currentPage={pastPage}
-                  totalPages={pastTotalPages}
-                  pageParamKey="pastPage"
-                  otherParams={paginationOtherParams}
-                  labels={{
-                    nav: tl("pastHeading"),
-                    prev: tl("prev"),
-                    next: tl("next"),
-                    status: tl("pageStatus", {
-                      current: pastPage,
-                      total: pastTotalPages,
-                    }),
-                  }}
-                />
+                {pastTotalPages > 1 && (
+                  <Pagination
+                    currentPage={pastPage}
+                    totalPages={pastTotalPages}
+                    pageParamKey="pastPage"
+                    otherParams={paginationOtherParams}
+                    labels={{
+                      nav: tl("pastHeading"),
+                      prev: tl("prev"),
+                      next: tl("next"),
+                      status: tl("pageStatus", {
+                        current: pastPage,
+                        total: pastTotalPages,
+                      }),
+                    }}
+                  />
+                )}
               </>
             )}
           </>

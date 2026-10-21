@@ -294,11 +294,10 @@ describe("<EventArt tint />", () => {
     unmount();
     return style;
   };
-  const ARTIST_COLOUR = "#FB8A9B";
 
   it("washes the region with a valid colour and ignores anything else", () => {
     const neutral = styleOf();
-    expect(styleOf(ARTIST_COLOUR)).not.toBe(neutral);
+    expect(styleOf(SERIES_ARTIST_COLOUR)).not.toBe(neutral);
     expect(styleOf("red; background: url(x)")).toBe(neutral);
   });
 });
