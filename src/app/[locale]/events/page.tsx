@@ -152,7 +152,7 @@ export default async function EventsPage({
       eventName,
       venueCity,
       // Song count for completed (final tally) and ongoing (running
-      // tally, same count as the home LiveHeroCard). Upcoming and
+      // tally, same count as the home ongoing card). Upcoming and
       // cancelled rows have no meaningful count yet.
       songCountLabel:
         status === "completed" || status === "ongoing"

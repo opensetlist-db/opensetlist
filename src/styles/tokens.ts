@@ -56,8 +56,7 @@ export const colors = {
   bgSubtle: "#f8fafc",
   bgFaint: "#fafbfc",
 
-  // Deeper navy used as the mid-stop on the LIVE-banner gradient and
-  // the home `LiveHeroCard` mid-stop. Sits between `textPrimary`
+  // Deeper navy used as the mid-stop on the LIVE-banner gradient. Sits between `textPrimary`
   // (#0f172a, near-black) and `primary` (#0277BD, brand blue) on the
   // hue ramp; without it the gradient jumps too abruptly between the
   // two endpoints.
@@ -100,7 +99,7 @@ export const colors = {
   // `border` without becoming text-weight gray.
   borderSubtle: "#cbd5e1",
 
-  // Card-hover wash for primary-themed surfaces (UpcomingCard).
+  // Card-hover wash for primary-themed surfaces.
   // Lighter than `primaryBg` so resting cards on a white page lift
   // without flashing a bright brand tint on hover.
   primaryHoverBg: "#EDF4FF",
@@ -482,9 +481,9 @@ export const shadows = {
 
 export const radius = {
   // Card-radius scale, in ascending order. `card` is the regular size
-  // (most surfaces); `cardSm` is the compact card variant used by the
-  // home `UpcomingCard`; `cardLg` is the hero treatment for surfaces
-  // that need more prominence than a regular card (home `LiveHeroCard`).
+  // (most surfaces); `cardSm` is the compact card variant; `cardLg` is
+  // the hero treatment for surfaces that need more prominence than a
+  // regular card.
   cardSm: 14,
   card: 16,
   cardLg: 20,
@@ -532,8 +531,8 @@ export const borderWidth = {
 /*
  * Motion shorthands. Currently a single entry — the LIVE-status pulse
  * shared by `<StatusBadge status="ongoing">` (the `● LIVE` dot in
- * row-shaped surfaces) and `<LiveHeroCard>` (the dot inside the dark
- * gradient hero). Both must agree on the keyframe + cadence so a
+ * row-shaped surfaces) and the home ongoing card's LIVE capsule
+ * (`CompactEventCard`). Both must agree on the keyframe + cadence so a
  * design tweak doesn't fall out of sync between surfaces.
  */
 export const motion = {
@@ -543,8 +542,8 @@ export const motion = {
 /*
  * Composite gradients beyond `colors.brandGradient` /
  * `colors.darkGradient`. `liveBanner` is the dark-navy ramp used by
- * the series-page LIVE banner — same `textPrimary` → deeper-navy
- * `#1e3a5f` arc that the home `LiveHeroCard` mid-stop already pins.
+ * the series-page LIVE banner — the `textPrimary` → deeper-navy
+ * `#1e3a5f` arc (`colors.navyDeep`).
  *
  * `progressBar` is the horizontal (90deg) brand ramp used by the
  * series-page tour-progress fill. Distinct from `colors.brandGradient`
