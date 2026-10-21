@@ -1158,7 +1158,9 @@ async function writeCompare(baselinePath, actualPng, outFile) {
 // awaits above this point, before a module-level const would be initialised.
 function printHydrationHint(errors) {
   const hydrationError = /Minified React error #(418|423|425)/;
-  const hit = errors.find((e) => hydrationError.test(e.text) && e.url);
+  // Admin pages are left out: hydration-diff sends no admin cookie, so it
+  // would diff the login page instead.
+  const hit = errors.find((e) => hydrationError.test(e.text) && e.url && !e.url.startsWith("/admin"));
   if (!hit) return;
   console.log("hydration mismatch → node scripts/hydration-diff.mjs %s --timezone Asia/Seoul", BASE + hit.url);
 }

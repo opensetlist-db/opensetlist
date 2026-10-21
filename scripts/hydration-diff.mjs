@@ -9,9 +9,9 @@
 //     a short ancestor path (tag#id[data-testid] / tag.class)
 // When hydration fails React re-renders the root on the client, so the
 // hydrated DOM is the client render and the two lists are the server and
-// client sides of the mismatch. Redesign ticket 19 traced #418 this way to
-// ImpressionCell dates formatted in the viewer's time zone: they only differ
-// when the browser zone is not the server's (UTC), hence --timezone.
+// client sides of the mismatch. A typical cause is a client component that
+// formats a date in the viewer's time zone: its text differs only when the
+// browser zone is not the server's (UTC on Vercel), hence --timezone.
 //
 // Usage (from the repo root, against a running production build — see
 // scripts/serve-build.sh; a dev server reports mismatches in readable form
@@ -40,10 +40,18 @@
 // hydration (a fetch that fills a list, a relative "3 minutes ago") change
 // text too. Compare the two time zones' output — the timezone-dependent
 // lines are the ones that appear only in one of them — and the page
-// errors tell whether hydration failed at all.
+// errors tell whether hydration failed at all. The fetched HTML and the
+// page the browser loads are also two separate server renders, so data that
+// changes between requests (an ongoing event's counts) differs too.
 //
-// Exits 1 when a zone shows a hydration error (or the fetch fails, or the
-// run times out), 0 otherwise — text differences alone do not fail it,
+// The page-error listener is checked on every zone: after the DOM is read,
+// the page reports a probe error the same way React reports a mismatch
+// (reportError). If the probe never arrives, "page errors: 0" would prove
+// nothing, so the zone FAILs instead.
+//
+// Exits 1 when a zone shows a hydration error (or the fetch fails or is not
+// 2xx, a zone's load throws, the probe is not seen, or the run times out),
+// 0 otherwise — text differences alone do not fail it,
 // since post-hydration effects produce them on healthy pages; 2 on a usage
 // error.
 import { parseArgs } from "node:util";
@@ -159,6 +167,7 @@ function minus(a, b) {
   return out;
 }
 
+const PROBE = "hydration-diff listener probe";
 const HYDRATION_ERROR = /Minified React error #(418|423|425)|[Hh]ydrat/;
 
 function printList(title, entries) {
@@ -167,57 +176,91 @@ function printList(title, entries) {
   if (entries.length > MAX) console.log("  … +%d more (--max)", entries.length - MAX);
 }
 
-let failed = false;
-let res;
-let ssrHtml;
-try {
-  res = await fetch(url, { signal: AbortSignal.timeout(STEP_MS), redirect: "follow" });
-  ssrHtml = await res.text();
-} catch (e) {
-  console.log("ERR fetch %s: %s", url, String(e.message ?? e));
-  process.exit(1);
+// The SSR HTML, or null after printing why it cannot be compared.
+async function fetchSsr() {
+  let res;
+  let html;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(STEP_MS), redirect: "follow" });
+    html = await res.text();
+  } catch (e) {
+    console.log("ERR fetch %s: %s", url, String(e.message ?? e));
+    return null;
+  }
+  console.log("SSR %s %s (%d bytes)%s", res.status, url, html.length, res.url !== url ? ` → ${res.url}` : "");
+  // An error or login page would be diffed against itself and pass.
+  if (!res.ok) {
+    console.log("ERR SSR status %s — not the page to compare", res.status);
+    return null;
+  }
+  return { finalUrl: res.url, html };
 }
-console.log("SSR %s %s (%d bytes)%s", res.status, url, ssrHtml.length, res.url !== url ? ` → ${res.url}` : "");
 
-const browser = await browserType.launch();
-try {
-  for (const zone of zones) {
-    const ctx = await browser.newContext({ timezoneId: zone });
-    try {
-      const page = await ctx.newPage();
-      page.setDefaultTimeout(STEP_MS);
-      page.setDefaultNavigationTimeout(STEP_MS);
-      const errors = [];
-      page.on("pageerror", (err) => errors.push(String(err.message ?? err)));
-      page.on("console", (m) => {
-        // React 19 reports recoverable errors (the mismatch) via reportError,
-        // which arrives as a pageerror; a console.error naming hydration is
-        // kept too, for builds that log instead.
-        if (m.type() === "error" && HYDRATION_ERROR.test(m.text())) errors.push(`console: ${m.text()}`);
-      });
-      // The final URL of the fetch, so a slug redirect does not make the
-      // browser load a different page from the HTML being compared.
-      await page.goto(res.url, { waitUntil: "load" });
-      await page.waitForTimeout(SETTLE_MS);
-      const ssr = await page.evaluate(collectTexts, ssrHtml);
-      const live = await page.evaluate(collectTexts, null);
-      const onlySsr = minus(ssr, live);
-      const onlyLive = minus(live, ssr);
+const ssrPage = await fetchSsr();
+if (!ssrPage) {
+  // No process.exit here: exiting while undici still holds the fetch's
+  // keep-alive socket trips a libuv assertion on Windows (exit 127, not 1).
+  // Nothing else is pending once the guard timer is cleared.
+  clearTimeout(runTimer);
+  process.exitCode = 1;
+} else {
+  const failed = await compareZones(ssrPage);
+  clearTimeout(runTimer);
+  process.exit(failed ? 1 : 0);
+}
 
+// Loads the page once per zone and prints that zone's report; true when
+// any zone failed.
+async function compareZones({ finalUrl, html: ssrHtml }) {
+  let failed = false;
+  const browser = await browserType.launch();
+  try {
+    for (const zone of zones) {
+      const ctx = await browser.newContext({ timezoneId: zone });
       console.log("");
       console.log("=== timezone %s (%s) ===", zone, args.browser);
-      console.log("page errors: %d", errors.length);
-      for (const e of errors) console.log("  %s", e.slice(0, 300));
-      printList("only in SSR HTML", onlySsr);
-      printList("only in hydrated DOM", onlyLive);
-      if (errors.some((e) => HYDRATION_ERROR.test(e))) failed = true;
-    } finally {
-      await ctx.close();
+      try {
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(STEP_MS);
+        page.setDefaultNavigationTimeout(STEP_MS);
+        const errors = [];
+        page.on("pageerror", (err) => errors.push(String(err.message ?? err)));
+        page.on("console", (m) => {
+          // React 19 reports recoverable errors (the mismatch) via reportError,
+          // which arrives as a pageerror; a console.error naming hydration is
+          // kept too, for builds that log instead.
+          if (m.type() === "error" && HYDRATION_ERROR.test(m.text())) errors.push(`console: ${m.text()}`);
+        });
+        // The final URL of the fetch, so a slug redirect does not make the
+        // browser load a different page from the HTML being compared.
+        await page.goto(finalUrl, { waitUntil: "load" });
+        await page.waitForTimeout(SETTLE_MS);
+        const ssr = await page.evaluate(collectTexts, ssrHtml);
+        const live = await page.evaluate(collectTexts, null);
+        const onlySsr = minus(ssr, live);
+        const onlyLive = minus(live, ssr);
+
+        // Positive control for the listener (see the header).
+        await page.evaluate((msg) => setTimeout(() => reportError(new Error(msg)), 0), PROBE);
+        await page.waitForTimeout(500);
+        const probed = errors.some((e) => e.includes(PROBE));
+        const real = errors.filter((e) => !e.includes(PROBE));
+        console.log("page errors: %d%s", real.length, probed ? "" : " (listener probe NOT seen — FAIL)");
+        for (const e of real) console.log("  %s", e.slice(0, 300));
+        printList("only in SSR HTML", onlySsr);
+        printList("only in hydrated DOM", onlyLive);
+        if (!probed || real.some((e) => HYDRATION_ERROR.test(e))) failed = true;
+      } catch (e) {
+        // One zone's timeout must not skip the others.
+        console.log("ERR %s: %s", zone, String(e.message ?? e).split("\n")[0]);
+        failed = true;
+      } finally {
+        await ctx.close();
+      }
     }
+  } finally {
+    // Bounded: WebKit on Windows can hang in close() after a finished run.
+    await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
   }
-} finally {
-  // Bounded: WebKit on Windows can hang in close() after a finished run.
-  await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
+  return failed;
 }
-clearTimeout(runTimer);
-process.exit(failed ? 1 : 0);

@@ -34,6 +34,10 @@
 //                      date (YYYY-MM-DD…) shows a 4-digit year in its text,
 //                      unless the text is a clock time alone ("18:00")
 //            A page with no matching elements reports N/A, not PASS.
+//   overflow fixture  hidden helpers injected into <main> are skipped by
+//            the page overflow check while injected real offenders (a 1px
+//            hairline, a child of a 1×1 overflow-visible box, a static box
+//            with an inapplicable clip) are reported (positive control)
 //   selector the banner-scoped menu-toggle selector finds exactly one toggle
 //            on a page with in-page <header> toggles injected, one per
 //            excluded context (positive control: the unscoped selector must
@@ -346,21 +350,23 @@ function pageInvariants() {
   // nobody sees them. dnd-kit's DndLiveRegion (position fixed, 1×1px,
   // margin -1px, so its left edge is at -1) was reported as overflow on
   // every width of a page with a prediction editor. Skipped are a box of at
-  // most 1px in both directions (the sr-only pattern), a box clipped away
-  // by `clip: rect(0 0 0 0)`-style or `clip-path: inset(≥50%)`, and an
-  // aria-live region at most 1px in either direction. A box that is 1px in
-  // one direction only is still checked: a hairline divider that runs past
-  // the viewport edge is a real, visible overflow.
+  // most 1px in both directions (the sr-only pattern), a positioned box
+  // clipped away by `clip: rect(0 0 0 0)`-style or `clip-path: inset(≥50%)`,
+  // and an aria-live region at most 1px in either direction. A box that is
+  // 1px in one direction only is still checked: a hairline divider that
+  // runs past the viewport edge is a real, visible overflow.
+  //
+  // Returns why a box is hidden — "clip" (nothing of it or its subtree
+  // paints) or "box" (the box itself is too small to see) — or null.
   const srHidden = (el, r) => {
-    if (r.width <= 1 && r.height <= 1) return true;
     const s = getComputedStyle(el);
-    if (el.hasAttribute("aria-live") && (r.width <= 1 || r.height <= 1)) return true;
-    // Computed `clip` only applies to absolutely/fixed positioned boxes and
-    // reads "auto" otherwise; a rect whose two edges meet shows nothing.
+    // `clip` applies only to absolutely/fixed positioned boxes; on any other
+    // box the computed value still echoes what was specified, so check the
+    // position too. A rect whose two edges meet shows nothing.
     const clip = /^rect\(\s*([-\d.]+)px,?\s*([-\d.]+)px,?\s*([-\d.]+)px,?\s*([-\d.]+)px\s*\)$/.exec(s.clip ?? "");
-    if (clip) {
+    if (clip && (s.position === "absolute" || s.position === "fixed")) {
       const [top, right, bottom, left] = clip.slice(1).map(Number);
-      if (right <= left || bottom <= top) return true;
+      if (right <= left || bottom <= top) return "clip";
     }
     // inset(top right bottom left) with the shorthand's 1–4 values; only
     // percentages are read (a px inset depends on the box size, and
@@ -371,12 +377,17 @@ function pageInvariants() {
       const v = inset[1].split(/\s+round\s+/)[0].trim().split(/\s+/);
       const pct = (x) => (/^[\d.]+%$/.test(x ?? "") ? Number(x.slice(0, -1)) : 0);
       const [t, rt = t, b = t, l = rt] = v.map(pct);
-      if (t + b >= 100 || l + rt >= 100) return true;
+      if (t + b >= 100 || l + rt >= 100) return "clip";
     }
-    return false;
+    if (r.width <= 1 && r.height <= 1) return "box";
+    if (el.hasAttribute("aria-live") && (r.width <= 1 || r.height <= 1)) return "box";
+    return null;
   };
-  // Descendants of a hidden helper are hidden with it (its overflow is
-  // usually hidden, which clips them to its 1px box — still at -1px).
+  // A hidden helper's subtree is skipped with it only when the helper clips
+  // it: by clip/clip-path, or by its own overflow (sr-only sets
+  // overflow: hidden, which would otherwise clip its children to the same
+  // 1px box at -1px and report them). A 1×1 wrapper with overflow visible
+  // hides nothing — its children are checked like any other box.
   const hidden = [];
   const overflow = [];
   for (const el of main.querySelectorAll("*")) {
@@ -384,8 +395,10 @@ function pageInvariants() {
     if (hidden.some((h) => h.contains(el))) continue;
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) continue;
-    if (srHidden(el, r)) {
-      hidden.push(el);
+    const why = srHidden(el, r);
+    if (why) {
+      const s = getComputedStyle(el);
+      if (why === "clip" || s.overflowX !== "visible" || s.overflowY !== "visible") hidden.push(el);
       continue;
     }
     let left = r.left;
@@ -626,6 +639,48 @@ await section("toggle selector fixture", async () => {
       "banner toggle selector ignores in-page <header> toggles",
       unscoped === injected + 1 && scopedCount === 1 && !scopedIsFixture,
       `${injected} injected; unscoped matches ${unscoped}, scoped matches ${scopedCount}${scopedIsFixture ? " (a fixture toggle)" : ""}`,
+    );
+  } finally {
+    await ctx.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Overflow fixture: the page overflow check must skip visually hidden
+// helpers and still report real offenders. Injected into <main> at 390:
+// hidden ones (a dnd-kit-style fixed 1×1 live region at -1px, an sr-only
+// clip-rect box with a 900px child, a clip-path: inset(50%) box hanging off
+// the left edge) and real ones (a 1px-tall hairline 2000px wide, a 2000px
+// child of a 1×1 overflow-visible wrapper, a static box whose `clip` does
+// not apply). The real ones are the positive control: unless exactly those
+// three are reported, the skip proves nothing. The page must not overflow
+// before the injection, or its own offenders would crowd the list.
+// ---------------------------------------------------------------------------
+await section("overflow fixture", async () => {
+  const ctx = await newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    const page = await ctx.newPage();
+    await open(page, `${BASE}/ja/events`);
+    const before = (await page.evaluate(pageInvariants)).overflow.problems;
+    await page.evaluate(() => {
+      const hidden =
+        '<div id="qa-ov-live" role="status" aria-live="assertive" style="position:fixed;left:0;top:0;width:1px;height:1px;margin:-1px;overflow:hidden;white-space:nowrap"></div>' +
+        '<span id="qa-ov-sronly" style="position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0)"><b style="display:inline-block;width:900px">sr</b></span>' +
+        '<div id="qa-ov-clippath" style="position:relative;left:-50px;width:600px;height:20px;clip-path:inset(50%)">x</div>';
+      const real =
+        '<hr id="qa-ov-hairline" style="width:2000px;height:1px;border:0;margin:0;background:#000">' +
+        '<div style="width:1px;height:1px"><div id="qa-ov-child" style="width:2000px;height:20px"></div></div>' +
+        '<div id="qa-ov-static" style="width:2000px;height:20px;clip:rect(0,0,0,0)"></div>';
+      document.querySelector("main").insertAdjacentHTML("beforeend", hidden + real);
+    });
+    const after = (await page.evaluate(pageInvariants)).overflow.problems.join("; ");
+    const want = ["hr#qa-ov-hairline", "div#qa-ov-child", "div#qa-ov-static"];
+    check(
+      "overflow check skips hidden helpers, reports real offenders",
+      // Exactly three reported and all three named: a leaked hidden helper
+      // would make it four (or push a real one out of the 3-name list).
+      before.length === 0 && after.startsWith("3 past viewport:") && want.every((w) => after.includes(w)),
+      before.length ? `page overflows before injection: ${before.join("; ")}` : after || "nothing reported",
     );
   } finally {
     await ctx.close();
