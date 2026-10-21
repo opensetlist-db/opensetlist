@@ -318,11 +318,6 @@
     "iconLabelReactions": "반응",
     "songsValue": "{count, plural, other {#곡}}",
     "itemsLabel": "{count, plural, other {#개 항목}}",
-    "tapToAddReaction": "탭해서 반응 추가",
-    "colPosition": "#",
-    "colSong": "곡",
-    "colPerformers": "출연",
-    "colReactions": "반응",
     "unitsLabel": "유닛",
     "performersLabel": "출연진",
     "guestLabel": "게스트",
@@ -364,7 +359,11 @@
     "viewSeries": "시리즈 보기",
     "creditsToggle": "출연 크레딧",
     "performersMore": "더 보기 ({count})",
-    "liveNotice": "실시간으로 업데이트 중"
+    "liveNotice": "실시간으로 업데이트 중",
+    "cancelledTitle": "공연 취소",
+    "cancelledBody": "취소된 공연입니다. 희망곡·예상곡을 새로 저장하거나 수정할 수 없어요.",
+    "opensTitle": "참여가 열리는 날",
+    "opensBody": "희망곡과 예상 세트리스트는 아래 시각부터 참여할 수 있어요."
   },
   "EventList": {
     "eyebrow": "CONCERTS & SETLISTS",

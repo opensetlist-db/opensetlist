@@ -318,11 +318,6 @@
     "iconLabelReactions": "Reactions",
     "songsValue": "{count, plural, one {# song} other {# songs}}",
     "itemsLabel": "{count, plural, one {# item} other {# items}}",
-    "tapToAddReaction": "Tap to add reaction",
-    "colPosition": "#",
-    "colSong": "Song",
-    "colPerformers": "Performers",
-    "colReactions": "Reactions",
     "unitsLabel": "Units",
     "performersLabel": "Performers",
     "guestLabel": "Guest",
@@ -364,7 +359,11 @@
     "viewSeries": "View series",
     "creditsToggle": "Credits",
     "performersMore": "Show more ({count})",
-    "liveNotice": "Updating live"
+    "liveNotice": "Updating live",
+    "cancelledTitle": "Cancelled",
+    "cancelledBody": "This concert is cancelled. Song wishes and predictions cannot be saved or edited.",
+    "opensTitle": "Participation opens",
+    "opensBody": "Song wishes and setlist predictions open at the time below."
   },
   "EventList": {
     "eyebrow": "CONCERTS & SETLISTS",

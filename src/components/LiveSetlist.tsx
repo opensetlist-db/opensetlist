@@ -351,6 +351,19 @@ export function LiveSetlist({
 
   return (
     <>
+      {/* Pre-window (18-v3 pre state): when participation opens, as its
+          own notice above the setlist card. Same venue-local label the
+          empty-card copy below uses (`predictOpensLabel`, set only while
+          the window is still ahead). */}
+      {status === "upcoming" && !isWishPredictOpen && predictOpensLabel && (
+        <div className={styles.notice} data-testid="predict-opens-notice">
+          <strong>{detailT("opensTitle")}</strong>
+          {detailT("opensBody")}
+          <p>
+            {predictOpensLabel.date} {predictOpensLabel.time} ({predictOpensLabel.zone})
+          </p>
+        </div>
+      )}
       {participationFirst && participation}
       {/* Trending sits ABOVE the setlist card as its own surface (amber
           tokens), per mockup. Not a child of the white setlist card.

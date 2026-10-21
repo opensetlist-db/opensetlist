@@ -82,13 +82,37 @@ describe("LiveSetlist empty state", () => {
     expect(screen.getByText("noSetlist")).toBeInTheDocument();
   });
 
-  it("hides the zero items/songs subtitle and tap hint", () => {
+  it("hides the zero items/songs subtitle", () => {
     renderEmpty("upcoming", { start: START });
     // The mock renders interpolated keys as `itemsLabel:0`, so match the
     // prefix — a bare-key lookup would pass even with the count shown.
     expect(screen.queryByText(/^itemsLabel:/)).toBeNull();
     expect(screen.queryByText(/songsValue:/)).toBeNull();
-    expect(screen.queryByText("tapToAddReaction")).toBeNull();
+  });
+
+  it("shows the items/songs subtitle once there are items (positive control)", () => {
+    const item = { id: 1, type: "song", songs: [{ song: { id: 1 } }] };
+    render(
+      <LiveSetlist
+        eventId="107"
+        items={[item] as unknown as Parameters<typeof LiveSetlist>[0]["items"]}
+        reactionCounts={{}}
+        top3Wishes={[]}
+        initialTrendingSongs={[]}
+        startTime={new Date("2026-11-14T07:30:00.000Z")}
+        unknownSongLabel="?"
+        isOngoing={false}
+        locale="ko"
+        status="completed"
+        isWishPredictOpen={false}
+        seriesName=""
+        eventTitle="Day.1"
+        dateLine=""
+        availableSongs={[]}
+        unitFilters={[]}
+      />,
+    );
+    expect(screen.getByText(/^itemsLabel:1/)).toBeInTheDocument();
   });
 });
 

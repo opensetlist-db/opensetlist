@@ -175,7 +175,7 @@ export const colors = {
   impressionField: "#A79BBF", // 한줄감상 textarea border
   impressionCardBorder: "#DCD1EF", // other viewers' impression cards
 
-    // Trending TOP3 card (consumed by <TrendingSongs>)
+  // Trending TOP3 card (consumed by <TrendingSongs>)
   trendingBg: "#fffbeb",
   trendingBorder: "#fde68a",
   trendingText: "#b45309",

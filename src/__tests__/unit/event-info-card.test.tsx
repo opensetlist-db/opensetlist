@@ -67,7 +67,11 @@ describe("EventInfoCard", () => {
   });
 
   it("hides the songs and reactions rows while there is nothing to count", () => {
-    render(<EventInfoCard {...baseProps} songsCount={0} reactionsValue={null} />);
+    // Positive control: with counts, both labelled rows are there.
+    const { rerender } = render(<EventInfoCard {...baseProps} />);
+    expect(screen.getByText("iconLabelSongs")).toBeInTheDocument();
+    expect(screen.getByText("iconLabelReactions")).toBeInTheDocument();
+    rerender(<EventInfoCard {...baseProps} songsCount={0} reactionsValue={null} />);
     expect(screen.queryByText("iconLabelSongs")).toBeNull();
     expect(screen.queryByText("iconLabelReactions")).toBeNull();
   });
@@ -92,7 +96,11 @@ describe("EventInfoCard", () => {
   });
 
   it("drops empty venue / city rows entirely (no orphan label)", () => {
-    render(<EventInfoCard {...baseProps} venue={null} city={null} />);
+    // Positive control: the labels render while the values exist.
+    const { rerender } = render(<EventInfoCard {...baseProps} />);
+    expect(screen.getByText("venue")).toBeInTheDocument();
+    expect(screen.getByText("iconLabelCity")).toBeInTheDocument();
+    rerender(<EventInfoCard {...baseProps} venue={null} city={null} />);
     expect(screen.queryByText("venue")).toBeNull();
     expect(screen.queryByText("iconLabelCity")).toBeNull();
   });

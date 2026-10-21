@@ -765,6 +765,9 @@ export default async function EventPage({ params }: Props) {
     logoRow,
     logoGraph,
     headerT,
+    detailT,
+    boardT,
+    impressionT,
   ] = await Promise.all([
       getEvent(eventId, locale),
       getTranslations("Event"),
@@ -790,6 +793,9 @@ export default async function EventPage({ params }: Props) {
       getEventLogoRow(eventId).catch(() => null),
       getLogoSeriesGraph().catch(() => null),
       getTranslations("Header"),
+      getTranslations("EventDetail"),
+      getTranslations("Board"),
+      getTranslations("Impression"),
     ]);
   if (!event) notFound();
   // Bare id / wrong or legacy localized slug → 308 to the canonical
@@ -1297,23 +1303,24 @@ export default async function EventPage({ params }: Props) {
     boardSeed !== null &&
     ((resolvedStatus === "upcoming" && wishPredictOpen) ||
       resolvedStatus === "completed");
-  const [boardT, impressionT] = await Promise.all([
-    getTranslations("Board"),
-    getTranslations("Impression"),
-  ]);
-  const detailT = await getTranslations("EventDetail");
   const hasPerformers =
     (sidebarLineup !== null &&
       (sidebarLineup.units.length > 0 || sidebarLineup.performers.length > 0)) ||
     sidebarUnits.length > 0 ||
     sidebarPerformers.length > 0;
+  // Before the window opens there is nothing to take part in yet and
+  // the setlist is empty, so the approved pre-show page leads with the
+  // planned lineup.
+  const preWindow = resolvedStatus === "upcoming" && !wishPredictOpen;
   const jumpLinks: Array<{ href: string; label: string }> = [
     leadsWithBoard
       ? { href: `#fan-board-${id}`, label: boardT("title") }
-      : { href: `#setlist-card-${id}`, label: t("setlist") },
+      : preWindow && hasPerformers
+        ? { href: "#event-performers", label: t("performers") }
+        : { href: `#setlist-card-${id}`, label: t("setlist") },
     { href: "#event-info", label: detailT("infoTitle") },
     { href: "#event-impressions", label: impressionT("title") },
-    ...(hasPerformers
+    ...(hasPerformers && !(preWindow && !leadsWithBoard)
       ? [{ href: "#event-performers", label: t("performers") }]
       : []),
   ];
@@ -1387,6 +1394,16 @@ export default async function EventPage({ params }: Props) {
         dateLabel={event.date ? formatVenueDate(event.date, locale) : null}
         venueLine={heroVenueLine}
       />
+
+      {/* Cancelled: say so before anything else on the page (18-v3
+          `.notice.cancel`); the sections below keep their own cancelled
+          behaviour (no board, locked wishes, no score). */}
+      {resolvedStatus === "cancelled" && (
+        <div role="status" className={`${styles.notice} ${styles.noticeCancel}`}>
+          <strong>{detailT("cancelledTitle")}</strong>
+          {detailT("cancelledBody")}
+        </div>
+      )}
 
       <nav className={styles.jump} aria-label={detailT("jumpLabel")}>
         {jumpLinks.map((link) => (

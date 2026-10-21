@@ -1174,3 +1174,38 @@ a.crowdTitle:hover {
     flex: 1 1 100%;
   }
 }
+
+/* ── Page notices (18-v3 `.notice`) ───────────────────────────── */
+
+.notice {
+  margin-bottom: 24px;
+  padding: 18px 20px;
+  border: 1px solid #cadcf6;
+  border-radius: 12px;
+  background: #eaf2ff;
+  font-size: 14px;
+  color: #172445;
+}
+.notice strong {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 700;
+}
+.notice p {
+  margin: 8px 0 0;
+  font-weight: 700;
+}
+.noticeCancel {
+  border-color: #d3d8e1;
+  background: #f0f1f5;
+  color: #394557;
+}
+.mainColumn > .notice {
+  margin-bottom: 0;
+}
+
+@media (max-width: 699px) {
+  .notice {
+    padding: 16px;
+  }
+}

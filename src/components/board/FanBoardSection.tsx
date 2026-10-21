@@ -275,16 +275,27 @@ export function FanBoardSection({
     trackEvent("board_view", { event_id: eventId, group_id: active.groupId });
   }, [active, eventId]);
 
+  // Hidden (the board answered "off" or "already started") removes the
+  // block entirely. The error state below keeps `anchorId` so the page's
+  // jump link still lands on the board's place.
   if (state.kind === "hidden") return null;
   if (state.kind === "error") {
+    // 18-v3 board-failure: the board's own panel says it could not
+    // load; the rest of the page (info, setlist, impressions) is
+    // unaffected — the aggregate is a client fetch after mount.
     return (
-      <p
-        role="status"
-        className="mb-2.5 px-1 text-[12px]"
-        style={{ color: colors.textMuted }}
+      <section
+        id={anchorId}
+        aria-labelledby={`board-title-${eventId}`}
+        className={`${styles.panel} ${styles.participatePanel}`}
       >
-        {t("loadError")}
-      </p>
+        <h2 id={`board-title-${eventId}`} className={styles.panelTitle}>
+          {t("title")}
+        </h2>
+        <p role="status" className={styles.boardLead}>
+          {t("loadError")}
+        </p>
+      </section>
     );
   }
 

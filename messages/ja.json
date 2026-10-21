@@ -318,11 +318,6 @@
     "iconLabelReactions": "リアクション",
     "songsValue": "{count, plural, other {#曲}}",
     "itemsLabel": "{count, plural, other {#項目}}",
-    "tapToAddReaction": "タップしてリアクションを追加",
-    "colPosition": "#",
-    "colSong": "楽曲",
-    "colPerformers": "出演",
-    "colReactions": "リアクション",
     "unitsLabel": "ユニット",
     "performersLabel": "出演者",
     "guestLabel": "ゲスト",
@@ -364,7 +359,11 @@
     "viewSeries": "シリーズを見る",
     "creditsToggle": "出演クレジット",
     "performersMore": "もっと見る（{count}）",
-    "liveNotice": "リアルタイムで更新中"
+    "liveNotice": "リアルタイムで更新中",
+    "cancelledTitle": "開催中止",
+    "cancelledBody": "この公演は中止です。聴きたい曲・予想曲の保存や編集はできません。",
+    "opensTitle": "参加受付の開始",
+    "opensBody": "聴きたい曲とセットリスト予想は、以下の日時から参加できます。"
   },
   "EventList": {
     "eyebrow": "CONCERTS & SETLISTS",
