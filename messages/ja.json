@@ -270,8 +270,6 @@
   },
   "Event": {
     "title": "イベント",
-    "allEvents": "イベント一覧",
-    "subtitle": "公演のセットリストとリアクションをチェック",
     "ongoing": "開催中",
     "upcoming": "今後のイベント",
     "past": "過去のイベント",
@@ -285,14 +283,12 @@
       "upcoming": "開催予定",
       "completed": "終了"
     },
-    "emptyFilterState": "該当する公演がありません",
     "eventCount": "{count, plural, other {#公演}}",
     "songCount": "{count, plural, other {🎵 #}}",
     "tableHeader": {
       "date": "日付",
       "status": "ステータス",
       "name": "公演名",
-      "venue": "会場",
       "songs": "曲数"
     },
     "setlist": "セットリスト",
@@ -350,6 +346,32 @@
       "purchaseCta": "BDを購入する →",
       "detailsCta": "アルバム詳細を見る →"
     }
+  },
+  "EventList": {
+    "eyebrow": "CONCERTS & SETLISTS",
+    "title": "公演一覧",
+    "subtitle": "公演を見つけて、ライブの記録をたどる。",
+    "filterLabel": "公演の絞り込み",
+    "activeHeading": "開催中・これからの公演",
+    "pastHeading": "過去の公演",
+    "seriesType": {
+      "concert_tour": "ツアー",
+      "festival": "フェス"
+    },
+    "eventCount": "{count, plural, other {# 公演}}",
+    "songCount": "{count, plural, other {# 曲}}",
+    "status": {
+      "upcoming": "開催予定",
+      "completed": "終了",
+      "cancelled": "開催中止"
+    },
+    "collapseGroup": "{title}を折りたたむ",
+    "expandGroup": "{title}を展開する",
+    "empty": "該当する公演がありません",
+    "viewAll": "すべての公演を見る",
+    "prev": "前へ",
+    "next": "次へ",
+    "pageStatus": "{current} / {total}"
   },
   "EventDateTime": {
     "localTime": "現地時刻"
