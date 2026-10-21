@@ -20,8 +20,9 @@
 //     [--list]                       list the scenarios and exit
 //
 // --scenario takes a name under scripts/admin-qa/scenarios/ or a path to a
-// .mjs file. ADMIN_PASSWORD and DATABASE_URL_UNPOOLED come from this
-// repo's .env/.env.local (.env.local wins); neither is ever printed.
+// .mjs file. ADMIN_PASSWORD and DATABASE_URL_UNPOOLED come from the
+// .env/.env.local of the checkout holding the current directory (.env.local
+// wins); neither is ever printed.
 //
 // Writes <out>/<scenario>-<state>-<width>[-webkit].png and
 // <out>/results-<scenario>-<browser>-<mode>.json; exits 1 on any FAIL.
@@ -33,10 +34,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { BROWSERS, loadEnv, runScenario } from "./admin-qa/harness.mjs";
+import { BROWSERS, checkoutRoot, loadEnv, runScenario } from "./admin-qa/harness.mjs";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const scenarioDir = path.join(repoRoot, "scripts", "admin-qa", "scenarios");
+// Scenarios ship with the script; .env/.env.local come from the checkout
+// under test (see checkoutRoot), which differs for an extracted copy.
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const scenarioDir = path.join(scriptDir, "admin-qa", "scenarios");
+const repoRoot = checkoutRoot(path.resolve(scriptDir, ".."));
 
 const { values: args } = parseArgs({
   options: {

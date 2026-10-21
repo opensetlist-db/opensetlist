@@ -89,6 +89,7 @@
 // pressing Shift first so :focus-visible matches as it would for a keyboard
 // user.
 import { AsyncLocalStorage } from "node:async_hooks";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 // @playwright/test is the declared dependency and re-exports the browser types.
@@ -225,6 +226,28 @@ function withTimeout(promise, ms) {
       timer = setTimeout(() => reject(new SectionTimeout(`no result after ${Math.round(ms / 1000)}s`)), ms);
     }),
   ]);
+}
+
+/**
+ * The checkout under test: the git work tree that holds the current
+ * directory, not the one that holds this file. A copy of the QA scripts
+ * extracted into another checkout (a redesign worktree's gitignored
+ * .claude/tmp/, run with cwd = that worktree) then reads that checkout's
+ * files, where a path relative to the script would land in .claude/.
+ * Outside any git work tree it returns `fallback` (the caller's
+ * script-relative root).
+ */
+export function checkoutRoot(fallback) {
+  try {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (top) return path.resolve(top);
+  } catch {
+    // not in a work tree, or git missing
+  }
+  return fallback;
 }
 
 /**
