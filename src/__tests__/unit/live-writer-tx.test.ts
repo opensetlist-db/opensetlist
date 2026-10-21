@@ -130,9 +130,10 @@ describe("liveWriterTransaction", () => {
     expect(thrown.cause).toBe(err);
     expect(run).not.toHaveBeenCalled();
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(lines()[0]).toMatch(
-      new RegExp(`^\\[liveWriter\\] failed route=admin-create kind=${kind} err=Error:`),
-    );
+    // Prefix compare instead of a RegExp built from `kind` (Semgrep
+    // detect-non-literal-regexp); toMatch(string) would not anchor.
+    const prefix = `[liveWriter] failed route=admin-create kind=${kind} err=Error:`;
+    expect(lines()[0].slice(0, prefix.length)).toBe(prefix);
     expect(lines()[1]).toMatch(/ execMs=0 rev=- ok=false /);
   });
 

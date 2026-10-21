@@ -118,13 +118,13 @@ jobs:
       # behavior — the user needs to resolve conflicts before perf
       # is meaningful anyway.
       - name: Checkout PR merge commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           path: pr-merge
 
       - name: Checkout base tip
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Use the immutable base.sha captured at event time, not
           # base.ref. With base.ref, if dev advances between the PR
@@ -137,7 +137,7 @@ jobs:
           path: base
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: "npm"
