@@ -64,6 +64,15 @@ and leaves its fixture rows in dev. A new integration test must create
 its own fixtures and delete them in `afterAll`; never assert on, or
 mutate, rows another feature depends on.
 
+**Inspecting the dev DB by hand** (row counts, grants, RLS, before/after
+checks for a test or migration): use `node scripts/db-ro.mjs "<sql>"
+["<sql>" …]` (or `--file q.sql`, `--json`) instead of an ad-hoc `pg`
+script. It is dev-only (same URL guard as the integration setup, from
+`scripts/dev-db-guard.mjs`) and read-only (each statement runs inside
+`BEGIN READ ONLY … ROLLBACK`, writes and session `SET` are refused before
+connecting). It runs from any directory or task worktree and prints
+timestamps as UTC.
+
 ### E2E — through the app
 
 `playwright.config.ts` starts `npm run dev` on `localhost:3000` unless
