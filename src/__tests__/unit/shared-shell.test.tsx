@@ -10,6 +10,10 @@ import type { ReactNode } from "react";
 
 const replace = vi.fn();
 let pathname = "/events";
+// Mutable flag set so the search-slot test can show both states.
+const flags = vi.hoisted(() => ({ showSignIn: false, showSearch: false }));
+
+vi.mock("@/lib/launchFlags", () => ({ LAUNCH_FLAGS: flags }));
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, vars?: Record<string, unknown>) =>
@@ -46,6 +50,7 @@ import { CoverImage } from "@/components/shared/CoverImage";
 
 beforeEach(() => {
   pathname = "/events";
+  flags.showSearch = false;
   // jsdom has no matchMedia; Nav subscribes to the header threshold.
   window.matchMedia = vi.fn().mockReturnValue({
     matches: false,
@@ -69,7 +74,20 @@ describe("<Nav />", () => {
     expect(current.map((a) => a.getAttribute("href"))).toEqual(["/events"]);
   });
 
-  it("does not render a search entry while showSearch is off", () => {
+  it("renders the search slot only while showSearch is on", () => {
+    // Positive control first: with the flag on, both entry points exist
+    // and point at the shared search page.
+    flags.showSearch = true;
+    const { unmount } = render(<Nav />);
+    expect(screen.getByRole("search")).toHaveAttribute("action", "/ko/search");
+    expect(screen.getByRole("searchbox")).toHaveAttribute("name", "q");
+    expect(screen.getByRole("link", { name: "search" })).toHaveAttribute(
+      "href",
+      "/search",
+    );
+    unmount();
+
+    flags.showSearch = false;
     render(<Nav />);
     expect(screen.queryByRole("search")).toBeNull();
     expect(screen.queryByRole("link", { name: "search" })).toBeNull();
