@@ -6,6 +6,9 @@ import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import EventForm from "../../EventForm";
 import SetlistBuilder from "../../SetlistBuilder";
 import BoardSettings from "../../BoardSettings";
+import EventLogoSection from "../../EventLogoSection";
+import { getEventLogoAdminState } from "@/lib/adminEventLogo";
+import { seriesAdminName } from "@/lib/adminLogo";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -56,6 +59,35 @@ export default async function EditEventPage({ params }: Props) {
   if (!event) notFound();
 
   const data = serializeBigInt(event);
+
+  // Logo override card: uncached admin read (assignment, provenance,
+  // applied result, draft previews); null only if the event vanished
+  // between the two reads.
+  const logoState = await getEventLogoAdminState(event.id);
+  if (!logoState) notFound();
+  // Two names on purpose: the explanation text is admin prose (Korean
+  // name first, like the series card), while the typography preview
+  // mirrors the record's original-language fields, as public pages do.
+  const series = event.eventSeriesId
+    ? await prisma.eventSeries.findUnique({
+        where: { id: event.eventSeriesId },
+        select: { originalName: true, originalShortName: true },
+      })
+    : null;
+  const seriesName = event.eventSeriesId ? await seriesAdminName(prisma, event.eventSeriesId) : null;
+  // Typography fallback from the SAVED record (the preview shows what
+  // public pages render, which changes only when EventForm saves). Event
+  // names are often just "Day.1", so the series name rides on top and
+  // the date / venue below keep each day's card distinguishable. The
+  // date is a UTC calendar date, so it is read with getUTC*.
+  const logoDate = event.date
+    ? `${event.date.getUTCFullYear()}.${String(event.date.getUTCMonth() + 1).padStart(2, "0")}.${String(event.date.getUTCDate()).padStart(2, "0")}`
+    : null;
+  const logoTypography = {
+    eyebrow: series ? series.originalShortName || series.originalName : null,
+    title: event.originalShortName || event.originalName || `#${event.id}`,
+    caption: [logoDate, event.originalVenue].filter(Boolean).join(" · ") || null,
+  };
 
   // Artist tree for SetlistBuilder's default-performer matching (a
   // group credit must match members linked only to its units/solos).
@@ -131,6 +163,21 @@ export default async function EditEventPage({ params }: Props) {
           }}
         />
       </div>
+
+      <hr className="border-zinc-200" />
+
+      <EventLogoSection
+        eventId={logoState.eventId}
+        initialState={{
+          assignment: logoState.assignment,
+          asset: logoState.asset,
+          applied: logoState.applied,
+          previews: logoState.previews,
+          attempt: null,
+        }}
+        typography={logoTypography}
+        seriesName={seriesName}
+      />
 
       <hr className="border-zinc-200" />
 
