@@ -15,9 +15,9 @@
 // (AlbumCard mini variant) read it for the bordered emphasis +
 // "원본 수록" pill.
 //
-// `activeBonusCount` mirrors the formula AlbumInfoCard already uses
-// for the Album detail sidebar (`src/components/AlbumInfoCard.tsx`
-// lines 143–145) — listings that aren't `ended` × their bonus
+// `activeBonusCount` mirrors the formula the Album detail page uses
+// for its purchase-tab dot (`countActiveBonuses` in
+// `src/lib/albumBonusDisplay.ts`) — listings that aren't `ended` × their bonus
 // arrays. Sharing the exact same shape across both surfaces avoids
 // the "tab badge says 5, sidebar says 4" divergence that earlier
 // Album-page work hit.

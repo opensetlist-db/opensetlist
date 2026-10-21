@@ -112,7 +112,7 @@ export default function ListingsClient({
                     other malicious schemes; render as plain text rather
                     than a click-through anchor when the URL isn't a
                     real http(s) target. The check is shared with
-                    ListingCard via lib/utils so both surfaces enforce
+                    the public purchase card via lib/utils so both surfaces enforce
                     the identical rule. */}
                 {isSafeExternalUrl(l.productUrl) ? (
                   <a

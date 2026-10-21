@@ -1,0 +1,744 @@
+/*
+ * Album detail page — layout from the approved redesign packet 22-v1
+ * (wiki `output/redesign/handoffs/22/v1/style.css` + design-contract.md).
+ *
+ * A CSS module for the same reason as the artist page (21): the approved
+ * layout changes geometry at 1100 / 768 / 700 / 360px, and several
+ * elements switch display mode, padding and type size together. One rule
+ * block per band keeps each band reviewable against the mockup line by
+ * line; inline styles cannot express the breakpoints at all.
+ *
+ * Colours mirror `src/styles/tokens.ts` (03 contract). The status-pill
+ * and bonus-dot tones are page-local because 22-v1 fixed them with
+ * measured contrast (packet qa-summary.md / contrast.json).
+ */
+
+.page {
+  width: 100%;
+  max-width: 1264px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+.breadcrumb > nav {
+  margin-bottom: 22px;
+}
+
+/* ── Identity card ────────────────────────────────────────────── */
+
+.identity {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  column-gap: 32px;
+  row-gap: 12px;
+  align-items: center;
+  padding: 28px 32px;
+  border: 1px solid #dce3ef;
+  border-radius: 20px;
+  background: linear-gradient(110deg, #fff 45%, #fff0f6 83%, #f0edff);
+  box-shadow: 0 5px 18px #233c680a;
+}
+
+/*
+ * The cover spans both rows (title block + meta block) on desktop so the
+ * square sits beside the whole identity, vertically centred. CoverImage
+ * owns the square itself (fallback, no-referrer, onError); this wrapper
+ * only places it.
+ */
+.cover {
+  grid-row: 1 / 3;
+  align-self: center;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 200px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: linear-gradient(140deg, #eaf2ff, #f0edff);
+  color: #52617a;
+}
+.cover[data-state="image"] {
+  background: #fff;
+}
+/* Square covers fill the slot; a non-square one is letterboxed on white
+   rather than cropped (22-v1 keeps the whole artwork visible). */
+.cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.coverNote {
+  color: #637a9e;
+  font-size: 48px;
+  line-height: 1.3;
+}
+.coverLabel {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.title {
+  min-width: 0;
+}
+
+.badge {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: #244f92;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.h1 {
+  margin: 0;
+  color: #172445;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.38;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.subtitle {
+  margin: 7px 0 0;
+  color: #52617a;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+}
+
+.metaRow {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin: 0;
+}
+
+.metaLabel {
+  flex: 0 0 68px;
+  color: #52617a;
+  font-size: 12px;
+}
+
+.metaValue {
+  min-width: 0;
+  margin: 0;
+  color: #172445;
+}
+
+.artistLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.artistLink {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 32px;
+  color: #165dcc;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.artistLink:hover {
+  color: #104aa9;
+  text-decoration: underline;
+}
+.artistLink small {
+  color: #52617a;
+  font-size: 12px;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 12px;
+  margin: 24px 0;
+  border-bottom: 1px solid #dce3ef;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 10px 24px;
+  border-bottom: 3px solid transparent;
+  color: #52617a;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.tab:hover {
+  background: #eaf2ff;
+}
+.tab[aria-current="page"] {
+  border-color: #165dcc;
+  color: #165dcc;
+}
+
+.count {
+  padding: 1px 7px;
+  border-radius: 12px;
+  background: #edf1f8;
+  color: #52617a;
+  font-size: 12px;
+  font-weight: 500;
+}
+.tab[aria-current="page"] .count {
+  background: #eaf2ff;
+  color: #165dcc;
+}
+
+/* Active store bonuses exist — stays visible whichever tab is open. */
+.bonusDot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a91d67;
+}
+
+/* ── Shared panel shell ───────────────────────────────────────── */
+
+.panel {
+  overflow: hidden;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px #233c680a;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 26px;
+  border-bottom: 1px solid #dce3ef;
+}
+.panelHead h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.panelHead > span {
+  color: #52617a;
+  font-size: 12px;
+}
+
+.empty {
+  padding: 44px 24px;
+  color: #52617a;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ── Tracks ───────────────────────────────────────────────────── */
+
+.disc {
+  margin: 0;
+  padding: 12px 26px;
+  border-top: 1px solid #dce3ef;
+  background: #f0edff;
+  font-size: 14px;
+}
+/* Disc 1 sits right under the panel heading's own rule. */
+.panelHead + div > .disc {
+  border-top: 0;
+}
+
+.trackList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trackRow {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 60px;
+  padding: 17px 26px;
+  border-bottom: 1px solid #e9edf5;
+  color: inherit;
+  text-decoration: none;
+}
+.trackList > li:last-child > .trackRow {
+  border-bottom: 0;
+}
+a.trackRow:hover {
+  background: #f1f6ff;
+}
+a.trackRow:focus-visible {
+  outline-offset: -5px;
+}
+/* Informational rows (off-vocal / drama / BGM) have no Song page. */
+.trackRowPlain {
+  background: #fafbfd;
+}
+
+.trackNumber {
+  flex: 0 0 30px;
+  color: #52617a;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trackTitle {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.trackTitle small {
+  display: block;
+  margin-top: 2px;
+  color: #52617a;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.arrow {
+  color: #165dcc;
+  font-size: 20px;
+}
+
+/* ── Related events ───────────────────────────────────────────── */
+
+.sectionTitle {
+  margin: 26px 0 8px;
+  font-size: 22px;
+}
+
+.sectionSub {
+  margin: 0 0 18px;
+  color: #52617a;
+  font-size: 13px;
+}
+
+.eventGroup {
+  overflow: hidden;
+  margin-top: 16px;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+}
+.eventGroup > summary {
+  min-height: 56px;
+  padding: 18px 24px;
+  background: #eaf2ff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.eventGroup > summary:focus-visible {
+  outline-offset: -5px;
+}
+
+.eventRow {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 18px 24px;
+  border-top: 1px solid #dce3ef;
+  color: inherit;
+  text-decoration: none;
+}
+.eventRow:hover {
+  background: #f1f6ff;
+}
+.eventRow:focus-visible {
+  outline-offset: -5px;
+}
+
+.eventDate {
+  flex: 0 0 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  color: #52617a;
+  font-size: 13px;
+}
+
+.eventStatus {
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: #edf1f8;
+  color: #52617a;
+  font-size: 12px;
+}
+.eventStatus[data-status="ongoing"] {
+  background: #fff0f6;
+  color: #a91d45;
+}
+.eventStatus[data-status="upcoming"] {
+  background: #eaf8f0;
+  color: #176547;
+}
+.eventStatus[data-status="cancelled"] {
+  background: #fff2e4;
+  color: #8b4a0c;
+}
+
+.eventCopy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.eventCopy strong {
+  font-size: 15px;
+}
+.eventCopy small {
+  display: block;
+  margin-top: 4px;
+  color: #52617a;
+  font-size: 12px;
+}
+
+/* ── Purchase ─────────────────────────────────────────────────── */
+
+.purchaseHeading {
+  margin: 0 0 18px;
+  font-size: 22px;
+}
+
+.bonusSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 16px 20px;
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+  background: #f0edff;
+  font-size: 13px;
+}
+.bonusSummary strong {
+  margin-right: auto;
+}
+.bonusSummary span {
+  color: #52617a;
+}
+
+.storeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.store {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+.storeEnded {
+  background: #f5f6fa;
+  color: #52617a;
+}
+
+.storeHeading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.storeHeading h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.edition {
+  margin: 4px 0 0;
+  color: #52617a;
+  font-size: 12px;
+}
+
+.storeStatus {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: #eaf8f0;
+  color: #176547;
+  font-size: 12px;
+}
+.storeEnded .storeStatus {
+  background: #e7eaf0;
+  color: #52617a;
+}
+
+.bonusList {
+  flex: 1;
+  margin: 0;
+  padding: 0 0 0 20px;
+  font-size: 14px;
+}
+.bonusList li {
+  margin: 4px 0;
+}
+
+.buy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 9px 14px;
+  border: 1px solid #165dcc;
+  border-radius: 8px;
+  color: #165dcc;
+  font-size: 14px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.buy:hover {
+  background: #eaf2ff;
+}
+.buy:active {
+  color: #0c3d8c;
+}
+
+.endedList {
+  margin-top: 24px;
+}
+.endedList > summary {
+  min-height: 44px;
+  padding: 10px 0;
+  color: #52617a;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* ── Responsive bands (22-v1 style.css) ───────────────────────── */
+
+@media (max-width: 1099px) {
+  .identity {
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 16px 24px;
+    padding: 26px;
+  }
+  .h1 {
+    font-size: 29px;
+  }
+  .cover {
+    width: 160px;
+  }
+}
+
+@media (max-width: 767px) {
+  .page {
+    padding: 20px 24px 48px;
+  }
+  .storeGrid {
+    grid-template-columns: 1fr;
+  }
+  .eventRow {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .eventRow .arrow {
+    align-self: center;
+  }
+  .eventDate {
+    flex: 1 0 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 699px) {
+  .page {
+    padding: 16px 16px 40px;
+  }
+  .breadcrumb > nav {
+    margin-bottom: 16px;
+  }
+  .identity {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 18px 16px;
+    padding: 20px;
+    border-radius: 16px;
+  }
+  .cover {
+    grid-row: auto;
+    width: 112px;
+    border-radius: 12px;
+  }
+  .coverNote {
+    font-size: 34px;
+  }
+  .coverLabel {
+    font-size: 11px;
+  }
+  .meta {
+    grid-column: 1 / -1;
+    padding-top: 14px;
+    border-top: 1px solid #dce3ef;
+    font-size: 13px;
+  }
+  .metaLabel {
+    flex-basis: 56px;
+  }
+  .metaRow {
+    gap: 12px;
+  }
+  .badge {
+    margin-bottom: 8px;
+  }
+  .h1 {
+    font-size: 24px;
+    line-height: 1.35;
+  }
+  .subtitle {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+  .tabs {
+    gap: 0;
+    margin: 18px 0;
+  }
+  .tab {
+    flex: 1;
+    gap: 5px;
+    min-height: 50px;
+    padding: 10px 4px;
+    font-size: 13px;
+  }
+  .count {
+    padding: 1px 5px;
+    font-size: 11px;
+  }
+  .panelHead {
+    padding: 18px 16px;
+  }
+  .panelHead h2 {
+    font-size: 19px;
+  }
+  .trackRow {
+    gap: 12px;
+    min-height: 62px;
+    padding: 16px;
+  }
+  .trackNumber {
+    flex-basis: 24px;
+  }
+  .trackTitle {
+    font-size: 14px;
+  }
+  .disc {
+    padding: 12px 16px;
+  }
+  .eventGroup > summary {
+    padding: 16px;
+    font-size: 14px;
+  }
+  .eventRow {
+    padding: 16px;
+  }
+  .eventCopy strong {
+    font-size: 14px;
+  }
+  .store {
+    padding: 18px 16px;
+  }
+  .storeHeading h3 {
+    font-size: 16px;
+  }
+  .bonusSummary {
+    gap: 8px 14px;
+    padding: 14px 16px;
+  }
+  .bonusSummary strong {
+    flex-basis: 100%;
+  }
+  .sectionTitle {
+    font-size: 20px;
+  }
+
+  /*
+   * Titles longer than 70 characters (live BD box sets) leave the narrow
+   * column beside the cover: the cover and type badge share the first
+   * row, the title and subtitle take the full card width below. Without
+   * this a BD name wraps a dozen times in a ~170px column.
+   */
+  .longTitle .cover {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .longTitle .title {
+    display: contents;
+  }
+  .longTitle .badge {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: start;
+    align-self: center;
+  }
+  .longTitle .h1,
+  .longTitle .subtitle {
+    grid-column: 1 / -1;
+  }
+  .longTitle .h1 {
+    font-size: 23px;
+  }
+  .longTitle .subtitle {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 359px) {
+  .identity {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 14px 12px;
+    padding: 16px;
+  }
+  .cover {
+    width: 88px;
+  }
+  .h1 {
+    font-size: 21px;
+  }
+  .tab {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .buy {
+    transition: none;
+  }
+}
