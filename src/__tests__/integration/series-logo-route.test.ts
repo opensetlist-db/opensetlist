@@ -369,6 +369,9 @@ describe("PATCH mode change / unlink", () => {
     } finally {
       spy.mockRestore();
     }
+    // Positive control: the "lost" PATCH really committed — otherwise the
+    // no-invalidation assertion below would pass for the wrong reason.
+    expect(await logoOf(parentId)).toEqual({ mode: "typography", assetId: null });
     // The lost reply skipped the route's invalidation; the reconcile read
     // must expire the public cache itself.
     expect(revalidatePublicData).not.toHaveBeenCalled();
