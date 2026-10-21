@@ -4,6 +4,10 @@ import nextTs from "eslint-config-next/typescript";
 import useClientExports from "./eslint-rules/use-client-exports.mjs";
 import noTicketIds from "./eslint-rules/no-ticket-ids.mjs";
 import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
+import {
+  hexColourAssertionRestrictions,
+  hexColourLiteralRestrictions,
+} from "./eslint-rules/hex-colour-literals.mjs";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -36,6 +40,27 @@ const eslintConfig = defineConfig([
     files: ["src/app/api/admin/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": ["error", adminTranslationDeleteRestriction],
+    },
+  },
+  // Colours come from src/styles/tokens.ts, not hex literals: the
+  // redesign palette swap broke three unit tests that compared against
+  // literal hexes. A warning until page redesigns clear the existing
+  // literals. Share-card files and the OG palette's own test keep their
+  // own colours on purpose. See eslint-rules/hex-colour-literals.mjs.
+  // Flat config replaces a rule's options per matching block, so a new
+  // `no-restricted-syntax` block over these paths must re-spread these.
+  {
+    files: ["src/components/**/*.{ts,tsx}"],
+    ignores: ["src/components/**/ShareCard*.tsx"],
+    rules: {
+      "no-restricted-syntax": ["warn", ...hexColourLiteralRestrictions],
+    },
+  },
+  {
+    files: ["src/__tests__/**/*.{ts,tsx}"],
+    ignores: ["src/__tests__/unit/og-palette-anchor.test.ts"],
+    rules: {
+      "no-restricted-syntax": ["warn", ...hexColourAssertionRestrictions],
     },
   },
   // Override default ignores of eslint-config-next.
