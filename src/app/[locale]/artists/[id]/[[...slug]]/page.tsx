@@ -4,7 +4,11 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import {
+  entityAlternates,
+  entityPath,
+  enforceCanonicalSlug,
+} from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import {
@@ -36,6 +40,7 @@ import {
   MEMBER_FALLBACK_COLOR,
   accentStyle,
   fallbackNameLang,
+  localizedFieldLang,
   originalLang,
 } from "@/components/artists/artistDetail";
 import styles from "@/components/artists/artistDetail.module.css";
@@ -363,13 +368,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     "bio",
     "originalBio",
   );
-  // The bio came from `originalBio` unless the viewer-locale
-  // translation carries one.
-  const bioLang = artist.translations.some(
-    (tr) => tr.locale === locale && Boolean(tr.bio),
-  )
-    ? undefined
-    : originalLang(artist.originalLanguage, locale);
+  const bioLang = localizedFieldLang(artist, artist.translations, locale, "bio");
   // Breadcrumb crumbs always render the short variant (project rule:
   // breadcrumbs prefer compact labels; the same artist's full name
   // shows in the page header anyway). `displayNameWithFallback` with
@@ -499,13 +498,14 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // synthetic group keyed `"standalone"` — kept distinct from any
   // numeric seriesId since real BigInt IDs serialize to numbers.
   const STANDALONE_KEY = "standalone";
+  const seriesKeyOf = (ev: ArtistEvent) =>
+    ev.eventSeriesId == null ? STANDALONE_KEY : String(ev.eventSeriesId);
   type EventView = ArtistEventView & { seriesKey: string; rawDateMs: number };
   // Dedupe series surfaced via `artistEvents`. Each event row carries
   // its EventSeries (or null for standalone events).
   const seriesById = new Map<string, ArtistEvent["eventSeries"]>();
   for (const ev of artistEvents) {
-    const key =
-      ev.eventSeriesId == null ? STANDALONE_KEY : String(ev.eventSeriesId);
+    const key = seriesKeyOf(ev);
     if (!seriesById.has(key)) seriesById.set(key, ev.eventSeries);
   }
 
@@ -521,7 +521,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     const isoDate = String(event.date);
     return {
       id: String(event.id),
-      href: `/${locale}/events/${event.id}/${event.slug}`,
+      href: entityPath("events", locale, event.id, event.slug),
       status,
       statusLabel: statusLabels[status],
       formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
@@ -543,10 +543,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         status === "completed" && songCount !== undefined && songCount > 0
           ? t("songCount", { count: songCount })
           : null,
-      seriesKey:
-        event.eventSeriesId == null
-          ? STANDALONE_KEY
-          : String(event.eventSeriesId),
+      seriesKey: seriesKeyOf(event),
       rawDateMs: new Date(isoDate).getTime(),
     };
   });
@@ -594,7 +591,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   const renderUnitCard = (unit: SubUnit) => (
     <UnitCard
       key={unit.id}
-      href={`/${locale}/artists/${unit.id}/${unit.slug}`}
+      href={entityPath("artists", locale, unit.id, unit.slug)}
       name={{
         text:
           displayNameWithFallback(unit, unit.translations, locale) ||
@@ -621,7 +618,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     />
   );
 
-  const artistHref = `/${locale}/artists/${artist.id}/${artist.slug}`;
+  const artistHref = entityPath("artists", locale, artist.id, artist.slug);
 
   const unitsPanel = subUnits.length > 0 && (
     <section className={styles.panel}>
@@ -664,7 +661,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
           return (
             <li key={sl.id}>
               <MemberChip
-                href={`/${locale}/members/${si.id}/${si.slug}`}
+                href={entityPath("members", locale, si.id, si.slug)}
                 name={{
                   text:
                     displayNameWithFallback(si, si.translations, locale) ||
@@ -677,7 +674,12 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   avatarText
                     ? {
                         text: avatarText,
-                        lang: fallbackNameLang(si, si.translations, locale),
+                        lang: fallbackNameLang(
+                          si,
+                          si.translations,
+                          locale,
+                          "short",
+                        ),
                       }
                     : null
                 }
@@ -753,7 +755,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // the column tracks the viewport, not its content.
   return (
     <main className="flex-1">
-    <div className={styles.page}>
+      <div className={styles.page}>
       <div className={styles.breadcrumb}>
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
@@ -769,7 +771,12 @@ export default async function ArtistPage({ params, searchParams }: Props) {
               ? [
                   {
                     label: parentName,
-                    href: `/${locale}/artists/${artist.parentArtist.id}/${artist.parentArtist.slug}`,
+                    href: entityPath(
+                      "artists",
+                      locale,
+                      artist.parentArtist.id,
+                      artist.parentArtist.slug,
+                    ),
                   } satisfies BreadcrumbItem,
                 ]
               : []),
@@ -902,7 +909,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   columns={{
                     dateStatus: t("historyColumns.dateStatus"),
                     event: t("historyColumns.event"),
-                    songs: t("historyColumns.songs"),
+                    songs: ct("songs"),
                   }}
                 >
                   <ul className={styles.list}>
@@ -917,7 +924,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
             </div>
           </>
         ))}
-    </div>
+      </div>
     </main>
   );
 }

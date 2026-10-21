@@ -34,6 +34,13 @@ export function accentStyle(color: string): CSSProperties {
   } as CSSProperties;
 }
 
+/** Display text plus the `lang` it needs when it is not in the page
+ *  language (see `fallbackNameLang`). */
+export interface LocalizedText {
+  text: string;
+  lang?: string;
+}
+
 /**
  * Language of a name rendered through `displayNameWithFallback`. The
  * helper shows the viewer-locale translation when one exists and the
@@ -44,14 +51,39 @@ export function accentStyle(color: string): CSSProperties {
  */
 export function fallbackNameLang(
   item: { originalLanguage: string },
-  translations: readonly { locale: string; name: string }[],
+  translations: readonly {
+    locale: string;
+    name: string;
+    shortName?: string | null;
+  }[],
   locale: string,
+  // Mirrors `displayNameWithFallback`'s mode: "short" reads the
+  // translation's shortName before its name.
+  mode: "short" | "full" = "full",
 ): string | undefined {
   const hasLocaleName = translations.some(
-    (t) => t.locale === locale && Boolean(t.name),
+    (t) =>
+      t.locale === locale &&
+      Boolean(t.name || (mode === "short" ? t.shortName : null)),
   );
   if (hasLocaleName || item.originalLanguage === locale) return undefined;
   return item.originalLanguage;
+}
+
+/**
+ * Language of a field resolved through `resolveLocalizedField`: the
+ * viewer-locale translation's value when it has one, else the entity's
+ * `original*` column. Same lookup as the resolver, so the two can't
+ * disagree about which text is shown.
+ */
+export function localizedFieldLang<K extends string>(
+  item: { originalLanguage: string },
+  translations: readonly ({ locale: string } & Partial<Record<K, string | null>>)[],
+  locale: string,
+  field: K,
+): string | undefined {
+  const translated = translations.find((t) => t.locale === locale)?.[field];
+  return translated ? undefined : originalLang(item.originalLanguage, locale);
 }
 
 /** `lang` for text known to be in the entity's original language. */

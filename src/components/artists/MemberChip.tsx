@@ -1,6 +1,6 @@
 import Link from "next/link";
 import styles from "./artistDetail.module.css";
-import { accentStyle, firstGrapheme } from "./artistDetail";
+import { type LocalizedText, accentStyle, firstGrapheme } from "./artistDetail";
 
 /*
  * Member entry on the artist detail overview (approved packet 20-v1):
@@ -16,18 +16,13 @@ import { accentStyle, firstGrapheme } from "./artistDetail";
  * client-side hover state is gone.
  */
 
-interface Name {
-  text: string;
-  lang?: string;
-}
-
 interface Props {
   href: string;
-  name: Name;
+  name: LocalizedText;
   /** Initial source (locale short-name cascade); falls back to `name`. */
-  avatarLabel?: Name | null;
+  avatarLabel?: LocalizedText | null;
   /** Owning unit, or null when the member belongs to no sub-unit. */
-  unitName: Name | null;
+  unitName: LocalizedText | null;
   /** Page resolves: owning unit colour → stage-identity colour → muted. */
   color: string;
 }

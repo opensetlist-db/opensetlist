@@ -1,6 +1,6 @@
 import Link from "next/link";
 import styles from "./artistDetail.module.css";
-import { accentStyle } from "./artistDetail";
+import { type LocalizedText, accentStyle } from "./artistDetail";
 
 /*
  * Sub-unit card on the artist detail overview (approved packet 20-v1).
@@ -17,16 +17,11 @@ import { accentStyle } from "./artistDetail";
  * contrast on white.
  */
 
-interface Name {
-  text: string;
-  lang?: string;
-}
-
 interface Props {
   href: string;
-  name: Name;
+  name: LocalizedText;
   color: string;
-  members: Name[];
+  members: LocalizedText[];
 }
 
 export function UnitCard({ href, name, color, members }: Props) {

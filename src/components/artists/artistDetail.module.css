@@ -237,6 +237,9 @@
 .unitGrid[hidden] {
   display: none;
 }
+.otherUnits {
+  margin-top: 14px;
+}
 .unitCard {
   display: block;
   min-width: 0;

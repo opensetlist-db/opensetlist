@@ -6,6 +6,7 @@ import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
 import { albumCardInclude } from "@/lib/albumHighlights";
 import { displayOriginalTitle } from "@/lib/display";
+import { entityPath } from "@/lib/seo/entityUrl";
 import { CoverImage } from "@/components/shared/CoverImage";
 import { originalLang } from "@/components/artists/artistDetail";
 import styles from "@/components/artists/artistDetail.module.css";
@@ -93,7 +94,7 @@ export async function ArtistAlbumsSection({
     return (
       <li key={`${album.id}`}>
         <Link
-          href={`/${locale}/albums/${album.id}/${album.slug}`}
+          href={entityPath("albums", locale, album.id, album.slug)}
           className={styles.albumRow}
         >
           {/* Decorative: the title next to it names the album, so the
@@ -145,7 +146,7 @@ export async function ArtistAlbumsSection({
             <h2 className={styles.sectionTitle}>{t("albums.discography")}</h2>
           </div>
           {visible.length === 0 ? (
-            <p className={styles.empty}>{t("albums.empty")}</p>
+            <p className={styles.empty}>{albumT("noAlbums")}</p>
           ) : (
             <ul className={styles.list}>{visible.map(renderRow)}</ul>
           )}
@@ -163,7 +164,8 @@ export async function ArtistAlbumsSection({
           // name says which list it opens, so it isn't confused with
           // the concerts panel's identical link (20 review).
           <Link
-            href={`/${locale}/artists/${artistId}/${artistSlug}?tab=albums`}
+            href={`${entityPath("artists", locale, artistId, artistSlug)}?tab=albums`}
+            scroll={false}
             className={styles.more}
             aria-label={t("viewAllAlbums")}
           >

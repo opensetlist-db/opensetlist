@@ -42,8 +42,7 @@
     "title": "アーティスト",
     "albums": {
       "latest": "最新アルバム",
-      "discography": "ディスコグラフィー",
-      "empty": "登録されたアルバムはありません。"
+      "discography": "ディスコグラフィー"
     },
     "noArtists": "表示できるアーティストはありません",
     "unknown": "不明なアーティスト",
@@ -105,8 +104,7 @@
     "viewAllHistory": "公演履歴をすべて見る",
     "historyColumns": {
       "dateStatus": "日付・状態",
-      "event": "公演",
-      "songs": "楽曲"
+      "event": "公演"
     }
   },
   "Song": {

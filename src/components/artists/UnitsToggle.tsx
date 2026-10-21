@@ -58,8 +58,7 @@ export function UnitsToggle({
         <ul
           id={otherCardsId}
           hidden={!showOthers}
-          className={`${styles.list} ${styles.unitGrid}`}
-          style={{ marginTop: 14 }}
+          className={`${styles.list} ${styles.unitGrid} ${styles.otherUnits}`}
         >
           {otherCards.map((card, i) => (
             <li key={i}>{card}</li>

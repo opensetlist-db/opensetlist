@@ -42,8 +42,7 @@
     "title": "Artists",
     "albums": {
       "latest": "Latest album",
-      "discography": "Discography",
-      "empty": "No albums registered."
+      "discography": "Discography"
     },
     "noArtists": "No artists to show",
     "unknown": "Unknown Artist",
@@ -105,8 +104,7 @@
     "viewAllHistory": "View all concert history",
     "historyColumns": {
       "dateStatus": "Date · status",
-      "event": "Concert",
-      "songs": "Songs"
+      "event": "Concert"
     }
   },
   "Song": {
