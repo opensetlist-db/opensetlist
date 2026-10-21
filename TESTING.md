@@ -60,7 +60,7 @@ know what each suite leaves behind:
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
 Every `*.test.ts` here needs a row, and every row a file:
-`npm run check:testing-md` (run in CI's lint job) fails otherwise. The
+`npm run check:testing-md` (a CI step right after Lint) fails otherwise. The
 same holds for the E2E table below.
 
 A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`

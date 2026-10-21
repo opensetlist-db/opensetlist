@@ -2,7 +2,7 @@
 // Fails when an integration test file or an E2E spec has no row in
 // TESTING.md, or when a row names a file that no longer exists.
 //
-//   node scripts/check-testing-md.mjs        # check (CI lint job)
+//   node scripts/check-testing-md.mjs        # check (CI, right after Lint)
 //   npm run check:testing-md                 # same
 //
 // Why: both suites run against the shared dev Supabase (integration
@@ -34,9 +34,17 @@ export const SUITES = [
 // of the table whose first header cell is exactly `header`, or null when no
 // such table exists. A table ends at the first line that doesn't start
 // with "|"; the |---| separator row and rows without a backticked first
-// cell are skipped.
+// cell are skipped. Lines inside ``` fences are blanked first, so an
+// example table in a code block can never stand in for the real one.
 export function parseTables(markdown, headers) {
-  const lines = markdown.split(/\r?\n/);
+  let fenced = false;
+  const lines = markdown.split(/\r?\n/).map((l) => {
+    if (l.trimStart().startsWith("```")) {
+      fenced = !fenced;
+      return "";
+    }
+    return fenced ? "" : l;
+  });
   const out = {};
   for (const header of headers) {
     out[header] = null;
@@ -58,13 +66,15 @@ function firstCell(line) {
   return t.slice(1).split("|")[0].trim();
 }
 
-// files: names present on disk; rows: names listed in the table.
+// files: names present on disk; rows: names listed in the table. A name
+// listed twice is reported too: the two rows would drift apart.
 export function diffRows(files, rows) {
   const listed = new Set(rows);
   const present = new Set(files);
   return {
     missing: files.filter((f) => !listed.has(f)).sort(),
     stale: rows.filter((r) => !present.has(r)).sort(),
+    duplicate: [...listed].filter((r) => rows.indexOf(r) !== rows.lastIndexOf(r)).sort(),
   };
 }
 
@@ -78,9 +88,10 @@ export function checkTestingMd(markdown, filesBySuite) {
       problems.push(`TESTING.md: no table with first header cell "${s.header}"`);
       continue;
     }
-    const { missing, stale } = diffRows(filesBySuite[s.key], rows);
+    const { missing, stale, duplicate } = diffRows(filesBySuite[s.key], rows);
     for (const f of missing) problems.push(`${s.dir}/${f}: no row in the "${s.header}" table of TESTING.md`);
     for (const r of stale) problems.push(`TESTING.md "${s.header}" row \`${r}\`: no such file in ${s.dir}/`);
+    for (const r of duplicate) problems.push(`TESTING.md "${s.header}" row \`${r}\`: listed more than once`);
   }
   return problems;
 }

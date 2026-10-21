@@ -18,6 +18,11 @@ const FIXTURE = [
   "",
   "Prose that mentions `not-a-row.test.ts` stays out of the table.",
   "",
+  "```md",
+  "| Spec | Writes? | Needs |",
+  "| `fenced-example.spec.ts` | GET only | — |",
+  "```",
+  "",
   "| Spec | Writes? | Needs |",
   "|---|---|---|",
   "| `album.spec.ts` | GET only | `E2E_ALBUM_ID` |",
@@ -41,7 +46,12 @@ describe("diffRows", () => {
     expect(diffRows(["a.test.ts", "new.test.ts"], ["a.test.ts", "gone.test.ts"])).toEqual({
       missing: ["new.test.ts"],
       stale: ["gone.test.ts"],
+      duplicate: [],
     });
+  });
+
+  it("reports a name listed twice", () => {
+    expect(diffRows(["a.test.ts"], ["a.test.ts", "a.test.ts"]).duplicate).toEqual(["a.test.ts"]);
   });
 });
 
@@ -66,7 +76,7 @@ describe("checkTestingMd", () => {
   });
 
   it("fails when a table header is renamed away", () => {
-    const problems = checkTestingMd(FIXTURE.replace("| Spec |", "| E2E spec |"), {
+    const problems = checkTestingMd(FIXTURE.replaceAll("| Spec |", "| E2E spec |"), {
       integration: ["board-picks.test.ts", "prisma-pool-txleak.test.ts"],
       e2e: ["album.spec.ts"],
     });
