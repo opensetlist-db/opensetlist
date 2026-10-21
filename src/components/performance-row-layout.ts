@@ -43,10 +43,8 @@
  * overall, which the operator already preferred ("mobile view column
  * size looks good").
  *
- * The trailing 28px is the chevron column. Matches the event list
- * row template (`EVENT_TABLE_COLUMNS` ends with `28px`) so the two
- * surfaces — both showing "list of events grouped by series" — read
- * the same density at the right edge.
+ * The trailing 28px is the chevron column (the pre-redesign event
+ * list used the same right-edge width).
  */
 export const PERFORMANCE_ROW_GRID =
   "80px 100px minmax(0, 1fr) 100px 28px";

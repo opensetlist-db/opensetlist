@@ -1,37 +1,35 @@
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { staticAlternates } from "@/lib/seo/entityUrl";
 import { getEventsListGrouped, type EventsListGroup } from "@/lib/events";
 import { getEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
-import { formatDate, nonBlank, HISTORY_ROW_DATE_FORMAT } from "@/lib/utils";
-import { FilterBar } from "@/components/events/FilterBar";
+import { formatDate, nonBlank } from "@/lib/utils";
 import {
   FILTER_VALUES,
   type EventListFilter,
 } from "@/lib/eventFilters";
 import EventStatusTicker from "@/components/EventStatusTicker";
-import { SeriesSection } from "@/components/events/SeriesSection";
-import { SeriesBlock } from "@/components/events/SeriesBlock";
-import { EventRow } from "@/components/events/EventRow";
-import { EventTableRow } from "@/components/events/EventTableRow";
+import { ConcertFilterNav } from "@/components/events/ConcertFilterNav";
+import { ConcertGroup } from "@/components/events/ConcertGroup";
+import { ConcertRow } from "@/components/events/ConcertRow";
 import { Pagination } from "@/components/Pagination";
-import { colors } from "@/styles/tokens";
+import { colors, radius } from "@/styles/tokens";
 
 const PAST_GROUPS_PER_PAGE = 10;
 
-const MOBILE_MONTH_FORMAT: Intl.DateTimeFormatOptions = {
+// Approved list date (16-v1): full year + short month + day + weekday on
+// every width — the old mobile month/day split dropped the year. UTC
+// because startTime is stored in UTC and every other surface shows the
+// same calendar day.
+const ROW_DATE_FORMAT: Intl.DateTimeFormatOptions = {
+  year: "numeric",
   month: "short",
-  timeZone: "UTC",
-};
-const MOBILE_DAY_FORMAT: Intl.DateTimeFormatOptions = {
   day: "numeric",
+  weekday: "short",
   timeZone: "UTC",
 };
-// Desktop format hoisted to `HISTORY_ROW_DATE_FORMAT` in lib/utils so
-// the artist / member / song history surfaces share one definition
-// with the event list. Mobile formats stay local — they're a unique
-// two-row month-and-day split that no other surface uses.
 
 function parseFilter(raw: string | undefined): EventListFilter {
   return (FILTER_VALUES as readonly string[]).includes(raw ?? "")
@@ -49,12 +47,13 @@ interface PreparedEvent {
   startTimeIso: string;
   status: ReturnType<typeof getEventStatus>;
   statusLabel: string;
-  monthLabel: string;
-  dayNumber: string;
-  shortDate: string;
+  dateLabel: string;
   eventName: string;
   venueCity: string | null;
   songCountLabel: string | null;
+  artTitle: string;
+  logoUrl: string | null;
+  tint: string | null;
 }
 
 interface PreparedGroup {
@@ -67,6 +66,7 @@ interface PreparedGroup {
   // Always non-empty (falls back to unknownArtist / ungrouped labels).
   groupTitle: string;
   artistShortName: string | null;
+  typeLabel: string | null;
   hasOngoing: boolean;
   eventCountLabel: string;
   events: PreparedEvent[];
@@ -85,6 +85,7 @@ export default async function EventsPage({
   const requestedPastPage = parsePage(sp.pastPage);
 
   const t = await getTranslations("Event");
+  const tl = await getTranslations("EventList");
   const now = new Date();
   const { activeGroups, pastGroups } = await getEventsListGrouped(locale, now);
 
@@ -94,18 +95,9 @@ export default async function EventsPage({
     upcoming: t("filter.upcoming"),
     completed: t("filter.completed"),
   };
-  const tableHeader = {
-    date: t("tableHeader.date"),
-    status: t("tableHeader.status"),
-    name: t("tableHeader.name"),
-    venue: t("tableHeader.venue"),
-    songs: t("tableHeader.songs"),
-  };
-  // The ongoing badge uses the dedicated `Event.live` ("LIVE") label
-  // rather than `Event.status.ongoing` ("진행 중") — matches the mockup
-  // and the home page's hero pill, and stays visually distinct from
-  // the FilterBar's "진행 중" chip text (same locale string post-#159
-  // i18n unification, so a separate "LIVE" word keeps badge ≠ chip).
+  // The ongoing pill reads "LIVE" (`Event.live`) rather than the
+  // filter's "진행 중" so the badge stays distinct from the chip text,
+  // as on the home hero.
   const liveLabel = t("live");
   const ungroupedName = t("ungrouped");
   const unknownEventName = t("unknownEvent");
@@ -127,12 +119,10 @@ export default async function EventsPage({
   function prepareEvent(
     ev: EventsListGroup["events"][number],
   ): PreparedEvent {
-    const start = new Date(ev.startTime);
     const status = getEventStatus(ev, now);
-    // Full localized event name (project rule: `full` is the
-    // default everywhere that isn't a breadcrumb or a "short
-    // because the page already shows full" exception). Long names
-    // truncate at the row's column width via the row's CSS.
+    // Full localized event name, wrapped in full by the row (no
+    // truncation — Day.1/Day.2 and long translations must stay
+    // distinguishable).
     const eventName =
       nonBlank(displayNameWithFallback(ev, ev.translations, locale)) ??
       unknownEventName;
@@ -156,24 +146,21 @@ export default async function EventsPage({
       href: eventHref(locale, ev.id, ev.slug),
       startTimeIso: ev.startTime,
       status,
-      // Per-row badge: "LIVE" for ongoing (matches mockup); locale
-      // status text for upcoming/completed/cancelled.
       statusLabel:
-        status === "ongoing" ? t("live") : t(`status.${status}`),
-      monthLabel: formatDate(start, locale, MOBILE_MONTH_FORMAT),
-      dayNumber: formatDate(start, locale, MOBILE_DAY_FORMAT),
-      shortDate: formatDate(start, locale, HISTORY_ROW_DATE_FORMAT),
+        status === "ongoing" ? liveLabel : tl(`status.${status}`),
+      dateLabel: formatDate(ev.startTime, locale, ROW_DATE_FORMAT),
       eventName,
       venueCity,
-      // Show the song count for both completed events (final
-       // tally) and ongoing events (running tally — matches the
-       // home page's LiveHeroCard, which displays the same count
-       // for the in-progress show). Upcoming and cancelled rows
-       // stay null since there's no meaningful count yet.
+      // Song count for completed (final tally) and ongoing (running
+      // tally, same count as the home LiveHeroCard). Upcoming and
+      // cancelled rows have no meaningful count yet.
       songCountLabel:
         status === "completed" || status === "ongoing"
-          ? t("songCount", { count: ev._count.setlistItems })
+          ? tl("songCount", { count: ev._count.setlistItems })
           : null,
+      artTitle: ev.artTitle ?? eventName,
+      logoUrl: ev.logo.image?.url ?? null,
+      tint: ev.logo.color,
     };
   }
 
@@ -213,8 +200,14 @@ export default async function EventsPage({
       key: `${keyPrefix}-${g.id}`,
       groupTitle: resolveGroupTitle(g),
       artistShortName: g.artistShortName,
+      // Only tour and festival carry a tag (approved design); the other
+      // series types get no invented label.
+      typeLabel:
+        g.seriesType === "concert_tour" || g.seriesType === "festival"
+          ? tl(`seriesType.${g.seriesType}`)
+          : null,
       hasOngoing: g.hasOngoing && (eventStatusFilter !== "upcoming"),
-      eventCountLabel: t("eventCount", { count: filteredEvents.length }),
+      eventCountLabel: tl("eventCount", { count: filteredEvents.length }),
       events: filteredEvents.map(prepareEvent),
     };
   }
@@ -250,47 +243,108 @@ export default async function EventsPage({
   const paginationOtherParams: Record<string, string> =
     filter === "all" ? {} : { filter };
 
+  const renderGroup = (g: PreparedGroup) => (
+    <ConcertGroup
+      key={g.key}
+      title={g.groupTitle}
+      artistTag={g.artistShortName}
+      typeLabel={g.typeLabel}
+      countLabel={g.eventCountLabel}
+      live={g.hasOngoing}
+      liveLabel={liveLabel}
+      collapseLabel={tl("collapseGroup", { title: g.groupTitle })}
+      expandLabel={tl("expandGroup", { title: g.groupTitle })}
+    >
+      {g.events.map((e) => (
+        <ConcertRow
+          key={e.href}
+          href={e.href}
+          title={e.eventName}
+          venueCity={e.venueCity}
+          startTimeIso={e.startTimeIso}
+          dateLabel={e.dateLabel}
+          status={e.status}
+          statusLabel={e.statusLabel}
+          songCountLabel={e.songCountLabel}
+          artTitle={e.artTitle}
+          logoUrl={e.logoUrl}
+          tint={e.tint}
+        />
+      ))}
+    </ConcertGroup>
+  );
+
+  const sectionTitleClass =
+    "mb-4 mt-[30px] text-[19px] font-bold min-[700px]:text-[21px]";
+
   return (
     <main className="flex-1" style={{ background: colors.bgPage }}>
-      <div className="mx-auto max-w-[480px] px-4 pb-15 pt-4 lg:max-w-[960px] lg:px-10 lg:pt-7 lg:pb-15">
-        <header className="mb-4 lg:mb-6">
-          <h1
-            className="text-[20px] font-bold lg:text-[24px]"
-            style={{
-              color: colors.textPrimary,
-              letterSpacing: "-0.01em",
-              marginBottom: 4,
-            }}
+      <div className="mx-auto min-h-[60vh] w-full max-w-[1200px] px-4 pb-10 pt-7 min-[700px]:p-8 min-[1264px]:px-0 min-[1264px]:pb-16 min-[1264px]:pt-10">
+        <header>
+          <p
+            className="m-0 text-[12px] font-bold tracking-[0.12em]"
+            style={{ color: colors.primary }}
           >
-            {t("allEvents")}
+            {tl("eyebrow")}
+          </p>
+          <h1
+            className="mb-2.5 mt-1 text-[26px] font-bold leading-[1.4] tracking-[-0.03em] min-[700px]:text-[32px]"
+            style={{ color: colors.textPrimary }}
+          >
+            {tl("title")}
           </h1>
           <p
-            className="text-[13px]"
-            style={{ color: colors.textMuted }}
+            className="m-0 text-[14px] min-[700px]:text-[15px]"
+            style={{ color: colors.textSecondary }}
           >
-            {t("subtitle")}
+            {tl("subtitle")}
           </p>
         </header>
 
-        <FilterBar active={filter} labels={filterLabels} />
+        <ConcertFilterNav
+          locale={locale}
+          active={filter}
+          labels={filterLabels}
+          label={tl("filterLabel")}
+        />
 
         {isEmpty ? (
-          <p
-            className="py-12 text-center text-sm"
-            style={{ color: colors.textMuted }}
+          <div
+            className="border px-6 py-8 text-center"
+            style={{
+              background: colors.bgCard,
+              borderColor: colors.border,
+              borderRadius: radius.card,
+            }}
           >
-            {t("emptyFilterState")}
-          </p>
+            <h2
+              className="m-0 text-[18px] font-bold"
+              style={{ color: colors.textPrimary }}
+            >
+              {tl("empty")}
+            </h2>
+            {filter !== "all" && (
+              <p className="mb-0 mt-4">
+                <Link
+                  href={`/${locale}/events`}
+                  className="inline-flex min-h-11 items-center rounded-full border px-5 text-[14px] font-bold"
+                  style={{
+                    borderColor: colors.borderStrong,
+                    color: colors.textPrimary,
+                    background: colors.bgCard,
+                  }}
+                >
+                  {tl("viewAll")}
+                </Link>
+              </p>
+            )}
+          </div>
         ) : (
           <>
-            {/* Page-level boundary ticker. Mobile + desktop trees are
-                both server-rendered and toggled by Tailwind responsive
-                classes, so per-row mounts would schedule duplicate
-                `setTimeout` callbacks (one for the EventRow, one for
-                the EventTableRow). Lift to the page so each
-                upcoming/ongoing event gets exactly one router.refresh
-                scheduled at its boundary. Past events skip — terminal
-                states have no further boundary to cross. */}
+            {/* Page-level boundary ticker: one router.refresh per
+                upcoming/ongoing active event at its next status
+                boundary. Past events skip — terminal states have no
+                further boundary to cross. */}
             {preparedActive
               .flatMap((g) => g.events)
               .filter(
@@ -303,131 +357,42 @@ export default async function EventsPage({
                 />
               ))}
 
-            {/* Active series */}
             {preparedActive.length > 0 && (
               <>
-                {/* Mobile */}
-                <div className="lg:hidden">
-                  {preparedActive.map((g) => (
-                    <SeriesSection
-                      key={g.key}
-                      title={g.groupTitle}
-                      artistShortName={g.artistShortName}
-                      hasOngoing={g.hasOngoing}
-                      eventCountLabel={g.eventCountLabel}
-                      liveLabel={liveLabel}
-                    >
-                      {g.events.map((e, i) => (
-                        <EventRow
-                          key={e.href}
-                          href={e.href}
-                          status={e.status}
-                          statusLabel={e.statusLabel}
-                          monthLabel={e.monthLabel}
-                          dayNumber={e.dayNumber}
-                          eventName={e.eventName}
-                          venueCity={e.venueCity}
-                          songCountLabel={e.songCountLabel}
-                          isLast={i === g.events.length - 1}
-                        />
-                      ))}
-                    </SeriesSection>
-                  ))}
-                </div>
-                {/* Desktop */}
-                <div className="hidden lg:block">
-                  {preparedActive.map((g) => (
-                    <SeriesBlock
-                      key={g.key}
-                      title={g.groupTitle}
-                      artistShortName={g.artistShortName}
-                      hasOngoing={g.hasOngoing}
-                      eventCountLabel={g.eventCountLabel}
-                      liveLabel={liveLabel}
-                      tableHeader={tableHeader}
-                    >
-                      {g.events.map((e) => (
-                        <EventTableRow
-                          key={e.href}
-                          href={e.href}
-                          status={e.status}
-                          statusLabel={e.statusLabel}
-                          shortDate={e.shortDate}
-                          eventName={e.eventName}
-                          venueCity={e.venueCity}
-                          songCountLabel={e.songCountLabel}
-                        />
-                      ))}
-                    </SeriesBlock>
-                  ))}
-                </div>
+                <h2
+                  className={sectionTitleClass}
+                  style={{ color: colors.textPrimary }}
+                >
+                  {tl("activeHeading")}
+                </h2>
+                {preparedActive.map(renderGroup)}
               </>
             )}
 
-            {/* Past series */}
             {pastSlice.length > 0 && (
               <>
-                <div className="lg:hidden">
-                  {pastSlice.map((g) => (
-                    <SeriesSection
-                      key={g.key}
-                      title={g.groupTitle}
-                      artistShortName={g.artistShortName}
-                      hasOngoing={g.hasOngoing}
-                      eventCountLabel={g.eventCountLabel}
-                      liveLabel={liveLabel}
-                    >
-                      {g.events.map((e, i) => (
-                        <EventRow
-                          key={e.href}
-                          href={e.href}
-                          status={e.status}
-                          statusLabel={e.statusLabel}
-                          monthLabel={e.monthLabel}
-                          dayNumber={e.dayNumber}
-                          eventName={e.eventName}
-                          venueCity={e.venueCity}
-                          songCountLabel={e.songCountLabel}
-                          isLast={i === g.events.length - 1}
-                        />
-                      ))}
-                    </SeriesSection>
-                  ))}
-                </div>
-                <div className="hidden lg:block">
-                  {pastSlice.map((g) => (
-                    <SeriesBlock
-                      key={g.key}
-                      title={g.groupTitle}
-                      artistShortName={g.artistShortName}
-                      hasOngoing={g.hasOngoing}
-                      eventCountLabel={g.eventCountLabel}
-                      liveLabel={liveLabel}
-                      tableHeader={tableHeader}
-                    >
-                      {g.events.map((e) => (
-                        <EventTableRow
-                          key={e.href}
-                          href={e.href}
-                          status={e.status}
-                          statusLabel={e.statusLabel}
-                          shortDate={e.shortDate}
-                          eventName={e.eventName}
-                          venueCity={e.venueCity}
-                          songCountLabel={e.songCountLabel}
-                        />
-                      ))}
-                    </SeriesBlock>
-                  ))}
-                </div>
-                {pastTotalPages > 1 && (
-                  <Pagination
-                    currentPage={pastPage}
-                    totalPages={pastTotalPages}
-                    pageParamKey="pastPage"
-                    otherParams={paginationOtherParams}
-                  />
-                )}
+                <h2
+                  className={sectionTitleClass}
+                  style={{ color: colors.textPrimary }}
+                >
+                  {tl("pastHeading")}
+                </h2>
+                {pastSlice.map(renderGroup)}
+                <Pagination
+                  currentPage={pastPage}
+                  totalPages={pastTotalPages}
+                  pageParamKey="pastPage"
+                  otherParams={paginationOtherParams}
+                  labels={{
+                    nav: tl("pastHeading"),
+                    prev: tl("prev"),
+                    next: tl("next"),
+                    status: tl("pageStatus", {
+                      current: pastPage,
+                      total: pastTotalPages,
+                    }),
+                  }}
+                />
               </>
             )}
           </>
@@ -443,11 +408,11 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: "Event" });
+  const t = await getTranslations({ locale, namespace: "EventList" });
   return {
-    title: t("allEvents"),
+    title: t("title"),
     // Canonical is the unfiltered list; filter query params
-    // (`?status=…`) consolidate onto it.
+    // (`?filter=…`, `?pastPage=…`) consolidate onto it.
     alternates: staticAlternates(locale, "/events"),
   };
 }

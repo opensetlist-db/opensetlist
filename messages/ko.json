@@ -342,6 +342,32 @@
       "detailsCta": "앨범 상세 보기 →"
     }
   },
+  "EventList": {
+    "eyebrow": "CONCERTS & SETLISTS",
+    "title": "공연 목록",
+    "subtitle": "공연을 찾고, 라이브의 기록을 만나보세요.",
+    "filterLabel": "공연 필터",
+    "activeHeading": "진행 중·예정 공연",
+    "pastHeading": "지난 공연",
+    "seriesType": {
+      "concert_tour": "투어",
+      "festival": "페스티벌"
+    },
+    "eventCount": "{count, plural, other {# 공연}}",
+    "songCount": "{count, plural, other {# 곡}}",
+    "status": {
+      "upcoming": "예정",
+      "completed": "종료",
+      "cancelled": "취소"
+    },
+    "collapseGroup": "{title} 접기",
+    "expandGroup": "{title} 펼치기",
+    "empty": "해당하는 공연이 없어요",
+    "viewAll": "전체 공연 보기",
+    "prev": "이전",
+    "next": "다음",
+    "pageStatus": "{current} / {total}"
+  },
   "EventDateTime": {
     "localTime": "현지 시각"
   },

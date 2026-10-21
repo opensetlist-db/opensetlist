@@ -272,7 +272,7 @@
     "noEvents": "No events to show",
     "filter": {
       "all": "All",
-      "ongoing": "Live now",
+      "ongoing": "Live",
       "upcoming": "Upcoming",
       "completed": "Completed"
     },
@@ -341,6 +341,32 @@
       "purchaseCta": "Buy BD →",
       "detailsCta": "View album details →"
     }
+  },
+  "EventList": {
+    "eyebrow": "CONCERTS & SETLISTS",
+    "title": "Concerts",
+    "subtitle": "Find a concert. Explore the live archive.",
+    "filterLabel": "Filter concerts",
+    "activeHeading": "Live & upcoming concerts",
+    "pastHeading": "Past concerts",
+    "seriesType": {
+      "concert_tour": "Tour",
+      "festival": "Festival"
+    },
+    "eventCount": "{count, plural, one {# concert} other {# concerts}}",
+    "songCount": "{count, plural, one {# song} other {# songs}}",
+    "status": {
+      "upcoming": "Upcoming",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "collapseGroup": "Collapse {title}",
+    "expandGroup": "Expand {title}",
+    "empty": "No events match",
+    "viewAll": "View all concerts",
+    "prev": "Previous",
+    "next": "Next",
+    "pageStatus": "{current} / {total}"
   },
   "EventDateTime": {
     "localTime": "local time"

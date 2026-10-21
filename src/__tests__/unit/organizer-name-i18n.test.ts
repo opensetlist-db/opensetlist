@@ -15,6 +15,12 @@ vi.mock("@/lib/dataCache", () => ({
   revalidateEventData: vi.fn(),
 }));
 
+// The events list resolves logos from the cached series graph; these
+// organizer cases have no series, so an empty graph is the real input.
+vi.mock("@/lib/logoSeriesGraph", () => ({
+  getLogoSeriesGraph: async () => new Map(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     event: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },

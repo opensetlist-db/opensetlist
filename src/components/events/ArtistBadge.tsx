@@ -1,16 +1,12 @@
 import { colors, radius } from "@/styles/tokens";
 
 /**
- * Small primary-tinted pill that fronts each series header on the
- * events list, carrying the locale-resolved artist short name.
+ * Small primary-tinted pill carrying a locale-resolved artist short
+ * name (setlist rows and sections).
  *
- * Two padding variants — the events-list mockup spec'd a tighter pill
- * for the mobile `SeriesSection` header (`1px 7px`) and a slightly
- * roomier one for the desktop `SeriesBlock` header (`2px 9px`) so the
- * pill sits comfortably alongside the wider `[N events]` row that
- * accompanies it on desktop. The padding difference is the only
- * styling delta between the two surfaces; everything else stays
- * locked.
+ * Two padding variants: a tighter `sm` (`1px 7px`) and a roomier `md`
+ * (`2px 9px`). The padding difference is the only styling delta;
+ * everything else stays locked.
  */
 type Size = "sm" | "md";
 
