@@ -95,7 +95,9 @@ const jsonSafe = (_, v) => (typeof v === "bigint" ? String(v) : v);
  * .claude/tmp/, run with cwd = that worktree) then reads that checkout's
  * files, where a path relative to the script would land in .claude/.
  * Outside any git work tree it returns `fallback` (the caller's
- * script-relative root).
+ * script-relative root). The same function lives in page-qa/harness.mjs
+ * (and inlined in redesign-capture.mjs): each harness stays extractable
+ * without the other, so change all three together.
  */
 export function checkoutRoot(fallback) {
   try {

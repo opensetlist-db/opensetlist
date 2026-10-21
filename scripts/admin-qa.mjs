@@ -75,6 +75,9 @@ const scenarioPath = args.scenario.endsWith(".mjs")
   : path.join(scenarioDir, `${args.scenario}.mjs`);
 const scenario = (await import(pathToFileURL(scenarioPath).href)).default;
 
+// The cwd picks the checkout whose .env is read (see checkoutRoot): say
+// which one, so a run started from the wrong directory shows it.
+console.log(`checkout: ${repoRoot}`);
 console.log(
   "reminder: this run INSERTs and deletes fixture rows in the shared dev DB — hold the redesign execution-board DB slot",
 );

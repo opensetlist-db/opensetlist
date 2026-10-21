@@ -116,6 +116,9 @@ if (args.fixture) {
   usage("--only-fixture needs --fixture <json>");
 }
 
+// The cwd picks the checkout (see checkoutRoot): say which one, so a run
+// started from the wrong directory shows it on the first line.
+console.log(`checkout: ${repoRoot}`);
 const summary = await runScenario({
   scenario,
   browserName: args.browser,
