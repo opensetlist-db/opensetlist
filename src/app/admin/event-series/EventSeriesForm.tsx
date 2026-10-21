@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   fetchAdminArtists,
   UnlistedArtistOption,
 } from "@/components/admin/artistPicker";
+import LogoAssignmentCard, {
+  type LogoCardStatus,
+} from "@/components/admin/LogoAssignmentCard";
+import type { LogoCardState } from "@/lib/adminLogoCard";
 
 type Translation = {
   locale: string;
@@ -29,6 +33,8 @@ type EventSeriesFormProps = {
     originalLanguage: string;
     translations: Translation[];
   };
+  /** Edit only: the logo card's server-read state (create has no id yet). */
+  logo?: { initialState: LogoCardState };
 };
 
 const SERIES_TYPES = ["concert_tour", "standalone", "festival", "fan_meeting"];
@@ -39,7 +45,7 @@ function normalizeSeriesType(value?: string) {
   return value === "one_time" ? "standalone" : value;
 }
 
-export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
+export default function EventSeriesForm({ initialData, logo }: EventSeriesFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState(normalizeSeriesType(initialData?.type) ?? "concert_tour");
@@ -118,17 +124,41 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // The page has two independent saves: this form's (everything but the
+  // logo) and the logo card's. Each navigates back to the list on success
+  // only when the OTHER one has nothing unsaved at that moment, so neither
+  // save can silently throw away the other's draft; while either is in
+  // flight or unsettled, the other's save and navigation are blocked.
+  // Dirty = the payload differs from the last saved one.
+  const [logoStatus, setLogoStatus] = useState<LogoCardStatus>({ dirty: false, busy: false });
+  const [savedPayload, setSavedPayload] = useState(() => JSON.stringify(buildPayload()));
+  const [logoRefreshKey, setLogoRefreshKey] = useState(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const mainDirty = JSON.stringify(buildPayload()) !== savedPayload;
 
-    if (!originalName.trim()) {
-      alert("원본 이름(originalName)은 필수입니다.");
-      return;
-    }
+  useEffect(() => {
+    if (!mainDirty && !logoStatus.dirty && !logoStatus.busy) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [mainDirty, logoStatus.dirty, logoStatus.busy]);
 
-    setLoading(true);
+  const goToList = useCallback(() => {
+    router.push("/admin/event-series");
+    router.refresh();
+  }, [router]);
 
-    const payload = {
+  const onLogoSaved = useCallback(
+    ({ otherDirty }: { otherDirty: boolean }) => {
+      if (!otherDirty) goToList();
+    },
+    [goToList],
+  );
+
+  function buildPayload() {
+    return {
       type,
       artistId: artistId || null,
       parentSeriesId: parentSeriesId || null,
@@ -148,6 +178,21 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
           organizerName: t.organizerName.trim() || null,
         })),
     };
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (logoStatus.busy) return;
+
+    if (!originalName.trim()) {
+      alert("원본 이름(originalName)은 필수입니다.");
+      return;
+    }
+
+    setLoading(true);
+    setStatusMessage(null);
+
+    const payload = buildPayload();
 
     const url = initialData
       ? `/api/admin/event-series/${initialData.id}`
@@ -162,8 +207,18 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
       });
 
       if (res.ok) {
-        router.push("/admin/event-series");
-        router.refresh();
+        // A pending logo draft would be lost by leaving: stay instead,
+        // and let the card recompute its previews (parent / artist /
+        // title may have changed).
+        if (initialData && logoStatus.dirty) {
+          setSavedPayload(JSON.stringify(payload));
+          setLogoRefreshKey((k) => k + 1);
+          setStatusMessage(
+            "기본 정보만 저장했습니다. 로고 변경은 아직 저장하지 않았습니다 — 로고 카드의 저장을 눌러 주세요."
+          );
+          return;
+        }
+        goToList();
         return;
       }
 
@@ -304,6 +359,32 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
         />
       </div>
 
+      {initialData && logo ? (
+        <LogoAssignmentCard
+          endpoint={`/api/admin/event-series/${initialData.id}/logo`}
+          initialState={logo.initialState}
+          copy={{
+            title: "시리즈 로고",
+            inheritTitle: "상위 시리즈에서 상속",
+            customDescription: "이 시리즈와 상속하는 하위 공연에 사용할 로고입니다.",
+          }}
+          typography={{
+            title: initialData.originalShortName || initialData.originalName,
+            caption: initialData.originalShortName ? initialData.originalName : null,
+          }}
+          otherDirty={mainDirty}
+          externalBusy={loading}
+          refreshKey={logoRefreshKey}
+          onStatusChange={setLogoStatus}
+          onSaved={onLogoSaved}
+        />
+      ) : (
+        <p className="rounded border border-zinc-200 bg-white p-3 text-xs text-zinc-600">
+          로고는 기본값인 “상위 시리즈에서 상속”으로 만들어집니다. 직접 지정이나 타이포그래피는 시리즈를
+          만든 뒤 편집 화면에서 설정합니다.
+        </p>
+      )}
+
       {/* Translations */}
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -388,13 +469,25 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loading ? "저장 중..." : "저장"}
-      </button>
+      <div>
+        <button
+          type="submit"
+          disabled={loading || logoStatus.busy}
+          className="rounded bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "저장 중..." : "저장"}
+        </button>
+        {logoStatus.busy && (
+          <p className="mt-2 text-xs text-zinc-600">
+            로고 저장 결과를 기다리는 중에는 기본 정보를 저장할 수 없습니다.
+          </p>
+        )}
+        {statusMessage && (
+          <p role="status" className="mt-2 text-xs text-emerald-700">
+            {statusMessage}
+          </p>
+        )}
+      </div>
     </form>
   );
 }
