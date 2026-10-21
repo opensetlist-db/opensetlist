@@ -355,6 +355,17 @@
       "detailsCta": "앨범 상세 보기 →"
     }
   },
+  "EventDetail": {
+    "jumpLabel": "페이지 안 이동",
+    "infoTitle": "공연 정보",
+    "factDate": "공연일",
+    "factStart": "공연 시작",
+    "sameSeriesTitle": "같은 시리즈",
+    "viewSeries": "시리즈 보기",
+    "creditsToggle": "출연 크레딧",
+    "performersMore": "더 보기 ({count})",
+    "liveNotice": "실시간으로 업데이트 중"
+  },
   "EventList": {
     "eyebrow": "CONCERTS & SETLISTS",
     "title": "공연 목록",

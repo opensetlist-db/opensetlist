@@ -15,6 +15,12 @@ import { useImageFallback } from "./useImageFallback";
  *   standard  full card width × 156px (126px under 700px)
  *   compact   96×96 at ≥1100px, 76×120 below (taller than wide so
  *             localized short titles fit; the slot need not be square)
+ *   detail    the concert-detail Hero slot (18-v3 `.logo-slot`):
+ *             204×182 above 800px, 156×156 at 700–800px, 90×118 under
+ *             700px. Same contain + inset rule; the fallback title is
+ *             larger than compact (24px / 15px on phones) because the
+ *             slot sits beside the page h1, and the caption drops on
+ *             phones where the 90px column has no room for it.
  *
  * Logo rendering: `object-fit: contain` inside the contract's 16px safe
  * inset — approved logos are never cropped, stretched or replaced by
@@ -36,7 +42,7 @@ import { useImageFallback } from "./useImageFallback";
  * aria-hidden). Pass `alt` only where the art is the sole identifier.
  */
 
-export type EventArtVariant = "standard" | "compact";
+export type EventArtVariant = "standard" | "compact" | "detail";
 
 export interface EventArtProps {
   /** Resolved logo URL (07's resolver output). Null/empty → typography. */
@@ -67,6 +73,8 @@ const REGION: Record<EventArtVariant, string> = {
   standard: "h-[126px] w-full px-[22px] py-5 min-[700px]:h-[156px]",
   compact:
     "h-[120px] w-[76px] rounded-lg p-2 min-[1100px]:h-24 min-[1100px]:w-24",
+  detail:
+    "h-[118px] w-[90px] rounded-xl border border-[#e2def2] p-[9px] min-[700px]:h-[156px] min-[700px]:w-[156px] min-[700px]:rounded-[18px] min-[700px]:p-5 min-[801px]:h-[182px] min-[801px]:w-[204px]",
 };
 
 export function EventArt(props: EventArtProps) {
@@ -88,6 +96,7 @@ function EventArtInner({
   const { failed, imgProps } = useImageFallback();
   const showLogo = Boolean(logoUrl) && !failed;
   const compact = variant === "compact";
+  const detail = variant === "detail";
 
   return (
     <div
@@ -103,8 +112,9 @@ function EventArtInner({
             : colors.artWash,
       }}
     >
-      {/* Two faint rings on the wash (03 mockup `.art:before/:after`). */}
-      {!compact && (
+      {/* Two faint rings on the wash (03 mockup `.art:before/:after`).
+          The detail slot (18-v3 `.logo-slot`) is drawn without them. */}
+      {variant === "standard" && (
         <>
           <span
             aria-hidden="true"
@@ -143,7 +153,9 @@ function EventArtInner({
             className={`block font-bold [overflow-wrap:anywhere] ${
               compact
                 ? "text-[12px] leading-normal min-[700px]:text-[13px]"
-                : "text-[22px] leading-[1.35] tracking-[-0.04em] min-[700px]:text-[24px]"
+                : detail
+                  ? "text-[15px] leading-[1.35] tracking-[-0.04em] min-[700px]:text-[24px]"
+                  : "text-[22px] leading-[1.35] tracking-[-0.04em] min-[700px]:text-[24px]"
             }`}
             style={{ color: colors.artTitle }}
           >
@@ -151,7 +163,9 @@ function EventArtInner({
           </strong>
           {!compact && caption && (
             <em
-              className="mt-[7px] block text-[12px] not-italic"
+              className={`mt-[7px] text-[12px] not-italic ${
+                detail ? "hidden min-[700px]:block" : "block"
+              }`}
               style={{ color: colors.artCaption }}
             >
               {caption}

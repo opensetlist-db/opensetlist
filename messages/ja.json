@@ -355,6 +355,17 @@
       "detailsCta": "アルバム詳細を見る →"
     }
   },
+  "EventDetail": {
+    "jumpLabel": "ページ内の項目",
+    "infoTitle": "公演情報",
+    "factDate": "公演日",
+    "factStart": "開演",
+    "sameSeriesTitle": "同じシリーズ",
+    "viewSeries": "シリーズを見る",
+    "creditsToggle": "出演クレジット",
+    "performersMore": "もっと見る（{count}）",
+    "liveNotice": "リアルタイムで更新中"
+  },
   "EventList": {
     "eyebrow": "CONCERTS & SETLISTS",
     "title": "公演一覧",

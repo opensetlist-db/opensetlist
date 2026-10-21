@@ -23,8 +23,7 @@ vi.mock("@/components/EventWishSection", () => ({
 }));
 
 import { LiveSetlist } from "@/components/LiveSetlist";
-import { UnitsCard } from "@/components/event/UnitsCard";
-import { PerformersCard } from "@/components/event/PerformersCard";
+import { EventPerformersPanel } from "@/components/event/EventPerformersPanel";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 const START = { date: "11월 14일", time: "16:30", zone: "JST" };
@@ -93,32 +92,35 @@ describe("LiveSetlist empty state", () => {
   });
 });
 
-describe("lineup mode cards", () => {
-  it("UnitsCard: lineup heading, group header rows, nested units", () => {
+describe("lineup mode panel", () => {
+  it("lineup headings, group + unit chips linked to their artist pages", () => {
     render(
-      <UnitsCard
+      <EventPerformersPanel
         locale="ko"
         isLineup
         units={[
           { id: "1", slug: "hasunosora", name: "蓮ノ空", color: null, members: ["花帆"], kind: "group" },
           { id: "2", slug: "cerise-bouquet", name: "スリーズブーケ", color: "#e91e8c", members: ["花帆"], kind: "unit" },
         ]}
+        performers={[]}
       />,
     );
-    expect(screen.getByText("lineupUnitsLabel")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "lineupUnitsLabel" })).toBeInTheDocument();
     expect(screen.queryByText("unitsLabel")).toBeNull();
-    const unitRow = screen.getByText("スリーズブーケ").closest("li")!;
-    expect(unitRow.style.paddingLeft).toBe("12px");
     expect(screen.getByText("蓮ノ空").closest("a")!.getAttribute("href")).toBe(
       "/ko/artists/1/hasunosora",
     );
+    expect(
+      screen.getByText("スリーズブーケ").closest("a")!.getAttribute("href"),
+    ).toBe("/ko/artists/2/cerise-bouquet");
   });
 
-  it("PerformersCard: lineup heading and member-page links when a slug is set", () => {
+  it("lineup heading and member-page links when a slug is set", () => {
     render(
-      <PerformersCard
+      <EventPerformersPanel
         locale="ja"
         isLineup
+        units={[]}
         performers={[{ id: "si-1", slug: "kaho", name: "花帆", color: "#e91e8c" }]}
       />,
     );

@@ -292,6 +292,8 @@ export function EventWishSection({
 
   return (
     <section
+      // Jump-link target of the page's in-page nav (leads pre-show).
+      id="event-wishlist"
       className="mb-2.5 overflow-hidden rounded-[14px]"
       style={{
         background: colors.wishlistBg,

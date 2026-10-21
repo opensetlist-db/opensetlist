@@ -6,7 +6,7 @@ import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistSection } from "@/components/SetlistSection";
 import { deriveTrendingSongs } from "@/lib/trending";
 import { deriveSongsCount } from "@/lib/sidebarDerivations";
-import { colors, motion, radius, shadows } from "@/styles/tokens";
+import styles from "@/components/event/eventDetail.module.css";
 // Setlist-shape types live in `src/lib/types/setlist.ts` so pure
 // helpers under `src/lib/` can describe them without importing from
 // `src/components/`. Re-exported below for back-compat with existing
@@ -177,6 +177,8 @@ export function LiveSetlist({
   snapshotCapturedAt,
 }: Props) {
   const t = useTranslations("Event");
+  const detailT = useTranslations("EventDetail");
+  const setlistT = useTranslations("Setlist");
 
   // Two-mode bridge (n15). The board block and the setlist card are
   // siblings, so the "go to full setlist mode" tap is lifted here: the
@@ -267,7 +269,17 @@ export function LiveSetlist({
     board != null &&
     ((status === "upcoming" && isWishPredictOpen) || status === "completed");
 
-  return (
+  // Participation (wishlist or fan board) leads the page while the show
+  // is upcoming — that is what a visitor can still act on. Once the show
+  // has started the actual setlist leads and the locked wishes follow it
+  // (18-v3: open → board first; LIVE / completed → setlist first).
+  const participationFirst = status === "upcoming";
+  // Pre-show with the window open there are no actual rows yet, so the
+  // card holds only the viewer's predicted setlist — title it as such.
+  const predictOnlyCard =
+    status === "upcoming" && isWishPredictOpen && items.length === 0;
+
+  const participation = (
     <>
       {/* Wishlist (Phase 1B) sits at the very top of the right column,
           above Trending — per `raw/mockups/mockup-wish-predict.jsx`.
@@ -334,6 +346,12 @@ export function LiveSetlist({
             picksRevision={boardPicksRevision}
           />
         )}
+    </>
+  );
+
+  return (
+    <>
+      {participationFirst && participation}
       {/* Trending sits ABOVE the setlist card as its own surface (amber
           tokens), per mockup. Not a child of the white setlist card.
 
@@ -357,92 +375,33 @@ export function LiveSetlist({
       )}
     <section
       id={setlistAnchorId}
-      className="mb-8"
-      style={{
-        background: colors.bgCard,
-        borderRadius: radius.card,
-        boxShadow: shadows.card,
-        overflow: "hidden",
-      }}
+      aria-labelledby={`${setlistAnchorId}-title`}
+      className={`${styles.panel} ${styles.setlistPanel}`}
     >
-      {/* Setlist card header. Desktop shows the count subtitle on the
-          right (`21 items · 18 songs`); mobile swaps it for the
-          tap-to-add hint. The LIVE pill is appended to the title on
-          ongoing events; renders before the right-side meta so the
-          right edge stays aligned across breakpoints. */}
-      <div
-        className="flex items-center justify-between gap-2"
-        style={{
-          padding: "16px 20px 12px",
-          borderBottom: `1px solid ${colors.borderLight}`,
-        }}
-      >
-        {/* `flex-wrap` + `min-w-0`: on a narrow phone the sync
-            indicator drops under the title instead of squeezing the
-            right-side hint or overflowing the card. */}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <h2
-            // `text-transform: uppercase` is locale-safe — CJK
-            // characters pass through unchanged ("セットリスト",
-            // "세트리스트" stay as-is); only Latin-script
-            // ("Setlist" → "SETLIST") gets the all-caps treatment
-            // per the operator's preference for English headers.
-            style={{
-              fontSize: 15,
-              fontWeight: 700,
-              color: colors.textPrimary,
-              letterSpacing: "0.02em",
-              textTransform: "uppercase",
-              margin: 0,
-            }}
-          >
-            {t("setlist")}
-          </h2>
-          {isOngoing && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-              style={{
-                background: colors.liveBg,
-                color: colors.live,
-              }}
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{
-                  background: colors.live,
-                  animation: motion.livePulse,
-                }}
-              />
-              {t("live")}
-            </span>
-          )}
-          {isOngoing && freshness && (
+      <div className={styles.panelHead}>
+        <h2 id={`${setlistAnchorId}-title`} className={styles.panelTitle}>
+          {predictOnlyCard ? setlistT("tabPredicted") : t("setlist")}
+        </h2>
+        {/* Counts only once there are items: "0 items · 0 songs" is
+            noise (and zero-stats feed the Soft 404 read). */}
+        {itemCount > 0 && (
+          <span className={styles.panelCount}>
+            {t("itemsLabel", { count: itemCount })} ·{" "}
+            {t("songsValue", { count: songCount })}
+          </span>
+        )}
+      </div>
+      {/* Live notice (18-v3 `.live-top`). The LIVE pill itself is in
+          the page Hero; here the card says the list is being filled in
+          and how fresh this browser's copy is. */}
+      {isOngoing && (
+        <div className={styles.liveNotice} data-testid="setlist-live-notice">
+          <strong>{detailT("liveNotice")}</strong>
+          {freshness && (
             <LiveSyncIndicator freshness={freshness} locale={locale} />
           )}
         </div>
-        {/* Right-side meta — only once there are items: "0 items · 0
-            songs" and a tap-to-react hint with nothing to tap are noise
-            (and zero-stats feed the Soft 404 read). */}
-        {itemCount > 0 && (
-          <>
-            {/* Desktop count subtitle. */}
-            <span
-              className="hidden lg:inline"
-              style={{ fontSize: 12, color: colors.textMuted }}
-            >
-              {t("itemsLabel", { count: itemCount })} ·{" "}
-              {t("songsValue", { count: songCount })}
-            </span>
-            {/* Mobile tap hint. */}
-            <span
-              className="lg:hidden"
-              style={{ fontSize: 11, color: colors.textMuted }}
-            >
-              {t("tapToAddReaction")}
-            </span>
-          </>
-        )}
-      </div>
+      )}
 
       {/* Tab-aware body. When `predict-{eventId}` is in localStorage,
           a tab strip renders BELOW this section's header (the SETLIST
@@ -470,9 +429,9 @@ export function LiveSetlist({
         dateLine={dateLine}
         isWishPredictOpen={isWishPredictOpen}
         emptyFallback={
-          <div style={{ padding: "24px 20px", color: colors.textMuted }}>
+          <div>
             {emptyMessages.map((msg, i) => (
-              <p key={i} style={{ margin: i === 0 ? 0 : "8px 0 0" }}>
+              <p key={i} className={styles.emptyCopy}>
                 {msg}
               </p>
             ))}
@@ -487,9 +446,11 @@ export function LiveSetlist({
         onBoardPublished={bridgeOpen ? onBoardPublished : undefined}
       />
     </section>
+      {!participationFirst && participation}
     </>
   );
 }
+
 
 // `SetlistColumnHeader` + `EncoreDivider` moved to `<ActualSetlist>`
 // as part of the Stage B SetlistSection refactor — they only render

@@ -355,6 +355,17 @@
       "detailsCta": "View album details →"
     }
   },
+  "EventDetail": {
+    "jumpLabel": "On this page",
+    "infoTitle": "Concert info",
+    "factDate": "Date",
+    "factStart": "Start",
+    "sameSeriesTitle": "Same series",
+    "viewSeries": "View series",
+    "creditsToggle": "Credits",
+    "performersMore": "Show more ({count})",
+    "liveNotice": "Updating live"
+  },
   "EventList": {
     "eyebrow": "CONCERTS & SETLISTS",
     "title": "Concerts",

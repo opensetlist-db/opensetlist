@@ -1,0 +1,634 @@
+/*
+ * Concert detail page — layout from the approved redesign packet 18-v3
+ * (wiki `output/redesign/handoffs/18/v3/detail.css` + `color-v3.css`,
+ * design-contract.md). Same reasoning as the artist/album detail
+ * modules: the approved layout switches at 1100 / 800 / 700px and many
+ * elements change display mode, padding and type size together, so one
+ * rule block per band keeps each band reviewable against the mockup.
+ *
+ * Colours mirror `src/styles/tokens.ts` (03 contract). The per-section
+ * accents (pink participation, lavender setlist/impressions, orange
+ * performers, blue info) are page-local: 18-v2/v3 fixed them for this
+ * page only, and the panel heading bar is their only carrier — headings
+ * and copy stay on the ink tones.
+ *
+ * Artist colours arrive as `--artist` set inline per chip/card and are
+ * mixed toward white (`color-mix`), never used as text colour, so an
+ * unverified pastel can't carry copy.
+ *
+ * Tailwind preflight resets heading weight and list markers; every rule
+ * that relies on browser defaults in the mockup sets them explicitly.
+ */
+
+.page {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+
+.crumb > nav {
+  margin-bottom: 22px;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────── */
+
+.hero {
+  display: grid;
+  grid-template-columns: 204px minmax(0, 1fr);
+  column-gap: 32px;
+  row-gap: 14px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+/*
+ * The state line is a direct grid child (not inside .heroCopy) so it can
+ * take the full width under the 90px slot on phones (18-v3
+ * `.event-hero .state-line{grid-column:1/-1}`); above 700px it stays in
+ * the copy column under the meta line, and the slot spans both rows.
+ */
+.heroArt {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.heroCopy {
+  min-width: 0;
+  align-self: end;
+}
+.seriesLink {
+  font-size: 13px;
+  font-weight: 700;
+  color: #165dcc;
+  overflow-wrap: anywhere;
+}
+.seriesLink:hover {
+  text-decoration: underline;
+}
+.artistLine {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #52617a;
+}
+a.artistLine:hover {
+  color: #165dcc;
+  text-decoration: underline;
+}
+.title {
+  margin: 9px 0 12px;
+  font-size: 29px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.035em;
+  color: #172445;
+  overflow-wrap: anywhere;
+}
+.title:lang(ko) {
+  word-break: keep-all;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin: 0;
+  font-size: 14px;
+  color: #52617a;
+}
+.stateLine {
+  grid-column: 2;
+  align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #52617a;
+}
+
+/* ── In-page jump links ───────────────────────────────────────── */
+
+.jump {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+  overflow-x: auto;
+  border-bottom: 1px solid #dce3ef;
+}
+.jump a {
+  min-height: 48px;
+  padding: 13px 0;
+  font-size: 14px;
+  white-space: nowrap;
+  color: #172445;
+  border-bottom: 3px solid transparent;
+}
+.jump a:hover {
+  color: #165dcc;
+}
+.jump a:first-child {
+  font-weight: 700;
+  color: #165dcc;
+  border-bottom-color: #165dcc;
+}
+
+/* ── Two-column layout ────────────────────────────────────────── */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: 24px;
+  align-items: start;
+}
+.mainColumn,
+.sideColumn {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Panels ───────────────────────────────────────────────────── */
+
+.panel {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 20px #49639809;
+  scroll-margin-top: 20px;
+}
+.sideColumn .panel {
+  padding: 20px;
+}
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+/*
+ * Section heading with the coloured lead bar (color-v3 `.panel h2::before`).
+ * `--bar` picks the section's accent; the text stays ink.
+ */
+.panelTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: -0.025em;
+  color: #172445;
+}
+.panelTitle::before {
+  content: "";
+  flex: 0 0 7px;
+  height: 20px;
+  border-radius: 5px;
+  background: var(--bar, #7399eb);
+}
+.sideColumn .panelTitle {
+  font-size: 16px;
+}
+.panelCount {
+  font-size: 12px;
+  color: #52617a;
+  font-variant-numeric: tabular-nums;
+}
+
+.setlistPanel {
+  --bar: #a18bdf;
+  background: linear-gradient(135deg, #f8f5ff, #fff 60%);
+  border-color: #d9d1ee;
+}
+.impressionsPanel {
+  --bar: #a18bdf;
+  background: linear-gradient(120deg, #f4efff, #fff 80%);
+  border-color: #ddd2f1;
+}
+.performersPanel {
+  --bar: #f0a56b;
+}
+.infoPanel {
+  --bar: #7399eb;
+}
+
+.liveNotice {
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border: 1px solid #efbcd5;
+  border-radius: 12px;
+  background: #ffeaf4;
+  font-size: 13px;
+  color: #52617a;
+}
+.liveNotice strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #a21956;
+}
+.emptyCopy {
+  margin: 0;
+  padding: 4px 0;
+  font-size: 14px;
+  color: #52617a;
+}
+.emptyCopy + .emptyCopy {
+  margin-top: 8px;
+}
+
+/* ── Facts (공연 정보) ─────────────────────────────────────────── */
+
+.facts {
+  display: grid;
+  gap: 13px;
+  margin: 0;
+}
+.facts > div {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf0f5;
+}
+.facts > div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.facts dt {
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: #52617a;
+}
+.facts dd {
+  margin: 0;
+  font-size: 13px;
+  color: #172445;
+  overflow-wrap: anywhere;
+}
+.facts a {
+  color: #165dcc;
+}
+.facts a:hover {
+  text-decoration: underline;
+}
+
+.seriesName {
+  margin: 0;
+  font-size: 13px;
+  color: #172445;
+  overflow-wrap: anywhere;
+}
+.blockButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 12px;
+  padding: 11px 18px;
+  border: 1px solid #7c8ba3;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  color: #165dcc;
+}
+.blockButton:hover {
+  background: #edf4ff;
+}
+.blockButton:active {
+  background: #dae7ff;
+}
+
+/* ── Performers (출연진) ───────────────────────────────────────── */
+
+.groupLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.groupChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--artist) 50%, #bdc5d4);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--artist) 30%, white);
+  font-size: 12px;
+  color: #172445;
+  overflow-wrap: anywhere;
+}
+a.groupChip:hover {
+  text-decoration: underline;
+}
+.groupChipMuted {
+  margin-left: 4px;
+  color: #52617a;
+}
+.rosterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.member {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--artist) 28%, #e3e8f2);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--artist) 9%, white);
+}
+.member strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #172445;
+  overflow-wrap: anywhere;
+}
+.member a:hover strong {
+  text-decoration: underline;
+}
+.memberNote {
+  display: block;
+  font-size: 11px;
+  color: #52617a;
+}
+.initial {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--artist) 32%, white);
+  font-weight: 700;
+  color: #172445;
+}
+.more {
+  margin-top: 12px;
+  font-size: 12px;
+}
+.more > summary {
+  min-height: 36px;
+  padding: 8px 0;
+  cursor: pointer;
+  color: #165dcc;
+}
+.more > .rosterGrid {
+  margin-top: 8px;
+}
+
+/* ── Bands ────────────────────────────────────────────────────── */
+
+@media (max-width: 1270px) {
+  .page {
+    padding: 24px 32px 48px;
+  }
+}
+
+@media (max-width: 1099px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+  .title {
+    font-size: 26px;
+  }
+  .rosterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 800px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sideColumn {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .hero {
+    grid-template-columns: 156px minmax(0, 1fr);
+    column-gap: 22px;
+  }
+  .title {
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 699px) {
+  .page {
+    padding: 20px 16px 36px;
+  }
+  .crumb > nav {
+    margin-bottom: 18px;
+  }
+  .hero {
+    grid-template-columns: 90px minmax(0, 1fr);
+    column-gap: 14px;
+    row-gap: 10px;
+    align-items: start;
+    margin-bottom: 22px;
+  }
+  .heroArt {
+    grid-row: auto;
+    align-self: start;
+  }
+  .heroCopy {
+    align-self: start;
+  }
+  .title {
+    margin-top: 7px;
+    font-size: 20px;
+    line-height: 1.5;
+  }
+  .seriesLink {
+    font-size: 12px;
+  }
+  .meta {
+    gap: 6px;
+    font-size: 12px;
+  }
+  .meta > span {
+    width: 100%;
+  }
+  .stateLine {
+    grid-column: 1 / -1;
+    gap: 7px;
+  }
+  .jump {
+    gap: 22px;
+    margin-bottom: 18px;
+  }
+  .jump a {
+    font-size: 13px;
+  }
+  .panel {
+    padding: 18px 16px;
+  }
+  .panelTitle {
+    font-size: 20px;
+  }
+  .sideColumn {
+    display: flex;
+  }
+  .rosterGrid {
+    gap: 8px;
+  }
+  .groupLine {
+    gap: 6px;
+  }
+}
+
+/* ── Setlist rows (18-v3 `.song-row`) ─────────────────────────── */
+
+.setlistList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.songRow {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  margin: 8px 0;
+  padding: 16px 12px;
+  border: 1px solid #e0e5f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.songNum {
+  display: grid;
+  place-items: center;
+  height: 28px;
+  border-radius: 6px;
+  background: #e9eef8;
+  font-family: var(--font-dm-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: #485b7d;
+  font-variant-numeric: tabular-nums;
+}
+.songBody {
+  min-width: 0;
+}
+.songTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 700;
+  color: #172445;
+  overflow-wrap: anywhere;
+}
+.songTitle a {
+  color: #172445;
+}
+.songTitle a:hover {
+  color: #165dcc;
+  text-decoration: underline;
+}
+.songSub {
+  font-size: 13px;
+  font-weight: 400;
+  color: #52617a;
+}
+.medleyJoin {
+  margin: 0 2px;
+  font-weight: 400;
+  color: #52617a;
+}
+.nonSongLabel {
+  font-style: italic;
+  font-weight: 500;
+}
+.creditLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.artistTag {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--artist) 32%, white);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #172445;
+}
+a.artistTag:hover {
+  text-decoration: underline;
+}
+.creditDetails {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #52617a;
+}
+.creditDetails > summary {
+  min-height: 30px;
+  padding: 3px 0;
+  cursor: pointer;
+  color: #165dcc;
+}
+.creditDetails > p {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+.songReactions {
+  margin-top: 8px;
+}
+.encore {
+  margin: 16px 0 0;
+  padding: 9px 12px;
+  border-radius: 6px;
+  background: #e8ddff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #5b3ca1;
+}
+.confirmHelp {
+  margin-top: 12px;
+  font-size: 11px;
+  color: #52617a;
+}
+
+@media (min-width: 1100px) {
+  .songBody {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    column-gap: 16px;
+    align-items: start;
+  }
+  .songBody > * {
+    grid-column: 1;
+  }
+  .songBody > .songReactions {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 699px) {
+  .songRow {
+    grid-template-columns: 23px minmax(0, 1fr);
+    gap: 8px;
+    padding: 14px 10px;
+  }
+  .songTitle {
+    font-size: 14px;
+  }
+}

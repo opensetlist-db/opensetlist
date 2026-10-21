@@ -1,6 +1,7 @@
 "use client";
 
 import { colors } from "@/styles/tokens";
+import styles from "@/components/event/eventDetail.module.css";
 
 /**
  * Binary row state — collapsed from the v0.10.0 three-tuple
@@ -99,14 +100,8 @@ export function NumberSlot({
     // bumping to 52px adds ~16px blank space on confirmed rows but
     // avoids a per-row variable-width layout that would jiggle
     // alignment across the table. Visual cost accepted.
-    return (
-      <span
-        className="mt-0.5 pt-px text-right text-sm font-mono lg:w-[52px]"
-        style={{ color: colors.textMuted }}
-      >
-        {position}
-      </span>
-    );
+    // 18-v3 `.song-num`: a small tinted chip in the row's 30px column.
+    return <span className={styles.songNum}>{position}</span>;
   }
   // Two 22×22 vote buttons. Geometry locked across both buttons;
   // only border + bg + glyph differ per active state.
@@ -152,7 +147,10 @@ export function NumberSlot({
   const canDisagreeTap = typeof onDisagreeTap === "function";
   return (
     <div
-      className="row-span-2 self-center mt-0.5 inline-flex flex-col items-center gap-1 lg:row-span-1 lg:self-auto lg:flex-row lg:gap-2"
+      // Vertical ✓/✕ pair: the card row's number column is 30px (23px
+      // on phones) at every width now, so the pair never goes
+      // side by side.
+      className="mt-0.5 inline-flex flex-col items-center gap-1"
     >
       {/* The text-symbol glyphs (✓ / ✕, U+2713 / U+2715) are
           monochromatic — they inherit the button's `color` style,

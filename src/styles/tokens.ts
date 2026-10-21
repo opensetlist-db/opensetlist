@@ -164,7 +164,18 @@ export const colors = {
   listGroupWash: "linear-gradient(110deg, #F2F5FF, #FFF7FB)",
   listLiveGroupBg: "#E9E3FF",
 
-  // Trending TOP3 card (consumed by <TrendingSongs>)
+  // Concert-detail palette (approved packet 18-v3 color-v3.css). Page-
+  // scoped like the list palette above; the CSS module carries the rest
+  // of the page's pastels, these are the ones set from components.
+  setlistTabActive: "#5B3CA1", // selected setlist/prediction chip, white text
+  setlistTabIdleBg: "#F4F6FA",
+  setlistTabIdleBorder: "#AAB8CF",
+  reactionBorder: "#C1CBDA", // reaction button with a count
+  reactionBorderEmpty: "#AAB8CF", // dashed, count 0
+  impressionField: "#A79BBF", // 한줄감상 textarea border
+  impressionCardBorder: "#DCD1EF", // other viewers' impression cards
+
+    // Trending TOP3 card (consumed by <TrendingSongs>)
   trendingBg: "#fffbeb",
   trendingBorder: "#fde68a",
   trendingText: "#b45309",
