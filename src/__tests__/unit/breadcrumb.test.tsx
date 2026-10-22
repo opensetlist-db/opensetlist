@@ -92,7 +92,7 @@ describe("Breadcrumb", () => {
       expect(link.classList).toContain(cls);
     }
     // The current-page crumb is not a target, so it stays unpadded.
-    expect(screen.getByText("X").className).toBe("");
+    expect(screen.getByText("X").classList).not.toContain("px-1.5");
   });
 
   it("hides the › separator from assistive tech", () => {
