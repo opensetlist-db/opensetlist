@@ -141,7 +141,7 @@ const DEFAULT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
 /**
  * Desktop format used by every "list of events grouped by series"
  * surface — event list (`/[locale]/events`), artist / song / member
- * history tabs, series LegCard. Includes year so a row carries the
+ * history tabs. Includes year so a row carries the
  * full calendar context without depending on the surrounding header
  * (operator feedback 2026-04-29 — "show year in all pages,
  * consistently").

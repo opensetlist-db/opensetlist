@@ -409,6 +409,7 @@
       "standalone": "単独公演"
     },
     "organizer": "主催",
+    "artistLabel": "アーティスト",
     "events": "イベント一覧",
     "noEvents": "登録されたイベントがありません。",
     "unknownSeries": "名称未定のシリーズ",
