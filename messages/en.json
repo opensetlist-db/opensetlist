@@ -137,6 +137,8 @@
     "baseVariant": "Base",
     "recentPerformances": "Performance history",
     "performanceCount": "{count, plural, one {# performance} other {# performances}}",
+    "kindBadge": "Song",
+    "statsPerformances": "performances",
     "statsTours": "tours",
     "releaseYearLabel": "Released",
     "albumLabel": "On",
