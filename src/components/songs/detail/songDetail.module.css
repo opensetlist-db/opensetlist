@@ -38,8 +38,9 @@
 .breadcrumb > nav a {
   display: inline-block;
   min-width: 24px;
-  margin: -4px -6px;
-  padding: 4px 6px;
+  /* 5px, not 4px: 16px text + 8px measured just under 24px in WebKit. */
+  margin: -5px -6px;
+  padding: 5px 6px;
   text-align: center;
 }
 
