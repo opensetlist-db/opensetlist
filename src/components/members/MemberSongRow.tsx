@@ -14,6 +14,12 @@ export interface MemberSongView {
   /** Original-language title (primary per the 30-v1 name rule). */
   title: string;
   titleLang?: string;
+  /** Variant label ("105期 Ver."), shown after the title; null for a
+   *  base version. */
+  variant: string | null;
+  /** Set only when the label is a viewer-locale translation (the title
+   *  span's original-language `lang` would be wrong for it). */
+  variantLang?: string;
   /** Viewer-locale translation, null when it equals the original. */
   titleSub: string | null;
   unitName: string | null;
@@ -35,6 +41,12 @@ export function MemberSongRow({
         <span className={styles.songCopy}>
           <span className={styles.songTitle} lang={song.titleLang}>
             {song.title}
+            {song.variant && (
+              <>
+                {" "}
+                <span lang={song.variantLang}>{song.variant}</span>
+              </>
+            )}
           </span>
           {song.titleSub && (
             <span className={styles.songSub}>{song.titleSub}</span>

@@ -327,6 +327,26 @@ describe("member detail page (30-v1)", () => {
     expect(order).toEqual([eveningTwin.id, evening.id, matinee.id]);
   });
 
+  it("songs: a variant shows its label after the title; the base version none", async () => {
+    const base = { ...song(1), originalTitle: "Dream Believers" };
+    const variant = {
+      ...song(98),
+      originalTitle: "Dream Believers",
+      variantLabel: "105期 Ver.",
+    };
+    const html = await render(
+      member({ performances: [perf(event(), [base, variant])] }),
+      { tab: "songs" },
+    );
+    // Row text with tags (and React's <!-- --> separators) stripped:
+    // title, optional variant, then the unit tag.
+    const rows = [...html.matchAll(/<a class="[^"]*songRow[^"]*"[\s\S]*?<\/a>/g)].map((m) =>
+      m[0].replace(/<!-- -->/g, "").replace(/<[^>]+>/g, ""),
+    );
+    expect(rows[0]).toMatch(/^Dream BelieversEdel Note/);
+    expect(rows[1]).toMatch(/^Dream Believers 105期 Ver\.Edel Note/);
+  });
+
   it("songs tab: a song without artist credit falls back to the member's primary unit tag", async () => {
     const html = await render(
       member({ performances: [perf(event(), [song(9, null)])] }),

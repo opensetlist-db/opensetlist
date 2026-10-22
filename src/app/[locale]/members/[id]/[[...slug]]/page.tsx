@@ -546,7 +546,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       const sid = Number(song.id);
       let entry = songMap.get(sid);
       if (!entry) {
-        const { main, sub } = displayOriginalTitle(
+        const { main, sub, variant } = displayOriginalTitle(
           song,
           song.translations,
           locale,
@@ -572,6 +572,17 @@ export default async function MemberPage({ params, searchParams }: Props) {
           href: entityPath("songs", locale, song.id, song.slug),
           title: main || song.originalTitle,
           titleLang: originalLang(song.originalLanguage, locale),
+          // Variant label after the title (owner decision on 30-v1:
+          // "Dream Believers 105期 Ver." must not read as a second
+          // "Dream Believers"). `displayOriginalTitle` resolves it
+          // locale-exact translation → original; a translated label is
+          // in the page language, so it overrides the title's lang.
+          variant,
+          variantLang: song.translations.some(
+            (tr) => tr.locale === locale && tr.variantLabel,
+          )
+            ? locale
+            : undefined,
           titleSub: sub,
           unitName: artistName || primaryUnitName,
           unitLang:
