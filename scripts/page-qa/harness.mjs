@@ -309,8 +309,9 @@ function withTimeout(promise, ms) {
  * files, where a path relative to the script would land in .claude/.
  * Outside any git work tree it returns `fallback` (the caller's
  * script-relative root). The same function lives in admin-qa/harness.mjs
- * (and inlined in redesign-capture.mjs): each harness stays extractable
- * without the other, so change all three together.
+ * and dev-db-guard.mjs (for db-fixture-add / -rm), and is inlined in
+ * redesign-capture.mjs: each stays extractable without the others, so
+ * change all four together.
  */
 export function checkoutRoot(fallback) {
   try {

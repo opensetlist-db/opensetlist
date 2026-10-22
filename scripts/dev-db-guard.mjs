@@ -44,10 +44,11 @@ export function pointsAtDevProject(raw) {
  * Script-relative alone breaks for the copies redesign worktrees extract
  * into the gitignored `.claude/tmp/`: `<script dir>/..` is `.claude/`
  * there, which holds no env, and the run stops on a missing
- * DATABASE_URL_UNPOOLED. page-qa / admin-qa / redesign-capture pick
- * their checkout the same way (scripts/page-qa/harness.mjs). Callers
- * print the result first, so a run started from the wrong directory
- * shows it.
+ * DATABASE_URL_UNPOOLED. The same function lives in page-qa/harness.mjs
+ * and admin-qa/harness.mjs, and is inlined in redesign-capture.mjs: each
+ * stays extractable without the others, so change all four together.
+ * Callers print the result first, so a run started from the wrong
+ * directory shows it.
  * @param {string} fallback
  * @returns {string}
  */

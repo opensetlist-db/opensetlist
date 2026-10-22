@@ -19,6 +19,14 @@ describe("parseArgs", () => {
     expect(opts).toMatchObject({ prefix: "[QA] ", assetPrefix: "dev/qa/", expect: 4, dryRun: true });
   });
 
+  it("takes db-fixture-add's logo assets with their qa-fixture/ key prefix", () => {
+    const opts = parseArgs([
+      "--prefix", "[QA] T 1 ", "--expect", "2", "--series", "41",
+      "--assets", ASSET, "--asset-prefix", "qa-fixture/t-1-",
+    ]);
+    expect(opts).toMatchObject({ assetPrefix: "qa-fixture/t-1-", expect: 2, ids: { EventSeries: ["41"], ImageAsset: [ASSET] } });
+  });
+
   it("allows assets alone without a name prefix", () => {
     expect(parseArgs(["--assets", ASSET, "--asset-prefix", "dev/qa/", "--expect", "1"]).prefix).toBeNull();
   });

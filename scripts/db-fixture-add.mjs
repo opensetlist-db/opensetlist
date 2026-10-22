@@ -241,7 +241,11 @@ function logoUrl(where, v, bucketBase) {
   // Compare the parsed form, so `..` segments or an encoded host can't
   // walk out of the allowed prefix.
   const href = url.href;
-  if (href !== v || url.search || url.hash) throw new UsageError(`${where} must be a plain normalized URL (no query, fragment, or ..)`);
+  // WHATWG URL leaves %2F / %5C encoded, so `test/..%2Fdev/x` would pass
+  // the prefix test while a server may decode it to another prefix.
+  if (href !== v || url.search || url.hash || /%(?:2f|5c)/i.test(url.pathname)) {
+    throw new UsageError(`${where} must be a plain normalized URL (no query, fragment, .., or encoded slash)`);
+  }
   let needsHead;
   if (href.startsWith(TEST_IMAGE_BASE)) needsHead = false;
   else if (bucketBase && href.startsWith(`${bucketBase}test/`)) needsHead = true;
@@ -391,7 +395,7 @@ export function buildPlan(spec, { prefix, ms, bucketBase = null }) {
           throw new UsageError(`${where}.logoAsset needs logoMode "custom" (got "${rest.logoMode}")`);
         }
         rest.logoMode = "custom";
-        const url = asset.url ?? { publicUrl: `${TEST_IMAGE_BASE}${slug}.png`, ext: "png", mimeType: "image/png", needsHead: false };
+        const url = asset.url ?? logoUrl(`${where}.logoAsset.publicUrl`, `${TEST_IMAGE_BASE}${slug}.png`, bucketBase);
         plan.assets.push({
           owner: row.key,
           objectKey: `${FIXTURE_ASSET_KEY}${slug}.${url.ext}`,

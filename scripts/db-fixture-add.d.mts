@@ -10,6 +10,8 @@ type Asset = {
   needsHead: boolean;
   width: number;
   height: number;
+  /** Set from the HEAD's Content-Length before the insert (dev-bucket URLs). */
+  byteSize?: number;
 };
 
 export function devBucketBase(raw: string | undefined): string | null;

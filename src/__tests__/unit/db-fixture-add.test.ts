@@ -146,6 +146,7 @@ describe("buildPlan — logos", () => {
     ["a prod-domain URL", { series: [{ key: "s", logoAsset: asset("https://img.opensetlist.com/prod/x.png") }] }],
     ["a dev-bucket URL outside test/", { series: [{ key: "s", logoAsset: asset(`${BUCKET}dev/album-cover/1/a.jpg`) }] }],
     ["a test/ URL walking out with ..", { series: [{ key: "s", logoAsset: asset(`${BUCKET}test/../dev/a.png`) }] }],
+    ["a test/ URL with an encoded slash", { series: [{ key: "s", logoAsset: asset(`${BUCKET}test/..%2Fdev/a.png`) }] }],
     ["a look-alike test host", { series: [{ key: "s", logoAsset: asset("https://images.test.invalid.evil.com/a.png") }] }],
     ["an http test URL", { series: [{ key: "s", logoAsset: asset("http://images.test.invalid/a.png") }] }],
     ["a query string", { series: [{ key: "s", logoAsset: asset("https://images.test.invalid/a.png?x=1") }] }],
