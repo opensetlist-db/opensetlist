@@ -1,0 +1,845 @@
+/*
+ * Song detail page — layout from the approved redesign packet 28-v1
+ * (wiki `output/redesign/handoffs/28/v1/song.css` + style.css +
+ * design-contract.md).
+ *
+ * A CSS module for the same reason as the artist (21) and album (23)
+ * pages: the approved layout changes geometry at 1200 / 1000 / 700 /
+ * 360px and several elements switch display mode, order, padding and
+ * type size together. One rule block per band keeps each band
+ * reviewable against the mockup line by line.
+ *
+ * The mockup was written on top of browser defaults; Tailwind preflight
+ * resets heading weight/size and list markers, so headings set
+ * `font-weight` and `font-size` explicitly here.
+ *
+ * Colours mirror `src/styles/tokens.ts` (03 contract). The status-pill,
+ * variant-pill and position-chip tones are page-local because 28-v1
+ * fixed them with measured contrast (packet qa-summary.md).
+ */
+
+.page {
+  width: 100%;
+  max-width: 1264px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+.breadcrumb > nav {
+  margin-bottom: 22px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/*
+ * WCAG 2.2 target size (24×24): the 12px crumb link ("홈" is 11px wide)
+ * gets a padded hit area; the equal negative margin keeps the approved
+ * visual position and line height unchanged.
+ */
+.breadcrumb > nav a {
+  display: inline-block;
+  min-width: 24px;
+  /* 5px, not 4px: 16px text + 8px measured just under 24px in WebKit. */
+  margin: -5px -6px;
+  padding: 5px 6px;
+  text-align: center;
+}
+
+/* ── Identity card ────────────────────────────────────────────── */
+
+/*
+ * Full-width, typography-led identity (replaces the old sticky sidebar
+ * InfoCard). The 4px top border is the primary artist's colour —
+ * decorative only, set through `--artist-color` by SongIdentity.
+ */
+.identity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 32px;
+  padding: 32px;
+  border: 1px solid #dce3ef;
+  border-top: 4px solid var(--artist-color);
+  border-radius: 20px;
+  background: linear-gradient(115deg, #fff 30%, #fff0f6 72%, #f0edff);
+  box-shadow: 0 5px 18px #233c680a;
+}
+
+.info {
+  min-width: 0;
+}
+
+.artistBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 32px;
+  color: #165dcc;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* Shown in place of the artist link when the song has no credit. */
+.kindBadge {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: #244f92;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.h1 {
+  margin: 10px 0 0;
+  color: #172445;
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.38;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.subtitle {
+  margin: 7px 0 0;
+  color: #52617a;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 12px;
+}
+
+.variantPill {
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: #f0edff;
+  color: #71409d;
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.baseLink {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 32px;
+  color: #165dcc;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 20px 0 0;
+  font-size: 13px;
+}
+.meta > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.meta dt {
+  color: #52617a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.meta dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  border-left: 1px solid #dce3ef;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.stat strong {
+  color: #172445;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+}
+.stat span {
+  color: #52617a;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ── Two-column body: history/versions + album panel ──────────── */
+
+/*
+ * DOM order is identity → albums → tabs at every width (logical
+ * keyboard / screen-reader order from the 28-v1 contract); the grid
+ * places the album panel in the right column on desktop and above the
+ * tabs below 1000px.
+ */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+  gap: 24px;
+  margin-top: 24px;
+}
+.layout.noAlbums {
+  grid-template-columns: minmax(0, 1fr);
+}
+.main {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+/* ── Album panel ──────────────────────────────────────────────── */
+
+.albumPanel {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  padding: 22px 20px;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px #233c680a;
+}
+.albumPanel h2 {
+  margin: 0 0 18px;
+  color: #172445;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.albumMini {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #dce3ef;
+  color: #172445;
+}
+.albumMini:last-of-type {
+  border-bottom: 0;
+}
+.albumMini:hover {
+  background: #f7f9fd;
+  color: #165dcc;
+}
+
+/*
+ * 64px square; SongAlbumCover owns the fallback, no-referrer and onError
+ * behaviour. A non-square cover is letterboxed on white (contain), not
+ * cropped.
+ */
+.miniCover {
+  position: relative;
+  display: flex;
+  flex: 0 0 64px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid #dce3ef;
+  border-radius: 10px;
+  background: linear-gradient(140deg, #eaf2ff, #f0edff);
+  color: #52617a;
+}
+.miniCover[data-state="image"] {
+  background: #fff;
+}
+.miniCover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.miniNote {
+  font-size: 23px;
+  line-height: 1.1;
+}
+.miniLabel {
+  margin-top: 5px;
+  font-size: 10px;
+}
+
+.albumCopy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.albumCopy h3 {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.albumCopy p {
+  margin: 4px 0 0;
+  color: #52617a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #eaf2ff;
+  color: #165dcc;
+  font-size: 11px;
+}
+
+.albumArrow {
+  align-self: center;
+  color: #165dcc;
+}
+
+.albumTotal {
+  margin: 14px 0 0;
+  color: #52617a;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 18px;
+  border-bottom: 1px solid #dce3ef;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 10px 20px;
+  border-bottom: 3px solid transparent;
+  color: #52617a;
+  font-size: 14px;
+  font-weight: 700;
+  transition: background 0.15s;
+}
+.tab:hover {
+  background: #eaf2ff;
+  color: #165dcc;
+}
+.tab[aria-current="page"] {
+  border-color: #165dcc;
+  color: #165dcc;
+}
+
+/* ── Shared panel / count ─────────────────────────────────────── */
+
+.panel {
+  overflow: hidden;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px #233c680a;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 26px;
+  border-bottom: 1px solid #dce3ef;
+}
+.panelHead h2 {
+  margin: 0;
+  color: #172445;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.count {
+  padding: 1px 7px;
+  border-radius: 12px;
+  background: #edf1f8;
+  color: #52617a;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.empty {
+  padding: 44px 24px;
+  color: #52617a;
+  font-size: 14px;
+  text-align: center;
+}
+.empty h2 {
+  margin: 0 0 10px;
+  color: #172445;
+  font-size: 19px;
+  font-weight: 700;
+}
+.empty p {
+  margin: 0;
+}
+
+/* ── History tab ──────────────────────────────────────────────── */
+
+/* Desktop column grid: status / date / event / encore+position. */
+.historyColumns,
+.performance {
+  display: grid;
+  grid-template-columns: 70px 125px minmax(0, 1fr) 116px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+}
+.historyColumns {
+  padding-block: 4px;
+  color: #52617a;
+  font-size: 12px;
+}
+.historyColumns span:last-child {
+  text-align: right;
+}
+
+.eventGroup {
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  background: #fff;
+}
+/*
+ * Native <details open>: groups start expanded, collapse without JS and
+ * announce their state. The summary keeps the LIVE pill, so a collapsed
+ * group with an ongoing event still says so.
+ */
+.eventGroup summary {
+  min-height: 56px;
+  padding: 17px 20px;
+  background: linear-gradient(105deg, #eaf2ff, #f5f2ff);
+  color: #172445;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.eventGroup summary:focus-visible {
+  outline-offset: -5px;
+}
+.eventGroup summary .count {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.eventGroup summary .status {
+  margin-left: 6px;
+}
+
+/* Mockup links turn blue on hover (style.css `a:hover`); the event
+   title inherits it, the pills keep their own tones. */
+.performance {
+  min-height: 76px;
+  border-top: 1px solid #dce3ef;
+  color: #172445;
+  transition: background 0.15s;
+}
+.performance:hover {
+  background: #f2f6ff;
+  color: #165dcc;
+}
+.performance:focus-visible {
+  outline-offset: -5px;
+}
+.performance > .status {
+  font-size: 11px;
+}
+.performance time {
+  color: #52617a;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.performance strong {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* 12px pill (group summary); 11px inside a history row, as in 28-v1. */
+.status {
+  justify-self: start;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: #edf1f8;
+  color: #52617a;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.status[data-status="ongoing"] {
+  background: #fff0f6;
+  color: #a91d45;
+}
+.status[data-status="upcoming"] {
+  background: #eaf8f0;
+  color: #176547;
+}
+.status[data-status="cancelled"] {
+  background: #fff2e4;
+  color: #8b4a0c;
+}
+
+.trailing {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.encore {
+  padding: 2px 5px;
+  border-radius: 7px;
+  background: #f0edff;
+  color: #71409d;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.position {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #edf1f8;
+  color: #52617a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ── Variations tab ───────────────────────────────────────────── */
+
+.versionList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.versionRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 24px;
+  border-bottom: 1px solid #dce3ef;
+  color: #172445;
+  transition: background 0.15s;
+}
+.versionList li:last-child .versionRow {
+  border-bottom: 0;
+}
+a.versionRow:hover {
+  background: #f7f9fd;
+  color: #165dcc;
+}
+.versionRow:focus-visible {
+  outline-offset: -5px;
+}
+.currentVersion {
+  background: #eaf2ff;
+}
+.versionCopy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.versionCopy strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+.currentVersion .versionCopy strong {
+  color: #165dcc;
+}
+.versionCopy small {
+  display: block;
+  color: #52617a;
+  font-size: 12px;
+}
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.versionCount {
+  flex-shrink: 0;
+  color: #52617a;
+  font-size: 12px;
+}
+
+/* ── ≤1199px ──────────────────────────────────────────────────── */
+
+@media (max-width: 1199px) {
+  .identity {
+    grid-template-columns: minmax(0, 1fr) 200px;
+  }
+  .stats {
+    gap: 18px;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 285px;
+    gap: 20px;
+  }
+  .historyColumns,
+  .performance {
+    grid-template-columns: 60px 105px minmax(0, 1fr) 92px;
+    gap: 8px;
+    padding-inline: 16px;
+  }
+}
+
+/* ── ≤999px: albums move above the tabs ───────────────────────── */
+
+@media (max-width: 999px) {
+  .identity {
+    grid-template-columns: minmax(0, 1fr) 170px;
+    gap: 20px;
+    padding: 26px;
+  }
+  .h1 {
+    font-size: 32px;
+  }
+  .meta {
+    gap: 8px 18px;
+  }
+  .stat strong {
+    font-size: 27px;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .albumPanel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-row: 1;
+    grid-column: 1;
+    gap: 0 20px;
+  }
+  .albumPanel h2,
+  .albumTotal {
+    grid-column: 1 / -1;
+  }
+  .albumMini {
+    border-bottom: 0;
+  }
+  .main {
+    grid-row: 2;
+    grid-column: 1;
+  }
+  .layout.noAlbums .main {
+    grid-row: 1;
+  }
+}
+
+/* ── ≤767px ───────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .page {
+    padding: 20px 24px 48px;
+  }
+}
+
+/* ── ≤699px: mobile ───────────────────────────────────────────── */
+
+@media (max-width: 699px) {
+  .page {
+    padding: 16px 16px 40px;
+  }
+  .breadcrumb > nav {
+    margin-bottom: 16px;
+  }
+  .identity {
+    display: block;
+    padding: 22px 20px;
+    border-radius: 16px;
+  }
+  .h1 {
+    font-size: 28px;
+  }
+  .subtitle {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+  .kindBadge {
+    margin-bottom: 8px;
+  }
+  .count {
+    padding: 1px 5px;
+    font-size: 11px;
+  }
+  .artistBadge {
+    font-size: 12px;
+  }
+  .version {
+    gap: 8px;
+  }
+  .meta {
+    gap: 8px 16px;
+    margin-top: 16px;
+    font-size: 12px;
+  }
+  .meta > div:last-child {
+    flex-basis: 100%;
+  }
+  .stats {
+    justify-content: flex-start;
+    gap: 28px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #dce3ef;
+    border-left: 0;
+  }
+  .stat {
+    flex-direction: row;
+    gap: 9px;
+  }
+  .stat strong {
+    font-size: 26px;
+  }
+  .layout {
+    gap: 20px;
+    margin-top: 18px;
+  }
+  .albumPanel {
+    display: block;
+    padding: 18px 16px;
+  }
+  .albumPanel h2 {
+    margin-bottom: 8px;
+    font-size: 18px;
+  }
+  .albumMini {
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid #dce3ef;
+  }
+  .tabs {
+    gap: 0;
+    margin-bottom: 14px;
+  }
+  .tab {
+    flex: 1;
+    gap: 5px;
+    min-height: 50px;
+    padding: 10px 6px;
+    font-size: 13px;
+  }
+  .panelHead {
+    padding: 18px 16px;
+  }
+  .panelHead h2 {
+    font-size: 19px;
+  }
+  .historyColumns {
+    display: none;
+  }
+  /* Status + date on the first line, full title next, encore/position
+     at the end — no title clamping. */
+  .performance {
+    grid-template-columns: auto 1fr;
+    gap: 8px 12px;
+    padding: 16px;
+  }
+  .performance > .status {
+    grid-row: 1;
+    grid-column: 1;
+  }
+  .performance time {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .performance strong {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+  .trailing {
+    grid-row: 3;
+    grid-column: 1 / -1;
+  }
+  .eventGroup summary {
+    padding: 16px;
+    font-size: 13px;
+  }
+  .versionRow {
+    gap: 10px;
+    padding: 16px;
+  }
+  .versionCopy strong {
+    font-size: 14px;
+  }
+  .pills {
+    gap: 5px;
+  }
+  .versionCount {
+    max-width: 92px;
+    text-align: right;
+  }
+}
+
+/* ── ≤359px ───────────────────────────────────────────────────── */
+
+@media (max-width: 359px) {
+  .identity {
+    padding: 18px 16px;
+  }
+  .h1 {
+    font-size: 24px;
+  }
+  .stats {
+    gap: 16px;
+  }
+  .stat strong {
+    font-size: 23px;
+  }
+  .tab {
+    font-size: 12px;
+  }
+  .versionRow {
+    gap: 8px;
+  }
+  .versionCount {
+    max-width: 70px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .performance,
+  .versionRow,
+  .eventGroup summary {
+    transition: none;
+  }
+}
