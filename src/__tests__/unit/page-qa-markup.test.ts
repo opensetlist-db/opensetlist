@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe("markupInPage", () => {
-  it("fails a heading inside a span inside summary (the ticket 33 mockup)", () => {
+  it("fails a heading inside a span inside summary (a details/summary group header)", () => {
     const r = render(
       `<h1>Series</h1><details><summary><span class="leg__head"><h2 class="leg__title">Saitama day 1</h2></span></summary></details>`,
     );
@@ -33,6 +33,16 @@ describe("markupInPage", () => {
     expect(r.badCount).toBe(2);
     expect(r.bad[0]).toMatch(/^h3 "Inside a button" inside <button>$/);
     expect(r.bad[1]).toMatch(/^h4 "x" inside <label>$/);
+  });
+
+  it("fails a heading nested in a heading, and passes one in a legend", () => {
+    const h2 = document.createElement("h2");
+    h2.append(document.createElement("h3"));
+    document.body.innerHTML = `<main><h1>A</h1><fieldset><legend><h2>Group</h2></legend></fieldset></main>`;
+    expect(markupInPage().badCount).toBe(0);
+    // Built by hand: the HTML parser would close the h2 at <h3>, React does not.
+    document.querySelector("main")!.append(h2);
+    expect(markupInPage().bad).toEqual([`h3 "" inside <h2>`]);
   });
 
   it("judges a heading in a link by the link's parent", () => {
@@ -59,5 +69,8 @@ describe("markupInPage", () => {
   it("only looks inside <main>, and counts zero headings as nothing inspected", () => {
     document.body.innerHTML = `<header><span><h2>Site</h2></span></header><main><p>No headings</p></main>`;
     expect(markupInPage()).toEqual({ headings: 0, bad: [], badCount: 0 });
+    // Control: the same structure inside <main> is flagged.
+    document.body.innerHTML = `<main><span><h2>Site</h2></span></main>`;
+    expect(markupInPage().bad).toEqual([`h2 "Site" inside <span>`]);
   });
 });

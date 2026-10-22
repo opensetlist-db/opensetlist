@@ -161,13 +161,15 @@ function basicsInPage() {
   };
 }
 
-// In-page: layoutMatrix `basics` heading markup. Headings in <main> are
+// In-page (serialised into page.evaluate, so every helper stays inside
+// the function): layoutMatrix `basics` heading markup. Headings in <main> are
 // flow content; React builds the DOM by hand, so a design that wraps one in
 // a <span> (or puts it inside <summary> behind a wrapper) renders exactly
 // as written instead of being repaired by the HTML parser — the invalid
 // tree reaches the accessibility tree and any reader of the markup. FAILs:
 //   - a heading whose parent only takes phrasing content (span, strong,
-//     label, button, p, …). `a`, `ins` and `del` are transparent (their
+//     label, button, p, another heading, …; plus dt and th; the list is
+//     not exhaustive). `a`, `ins` and `del` are transparent (their
 //     content model is their parent's), so a heading in a card link
 //     (<div><a><h3>) is valid and is judged by the first ancestor above
 //     them;
@@ -182,8 +184,13 @@ export function markupInPage() {
   const HEADING = "h1, h2, h3, h4, h5, h6";
   const PHRASING_ONLY = new Set([
     "abbr", "b", "bdi", "bdo", "button", "cite", "code", "data", "dfn", "em", "i", "kbd", "label",
-    "legend", "mark", "meter", "output", "p", "progress", "q", "s", "samp", "small", "span",
+    "mark", "meter", "output", "p", "progress", "q", "s", "samp", "small", "span",
     "strong", "sub", "sup", "time", "u", "var",
+    // Not phrasing-only, but they forbid heading content all the same.
+    "dt", "th",
+    // A heading's own content is phrasing too, so a nested heading fails.
+    // Not `legend`: it takes phrasing optionally intermixed with headings.
+    "h1", "h2", "h3", "h4", "h5", "h6",
   ]);
   const TRANSPARENT = new Set(["a", "ins", "del"]);
   const tag = (el) => el.tagName.toLowerCase();
@@ -196,9 +203,9 @@ export function markupInPage() {
   const bad = new Map();
   const flag = (el, why) => bad.set(el, [...(bad.get(el) ?? []), why]);
   for (const hd of headings) {
-    let p = hd.parentElement;
-    while (p && TRANSPARENT.has(tag(p))) p = p.parentElement;
-    if (p && PHRASING_ONLY.has(tag(p))) flag(hd, `inside <${describe(p)}>`);
+    let parent = hd.parentElement;
+    while (parent && TRANSPARENT.has(tag(parent))) parent = parent.parentElement;
+    if (parent && PHRASING_ONLY.has(tag(parent))) flag(hd, `inside <${describe(parent)}>`);
   }
   for (const s of main?.querySelectorAll("summary") ?? []) {
     const direct = [...s.children].filter((c) => c.matches(HEADING));
