@@ -709,6 +709,11 @@
     gap: 16px;
     width: 100%;
   }
+  /* A series with progress but no units (an upcoming tour) has one
+     panel: it takes the full row instead of half of it. */
+  .aside > :only-child {
+    grid-column: 1 / -1;
+  }
   .main {
     width: 100%;
   }
