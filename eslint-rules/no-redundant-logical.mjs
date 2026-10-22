@@ -6,15 +6,20 @@
  * condition: `X && Y || X` passes whenever X does, whatever Y says.
  *
  * Aimed at browser-QA scenario checks (`h.check(label, cond)`), where
- * such a condition silently passes: a page-qa assertion of the form
- * `chips[0] && rest.every(off) || chips[0]` stayed green with the rest
- * check failing, and two local reviewers read past it. A vacuous
- * condition is mechanical, so it is a lint error rather than a review
- * item.
+ * such a condition passes vacuously and reads like a real assertion —
+ * `chips[0] && rest.every(off) || chips[0]` stays green with the rest
+ * check failing. A vacuous condition is mechanical, so it is a lint
+ * error rather than a review item.
  *
- * Operands are compared by token text, so formatting and parentheses
- * do not hide a repeat, while `a.b` and `a?.b` stay different. Every
- * order of the inner operands is covered (`Y && X || X` absorbs too).
+ * Same-operator chains are flattened first, so `a && b && c || a` and
+ * `a || b || (c && a)` are caught too, in any operand order. Operands
+ * compare by token text: whitespace and comments do not hide a repeat,
+ * while `a.b` and `a?.b` stay different. Spellings that differ in
+ * tokens (`'x'` vs `"x"`, `(a).b` vs `a.b`) are not matched.
+ *
+ * A repeated call (`f() && y || f()`) is reported too, though the two
+ * calls could in principle return different values: in a QA check that
+ * is still a condition that does not test what it reads as.
  */
 
 /** @param {import("eslint").SourceCode} sourceCode */
@@ -25,7 +30,16 @@ function tokenText(sourceCode, node) {
     .join(" ");
 }
 
-const INNER = { "||": "&&", "&&": "||" };
+/** The operands of a chain of one operator: `a && b && c` → [a, b, c]. */
+function flatten(node, operator) {
+  if (node.type === "LogicalExpression" && node.operator === operator) {
+    return [...flatten(node.left, operator), ...flatten(node.right, operator)];
+  }
+  return [node];
+}
+
+// The operator that, nested under the key, makes absorption possible.
+const DUAL_OPERATOR = { "||": "&&", "&&": "||" };
 
 const rule = {
   meta: {
@@ -37,32 +51,38 @@ const rule = {
     schema: [],
     messages: {
       redundant:
-        "'{{whole}}' always equals '{{operand}}': the repeated operand absorbs the rest, so the other condition never changes the result.",
+        "'{{whole}}' is decided by '{{operand}}' alone: it repeats inside the other operand, so the remaining conditions never change the result.",
     },
   },
   create(context) {
     const sourceCode = context.sourceCode;
     return {
       LogicalExpression(node) {
-        const inner = INNER[node.operator];
-        if (!inner) return; // `??` has no absorption law
-        // One side is the inner operator, the other side the candidate
-        // X that must reappear as one of the inner operands.
-        for (const [compound, single] of [
-          [node.left, node.right],
-          [node.right, node.left],
-        ]) {
+        const dual = DUAL_OPERATOR[node.operator];
+        if (!dual) return; // `??` has no absorption law
+        // Inspect each chain once, from its outermost node.
+        const parent = node.parent;
+        if (
+          parent.type === "LogicalExpression" &&
+          parent.operator === node.operator
+        ) {
+          return;
+        }
+        const terms = flatten(node, node.operator);
+        for (const compound of terms) {
           if (
             compound.type !== "LogicalExpression" ||
-            compound.operator !== inner
+            compound.operator !== dual
           ) {
             continue;
           }
-          const x = tokenText(sourceCode, single);
-          if (
-            tokenText(sourceCode, compound.left) === x ||
-            tokenText(sourceCode, compound.right) === x
-          ) {
+          const inner = new Set(
+            flatten(compound, dual).map((n) => tokenText(sourceCode, n)),
+          );
+          const single = terms.find(
+            (t) => t !== compound && inner.has(tokenText(sourceCode, t)),
+          );
+          if (single) {
             context.report({
               node,
               messageId: "redundant",

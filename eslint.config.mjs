@@ -73,7 +73,7 @@ const eslintConfig = defineConfig([
     files: [
       "scripts/page-qa/**/*.mjs",
       "scripts/admin-qa/**/*.mjs",
-      "scripts/*-qa.mjs",
+      "scripts/*-qa*.mjs",
     ],
     plugins: { local: localPlugin },
     rules: {
