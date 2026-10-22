@@ -1186,13 +1186,15 @@ async function runDesign() {
 // page, but a packet may list bare ids (`165`, or the number 165): ticket
 // 27's album packet did, and every scenario then read as MISMATCH although
 // the order was identical. A bare id takes the entity kind of the scenario's
-// own URL (`/ko/albums` → `albums:165`). On a URL with no kind (home,
-// search) the kinds are dropped from both lists instead, so the order is
-// still judged. A swapped pair, a missing or an extra id still mismatch.
+// own URL when that URL is a list (`/ko/albums?artist=1` → `albums:165`).
+// Elsewhere — home, search, or a detail page whose list is of another kind
+// (an album's songs) — the kinds are dropped from both lists instead, so
+// the order is still judged. A swapped pair, a missing or an extra id
+// still mismatch.
 function comparableIds(expected, actual, url) {
   const ids = expected.map(String);
   if (ids.every((x) => x.includes(":"))) return { expected: ids, actual };
-  const kind = url.match(/^\/[^/]+\/(events|artists|songs|albums|members|series)(?:[/?#]|$)/)?.[1];
+  const kind = url.match(/^\/[^/]+\/(events|artists|songs|albums|members|series)\/?(?:[?#]|$)/)?.[1];
   if (kind) return { expected: ids.map((x) => (x.includes(":") ? x : `${kind}:${x}`)), actual };
   const bare = (x) => x.slice(x.indexOf(":") + 1);
   return { expected: ids.map(bare), actual: actual.map(bare) };

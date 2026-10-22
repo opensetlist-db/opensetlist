@@ -211,10 +211,19 @@ function readContrastInPage(pairs) {
             parts.push(cur.trim());
             const linear = parts.every((p) => /^(repeating-)?linear-gradient\(/.test(p));
             const stops = bi.match(/rgba?\([^)]*\)/g) ?? [];
-            if (linear && stops.length) {
+            // A stop the browser keeps in another colour syntax (oklch(),
+            // color(), color-mix()…) would be left out of `stops` and the
+            // rest measured as if complete; such a gradient is unmeasured.
+            const otherColour = /\b(?:ok)?l(?:ab|ch)\(|\bcolor(?:-mix)?\(|\bhsla?\(|\bhwb\(/.test(bi);
+            if (linear && stops.length && !otherColour) {
               layers.push({ stops });
               gradient ??= label(a);
-            } else image ??= label(a);
+              // Opaque at every stop: nothing behind it shows through, so a
+              // url() image further up must not turn the item into a SKIP.
+              if (stops.every((s) => alpha(s) >= 1)) break;
+            } else {
+              image ??= `${label(a)}${linear ? ", gradient colours not rgb()" : ""}`;
+            }
           }
           layers.push(cs.backgroundColor);
           if (alpha(cs.backgroundColor) >= 1) {
@@ -247,13 +256,23 @@ function compositeLayers(layers) {
   return under;
 }
 // Layers with gradients (`{ stops }`, see readContrastInPage) → one plain
-// colour list per combination of stops, so each stop the text may sit on is
-// judged. Between two stops the colour is a mix of them, which in practice
-// is no worse than the worse stop.
+// colour list per combination of sampled colours, so every colour the text
+// may sit on is judged. Each gradient is sampled at its stops and at 1/4,
+// 1/2 and 3/4 between neighbouring stops: luminance along an sRGB mix is
+// not monotonic (red → green dips below both ends midway), so dark text on
+// a hue-shifting gradient can fail between two stops that both pass.
 function stopVariants(layers) {
+  const mix = (a, b, t) => {
+    const [x, y] = [parseRgb(a), parseRgb(b)];
+    if (!x || !y) return a; // unparsed: left to compositeLayers to report
+    const [r, g, bl] = x.rgb.map((v, i) => v + (y.rgb[i] - v) * t);
+    return `rgba(${r}, ${g}, ${bl}, ${x.a + (y.a - x.a) * t})`;
+  };
+  const samples = (stops) =>
+    stops.flatMap((s, i) => (i === 0 ? [s] : [0.25, 0.5, 0.75].map((t) => mix(stops[i - 1], s, t)).concat(s)));
   let out = [[]];
   for (const l of layers) {
-    const choices = typeof l === "string" ? [l] : l.stops;
+    const choices = typeof l === "string" ? [l] : samples(l.stops);
     out = out.flatMap((v) => choices.map((c) => [...v, c]));
   }
   return out;
@@ -542,9 +561,11 @@ export async function runScenario({
     },
 
     // Text elements matching `selectors` (a CSS selector or a list) that are
-    // visibly cut off: `text-overflow: ellipsis`, any `-webkit-line-clamp`,
-    // or overflow-x other than visible with content wider than the box.
-    // Plain `scrollWidth > clientWidth` is not enough on its own: Chrome
+    // set to truncate or are cut off: `text-overflow: ellipsis` or any
+    // `-webkit-line-clamp` counts even where the text fits today (it is for
+    // text the design says must wrap, which another width or a longer name
+    // would cut), and overflow-x other than visible with content wider than
+    // the box. Plain `scrollWidth > clientWidth` is not enough on its own: Chrome
     // hangs a trailing full-width "）" ~2px past the box (it trims end-of-
     // line punctuation) while still painting it in full, so overflow counts
     // only where the box actually clips it. Hidden elements are ignored.
@@ -830,7 +851,7 @@ export async function runScenario({
           }
           for (const bg of bgs) {
             const v = contrastRatio(fg.a < 1 ? over(fg, bg) : fg.rgb, bg);
-            const on = `rgb(${bg.map(Math.round).join(", ")})${bgs.length > 1 ? ` (worst of ${bgs.length} stops)` : ""}`;
+            const on = `rgb(${bg.map(Math.round).join(", ")})${bgs.length > 1 ? ` (worst of ${bgs.length} gradient samples)` : ""}`;
             if (!worst || v < worst.v) worst = { v, fg: it.fg, bg: on, from: it.from };
           }
         }
