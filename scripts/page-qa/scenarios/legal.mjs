@@ -11,6 +11,8 @@ const PAGES = {
   privacy: ["collection", "purpose", "cookies", "thirdparty", "retention", "rights", "contact"],
   terms: ["intro", "conditions", "copyright", "disclaimer", "contact"],
 };
+// Each page's own `lastUpdated` (src/content/<page>/*.ts), so a swap fails.
+const REVISED = { privacy: "2026-04-22T00:00:00Z", terms: "2026-04-17T00:00:00Z" };
 // The packet's single layout switch for page grids (06: breakpoint.desktop).
 const SIDEBAR_FROM = 1024;
 // Text/background pairs by CSS-module class suffix (see h.contrast).
@@ -81,7 +83,7 @@ const scenario = {
             info.current.length === 1 && info.current[0].endsWith(`/${key}`),
             info.current.join(" "),
           );
-          check(name("revision date"), /^2026-04-(17|22)T00:00:00Z$/.test(info.time), info.time);
+          check(name("revision date"), info.time === REVISED[key], info.time);
           check(name("mailto contact"), info.mailto);
           check(name("cross-page CTA"), info.bottom.endsWith(key === "privacy" ? "/terms" : "/privacy"), info.bottom);
           const c = await h.clipped(page, NEVER_CLIPPED);
@@ -116,10 +118,14 @@ const scenario = {
       });
     }
 
-    if (redesigned) {
-      for (const n of CONTRAST) {
-        h.check(`contrast ${n} found at some width`, found.has(n), found.has(n) ? "" : `no .*__${n} — typo or renamed class?`);
-      }
+    // Everything below tests the redesigned layout only; on an older build
+    // it would fail for the missing redesign, not for a defect.
+    if (!redesigned) {
+      h.skip("contrast / deep link / motion", "no __sidebar on this build");
+      return;
+    }
+    for (const n of CONTRAST) {
+      h.check(`contrast ${n} found at some width`, found.has(n), found.has(n) ? "" : `no .*__${n} — typo or renamed class?`);
     }
 
     // A deep link (/ko/privacy#retention) lands with the section 24px from
