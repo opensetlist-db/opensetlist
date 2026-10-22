@@ -65,6 +65,7 @@
 // mutation slot — the CLI prints a reminder. The DB URL must be the DEV
 // project (scripts/dev-db-guard.mjs) and only the session pooler
 // (DATABASE_URL_UNPOOLED) is used; no session-level SET is ever sent.
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
@@ -86,6 +87,31 @@ const SHARP_INPUT = { limitInputPixels: false };
 // pg returns int8 ids as strings, but a scenario fixture may hold a real
 // BigInt, and JSON.stringify throws on one.
 const jsonSafe = (_, v) => (typeof v === "bigint" ? String(v) : v);
+
+/**
+ * The checkout under test: the git work tree that holds the current
+ * directory, not the one that holds this file. A copy of the QA scripts
+ * extracted into another checkout (a redesign worktree's gitignored
+ * .claude/tmp/, run with cwd = that worktree) then reads that checkout's
+ * files, where a path relative to the script would land in .claude/.
+ * Outside any git work tree it returns `fallback` (the caller's
+ * script-relative root). The same function lives in page-qa/harness.mjs
+ * and dev-db-guard.mjs (for db-fixture-add / -rm), and is inlined in
+ * redesign-capture.mjs: each stays extractable without the others, so
+ * change all four together.
+ */
+export function checkoutRoot(fallback) {
+  try {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (top) return path.resolve(top);
+  } catch {
+    // not in a work tree, or git missing
+  }
+  return fallback;
+}
 
 /** `.env.local` wins over `.env`, as in Next and scripts/db-ro.mjs. */
 export function loadEnv(repoRoot) {

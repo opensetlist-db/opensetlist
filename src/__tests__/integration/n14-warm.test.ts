@@ -159,13 +159,25 @@ describe("writer warming ON (LIVE_WARM_ENTRIES=1, in-memory Runtime Cache)", () 
     const warmLines = log.mock.calls
       .map((c) => String(c[0]))
       .filter((l) => l.startsWith("[liveWarm] "));
-    expect(warmLines[0]).toMatch(new RegExp(`^\\[liveWarm\\] start event=${eventId} rev=${rev} `));
+    // Regex literals with captures, compared to the expected values: a
+    // pattern built from the values is what the non-literal-regexp lint
+    // (and CI Semgrep) blocks.
+    expect(/^\[liveWarm\] start event=(\d+) rev=(\d+) /.exec(warmLines[0] ?? "")?.slice(1)).toEqual([
+      String(eventId),
+      String(rev),
+    ]);
     const sets = warmLines.filter((l) => l.startsWith("[liveWarm] set "));
     expect(sets).toHaveLength(locales.length);
     for (const l of sets) {
-      expect(l).toMatch(new RegExp(` atLeastRev=${rev} rev=${rev} bytes=\\d+ buildMs=\\d+ setMs=\\d+ ok=true `));
+      expect(/ atLeastRev=(\d+) rev=(\d+) bytes=\d+ buildMs=\d+ setMs=\d+ ok=true /.exec(l)?.slice(1)).toEqual([
+        String(rev),
+        String(rev),
+      ]);
     }
-    expect(warmLines.at(-1)).toMatch(new RegExp(`^\\[liveWarm\\] done event=${eventId} rev=${rev} ms=\\d+ `));
+    expect(/^\[liveWarm\] done event=(\d+) rev=(\d+) ms=\d+ /.exec(warmLines.at(-1) ?? "")?.slice(1)).toEqual([
+      String(eventId),
+      String(rev),
+    ]);
 
     for (const locale of locales) {
       const warm = await getSetlist(`&locale=${locale}&minRev=${rev}&hint=1`);

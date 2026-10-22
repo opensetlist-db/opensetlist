@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, formatDate } from "@/lib/utils";
+import {
+  serializeBigInt,
+  formatDate,
+  OPERATOR_TIMESTAMP_DATE_FORMAT,
+} from "@/lib/utils";
 import { displayNameWithFallback } from "@/lib/display";
 import DeleteImpressionButton from "./DeleteImpressionButton";
 import RestoreImpressionButton from "./RestoreImpressionButton";
@@ -148,7 +152,7 @@ export default async function ImpressionsAdminPage({
                 <td className="py-2">{preview}</td>
                 <td className="py-2 text-zinc-500">{imp.locale}</td>
                 <td className="py-2 text-zinc-500">
-                  {formatDate(imp.createdAt, "ko")}
+                  {formatDate(imp.createdAt, "ko", OPERATOR_TIMESTAMP_DATE_FORMAT)}
                 </td>
                 <td className="py-2 text-zinc-700">{imp.reportCount}</td>
                 <td className="py-2">
