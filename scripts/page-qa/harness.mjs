@@ -53,12 +53,16 @@
 //   scrollRegion(page, opts)   horizontal scroller: scrolls only below a
 //                              width, last link reachable, ArrowRight scrolls
 //   contrast(page, pairs, name)  text contrast ≥ 4.5:1 by exact CSS-module
-//                              class suffix; returns the pair names found
+//                              class suffix, over a linear gradient against
+//                              its worst stop; returns the pair names found
+//   clipped(page, selectors)   text cut off (ellipsis, line-clamp, or
+//                              overflow the box clips) → [{ text, why }]
 //   expectStatus(name, path, { status, location })   request API, no redirect
 //                              following; `location` a RegExp on the header
 //   getText(path)              response body through the request API
 //   pressOn(page, selector, key)  focus + key, WebKit-safe (see below)
-//   shot(page, label)          full-page PNG into --out
+//   shot(page, label)          full-page PNG into --out (WebKit, over
+//                              32,767px: `.partN.png` parts); returns paths
 //   log(line)                  progress line (stdout + the .log file)
 //   LOCALES, WIDTHS            the matrix defaults for this mode
 //   quick, browserName, webkit, base, outDir, timeoutMs
@@ -114,6 +118,12 @@ const KNOWN_NOISE = /\/_vercel\/speed-insights\//;
 const knownNoiseResponse = (r, base) =>
   r.status() === 404 && r.url().startsWith(`${base}/_vercel/speed-insights/`);
 
+// WebKit refuses a screenshot taller than this many device px; h.shot()
+// captures such a page in parts of SHOT_PART_HEIGHT (WebP's 16,383 px side
+// limit, rounded down as in redesign-capture.mjs).
+const WEBKIT_MAX_SHOT = 32767;
+const SHOT_PART_HEIGHT = 16000;
+
 // In-page (serialised into page.evaluate): layoutMatrix `basics`. Targets
 // are visible a/button/input/select/textarea in <main> under 24×24 CSS px
 // (WCAG 2.2 target size, minimum); sr-only controls (1px, clipped) are not
@@ -144,9 +154,15 @@ function basicsInPage() {
 }
 
 // In-page: contrast(). Per pair, one entry per visible element whose class
-// ends in `__<name>`: its text colour and the background colours from it
-// (or its `__<bg>` ancestor) up to the first opaque one; `image` marks a
-// background-image on the way, which this check cannot see through.
+// ends in `__<name>`: its text colour and the background layers from it
+// (or its `__<bg>` ancestor) up to the first opaque colour, innermost
+// first. A layer is a background-color string, or `{ stops }` for a
+// background-image made only of linear gradients (painted above the same
+// element's background-color): the colour stops, each of which the text may
+// sit on. `image` names the element of any other background-image (a url(),
+// a radial or conic gradient), which this check cannot see through. `from`
+// names the element whose background decides the result: the gradient's
+// when there is one, else the first opaque colour's.
 function readContrastInPage(pairs) {
   const root = document.querySelector("main") ?? document.body;
   const hasSuffix = (e, n) => [...e.classList].some((c) => c.endsWith("__" + n));
@@ -168,19 +184,45 @@ function readContrastInPage(pairs) {
         let start = el;
         if (bg) while (start && !hasSuffix(start, bg)) start = start.parentElement;
         if (!start) return { missingBg: true };
+        const label = (a) => (a === el ? "self" : ([...a.classList].find((c) => c.includes("__")) ?? a.tagName.toLowerCase()));
         const layers = [];
-        let image = false;
+        let image = null;
+        let gradient = null;
         let from = "page white";
         for (let a = start; a; a = a.parentElement) {
           const cs = getComputedStyle(a);
-          if (cs.backgroundImage !== "none") image = true;
+          const bi = cs.backgroundImage;
+          if (bi !== "none") {
+            // Every comma-separated layer a (repeating-)linear-gradient:
+            // split on top-level commas only (the stops carry their own).
+            const parts = [];
+            let depth = 0;
+            let cur = "";
+            for (const ch of bi) {
+              if (ch === "," && depth === 0) {
+                parts.push(cur.trim());
+                cur = "";
+                continue;
+              }
+              if (ch === "(") depth++;
+              if (ch === ")") depth--;
+              cur += ch;
+            }
+            parts.push(cur.trim());
+            const linear = parts.every((p) => /^(repeating-)?linear-gradient\(/.test(p));
+            const stops = bi.match(/rgba?\([^)]*\)/g) ?? [];
+            if (linear && stops.length) {
+              layers.push({ stops });
+              gradient ??= label(a);
+            } else image ??= label(a);
+          }
           layers.push(cs.backgroundColor);
           if (alpha(cs.backgroundColor) >= 1) {
-            from = a === el ? "self" : ([...a.classList].find((c) => c.includes("__")) ?? a.tagName.toLowerCase());
+            from = label(a);
             break;
           }
         }
-        return { fg: getComputedStyle(el).color, layers, image, from };
+        return { fg: getComputedStyle(el).color, layers, image, from: gradient ? `${gradient} gradient` : from };
       }),
     };
   });
@@ -203,6 +245,18 @@ function compositeLayers(layers) {
   let under = [255, 255, 255];
   for (const x of parsed.reverse()) under = over(x, under);
   return under;
+}
+// Layers with gradients (`{ stops }`, see readContrastInPage) → one plain
+// colour list per combination of stops, so each stop the text may sit on is
+// judged. Between two stops the colour is a mix of them, which in practice
+// is no worse than the worse stop.
+function stopVariants(layers) {
+  let out = [[]];
+  for (const l of layers) {
+    const choices = typeof l === "string" ? [l] : l.stops;
+    out = out.flatMap((v) => choices.map((c) => [...v, c]));
+  }
+  return out;
 }
 // WCAG 2 contrast ratio of two opaque sRGB colours.
 function contrastRatio(a, b) {
@@ -459,10 +513,64 @@ export async function runScenario({
       await page.keyboard.press(key);
     },
 
+    // Full-page PNG; on WebKit, a page over its 32,767-device-px screenshot
+    // limit (the unpaginated /ko/albums is ~50,000px at 390) is written as
+    // clipped `<label>.partN.png` parts of SHOT_PART_HEIGHT device px — the
+    // cut points redesign-capture.mjs uses for its `.partN.webp` files.
+    // Returns the paths written, top to bottom.
     async shot(page, label) {
-      const file = path.join(outDir, `${scenario.name}-${browserName}${suffix}-${label}.png`);
-      await page.screenshot({ path: file, fullPage: true });
-      return file;
+      const stem = path.join(outDir, `${scenario.name}-${browserName}${suffix}-${label}`);
+      const { w, ht, dpr } = await page.evaluate(() => ({
+        w: document.documentElement.scrollWidth,
+        ht: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0),
+        dpr: devicePixelRatio,
+      }));
+      if (!h.webkit || ht * dpr <= WEBKIT_MAX_SHOT) {
+        await page.screenshot({ path: `${stem}.png`, fullPage: true });
+        return [`${stem}.png`];
+      }
+      const step = Math.floor(SHOT_PART_HEIGHT / dpr);
+      const files = [];
+      for (let y = 0; y < ht; y += step) {
+        const file = `${stem}.part${files.length + 1}.png`;
+        // `clip` with `fullPage` is in page coordinates; Playwright trims
+        // the last part to the page.
+        await page.screenshot({ path: file, fullPage: true, clip: { x: 0, y, width: w, height: Math.min(step, ht - y) } });
+        files.push(file);
+      }
+      return files;
+    },
+
+    // Text elements matching `selectors` (a CSS selector or a list) that are
+    // visibly cut off: `text-overflow: ellipsis`, any `-webkit-line-clamp`,
+    // or overflow-x other than visible with content wider than the box.
+    // Plain `scrollWidth > clientWidth` is not enough on its own: Chrome
+    // hangs a trailing full-width "）" ~2px past the box (it trims end-of-
+    // line punctuation) while still painting it in full, so overflow counts
+    // only where the box actually clips it. Hidden elements are ignored.
+    // Returns [{ text, why }] (empty when nothing is clipped) for a check
+    // such as `check(name("never clipped"), c.length === 0, …)`.
+    async clipped(page, selectors) {
+      const sel = Array.isArray(selectors) ? selectors.join(", ") : selectors;
+      return page.evaluate((s) => {
+        const out = [];
+        for (const el of document.querySelectorAll(s)) {
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          if (cs.visibility === "hidden" || r.width === 0 || r.height === 0) continue;
+          const clamp = cs.webkitLineClamp ?? cs.getPropertyValue("-webkit-line-clamp");
+          const why =
+            cs.textOverflow === "ellipsis"
+              ? "ellipsis"
+              : clamp && clamp !== "none"
+                ? `line-clamp ${clamp}`
+                : cs.overflowX !== "visible" && el.scrollWidth > el.clientWidth + 1
+                  ? `overflow-x ${cs.overflowX} ${el.scrollWidth}>${el.clientWidth}`
+                  : null;
+          if (why) out.push({ text: (el.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40), why });
+        }
+        return out;
+      }, sel);
     },
 
     async expectStatus(name, p, { status, location } = {}) {
@@ -689,8 +797,12 @@ export async function runScenario({
     // nearest `__<bg>` ancestor's — composited over the layers behind it up
     // to the first opaque one, so a translucent fill counts as it looks.
     // Ancestor `opacity` is not composited and can overstate the ratio.
-    // SKIP when no element matches, or when text sits over a background
-    // image (no single colour to compare; judge it from the capture).
+    // Over a linear-gradient background the text is judged against each
+    // colour stop and the worst one counts; `bg` in the detail then names
+    // the element carrying the gradient. SKIP when no element matches, or
+    // when text sits over any other background image (a url(), a radial
+    // gradient: no colour to compare; judge it from the capture) — the
+    // SKIP names that element.
     // Returns the pair names measured, so a scenario can FAIL a pair that is
     // measured nowhere in a whole run (a typo, a renamed class).
     async contrast(page, pairs, name) {
@@ -705,16 +817,22 @@ export async function runScenario({
         let worst = null;
         const unmeasured = [];
         for (const it of pr.items) {
-          const bg = it.missingBg ? null : compositeLayers(it.layers);
-          const fg = it.missingBg ? null : parseRgb(it.fg);
-          if (it.missingBg || it.image || !bg || !fg) {
-            unmeasured.push(
-              it.missingBg ? "no bg ancestor" : it.image ? `background image (${it.from})` : `unparsed ${it.fg} / ${it.layers.join(" > ")}`,
-            );
+          if (it.missingBg || it.image) {
+            unmeasured.push(it.missingBg ? "no bg ancestor" : `background image (${it.image})`);
             continue;
           }
-          const v = contrastRatio(fg.a < 1 ? over(fg, bg) : fg.rgb, bg);
-          if (!worst || v < worst.v) worst = { v, fg: it.fg, bg: `rgb(${bg.map(Math.round).join(", ")})`, from: it.from };
+          const fg = parseRgb(it.fg);
+          const bgs = stopVariants(it.layers).map(compositeLayers);
+          if (!fg || bgs.some((b) => !b)) {
+            const show = it.layers.map((l) => (typeof l === "string" ? l : `gradient(${l.stops.join(", ")})`));
+            unmeasured.push(`unparsed ${it.fg} / ${show.join(" > ")}`);
+            continue;
+          }
+          for (const bg of bgs) {
+            const v = contrastRatio(fg.a < 1 ? over(fg, bg) : fg.rgb, bg);
+            const on = `rgb(${bg.map(Math.round).join(", ")})${bgs.length > 1 ? ` (worst of ${bgs.length} stops)` : ""}`;
+            if (!worst || v < worst.v) worst = { v, fg: it.fg, bg: on, from: it.from };
+          }
         }
         if (!worst) {
           skip(n, `cannot measure: ${unmeasured[0]}`);

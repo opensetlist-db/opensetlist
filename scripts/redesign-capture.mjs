@@ -91,7 +91,11 @@
 //   at the packet's viewport, DPR1, and records status, entity IDs vs the
 //   packet's `ids`, horizontal overflow, console errors, <html lang> and
 //   robots meta into `design-<browser>.json`. Chromium runs also write
-//   `compare-<locale>-<width>-<key>.webp` (baseline | actual). Mockup-only
+//   `compare-<locale>-<width>-<key>.webp` (baseline | actual full page) and
+//   `pair-<locale>-<width>-<key>.webp` (baseline | actual cropped to the
+//   baseline's width × height — the one to read side by side). Packet ids
+//   may be bare (`165`); they take the URL's entity kind. On WebKit a page
+//   taller than 32,767 device px is captured in `.partN` parts. Mockup-only
 //   scenarios (/entry, /review, state=error|loading) are skipped with a
 //   reason. Like --compare, mismatches are reported, not failed; only a
 //   capture that errors exits 1. See runDesign() below for the details.
@@ -205,6 +209,15 @@ const WEBP_QUALITY = 90;
 // ~41000 CSS px → 82000 device px) exceeds sharp's default pixel cap long
 // before it is a problem for memory.
 const SHARP_INPUT = { limitInputPixels: false };
+// WebKit refuses a screenshot taller than 32,767 device px, so a page past
+// that (/ko/albums is ~50,000 CSS px at 390) is captured in clipped parts
+// of WEBP_MAX_PART_HEIGHT device px instead of one full-page shot (see
+// fullPageShots). Those are the cut points writeImages() uses to split a
+// single PNG, so a WebKit run writes the same `.partN.webp` files a
+// Chromium run does. Chromium has no such limit and keeps the single
+// full-page shot. Declared above the runDesign() call below, which runs
+// (and exits) before the rest of this module is evaluated.
+const WEBKIT_MAX_SHOT = 32767;
 
 // The design mode has its own scenario list and manifest; it never reaches
 // the page-set code below (runDesign ends the process).
@@ -332,25 +345,50 @@ if (selected.some((t) => t.admin)) {
 const outDir = path.resolve(args.out);
 fs.mkdirSync(outDir, { recursive: true });
 
-// `png` in the manifest is null unless --png was passed; comparisons should
-// read the `webp` array, which every run fills (unless --no-webp).
-// `dir` is the design mode's output folder; `live` is the page-set mode's
-// abandoned-load check (see loadOnce).
-async function writeImages(png, stem, { dir = outDir, live } = {}) {
+// Full-page capture as a list of PNG buffers, top to bottom: one buffer
+// normally, clipped parts when a WebKit page is over the limit. `clip` with
+// `fullPage` is in page coordinates and Playwright trims it to the page, so
+// the last part is just the remainder.
+async function fullPageShots(page) {
+  const { w, h, dpr } = await page.evaluate(() => ({
+    w: document.documentElement.scrollWidth,
+    h: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0),
+    dpr: devicePixelRatio,
+  }));
+  if (args.browser !== "webkit" || h * dpr <= WEBKIT_MAX_SHOT) return [await page.screenshot({ fullPage: true })];
+  const step = Math.floor(WEBP_MAX_PART_HEIGHT / dpr);
+  const shots = [];
+  for (let y = 0; y < h; y += step)
+    shots.push(await page.screenshot({ fullPage: true, clip: { x: 0, y, width: w, height: Math.min(step, h - y) } }));
+  return shots;
+}
+
+// `png` in the manifest is null unless --png was passed: the file name, or
+// the list of `.partN.png` names when WebKit captured the page in parts
+// (see fullPageShots). Comparisons should read the `webp` array, which every
+// run fills (unless --no-webp). `dir` is the design mode's output folder;
+// `live` is the page-set mode's abandoned-load check (see loadOnce).
+async function writeImages(pngs, stem, { dir = outDir, live } = {}) {
   const files = { png: null, webp: [] };
   if (PNG) {
-    files.png = `${stem}.png`;
-    fs.writeFileSync(path.join(dir, files.png), png);
+    const names = pngs.length === 1 ? [`${stem}.png`] : pngs.map((_, i) => `${stem}.part${i + 1}.png`);
+    names.forEach((n, i) => fs.writeFileSync(path.join(dir, n), pngs[i]));
+    files.png = names.length === 1 ? names[0] : names;
   }
   if (!WEBP) return files;
-  const { width, height } = await sharp(png, SHARP_INPUT).metadata();
-  const parts = Math.ceil(height / WEBP_MAX_PART_HEIGHT);
-  for (let i = 0; i < parts; i++) {
+  // Every buffer is split at WEBP_MAX_PART_HEIGHT: a single full-page PNG
+  // into its parts, a WebKit part (already that tall) into itself.
+  const slices = [];
+  for (const png of pngs) {
+    const { width, height } = await sharp(png, SHARP_INPUT).metadata();
+    for (let top = 0; top < height; top += WEBP_MAX_PART_HEIGHT)
+      slices.push({ png, width, top, height: Math.min(WEBP_MAX_PART_HEIGHT, height - top) });
+  }
+  for (const [i, s] of slices.entries()) {
     live?.check();
-    const top = i * WEBP_MAX_PART_HEIGHT;
-    const file = parts === 1 ? `${stem}.webp` : `${stem}.part${i + 1}.webp`;
-    await sharp(png, SHARP_INPUT)
-      .extract({ left: 0, top, width, height: Math.min(WEBP_MAX_PART_HEIGHT, height - top) })
+    const file = slices.length === 1 ? `${stem}.webp` : `${stem}.part${i + 1}.webp`;
+    await sharp(s.png, SHARP_INPUT)
+      .extract({ left: 0, top: s.top, width: s.width, height: s.height })
       .webp({ quality: WEBP_QUALITY })
       .toFile(path.join(dir, file));
     files.webp.push(file);
@@ -532,9 +570,9 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round, live) {
       hScroll: document.documentElement.scrollWidth > window.innerWidth,
     };
   });
-  const png = await page.screenshot({ fullPage: true });
+  const pngs = await fullPageShots(page);
   await Promise.all(bodyReads);
-  const files = await writeImages(png, `${key}__${vpKey}`, { live });
+  const files = await writeImages(pngs, `${key}__${vpKey}`, { live });
   live.check();
   const parts = files.webp.length > 1 ? `${files.webp.length} parts` : "";
   console.log("%s %s %s %sms cls %s %s", vpKey, key, resp?.status(), m.ttfbMs, m.cls, parts);
@@ -1067,19 +1105,23 @@ async function runDesign() {
           ids,
         };
       }, args["ids-scope"]);
-      const png = await page.screenshot({ fullPage: true });
-      const files = await writeImages(png, `${prefix}${s.name}`, { dir });
+      const pngs = await fullPageShots(page);
+      const files = await writeImages(pngs, `${prefix}${s.name}`, { dir });
 
       let compare = null;
+      let pair = null;
       let baselineMissing = false;
       if (s.baseline && args.browser === "chromium") {
         const src = path.join(qaDir, s.baseline);
         if (fs.existsSync(src)) {
           compare = `compare-${s.name}.webp`;
-          await writeCompare(src, png, path.join(dir, compare));
+          pair = `pair-${s.name}.webp`;
+          await writeCompare(src, pngs[0], path.join(dir, compare));
+          await writePair(src, pngs[0], path.join(dir, pair));
         } else baselineMissing = true;
       }
-      const idsMatch = s.ids ? JSON.stringify(s.ids) === JSON.stringify(metrics.ids) : null;
+      const cmp = s.ids ? comparableIds(s.ids, metrics.ids, s.url) : null;
+      const idsMatch = cmp ? JSON.stringify(cmp.expected) === JSON.stringify(cmp.actual) : null;
       // [] === [] proves nothing on its own: a 200 error page, or an
       // --ids-scope that misses the results, also reads no links. The
       // summary counts these apart so an empty-state match is checked
@@ -1096,7 +1138,10 @@ async function runDesign() {
         status: resp?.status() ?? null,
         finalUrl: page.url().replace(BASE, ""),
         ...metrics,
-        expectedIds: s.ids,
+        // As compared: bare packet ids carry the kind they were read as.
+        expectedIds: cmp?.expected ?? null,
+        // Only when the actual side was rewritten too (kinds stripped).
+        ...(cmp && cmp.actual !== metrics.ids ? { comparedIds: cmp.actual } : {}),
         idsMatch,
         idsEmpty,
         consoleErrors,
@@ -1105,6 +1150,7 @@ async function runDesign() {
         baseline: s.baseline,
         baselineMissing,
         compare,
+        pair,
       });
       console.log(
         "%s %s overflow=%d ids=%d%s",
@@ -1134,6 +1180,54 @@ async function runDesign() {
   await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
   summarizeDesign(results, skipped, manifestFile);
   process.exit(results.some((r) => r.error) ? 1 : 0);
+}
+
+// Packet `ids` are usually `<kind>:<id>` (`songs:62`), the form read from the
+// page, but a packet may list bare ids (`165`, or the number 165): ticket
+// 27's album packet did, and every scenario then read as MISMATCH although
+// the order was identical. A bare id takes the entity kind of the scenario's
+// own URL (`/ko/albums` → `albums:165`). On a URL with no kind (home,
+// search) the kinds are dropped from both lists instead, so the order is
+// still judged. A swapped pair, a missing or an extra id still mismatch.
+function comparableIds(expected, actual, url) {
+  const ids = expected.map(String);
+  if (ids.every((x) => x.includes(":"))) return { expected: ids, actual };
+  const kind = url.match(/^\/[^/]+\/(events|artists|songs|albums|members|series)(?:[/?#]|$)/)?.[1];
+  if (kind) return { expected: ids.map((x) => (x.includes(":") ? x : `${kind}:${x}`)), actual };
+  const bare = (x) => x.slice(x.indexOf(":") + 1);
+  return { expected: ids.map(bare), actual: actual.map(bare) };
+}
+
+// Baseline | 24px grey gap | actual cropped to the baseline's box, so the
+// two halves show the same region at the same scale. The packet's baseline
+// is a viewport-only capture while the actual one is the full page, which
+// in compare-*.webp (below) leaves the baseline a sliver beside a page
+// thousands of px tall. A shorter actual page is padded with the gap grey.
+async function writePair(baselinePath, actualPng, outFile) {
+  const GAP = 24;
+  const GREY = "#9e9e9e";
+  const src = fs.readFileSync(baselinePath);
+  const bm = await sharp(src, SHARP_INPUT).metadata();
+  // A baseline over WebP's side limit (never seen: packets are viewport
+  // captures) is cut like the compare image.
+  const width = bm.width;
+  const height = Math.min(bm.height, WEBP_MAX_PART_HEIGHT);
+  const b = await sharp(src, SHARP_INPUT).extract({ left: 0, top: 0, width, height }).png().toBuffer();
+  const am = await sharp(actualPng, SHARP_INPUT).metadata();
+  const a = await sharp(actualPng, SHARP_INPUT)
+    .extract({ left: 0, top: 0, width: Math.min(width, am.width), height: Math.min(height, am.height) })
+    .png()
+    .toBuffer();
+  await sharp({
+    create: { width: width * 2 + GAP, height, channels: 3, background: GREY },
+    limitInputPixels: false,
+  })
+    .composite([
+      { input: b, left: 0, top: 0 },
+      { input: a, left: width + GAP, top: 0 },
+    ])
+    .webp({ quality: WEBP_QUALITY })
+    .toFile(outFile);
 }
 
 // Baseline | 24px white gutter | actual, top-aligned. WebP caps a side at
@@ -1210,7 +1304,7 @@ function summarizeDesign(results, skipped, manifestFile) {
   for (const r of mismatches) {
     console.log("  MISMATCH %s", r.name);
     console.log("    packet: %s", r.expectedIds.join(" "));
-    console.log("    actual: %s", r.ids.join(" "));
+    console.log("    actual: %s", (r.comparedIds ?? r.ids).join(" "));
   }
   const nonOk = ok.filter((r) => r.status !== 200);
   if (nonOk.length) {
