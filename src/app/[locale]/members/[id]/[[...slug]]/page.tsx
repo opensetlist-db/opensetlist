@@ -142,20 +142,18 @@ async function fetchMember(id: string) {
                   },
                 },
               },
-              // No SetlistItemArtist include: it only fed a per-event
-              // unit chip that the history rows never rendered (the
-              // chip was built but dropped when mapping history views,
-              // see 30-v1 design-contract), and the 30-v1 history row
-              // has no trailing chip column.
+              // No SetlistItemArtist include: the 30-v1 history row has
+              // no per-event unit chip column, so nothing reads the
+              // setlist item's own artist credits.
             },
           },
         },
       },
       // Event-level "this member was on stage" rows. A full-group default
       // appearance leaves no SetlistItemMember row but DOES leave an
-      // EventPerformer row (per schema.prisma:475-488 — `isGuest: false`
-      // means counted in the full-group fallback). We use the diff
-      // between this set and `performances` to flag 전출연 events.
+      // EventPerformer row (`isGuest: false` = counted as a full-group
+      // appearance). The page unions this set with `performances` so
+      // those events count and appear in the history.
       //
       // `where: { event: { isDeleted: false } }` mirrors the
       // performance filter above — a soft-deleted event must not
@@ -188,7 +186,8 @@ const getMember = cache(
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
   const member = await getMember(id);
-  if (!member) return { title: "Not Found" };
+  const mt = await getTranslations({ locale, namespace: "Meta" });
+  if (!member) return { title: mt("notFound") };
   const memberT = await getTranslations({ locale, namespace: "Member" });
   const fullName =
     displayNameWithFallback(member, member.translations, locale, "full") ||
@@ -207,7 +206,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const groupName = group
     ? displayNameWithFallback(group, group.translations, locale)
     : null;
-  const mt = await getTranslations({ locale, namespace: "Meta" });
   const title = groupName
     ? mt("memberTitle", { name: fullName, group: groupName })
     : mt("memberTitleNoGroup", { name: fullName });
@@ -452,14 +450,15 @@ export default async function MemberPage({ params, searchParams }: Props) {
     // serializeBigInt's JSON.stringify turns Date columns into ISO
     // strings — runtime is `string` even though the type says Date.
     const isoDate = event.date ? String(event.date).slice(0, 10) : null;
+    const status = getEventStatus(
+      { status: event.status, startTime: event.startTime },
+      referenceNow,
+    );
     return {
       id: String(event.id),
       href: entityPath("events", locale, event.id, event.slug),
-      status: getEventStatus(
-        { status: event.status, startTime: event.startTime },
-        referenceNow,
-      ),
-      statusLabel: "",
+      status,
+      statusLabel: statusLabels[status],
       formattedDate: formatDate(event.date, locale, MEMBER_EVENT_DATE_FORMAT),
       isoDate,
       name,
@@ -470,7 +469,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       groupLabel: seriesName ?? name,
       groupLang: seriesName ? seriesLang : nameLang,
       rawDateMs: isoDate ? new Date(isoDate).getTime() : 0,
-      startMs: new Date(String(event.startTime)).getTime() || 0,
+      startMs: event.startTime ? new Date(String(event.startTime)).getTime() : 0,
     };
   };
 
@@ -485,9 +484,6 @@ export default async function MemberPage({ params, searchParams }: Props) {
     const eid = Number(ep.event.id);
     if (!eventViewsById.has(eid)) eventViewsById.set(eid, buildView(ep.event));
   }
-  for (const view of eventViewsById.values()) {
-    view.statusLabel = statusLabels[view.status];
-  }
 
   const totalEvents = eventViewsById.size;
   const totalCompleted = [...eventViewsById.values()].filter(
@@ -496,8 +492,8 @@ export default async function MemberPage({ params, searchParams }: Props) {
 
   // ─── Series-grouped views (history tab) ──────────────────────────
   // Group by seriesId (0 = standalone events, which share one group
-  // labelled by the first event's name, as before). Within a group sort
-  // by date desc; groups sort ongoing-first, then most-recent date desc.
+  // labelled by its newest event's name). Within a group newest first;
+  // groups sort ongoing-first, then most-recent date, then series id.
   type SeriesGroup = {
     id: number;
     label: string;
@@ -663,7 +659,6 @@ export default async function MemberPage({ params, searchParams }: Props) {
         <section
           className={styles.identity}
           style={memberColorStyle(member.color)}
-          data-voice={currentVa && vaPrimary ? undefined : "none"}
           aria-labelledby="member-title"
         >
           <div className={styles.heading}>

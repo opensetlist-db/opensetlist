@@ -8,9 +8,8 @@ import { colors } from "@/styles/tokens";
  * undefined during SSR.
  */
 
-/** Neutral rim/accent for a member without a stored personal colour
- *  (30-v1 `no-color` state, #7C8BA3). The CSS module mixes the avatar
- *  rim with the same literal. */
+/** Neutral rim/accent (#7C8BA3): the `no-color` fallback and the mix
+ *  partner of every avatar rim. */
 export const MEMBER_NEUTRAL_COLOR = colors.borderStrong;
 
 /** Compact numeric date for event rows ("2026. 11. 29." / "2026/11/29"
@@ -23,10 +22,16 @@ export const MEMBER_EVENT_DATE_FORMAT: Intl.DateTimeFormatOptions = {
 };
 
 /**
- * Inline `--member-color` consumed by `memberDetail.module.css`. Only
- * the card's top rule, avatar wash and avatar rim read it — no text —
- * so any stored colour (including #ffffff) is safe to pass through.
+ * Inline custom properties consumed by `memberDetail.module.css`:
+ * `--member-color` (personal colour, neutral when unset) and
+ * `--member-neutral` (the rim's mix partner), so the CSS carries no
+ * colour literal of its own. Only the card's top rule, avatar wash and
+ * avatar rim read them — no text — so any stored colour (including
+ * #ffffff) is safe to pass through.
  */
 export function memberColorStyle(color: string | null): CSSProperties {
-  return { "--member-color": color ?? MEMBER_NEUTRAL_COLOR } as CSSProperties;
+  return {
+    "--member-color": color ?? MEMBER_NEUTRAL_COLOR,
+    "--member-neutral": MEMBER_NEUTRAL_COLOR,
+  } as CSSProperties;
 }

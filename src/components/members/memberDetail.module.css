@@ -46,10 +46,8 @@
   background: linear-gradient(110deg, #fff 30%, #fff3f7 72%, #f1efff);
   box-shadow: 0 5px 18px #233c680a;
 }
-/* No VA row: the heading takes the whole first row. */
-.identity[data-voice="none"] {
-  grid-template-columns: minmax(0, 1fr);
-}
+/* No VA credit: the 270px column stays empty, as in the approved
+   30-v1 `no-voice` state, so the card keeps one geometry. */
 .heading {
   min-width: 0;
   display: flex;
@@ -85,7 +83,8 @@
 
 /*
  * Round initial. The wash is the personal colour at 12% over white and
- * the rim mixes it 65/35 with the neutral #7c8ba3, so a white or very
+ * the rim mixes it 65/35 with the neutral `--member-neutral`
+ * (colors.borderStrong, set inline with the colour), so a white or very
  * light personal colour still draws a visible ring (30-v1 contract,
  * avatar rule). The glyph stays navy ink regardless of colour.
  */
@@ -95,7 +94,8 @@
   height: 88px;
   display: grid;
   place-items: center;
-  border: 3px solid color-mix(in srgb, var(--member-color) 65%, #7c8ba3);
+  border: 3px solid
+    color-mix(in srgb, var(--member-color) 65%, var(--member-neutral));
   border-radius: 50%;
   background: color-mix(in srgb, var(--member-color) 12%, white);
   box-shadow: 0 0 0 6px #ffffff9e;
@@ -570,10 +570,9 @@
 
 @media (max-width: 767px) {
   .page {
-    padding: 20px 24px 40px;
+    padding: 20px 24px 48px;
   }
-  .identity,
-  .identity[data-voice="none"] {
+  .identity {
     grid-template-columns: minmax(0, 1fr);
     gap: 24px;
   }

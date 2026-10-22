@@ -165,13 +165,16 @@ describe("member detail page (30-v1)", () => {
     // Original-language short name initial.
     expect(html).toMatch(/aria-hidden="true">セ</);
     expect(html).toContain("voiceActor");
-    expect(html).toContain("미야케 미우");
-    // All real VA dates are null: no period line.
+    // The VA block rendered (positive control for the period check
+    // below) — all real VA dates are null, so it has no period line.
+    expect(html).toMatch(/class="[^"]*voiceName[^"]*">미야케 미우</);
     expect(html).not.toMatch(/class="[^"]*period/);
     expect(html).toContain("--member-color:#f56455");
   });
 
   it("fallback: no translations shows the original name with lang and no subtitle", async () => {
+    // Positive control: with translations the subtitle renders.
+    expect(await render(member())).toMatch(/class="[^"]*subtitle/);
     const html = await render(
       member({
         translations: [],
@@ -194,11 +197,14 @@ describe("member detail page (30-v1)", () => {
   });
 
   it("no colour, no VA, no unit: neutral rim, VA block and unit link omitted, breadcrumb without group", async () => {
+    // Positive control: the same member with VA and unit shows both.
+    const full = await render(member());
+    expect(full).toContain("voiceActor");
+    expect(full).toContain("/ko/artists/");
     const html = await render(
       member({ color: null, voicedBy: [], artistLinks: [] }),
     );
     expect(html).toContain("--member-color:#7C8BA3");
-    expect(html).toContain('data-voice="none"');
     expect(html).not.toContain("voiceActor");
     expect(html).not.toContain("/ko/artists/");
   });
@@ -230,6 +236,13 @@ describe("member detail page (30-v1)", () => {
     expect(html).toContain(">noSongs<");
     expect(html).toContain(">noEvents<");
     expect(html).not.toContain(">viewAll<");
+    // Positive control: four songs bring the songs view-all back.
+    const four = await render(
+      member({
+        performances: [perf(event(), [song(1), song(2), song(3), song(4)])],
+      }),
+    );
+    expect(four).toContain(">viewAll<");
   });
 
   it("event union: specific + non-guest performer rows, guest-only excluded; statuses and LIVE on the group", async () => {
@@ -255,6 +268,9 @@ describe("member detail page (30-v1)", () => {
       { tab: "history" },
     );
     expect(html).toContain("historyHeader(4)");
+    for (const ev of [ongoing, cancelled, upcoming, standalone]) {
+      expect(html).toContain(`/ko/events/${ev.id}/`);
+    }
     expect(html).not.toContain(`/ko/events/${guestOnly.id}/`);
     for (const s of ["ongoing", "cancelled", "upcoming", "completed"]) {
       expect(html).toContain(`data-status="${s}"`);
@@ -289,6 +305,26 @@ describe("member detail page (30-v1)", () => {
     // One view-all (songs: 4 > 3); recent events: exactly 3, so none.
     expect(html.match(/>viewAll</g)).toHaveLength(1);
     expect(html).toMatch(/\?tab=songs"[^>]*>viewAll</);
+  });
+
+  it("events: same-day ties order by start time, then id, newest first", async () => {
+    const day = "2026-01-22T00:00:00.000Z";
+    const matinee = event({ date: day, startTime: "2026-01-22T02:30:00.000Z" });
+    const evening = event({ date: day, startTime: "2026-01-22T10:00:00.000Z" });
+    const eveningTwin = event({ date: day, startTime: "2026-01-22T10:00:00.000Z" });
+    const html = await render(
+      member({
+        eventPerformers: [matinee, eveningTwin, evening].map((e) => ({
+          isGuest: false,
+          event: e,
+        })),
+      }),
+      { tab: "history" },
+    );
+    const order = [...html.matchAll(/href="\/ko\/events\/(\d+)\//g)].map(
+      (m) => Number(m[1]),
+    );
+    expect(order).toEqual([eveningTwin.id, evening.id, matinee.id]);
   });
 
   it("songs tab: a song without artist credit falls back to the member's primary unit tag", async () => {
