@@ -25,10 +25,17 @@
 //     [--timeout-min <min>]          whole run, default 45; past it the
 //                                    results so far are written and it exits 1
 //     [--fixture <json>]             fixture ids for the scenario's fixture
-//                                    checks (keys: --list shows them); the
-//                                    harness never writes to the DB — create
-//                                    and delete the rows yourself, holding
-//                                    the execution-board dev DB slot
+//                                    checks (keys: --list shows them): inline
+//                                    JSON (a value starting with `{`) or a
+//                                    JSON file path (on Windows PowerShell
+//                                    5.1 use a file: inline JSON loses its
+//                                    quotes there). The harness never
+//                                    writes to the DB — create the rows with
+//                                    scripts/db-fixture-add.mjs (its output
+//                                    goes here unchanged) and delete them
+//                                    with the db-fixture-rm command it
+//                                    prints, holding the execution-board
+//                                    dev DB slot
 //     [--only-fixture]               run the fixture checks alone
 //     [--list]                       list the scenarios and exit
 //
@@ -105,13 +112,19 @@ const scenario = await load(scenarioPath);
 let fixture = null;
 if (args.fixture) {
   if (!scenario.fixture) usage(`scenario ${scenario.name} has no fixture checks`);
+  // Inline JSON (what scripts/db-fixture-add.mjs prints) or a file path.
+  // The rule is repeated here rather than imported so an extracted copy of
+  // this script still runs with only page-qa/ beside it.
+  const inline = args.fixture.trimStart().startsWith("{");
+  const label = inline ? "--fixture (inline JSON)" : `--fixture ${args.fixture}`;
   try {
-    fixture = JSON.parse(fs.readFileSync(args.fixture, "utf8"));
+    fixture = JSON.parse(inline ? args.fixture : fs.readFileSync(args.fixture, "utf8"));
   } catch (e) {
-    usage(`--fixture ${args.fixture}: ${e.message}`);
+    usage(`${label}: ${e.message}`);
   }
+  if (fixture === null || typeof fixture !== "object" || Array.isArray(fixture)) usage(`${label}: not a JSON object`);
   const missing = scenario.fixture.needs.filter((k) => fixture[k] == null);
-  if (missing.length) usage(`--fixture ${args.fixture} lacks ${missing.join(", ")}`);
+  if (missing.length) usage(`${label} lacks ${missing.join(", ")}`);
 } else if (args["only-fixture"]) {
   usage("--only-fixture needs --fixture <json>");
 }
