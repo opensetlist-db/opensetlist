@@ -6,6 +6,7 @@ import noTicketIds from "./eslint-rules/no-ticket-ids.mjs";
 import consoleFormatString from "./eslint-rules/console-format-string.mjs";
 import imgOnErrorRef from "./eslint-rules/img-onerror-ref.mjs";
 import nonLiteralRegexp from "./eslint-rules/non-literal-regexp.mjs";
+import noRedundantLogical from "./eslint-rules/no-redundant-logical.mjs";
 import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
 import {
   hexColourAssertionRestrictions,
@@ -21,6 +22,7 @@ const localPlugin = {
     "console-format-string": consoleFormatString,
     "img-onerror-ref": imgOnErrorRef,
     "non-literal-regexp": nonLiteralRegexp,
+    "no-redundant-logical": noRedundantLogical,
   },
 };
 
@@ -60,6 +62,23 @@ const eslintConfig = defineConfig([
     plugins: { local: localPlugin },
     rules: {
       "local/non-literal-regexp": "error",
+    },
+  },
+  // Browser-QA scenarios and harnesses: a check condition decides
+  // whether a page passes, and an `&&`/`||` mix read the wrong way
+  // passes vacuously. `no-mixed-operators` makes every mix spell its
+  // grouping in parentheses; `no-redundant-logical` catches the
+  // absorbed form (`X && Y || X`, always X) even when parenthesised.
+  {
+    files: [
+      "scripts/page-qa/**/*.mjs",
+      "scripts/admin-qa/**/*.mjs",
+      "scripts/*-qa*.mjs",
+    ],
+    plugins: { local: localPlugin },
+    rules: {
+      "no-mixed-operators": ["error", { groups: [["&&", "||"]] }],
+      "local/no-redundant-logical": "error",
     },
   },
   // Admin routes save translations per locale (upsert), never by
