@@ -7,6 +7,7 @@ import consoleFormatString from "./eslint-rules/console-format-string.mjs";
 import imgOnErrorRef from "./eslint-rules/img-onerror-ref.mjs";
 import nonLiteralRegexp from "./eslint-rules/non-literal-regexp.mjs";
 import noRedundantLogical from "./eslint-rules/no-redundant-logical.mjs";
+import dateFormatTimezone from "./eslint-rules/date-format-timezone.mjs";
 import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
 import {
   hexColourAssertionRestrictions,
@@ -23,6 +24,7 @@ const localPlugin = {
     "img-onerror-ref": imgOnErrorRef,
     "non-literal-regexp": nonLiteralRegexp,
     "no-redundant-logical": noRedundantLogical,
+    "date-format-timezone": dateFormatTimezone,
   },
 };
 
@@ -42,6 +44,9 @@ const eslintConfig = defineConfig([
   // `img-onerror-ref`: in a "use client" module an `<img onError>` also
   // has a ref that checks the image on mount — a server-rendered image
   // that fails before hydration never fires React's onError.
+  // `date-format-timezone`: date-format options that render a calendar
+  // day name their `timeZone` — without one a stored UTC date shows the
+  // previous day west of UTC, which Vercel and CI (both UTC) never show.
   {
     files: ["src/**/*.{ts,tsx}"],
     plugins: { local: localPlugin },
@@ -50,6 +55,7 @@ const eslintConfig = defineConfig([
       "local/no-ticket-ids": "error",
       "local/console-format-string": "error",
       "local/img-onerror-ref": "error",
+      "local/date-format-timezone": "error",
     },
   },
   // `non-literal-regexp`: `new RegExp(x)` takes a literal pattern — CI
