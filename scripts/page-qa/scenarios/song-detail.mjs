@@ -25,7 +25,11 @@ const TWO_COLUMN_FROM = 1000;
 // History column strip and row grid are desktop-only below 700px.
 const MOBILE_BELOW = 700;
 // Solid text/background pairs, by CSS-module class suffix (see h.contrast).
-const CONTRAST = ["status", "position", "chip", "count", "artistBadge", "tab", "encore", "variantPill", "baseLink"];
+// The artist badge and base link sit on the identity card's gradient,
+// which h.contrast cannot see through (SKIP "background image"); their
+// worst case is #165DCC on the gradient's #F0EDFF end, 5.26:1, computed by
+// hand in wiki handoff 29.
+const CONTRAST = ["status", "position", "chip", "count", "tab", "encore", "variantPill"];
 const CONTRAST_WIDTHS = [390, 1440];
 const RING = /^solid 3px rgb\(23, 79, 175\)/;
 
@@ -141,24 +145,30 @@ const scenario = {
         const liveSummary = summaries.find((s) => s.querySelector('[data-status="ongoing"]'));
         const hrefs = [...document.querySelectorAll('main a[class*="__performance"]')].map((a) => a.getAttribute("href"));
         const dup = hrefs.filter((x, i) => hrefs.indexOf(x) !== i);
-        return { live: !!liveSummary, liveFirst: summaries[0] === liveSummary, dup: dup.length };
+        return {
+          live: !!liveSummary,
+          liveFirst: summaries[0] === liveSummary,
+          liveIsOther: !!liveSummary && liveSummary === summaries.at(-1),
+          dup: dup.length,
+        };
       });
+      // Ongoing series groups are pinned first; the no-series group stays
+      // last even when it holds the ongoing event (562's is series-less).
       if (!live.live) h.skip("LIVE group", "song 562 has no ongoing event now");
-      else h.check("LIVE group pinned first", live.liveFirst, "");
+      else h.check("LIVE group first, or the last (no-series) group", live.liveFirst || live.liveIsOther, "");
       if (live.dup === 0) h.skip("duplicate appearance", "song 562 no longer repeats in one event");
       else h.check("duplicate appearance kept as two rows", live.dup > 0, String(live.dup));
 
       // Collapse keeps LIVE visible in the summary.
       if (live.live) {
-        const summary = page.locator("main details summary").first();
-        await h.pressOn(page, "main details summary", "Enter");
+        const SEL = "main details:has(> summary [data-status='ongoing']) > summary";
+        await h.pressOn(page, SEL, "Enter");
         const after = await page.evaluate(() => {
-          const d = document.querySelector("main details");
-          const s = d.querySelector("summary [data-status='ongoing']");
-          return { open: d.open, liveVisible: !!s && s.getBoundingClientRect().height > 0 };
+          const s = document.querySelector("main details > summary [data-status='ongoing']");
+          const d = s?.closest("details");
+          return { open: d?.open, liveVisible: !!s && s.getBoundingClientRect().height > 0 };
         });
-        h.check("collapsed group keeps LIVE", !after.open && after.liveVisible, JSON.stringify(after));
-        await summary.click();
+        h.check("collapsed group keeps LIVE", after.open === false && after.liveVisible, JSON.stringify(after));
       }
     });
 
@@ -169,6 +179,7 @@ const scenario = {
       const encore = await page.locator('main [class*="__encore"]').count();
       if (encore === 0) h.skip("encore chip", "765 has no encore appearance now");
       else h.check("encore chip shown", encore > 0, String(encore));
+      for (const n of await h.contrast(page, CONTRAST, "encore contrast")) found.add(n);
 
       const { page: p2 } = await h.open(path("ko", MANY_ALBUMS), { width: 390 });
       const albums = await p2.evaluate(() => ({
