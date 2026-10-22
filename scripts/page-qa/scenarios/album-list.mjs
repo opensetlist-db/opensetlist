@@ -7,7 +7,7 @@
 // match would also hit `__rowTitle` / `__yearGroup`.
 //
 // Data expectations are the shared dev DB as of 2026-10-21: 474 albums,
-// none undated and none with a cover, 13 artist filters, album 135 the
+// none undated and none with a cover, 12 artist filters, album 135 the
 // only one with active bonuses. A dev DB change shows up as a FAIL with
 // the numbers in the detail; update the numbers, not the checks.
 //
@@ -15,13 +15,16 @@
 // dated 2099 / undated so they sit first and last — one cover that loads,
 // one whose cover URL is broken, one with no release date. Create and
 // delete them yourself while holding the dev DB slot.
-const COUNTS = { albums: 474, filters: 13 };
+const COUNTS = { albums: 474, filters: 12 };
 const BONUS_ALBUM = "135";
 // Packet bands: the year moves under the title below 768; the cover steps
 // 72 → 64px below 700 and → 56px (chevron hidden) below 360.
 const YEAR_RIGHT_FROM = 768;
 const COVER = (w) => (w < 360 ? 56 : w < 700 ? 64 : 72);
-const CONTRAST = ["filter", "type", "artist", "bonus", "rowTitle", "rowSub", "year", "yearCount", "coverLabel", "arrow"];
+// `coverLabel` is left out: it sits on the cover's gradient, which
+// h.contrast cannot measure. #52617a on the two stops is 5.57:1 (#eaf2ff)
+// and 5.43:1 (#f1ecff), the same pair the 26-v1 packet measured.
+const CONTRAST = ["filter", "type", "artist", "bonus", "rowTitle", "rowSub", "year", "yearCount", "arrow"];
 const CONTRAST_WIDTHS = [390, 1440];
 const ROW = 'main a[class$="__row"], main a[class*="__row "]';
 const FILTER = 'main nav a[class$="__filter"], main nav a[class*="__filter "]';
@@ -67,7 +70,11 @@ const scenario = {
               clipped: titles
                 .filter((t) => {
                   const s = getComputedStyle(t);
-                  return s.textOverflow === "ellipsis" || s.webkitLineClamp !== "none" || t.scrollWidth > t.clientWidth + 1;
+                  // Overflow only counts where it is cut off: a trailing
+                  // full-width "）" hangs ~2px past the box (Chrome trims
+                  // end-of-line punctuation) and still paints in full.
+                  const cut = s.overflowX !== "visible" && t.scrollWidth > t.clientWidth + 1;
+                  return s.textOverflow === "ellipsis" || s.webkitLineClamp !== "none" || cut;
                 })
                 .map((t) => t.textContent.slice(0, 40)),
               listStyle: getComputedStyle(document.querySelector("main ul") ?? document.body).listStyleType,
