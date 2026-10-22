@@ -24,11 +24,15 @@
 //     through Supavisor leaks to other clients (the 2026-10-18 read-only
 //     incident).
 //   - new rows only. It writes the fixture rows, their AlbumArtist links,
-//     and nothing else: no existing row is updated. References go from a
-//     fixture row to another fixture row of the same spec (by key) or to
-//     an existing, not-deleted Artist (by id, checked first) — never the
-//     other way, so db-fixture-rm can later delete the set without
-//     detaching anything real.
+//     the ImageAsset rows of their logos, and nothing else: no existing
+//     row is updated. References go from a fixture row to another fixture
+//     row of the same spec (by key) or to an existing, not-deleted Artist
+//     (by id, checked first) — never the other way, so db-fixture-rm can
+//     later delete the set without detaching anything real.
+//   - never touches R2. A logo's ImageAsset row points at a URL that is
+//     either unresolvable by design (`https://images.test.invalid/…`, the
+//     failed-image state) or an object already in the dev bucket under
+//     `test/` (checked with a HEAD request first); nothing is uploaded.
 //   - every name is marked: each row's originalTitle / originalName is
 //     `<--prefix> <run ms> <name>`, the prefix must start with `[QA] `,
 //     and each slug is `<prefix tag>-<run ms>-<key>`. The run timestamp
@@ -44,23 +48,48 @@
 // Spec (JSON object; unknown fields are refused, so a typo can't be
 // silently dropped). Every row needs a `key` (lowercase, digits, hyphens),
 // unique across the whole spec; `name` is the readable tail of the title
-// and defaults to the key.
+// and defaults to the key. `name` must be a single line of at most 100
+// characters (the run prefix in front of it makes the full title), and
+// every `fixture` value must be a scalar — string, number or boolean —
+// with a letters-and-digits key: page-qa substitutes them into URLs.
 //   {
 //     "fixture": { "artistId": "4", "slug": "kozue-solo" },   // passed through to the output
 //     "albums": [ { "key": "cover", "type": "single", "releaseDate": "2099-01-01",
 //                   "imageUrl": "https://…", "labelName": "…", "artistIds": ["4"] } ],
 //     "series": [ { "key": "tour", "type": "concert_tour", "artistId": "1",
-//                   "parentSeries": "<earlier series key>", "organizerName": "…" } ],
+//                   "parentSeries": "<earlier series key>", "organizerName": "…",
+//                   "logoMode": "custom", "logoAsset": { "width": 400, "height": 200 } } ],
 //     "events": [ { "key": "day1", "startTime": "2099-01-01T09:00:00Z", "type": "concert",
 //                   "status": "scheduled", "date": "2099-01-01", "series": "tour",
 //                   "artistId": "1", "bdAlbum": "cover", "organizerName": "…",
-//                   "originalVenue": "…", "originalCity": "…", "posterUrl": "https://…" } ]
+//                   "originalVenue": "…", "originalCity": "…", "posterUrl": "https://…",
+//                   "logoMode": "inherit" } ]
 //   }
 // Defaults: album type single, series type standalone, event type concert
 // and status scheduled; dates / URLs / links are null unless given (an
 // album or event without a date is the "undated" state). Enum values are
 // checked by the database's own enum types; a value it rejects (or a date
 // it can't store) is reported as a refusal, exit 2, like any spec mistake.
+//
+// Logos (series and events). `logoMode` is inherit (the default) |
+// typography | custom, and `logoAsset` is given exactly when the mode is
+// custom (left out, the mode of a row with a `logoAsset` is custom) — the
+// pairing post-deploy.sql's CHECK enforces. `logoAsset` creates a NEW
+// ImageAsset row for that one row:
+//   { "publicUrl": "…", "width": 400, "height": 200 }
+//   - width / height: positive integers up to 10000, what the page reserves.
+//   - publicUrl: optional. Left out, it is
+//     `https://images.test.invalid/<slug>.png` — unique per run, never
+//     resolves (the failed-image state). Given, it must be under
+//     `https://images.test.invalid/`, or an object already in the dev
+//     bucket under `test/` (`<R2_PUBLIC_BASE_URL>/test/…`, the base an
+//     `*.r2.dev` host) that answers a HEAD request with an image — for the
+//     state where the logo loads. Anything else is refused. The path ends
+//     in .png / .jpg / .jpeg / .webp, which sets the row's mimeType.
+//     publicUrl is UNIQUE in ImageAsset: a dev-bucket object that already
+//     has a row (or one run's URL used twice) is refused by the database.
+// The asset's objectKey is `qa-fixture/<slug>.<ext>` — no R2 object has
+// such a key — and its usageNote carries the run prefix.
 //
 // On Windows PowerShell 5.1, inline JSON loses its double quotes on the
 // way to a native program: pass --spec as a file there, and hand page-qa
@@ -69,19 +98,24 @@
 // Output (stdout, and --out when given; only after COMMIT): one JSON
 // object that page-qa takes unchanged as `--fixture` — each row's key maps
 // to its new id, beside the spec's `fixture` values — plus `_fixture` with
-// the run prefix, the ids per table, the row count and the exact
-// db-fixture-rm command that deletes this run's rows. Progress and that
-// command go to stderr too.
+// the run prefix, the ids per table (ImageAsset ids under `assets`, and
+// `logoAssets` mapping each row key to its asset id), the row count and
+// the exact db-fixture-rm command that deletes this run's rows, assets
+// included. Progress and that command go to stderr too.
 //
-// Env: `.env.local` first, then `.env`, both from the repo root (dotenv
-// never overrides a value already set). Runs from any task worktree.
+// Env: `.env.local` first, then `.env`, from the checkout holding the cwd
+// (its git top level; the script-relative repo root outside git), so a
+// copy extracted into `.claude/tmp/` reads the worktree's env. The first
+// stderr line names that checkout. dotenv never overrides a value
+// already set.
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pointsAtDevProject } from "./dev-db-guard.mjs";
+import { checkoutRoot, pointsAtDevProject } from "./dev-db-guard.mjs";
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const SCRIPT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // `[QA] ` and then a per-ticket tag. The character set is kept to what is
 // safe inside a double-quoted shell argument, because the prefix is
@@ -96,7 +130,18 @@ const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 const ENUM = /^[a-z][a-z_]*$/;
 // A QA state needs a handful of rows; a spec past this is a mistake.
+// Logo ImageAsset rows count toward it.
 const MAX_ROWS = 20;
+
+// Logo assets. The test host is reserved (.invalid never resolves), so a
+// URL under it can't load anything real; the dev bucket's `test/` prefix
+// holds placeholder objects nothing else references. db-fixture-rm keeps
+// its own copy of FIXTURE_ASSET_KEY (it is run without this file).
+const LOGO_MODES = new Set(["inherit", "typography", "custom"]);
+const TEST_IMAGE_BASE = "https://images.test.invalid/";
+const FIXTURE_ASSET_KEY = "qa-fixture/";
+const MIME_BY_EXT = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" };
+const MAX_LOGO_SIDE = 10000;
 
 export class UsageError extends Error {}
 class Refusal extends Error {}
@@ -152,6 +197,80 @@ function artistId(where, v) {
   return s;
 }
 
+function logoMode(where, v) {
+  if (!LOGO_MODES.has(v)) throw new UsageError(`${where} must be one of ${[...LOGO_MODES].join(", ")}`);
+  return v;
+}
+
+function side(where, v) {
+  if (!Number.isInteger(v) || v < 1 || v > MAX_LOGO_SIDE) throw new UsageError(`${where} must be an integer from 1 to ${MAX_LOGO_SIDE}`);
+  return v;
+}
+
+/**
+ * The dev bucket's public base, if the env names one: an https `*.r2.dev`
+ * URL. The prod bucket is served from its own domain, so it never passes.
+ * @param {string | undefined} raw R2_PUBLIC_BASE_URL
+ * @returns {string | null} the base with one trailing slash
+ */
+export function devBucketBase(raw) {
+  if (!raw) return null;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || !url.hostname.endsWith(".r2.dev") || url.search || url.hash) return null;
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}/`;
+}
+
+/**
+ * Where a logo's publicUrl may point: the reserved test host, or the dev
+ * bucket's `test/` prefix (`needsHead`: the object must exist). The
+ * extension picks the mimeType.
+ */
+function logoUrl(where, v, bucketBase) {
+  text(where, v, 2000);
+  let url;
+  try {
+    url = new URL(v);
+  } catch {
+    throw new UsageError(`${where} is not a URL`);
+  }
+  // Compare the parsed form, so `..` segments or an encoded host can't
+  // walk out of the allowed prefix.
+  const href = url.href;
+  // WHATWG URL leaves %2F / %5C encoded, so `test/..%2Fdev/x` would pass
+  // the prefix test while a server may decode it to another prefix.
+  if (href !== v || url.search || url.hash || /%(?:2f|5c)/i.test(url.pathname)) {
+    throw new UsageError(`${where} must be a plain normalized URL (no query, fragment, .., or encoded slash)`);
+  }
+  let needsHead;
+  if (href.startsWith(TEST_IMAGE_BASE)) needsHead = false;
+  else if (bucketBase && href.startsWith(`${bucketBase}test/`)) needsHead = true;
+  else {
+    throw new UsageError(
+      `${where} must be under ${TEST_IMAGE_BASE}${bucketBase ? ` or ${bucketBase}test/` : " (no dev-bucket R2_PUBLIC_BASE_URL in the env)"}`,
+    );
+  }
+  const ext = /\.([a-z]+)$/i.exec(url.pathname)?.[1]?.toLowerCase();
+  if (!ext || !(ext in MIME_BY_EXT)) throw new UsageError(`${where} must end in .${Object.keys(MIME_BY_EXT).join(" / .")}`);
+  return { publicUrl: href, ext, mimeType: MIME_BY_EXT[ext], needsHead };
+}
+
+function logoAsset(where, v, ctx) {
+  if (!isObject(v)) throw new UsageError(`${where} must be an object { publicUrl?, width, height }`);
+  for (const k of Object.keys(v)) {
+    if (!["publicUrl", "width", "height"].includes(k)) throw new UsageError(`${where}: unknown field "${k}" (publicUrl, width, height)`);
+  }
+  return {
+    width: side(`${where}.width`, v.width),
+    height: side(`${where}.height`, v.height),
+    url: v.publicUrl === undefined ? null : logoUrl(`${where}.publicUrl`, v.publicUrl, ctx.bucketBase),
+  };
+}
+
 // Per kind: the table, the column the prefix goes into, and each allowed
 // field's validator. A field left out is null in the plan (or the default
 // noted in the header).
@@ -180,6 +299,8 @@ const KINDS = {
       artistId,
       parentSeries: (w, v) => text(w, v),
       organizerName: (w, v) => text(w, v),
+      logoMode,
+      logoAsset,
     },
   },
   events: {
@@ -197,6 +318,8 @@ const KINDS = {
       originalVenue: (w, v) => text(w, v),
       originalCity: (w, v) => text(w, v),
       posterUrl: httpUrl,
+      logoMode,
+      logoAsset,
     },
   },
 };
@@ -219,9 +342,11 @@ export function slugBase(prefix) {
  * Validate a spec and turn it into the rows to insert. Pure — every spec
  * mistake fails here, before any connection.
  * @param {unknown} spec
- * @param {{ prefix: string, ms: number }} run
+ * @param {{ prefix: string, ms: number, bucketBase?: string | null }} run
+ *   bucketBase: devBucketBase(R2_PUBLIC_BASE_URL), or null/absent when
+ *   only the test host is allowed for logo URLs
  */
-export function buildPlan(spec, { prefix, ms }) {
+export function buildPlan(spec, { prefix, ms, bucketBase = null }) {
   if (!isObject(spec)) throw new UsageError("spec must be a JSON object");
   for (const k of Object.keys(spec)) {
     if (k !== "fixture" && !(k in KINDS)) throw new UsageError(`spec: unknown field "${k}" (fixture, albums, series, events)`);
@@ -236,7 +361,8 @@ export function buildPlan(spec, { prefix, ms }) {
   const name = runPrefix(prefix, ms);
   const slugPrefix = `${slugBase(prefix)}-${ms}-`;
   const keys = new Set(Object.keys(extras));
-  const plan = { prefix: name, slugPrefix, ms, extras, albums: [], series: [], events: [], artistIds: [] };
+  const plan = { prefix: name, slugPrefix, ms, extras, albums: [], series: [], events: [], assets: [], artistIds: [] };
+  const ctx = { bucketBase };
 
   for (const [kind, def] of Object.entries(KINDS)) {
     const list = spec[kind] ?? [];
@@ -255,23 +381,42 @@ export function buildPlan(spec, { prefix, ms }) {
         if (field === "name") {
           values.name = text(`${where}.name`, v, 100);
         } else if (field in def.fields) {
-          values[field] = def.fields[field](`${where}.${field}`, v);
+          values[field] = def.fields[field](`${where}.${field}`, v, ctx);
         } else {
           throw new UsageError(`${where}: unknown field "${field}" (${["key", "name", ...Object.keys(def.fields)].join(", ")})`);
         }
       }
-      plan[kind].push({
-        key: row.key,
-        slug: `${slugPrefix}${row.key}`,
-        title: `${name}${values.name ?? row.key}`,
-        ...values,
-      });
+      const slug = `${slugPrefix}${row.key}`;
+      // custom ⇔ an asset, as the DB CHECK has it; checked here so the
+      // mistake is a usage error naming the row, not a constraint name.
+      const { logoAsset: asset, ...rest } = values;
+      if (asset) {
+        if (rest.logoMode !== undefined && rest.logoMode !== "custom") {
+          throw new UsageError(`${where}.logoAsset needs logoMode "custom" (got "${rest.logoMode}")`);
+        }
+        rest.logoMode = "custom";
+        const url = asset.url ?? logoUrl(`${where}.logoAsset.publicUrl`, `${TEST_IMAGE_BASE}${slug}.png`, bucketBase);
+        plan.assets.push({
+          owner: row.key,
+          objectKey: `${FIXTURE_ASSET_KEY}${slug}.${url.ext}`,
+          publicUrl: url.publicUrl,
+          mimeType: url.mimeType,
+          needsHead: url.needsHead,
+          width: asset.width,
+          height: asset.height,
+        });
+      } else if (rest.logoMode === "custom") {
+        throw new UsageError(`${where}.logoMode "custom" needs a logoAsset`);
+      }
+      plan[kind].push({ key: row.key, slug, title: `${name}${values.name ?? row.key}`, ...rest });
     });
   }
 
-  const count = plan.albums.length + plan.series.length + plan.events.length;
+  const count = plan.albums.length + plan.series.length + plan.events.length + plan.assets.length;
   if (count === 0) throw new UsageError("spec has no rows (albums / series / events)");
-  if (count > MAX_ROWS) throw new UsageError(`spec has ${count} rows; the limit is ${MAX_ROWS}`);
+  if (count > MAX_ROWS) throw new UsageError(`spec has ${count} rows (logo assets included); the limit is ${MAX_ROWS}`);
+  const urls = new Set(plan.assets.map((a) => a.publicUrl));
+  if (urls.size !== plan.assets.length) throw new UsageError("two logoAssets share a publicUrl (ImageAsset.publicUrl is unique)");
 
   // Fixture-to-fixture references by key, resolved in insert order:
   // albums, then series (a parent before its child), then events.
@@ -304,14 +449,29 @@ export function buildPlan(spec, { prefix, ms }) {
   return plan;
 }
 
-/** The db-fixture-rm command line that deletes exactly this run's rows. */
-export function rmCommand(prefix, ids) {
+/** The objectKey prefix of one run's logo assets — db-fixture-rm's --asset-prefix. */
+export function assetKeyPrefix(slugPrefix) {
+  return `${FIXTURE_ASSET_KEY}${slugPrefix}`;
+}
+
+/**
+ * The db-fixture-rm command line that deletes exactly this run's rows.
+ * @param {string} prefix the run prefix
+ * @param {{ series: string[], events: string[], albums: string[], assets?: string[] }} ids
+ * @param {string | null} assetPrefix assetKeyPrefix(slugPrefix), required with assets
+ */
+export function rmCommand(prefix, ids, assetPrefix = null) {
+  const assets = ids.assets ?? [];
   const parts = ["node scripts/db-fixture-rm.mjs", `--prefix "${prefix}"`];
-  const count = ids.series.length + ids.events.length + ids.albums.length;
+  const count = ids.series.length + ids.events.length + ids.albums.length + assets.length;
   parts.push(`--expect ${count}`);
   if (ids.series.length) parts.push(`--series ${ids.series.join(",")}`);
   if (ids.events.length) parts.push(`--events ${ids.events.join(",")}`);
   if (ids.albums.length) parts.push(`--albums ${ids.albums.join(",")}`);
+  if (assets.length) {
+    if (!assetPrefix) throw new Error("rmCommand: assets need an asset prefix");
+    parts.push(`--assets ${assets.join(",")}`, `--asset-prefix "${assetPrefix}"`);
+  }
   return parts.join(" ");
 }
 
@@ -379,9 +539,11 @@ function describeTarget(raw) {
 
 // SQLSTATEs for a value the database refuses to store: a bad enum label
 // (22P02 invalid_text_representation), an out-of-range date / time or
-// offset (22007, 22008). They are spec mistakes, so they refuse (exit 2)
-// instead of looking like an infrastructure failure.
-const BAD_VALUE = new Set(["22P02", "22007", "22008"]);
+// offset (22007, 22008), a logo publicUrl another ImageAsset row already
+// has (23505 unique_violation), a CHECK (23514). They are spec mistakes,
+// so they refuse (exit 2) instead of looking like an infrastructure
+// failure.
+const BAD_VALUE = new Set(["22P02", "22007", "22008", "23505", "23514"]);
 
 async function insertOne(client, sql, params, what) {
   let r;
@@ -427,12 +589,36 @@ async function run(client, plan) {
       links++;
     }
   }
+  // Logo assets before the series / events that point at them. The id
+  // has no DB default (Prisma generates it client-side), so it is made
+  // here. byteSize is the HEAD's Content-Length for a dev-bucket object,
+  // else 1: the column must be positive and nothing renders it.
+  const assetOf = new Map(); // row key → asset id
+  for (const a of plan.assets) {
+    const id = await insertOne(
+      client,
+      `INSERT INTO "ImageAsset" (id, "objectKey", "publicUrl", "mimeType", "byteSize", width, height, "usageNote")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [randomUUID(), a.objectKey, a.publicUrl, a.mimeType, a.byteSize ?? 1, a.width, a.height, `${plan.prefix}logo of ${a.owner}`],
+      `ImageAsset for ${a.owner}`,
+    );
+    assetOf.set(a.owner, id);
+  }
   for (const s of plan.series) {
     const id = await insertOne(
       client,
-      `INSERT INTO "EventSeries" (slug, type, "originalName", "artistId", "parentSeriesId", "organizerName")
-       VALUES ($1, $2::"EventSeriesType", $3, $4::bigint, $5::bigint, $6) RETURNING id::text AS id`,
-      [s.slug, s.type ?? "standalone", s.title, s.artistId ?? null, s.parentSeries ? idOf.get(s.parentSeries) : null, s.organizerName ?? null],
+      `INSERT INTO "EventSeries" (slug, type, "originalName", "artistId", "parentSeriesId", "organizerName", "logoMode", "logoAssetId")
+       VALUES ($1, $2::"EventSeriesType", $3, $4::bigint, $5::bigint, $6, $7::"LogoDisplayMode", $8) RETURNING id::text AS id`,
+      [
+        s.slug,
+        s.type ?? "standalone",
+        s.title,
+        s.artistId ?? null,
+        s.parentSeries ? idOf.get(s.parentSeries) : null,
+        s.organizerName ?? null,
+        s.logoMode ?? "inherit",
+        assetOf.get(s.key) ?? null,
+      ],
       `EventSeries ${s.key}`,
     );
     idOf.set(s.key, id);
@@ -443,9 +629,9 @@ async function run(client, plan) {
     const id = await insertOne(
       client,
       `INSERT INTO "Event" (slug, type, status, "originalName", date, "startTime", "eventSeriesId", "artistId",
-                            "bdAlbumId", "organizerName", "originalVenue", "originalCity", "posterUrl")
+                            "bdAlbumId", "organizerName", "originalVenue", "originalCity", "posterUrl", "logoMode", "logoAssetId")
        VALUES ($1, $2::"EventType", $3::"EventStatus", $4, $5::date, $6::timestamptz AT TIME ZONE 'UTC', $7::bigint, $8::bigint,
-               $9::bigint, $10, $11, $12, $13) RETURNING id::text AS id`,
+               $9::bigint, $10, $11, $12, $13, $14::"LogoDisplayMode", $15) RETURNING id::text AS id`,
       [
         e.slug,
         e.type ?? "concert",
@@ -460,6 +646,8 @@ async function run(client, plan) {
         e.originalVenue ?? null,
         e.originalCity ?? null,
         e.posterUrl ?? null,
+        e.logoMode ?? "inherit",
+        assetOf.get(e.key) ?? null,
       ],
       `Event ${e.key}`,
     );
@@ -473,7 +661,20 @@ async function run(client, plan) {
     series: plan.series.map((s) => idOf.get(s.key)),
     events: plan.events.map((e) => idOf.get(e.key)),
     albums: plan.albums.map((a) => idOf.get(a.key)),
+    assets: plan.assets.map((a) => assetOf.get(a.owner)),
   };
+  // Assets: every row under this run's objectKey prefix is one planned
+  // here and carries the run prefix in its usageNote.
+  const r = await client.query(
+    `SELECT count(*)::int AS n, count(*) FILTER (WHERE starts_with("usageNote", $2))::int AS named
+       FROM "ImageAsset" WHERE starts_with("objectKey", $1)`,
+    [assetKeyPrefix(plan.slugPrefix), plan.prefix],
+  );
+  if (r.rows[0].n !== ids.assets.length || r.rows[0].named !== r.rows[0].n) {
+    throw new Refusal(
+      `ImageAsset: ${plural(r.rows[0].n, "row")} with objectKey prefix ${assetKeyPrefix(plan.slugPrefix)}, planned ${ids.assets.length} — rolled back`,
+    );
+  }
   for (const [kind, def] of Object.entries(KINDS)) {
     const r = await client.query(
       `SELECT count(*)::int AS n, count(*) FILTER (WHERE starts_with(${client.escapeIdentifier(def.nameColumn)}, $2))::int AS named
@@ -487,15 +688,41 @@ async function run(client, plan) {
       );
     }
   }
-  return { idOf, ids, links };
+  return { idOf, ids, assetOf, links };
+}
+
+/**
+ * A dev-bucket logo URL must name an object that exists and is an image,
+ * or the page would show the failed state the test host already gives.
+ * Fills in byteSize from Content-Length. Runs before connecting.
+ */
+async function checkBucketObjects(assets) {
+  for (const a of assets.filter((x) => x.needsHead)) {
+    let res;
+    try {
+      res = await fetch(a.publicUrl, { method: "HEAD", redirect: "error", signal: AbortSignal.timeout(15000) });
+    } catch (e) {
+      throw new Refusal(`refused — nothing written: HEAD ${a.publicUrl}: ${e instanceof Error ? e.message : e}`);
+    }
+    const type = res.headers.get("content-type") ?? "";
+    if (!res.ok || !type.startsWith("image/")) {
+      throw new Refusal(`refused — nothing written: HEAD ${a.publicUrl} → ${res.status} ${type || "(no content-type)"}; not an existing image`);
+    }
+    const size = Number(res.headers.get("content-length"));
+    if (Number.isSafeInteger(size) && size > 0) a.byteSize = size;
+  }
 }
 
 async function main(argv) {
+  // The cwd picks the checkout whose env is read (see checkoutRoot): say
+  // which one first, so a run from the wrong directory shows it.
+  const root = checkoutRoot(SCRIPT_ROOT);
+  console.error(`checkout: ${root}`);
   const opts = parseArgs(argv);
-  const plan = buildPlan(opts.spec, { prefix: opts.prefix, ms: Date.now() });
 
   const dotenv = (await import("dotenv")).default;
-  dotenv.config({ path: [join(REPO_ROOT, ".env.local"), join(REPO_ROOT, ".env")], quiet: true });
+  dotenv.config({ path: [join(root, ".env.local"), join(root, ".env")], quiet: true });
+  const plan = buildPlan(opts.spec, { prefix: opts.prefix, ms: Date.now(), bucketBase: devBucketBase(process.env.R2_PUBLIC_BASE_URL) });
 
   const connectionString = process.env.DATABASE_URL_UNPOOLED;
   if (!connectionString) {
@@ -516,6 +743,7 @@ async function main(argv) {
     console.error("db-fixture-add: refused — DATABASE_URL_UNPOOLED uses port 6543 (transaction pooler); use the session pooler (5432)");
     return 2;
   }
+  await checkBucketObjects(plan.assets);
   console.error(`db-fixture-add: ${describeTarget(connectionString)}${opts.dryRun ? " (dry run: BEGIN … ROLLBACK)" : ""}`);
 
   const { Client } = (await import("pg")).default;
@@ -535,7 +763,8 @@ async function main(argv) {
     await client.end();
   }
 
-  const rm = rmCommand(plan.prefix, result.ids);
+  const assetPrefix = assetKeyPrefix(plan.slugPrefix);
+  const rm = rmCommand(plan.prefix, result.ids, assetPrefix);
   const output = {
     ...plan.extras,
     ...Object.fromEntries(result.idOf),
@@ -543,6 +772,7 @@ async function main(argv) {
       prefix: plan.prefix,
       slugPrefix: plan.slugPrefix,
       ...result.ids,
+      ...(plan.assets.length ? { assetPrefix, logoAssets: Object.fromEntries(result.assetOf) } : {}),
       albumArtists: result.links,
       count: plan.count,
       rm,
@@ -554,6 +784,7 @@ async function main(argv) {
   for (const [kind, def] of Object.entries(KINDS)) {
     for (const row of plan[kind]) console.error(`  ${def.table} ${result.idOf.get(row.key)} ${row.slug} ${JSON.stringify(row.title)}`);
   }
+  for (const a of plan.assets) console.error(`  ImageAsset ${result.assetOf.get(a.owner)} ${a.objectKey} → ${a.publicUrl} (logo of ${a.owner})`);
   if (result.links) console.error(`  AlbumArtist: ${plural(result.links, "row")}`);
 
   if (opts.dryRun) {

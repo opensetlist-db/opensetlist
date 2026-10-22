@@ -54,20 +54,32 @@
 //     references are a snapshot, which is enough on the dev DB), every
 //     UPDATE / DELETE row count checked against the plan; any mismatch →
 //     ROLLBACK and a message.
+//   - after the deletes, still inside the transaction, it re-reads every
+//     id it was given (and the owned children by their FK): any row left
+//     → ROLLBACK. The COMMIT happens only once 0 remain.
 //   - --dry-run runs every check and prints the plan, then rolls back.
 //
 // It never touches R2. A deleted ImageAsset's object stays in the bucket
 // (objects are immutable and may still be served from a cache), so the
-// script prints the keys: list them in the QA handoff.
+// script prints the keys: list them in the QA handoff. Keys under
+// `qa-fixture/` are the logo rows db-fixture-add made; they never had an
+// object, so they are reported apart and need no handoff line.
 //
-// Env: `.env.local` first, then `.env`, both from the repo root (dotenv
-// never overrides a value already set). Runs from any task worktree.
+// Env: `.env.local` first, then `.env`, from the checkout holding the cwd
+// (its git top level; the script-relative repo root outside git), so a
+// copy extracted into `.claude/tmp/` reads the worktree's env. The first
+// stderr line names that checkout. dotenv never overrides a value
+// already set.
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pointsAtDevProject } from "./dev-db-guard.mjs";
+import { checkoutRoot, pointsAtDevProject } from "./dev-db-guard.mjs";
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const SCRIPT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+// db-fixture-add's objectKey prefix for logo assets (its own copy:
+// either script runs without the other).
+const FIXTURE_ASSET_KEY = "qa-fixture/";
 
 // The fixture entity tables, in DELETE order: Event first (it points at
 // EventSeries, Album and ImageAsset), ImageAsset last (both logo FKs point
@@ -353,6 +365,21 @@ async function run(client, { ids, prefix, assetPrefix, expect, dryRun }) {
     );
     expectCount(r.rowCount, ids[e.table].length, `delete ${e.table}`);
   }
+
+  // 6. Post-check: nothing named by id, and no owned child, is left.
+  const left = [];
+  for (const e of active) {
+    const r = await client.query(`SELECT count(*)::int AS n FROM ${q(e.table)} WHERE id = ANY($1::${e.idType}[])`, [ids[e.table]]);
+    if (r.rows[0].n) left.push(`${e.table}: ${r.rows[0].n}`);
+  }
+  for (const o of ownedPlan) {
+    const r = await client.query(`SELECT count(*)::int AS n FROM ${q(o.child)} WHERE ${q(o.col)} = ANY($1::${o.parent.idType}[])`, [
+      ids[o.parent.table],
+    ]);
+    if (r.rows[0].n) left.push(`${o.child}: ${r.rows[0].n}`);
+  }
+  if (left.length) throw new Refusal(`post-check: rows left after the deletes (${left.join(", ")}) — rolled back`);
+  console.log(`  post-check: 0 rows left (${active.map((e) => e.table).join(", ")}${ownedPlan.length ? ", owned children" : ""})`);
   return { assetKeys, committed: true };
 }
 
@@ -361,10 +388,14 @@ function expectCount(actual, planned, what) {
 }
 
 async function main(argv) {
+  // The cwd picks the checkout whose env is read (see checkoutRoot): say
+  // which one first, so a run from the wrong directory shows it.
+  const root = checkoutRoot(SCRIPT_ROOT);
+  console.error(`checkout: ${root}`);
   const opts = parseArgs(argv);
 
   const dotenv = (await import("dotenv")).default;
-  dotenv.config({ path: [join(REPO_ROOT, ".env.local"), join(REPO_ROOT, ".env")], quiet: true });
+  dotenv.config({ path: [join(root, ".env.local"), join(root, ".env")], quiet: true });
 
   const connectionString = process.env.DATABASE_URL_UNPOOLED;
   if (!connectionString) {
@@ -407,10 +438,15 @@ async function main(argv) {
   }
 
   console.log(result.committed ? "\nCOMMIT — done." : "\ndry run passed — ROLLBACK, nothing deleted.");
-  if (result.assetKeys.length) {
+  const fixtureKeys = result.assetKeys.filter((k) => k.startsWith(FIXTURE_ASSET_KEY));
+  const storedKeys = result.assetKeys.filter((k) => !k.startsWith(FIXTURE_ASSET_KEY));
+  if (fixtureKeys.length) {
+    console.log(`\n${plural(fixtureKeys.length, "asset row")} from db-fixture-add (${FIXTURE_ASSET_KEY}…): no R2 object behind them, nothing to hand off.`);
+  }
+  if (storedKeys.length) {
     console.log(
       `\nR2 objects are NOT deleted (this script never touches storage); ${result.committed ? "they stay" : "they would stay"} in the bucket. List them in the QA handoff:\n` +
-        result.assetKeys.map((k) => `  ${k}`).join("\n"),
+        storedKeys.map((k) => `  ${k}`).join("\n"),
     );
   }
   return 0;

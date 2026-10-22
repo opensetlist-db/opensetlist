@@ -115,7 +115,8 @@ connecting). It runs from any directory or task worktree and prints
 timestamps as UTC.
 
 **Adding QA fixtures** (new Album / EventSeries / Event rows, optional
-AlbumArtist links to existing artists, for states the seed data lacks):
+AlbumArtist links to existing artists, series / event logo modes with
+their own ImageAsset rows, for states the seed data lacks):
 `node scripts/db-fixture-add.mjs --prefix "[QA] <Tag>" --spec <json>
 --dry-run` first — guarded insert, spec format in its header; never an
 ad-hoc insert script. Its stdout goes to `scripts/page-qa.mjs --fixture`
