@@ -61,6 +61,13 @@
 //                                    about 15 minutes; raise M for a full run
 //                                    with a large --repeat.
 //
+// --out is created with any missing parents, and from then on every line the
+// run prints (stdout and stderr) also goes to <out>/captures.log
+// (<out>/design-<browser>.log in --design mode). Do not redirect stdout into
+// the evidence folder: a redirect into a folder that does not exist yet
+// fails in the shell before the script starts. Only argument errors, printed
+// before --out exists, stay out of the log.
+//
 // Navigations wait for `load`, never `networkidle`: a page that keeps a
 // connection open (polling, a stalled analytics request) never goes idle,
 // and a networkidle wait on WebKit hung a QA run for ~30 minutes. The
@@ -90,8 +97,8 @@
 //   Replays every `captures[]` URL of the packet (path + query, on --base)
 //   at the packet's viewport, DPR1, and records status, entity IDs vs the
 //   packet's `ids`, horizontal overflow, console errors, <html lang> and
-//   robots meta into `design-<browser>.json`. Chromium runs also write
-//   `compare-<locale>-<width>-<key>.webp` (baseline | actual full page) and
+//   robots meta into `design-<browser>.json` (log: `design-<browser>.log`).
+//   Chromium runs also write `compare-<locale>-<width>-<key>.webp` (baseline | actual full page) and
 //   `pair-<locale>-<width>-<key>.webp` (baseline | actual cropped to the
 //   baseline's width × height — the one to read side by side). Packet ids
 //   may be bare (`165`); they take the URL's entity kind. On WebKit a page
@@ -122,7 +129,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
+import { format, parseArgs } from "node:util";
 import dotenv from "dotenv";
 // @playwright/test is the declared dependency and re-exports the browser types.
 import { chromium, webkit } from "@playwright/test";
@@ -146,6 +153,26 @@ function checkoutRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
 const repoRoot = checkoutRoot();
+
+// From here on every console line also lands in `file`, so a caller never
+// redirects stdout into a folder that may not exist yet (a shell redirect
+// into a missing directory fails before the script starts, losing the run).
+// Called right after --out is created. Synchronous append, as in
+// scripts/page-qa/harness.mjs: a hung or killed run still shows the last
+// line it reached. An uncaught error's stack, which Node prints without
+// going through console, is appended too. redesign-shell-qa.mjs carries a
+// copy (this script stays a single file to extract); change both together.
+function teeConsoleTo(file) {
+  fs.writeFileSync(file, "");
+  for (const level of ["log", "warn", "error"]) {
+    const print = console[level].bind(console);
+    console[level] = (...a) => {
+      print(...a);
+      fs.appendFileSync(file, format(...a) + "\n");
+    };
+  }
+  process.on("uncaughtExceptionMonitor", (e) => fs.appendFileSync(file, `${e?.stack ?? e}\n`));
+}
 
 const { values: args } = parseArgs({
   options: {
@@ -344,6 +371,7 @@ if (selected.some((t) => t.admin)) {
 
 const outDir = path.resolve(args.out);
 fs.mkdirSync(outDir, { recursive: true });
+teeConsoleTo(path.join(outDir, "captures.log"));
 
 // Full-page capture as a list of PNG buffers, top to bottom: one buffer
 // normally, clipped parts when a WebKit page is over the limit. `clip` with
@@ -1037,6 +1065,7 @@ async function runDesign() {
   }
   const dir = path.resolve(args.out);
   fs.mkdirSync(dir, { recursive: true });
+  teeConsoleTo(path.join(dir, `design-${args.browser}.log`));
   const prefix = args.browser === "chromium" ? "" : `${args.browser}-`;
 
   const browser = await browserType.launch();

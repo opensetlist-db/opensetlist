@@ -80,9 +80,11 @@
 // whole run exceeds --run-timeout, it records "run (timeout)", writes what it
 // has, and exits 1.
 //
-// Writes <out>/<browser>-qa.json (every check with ok/na/detail) and two
-// screenshots (open menu at 390, desktop focus ring). Exits 1 if any check
-// FAILs.
+// Creates --out (with any missing parents) and writes <out>/<browser>-qa.json
+// (every check with ok/na/detail), <out>/<browser>-qa.log (every line printed
+// to stdout or stderr after --out exists, as it is printed — no need to
+// redirect stdout into the evidence folder) and two screenshots (open menu at 390, desktop focus ring). Exits 1
+// if any check FAILs.
 //
 // WebKit: Playwright's WebKit follows Safari's default, where plain Tab skips
 // links (only form controls and buttons are tab stops). The keyboard checks
@@ -92,9 +94,29 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
-import { parseArgs } from "node:util";
+import { format, parseArgs } from "node:util";
 // @playwright/test is the declared dependency and re-exports the browser types.
 import { chromium, webkit } from "@playwright/test";
+
+// From here on every console line also lands in `file`, so a caller never
+// redirects stdout into a folder that may not exist yet (a shell redirect
+// into a missing directory fails before the script starts, losing the run).
+// Called right after --out is created. Synchronous append, as in
+// scripts/page-qa/harness.mjs: a hung or killed run still shows the last
+// line it reached. An uncaught error's stack, which Node prints without
+// going through console, is appended too. Same helper as in
+// redesign-capture.mjs, which stays a single file to extract.
+function teeConsoleTo(file) {
+  fs.writeFileSync(file, "");
+  for (const level of ["log", "warn", "error"]) {
+    const print = console[level].bind(console);
+    console[level] = (...a) => {
+      print(...a);
+      fs.appendFileSync(file, format(...a) + "\n");
+    };
+  }
+  process.on("uncaughtExceptionMonitor", (e) => fs.appendFileSync(file, `${e?.stack ?? e}\n`));
+}
 
 const { values: args } = parseArgs({
   options: {
@@ -133,6 +155,7 @@ if (!(CHECK_MS > 0) || !(RUN_MS > 0) || CHECK_MS > 86_400_000 || RUN_MS > 86_400
 const WEBKIT = args.browser === "webkit";
 const outDir = path.resolve(args.out);
 fs.mkdirSync(outDir, { recursive: true });
+teeConsoleTo(path.join(outDir, `${args.browser}-qa.log`));
 
 // ---------------------------------------------------------------------------
 // Shell geometry. Mirrors src/styles/tokens.ts — `layout.navHeight`
