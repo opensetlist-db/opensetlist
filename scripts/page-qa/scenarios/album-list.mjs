@@ -42,7 +42,10 @@ const scenario = {
     await h.layoutMatrix({
       path: (loc) => `/${loc}/albums`,
       basics: true,
-      capture: true,
+      // The unpaginated catalog is ~50,000px tall at 390px; WebKit refuses
+      // a full-page screenshot over 32,767px. WebKit captures come from
+      // scripts/redesign-capture.mjs, which splits the page into parts.
+      capture: !h.webkit,
       cell: async ({ page, loc, width, name, check }) => {
         const l = await page.evaluate(
           ({ ROW, FILTER }) => {
@@ -210,7 +213,8 @@ const scenario = {
           h.check(`fixture ${width}: broken cover → fallback, same square`, st.broken?.[0] === "fallback" && st.broken[1] === size, JSON.stringify(st.broken));
           h.check(`fixture ${width}: undated group last`, st.undatedLast && st.firstHeading === "2099" && Number.isNaN(Number(st.lastHeading)), JSON.stringify(st));
           h.check(`fixture ${width}: no overflow`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-          await h.shot(page, `en-${width}-fixture-covers`);
+          // Full-page shot: over WebKit's 32,767px limit (see the matrix).
+          if (!h.webkit) await h.shot(page, `en-${width}-fixture-covers`);
         });
       }
     },
