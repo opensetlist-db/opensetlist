@@ -135,17 +135,29 @@
 //     2. the capture's own `url` (qa-report.json shape);
 //     3. the `url` of the qa-results `cases[]` entry with the same key
 //        (30-v1's qa.cjs records one per capture, so it needs no --map).
-//   Only the path + query is kept, re-based on the mockup URL given. Each
-//   page loads at the capture's width (height from the case, else 1000),
-//   DPR1, waits for `load`, best-effort network idle, `window.__mockupReady`
-//   (every mockup since 20-v1 sets it after rendering; one that never does
-//   costs a 10 s wait per capture and a printed note) and fonts. Skipped,
-//   each with a printed reason: `state=` fixtures other than
-//   `state=default` (mockup-only, as in --design), non-Chromium captures
-//   (--design compares against Chromium baselines; the WebKit shots repeat
-//   them at other widths), and captures with no URL from 1–3. The adapter's
-//   `file` is written relative to --out's folder, which is where --design
-//   resolves baselines from.
+//   Only the path + query is kept, re-based on the mockup origin given (a
+//   base with a path is refused: the mockups serve /<locale>/… at the root).
+//   Each page loads in Chromium (--browser is ignored) at the capture's
+//   width — height from the capture or its case, else 1000, the height
+//   both hand-written adapters used — DPR1, and waits for `load`,
+//   best-effort network idle, `window.__mockupReady` (every mockup since
+//   20-v1 sets it after rendering; one that never does costs a
+//   DESIGN_IDLE_MS wait per capture — 10 s, less if --page-timeout is
+//   shorter — and a printed note) and fonts. Skipped, each with a printed
+//   reason:
+//     - what --design itself skips (mockupOnlyReason: /entry, /review,
+//       state=error|loading);
+//     - every other `state=` value except `state=default`: those are QA
+//       fixtures the mockup fakes, which the app cannot show at that URL.
+//       --design would replay them as the plain page. To keep one, map it
+//       in --map to a real path that shows the same state (an empty list
+//       = a record with no data); the check runs on the resolved URL;
+//     - non-Chromium captures (--design compares Chromium baselines; the
+//       WebKit shots repeat them at other widths);
+//     - captures with no URL from 1–3.
+//   The adapter's `file` is written relative to --out's folder, which is
+//   where --design resolves baselines from (absolute when --out is on
+//   another drive). A capture that fails to load writes nothing (exit 1).
 //
 // Serve a production build, not `next dev` — dev-mode TTFB, bundle bytes and
 // overlay errors make the metrics meaningless. `scripts/serve-build.sh 3110`
@@ -1006,18 +1018,6 @@ async function runDesign() {
     return listed;
   };
 
-  // Mockup-only states: the design server fakes them with a route or a
-  // query flag the app does not have, so replaying them would capture a 404
-  // or the plain page under a misleading name.
-  const SKIPS = [
-    [(u) => /\/entry\/?$/.test(u.pathname), "mockup-only route /entry"],
-    [(u) => /\/review(\/|$)/.test(u.pathname), "mockup-only route /review"],
-    [
-      (u) => ["error", "loading"].includes(u.searchParams.get("state") ?? ""),
-      "mockup-only state= query",
-    ],
-  ];
-
   // `v1.1-ja-390-menu` → `menu`; a stem without `<locale>-<width>-` keeps
   // its whole name. String search, not a RegExp built from packet values
   // (the repo's lint forbids non-literal RegExp).
@@ -1044,7 +1044,7 @@ async function runDesign() {
     const stem = path.basename(c.file).replace(/\.[a-z0-9]+$/i, "");
     const key = scenarioKey(stem, locale, width);
     const name = `${locale}-${width}-${key}`;
-    const reason = SKIPS.find(([test]) => test(u))?.[1];
+    const reason = mockupOnlyReason(u);
     if (reason) {
       skipped.push({ name, file: c.file, url: u.pathname + u.search, reason });
       continue;
@@ -1266,6 +1266,20 @@ function comparableIds(expected, actual, url) {
   return { expected: ids.map(bare), actual: actual.map(bare) };
 }
 
+// Mockup-only scenarios: the design server fakes them with a route or a
+// query flag the app does not have, so replaying them would capture a 404
+// or the plain page under a misleading name. --design skips them and
+// --adapter-from-mockup leaves them out of the adapter. Returns the reason,
+// or null. The list lives inside the function: both modes run (and exit)
+// from the top of the module, before a top-level const down here would be
+// initialized.
+function mockupOnlyReason(u) {
+  if (/\/entry\/?$/.test(u.pathname)) return "mockup-only route /entry";
+  if (/\/review(\/|$)/.test(u.pathname)) return "mockup-only route /review";
+  if (["error", "loading"].includes(u.searchParams.get("state") ?? "")) return "mockup-only state= query";
+  return null;
+}
+
 // Runs in the page (pass it to page.evaluate): the entity ids of every link
 // inside `scope`, as `<kind>:<id>`, in DOM order, deduplicated. --design
 // reads the build with it and --adapter-from-mockup reads the mockup with
@@ -1294,7 +1308,8 @@ async function runAdapterFromMockup() {
     console.error("%s", msg);
     process.exit(1);
   };
-  if (!/^https?:\/\//.test(mockupBase)) fail(`--adapter-from-mockup must be the mockup's http(s) base URL (got ${mockupBase})`);
+  if (!/^https?:\/\/[^/]+$/.test(mockupBase))
+    fail(`--adapter-from-mockup must be the mockup's http(s) origin, no path (got ${mockupBase})`);
   if (!args.packet) fail("--packet <packet dir | qa-results.json | qa-report.json> is required");
 
   // A packet folder holds one of the two manifests; qa-report.json wins as
@@ -1334,7 +1349,11 @@ async function runAdapterFromMockup() {
       };
     } else {
       // pathToFileURL: a bare Windows path (F:\…) is not an import specifier.
-      mapFn = (await import(pathToFileURL(mapPath).href)).default;
+      try {
+        mapFn = (await import(pathToFileURL(mapPath).href)).default;
+      } catch (e) {
+        fail(`--map ${args.map}: ${e.message}`);
+      }
       if (typeof mapFn !== "function") fail(`--map ${args.map}: default export is not a function`);
     }
   }
@@ -1369,11 +1388,13 @@ async function runAdapterFromMockup() {
       skipped.push({ key, reason: `${parsed.engine} capture (--design compares Chromium baselines)` });
       continue;
     }
-    const url = toUrl(
-      mapFn?.({ key, engine: parsed?.engine ?? null, locale: parsed?.locale, width: parsed?.width, scenario: parsed?.scenario, file, case: kase }) ??
-        c.url ??
-        kase?.url,
-    );
+    let mapped = null;
+    try {
+      mapped = mapFn?.({ key, engine: parsed?.engine ?? null, locale: parsed?.locale, width: parsed?.width, scenario: parsed?.scenario, file, case: kase }) ?? null;
+    } catch (e) {
+      fail(`--map ${args.map}: ${key}: ${e.message}`);
+    }
+    const url = toUrl(mapped ?? c.url ?? kase?.url);
     if (!url) {
       skipped.push({ key, reason: "no URL (none listed, no cases[] entry, no --map match)" });
       continue;
@@ -1383,6 +1404,11 @@ async function runAdapterFromMockup() {
     const width = c.viewport?.width ?? kase?.viewport?.width ?? parsed?.width;
     const height = c.viewport?.height ?? kase?.viewport?.height ?? 1000;
     if (!Number.isInteger(width) || width <= 0) fail(`--packet: ${key} has no usable width`);
+    const shared = mockupOnlyReason(u);
+    if (shared) {
+      skipped.push({ key, reason: shared });
+      continue;
+    }
     const state = u.searchParams.get("state");
     if (state && state !== "default") {
       skipped.push({ key, reason: `mockup-only state=${state} fixture` });
@@ -1408,7 +1434,7 @@ async function runAdapterFromMockup() {
   }
   if (chosen.length === 0) fail("no captures left to read (see --list)");
 
-  const browser = await browserType.launch();
+  const browser = await chromium.launch();
   const captures = [];
   let errors = 0;
   let noReadySignal = 0;
