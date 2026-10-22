@@ -14,6 +14,9 @@
 // Plain JS (typed by dev-db-guard.d.mts) so a bare `node scripts/…` can
 // import it without a TypeScript loader.
 
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+
 export const DEV_PROJECT_REF = "nddawybyuedsrshhxikx";
 
 /**
@@ -32,4 +35,31 @@ export function pointsAtDevProject(raw) {
     url.hostname.endsWith(".pooler.supabase.com") &&
     decodeURIComponent(url.username) === `postgres.${DEV_PROJECT_REF}`;
   return direct || pooler;
+}
+
+/**
+ * The checkout whose `.env.local` / `.env` a DB script reads: the git
+ * top level of the cwd, else `fallback` (the script-relative repo root).
+ *
+ * Script-relative alone breaks for the copies redesign worktrees extract
+ * into the gitignored `.claude/tmp/`: `<script dir>/..` is `.claude/`
+ * there, which holds no env, and the run stops on a missing
+ * DATABASE_URL_UNPOOLED. page-qa / admin-qa / redesign-capture pick
+ * their checkout the same way (scripts/page-qa/harness.mjs). Callers
+ * print the result first, so a run started from the wrong directory
+ * shows it.
+ * @param {string} fallback
+ * @returns {string}
+ */
+export function checkoutRoot(fallback) {
+  try {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (top) return path.resolve(top);
+  } catch {
+    // not in a work tree, or git missing
+  }
+  return fallback;
 }
