@@ -190,7 +190,9 @@ motion) across locales × widths and exits 1 on any FAIL. Page tickets run
 it after any shared-style change (redesign spec story 51): chromium in
 full, `--browser webkit --quick` for Safari. `--summary` prints only the
 FAIL lines (timeouts included) and the tally; every check, PASS and N/A
-too, stays in `<out>/<browser>-qa.json`.
+too, stays in `<out>/<browser>-qa.json`. Without `--out`, `<out>` is
+`test-results/shell-qa/<browser>` (`<browser>-quick` with `--quick`) under
+the checkout root, printed as the first line; a rerun overwrites it.
 
 A production hydration mismatch shows up only as "Minified React error
 #418/#423/#425", with no component or text. `redesign-capture.mjs` then
