@@ -66,6 +66,7 @@ describe("buildPlan", () => {
     ["a duplicate key across kinds", { albums: [{ key: "a" }], series: [{ key: "a" }] }],
     ["a key colliding with fixture", { fixture: { cover: "x" }, albums: [{ key: "cover" }] }],
     ["an impossible date", { albums: [{ key: "a", releaseDate: "2099-02-30" }] }],
+    ["a two-digit-era year", { albums: [{ key: "a", releaseDate: "0099-01-01" }] }],
     ["a non-http image URL", { albums: [{ key: "a", imageUrl: "javascript:alert(1)" }] }],
     ["an empty artist list", { albums: [{ key: "a", artistIds: [] }] }],
     ["a non-numeric artist id", { albums: [{ key: "a", artistIds: ["4x"] }] }],
@@ -86,9 +87,14 @@ describe("parseArgs", () => {
     const inline = parseArgs(["--prefix", "[QA] T", "--spec", '{"albums":[{"key":"a"}]}', "--dry-run"]);
     expect(inline).toMatchObject({ prefix: "[QA] T", spec: { albums: [{ key: "a" }] }, out: null, dryRun: true });
 
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "fixture-add-")), "spec.json");
-    fs.writeFileSync(file, '{"albums":[{"key":"b"}]}');
-    expect(parseArgs(["--spec", file, "--prefix", "[QA] T", "--out", "x.json"])).toMatchObject({ spec: { albums: [{ key: "b" }] }, out: "x.json" });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fixture-add-"));
+    try {
+      const file = path.join(dir, "spec.json");
+      fs.writeFileSync(file, '{"albums":[{"key":"b"}]}');
+      expect(parseArgs(["--spec", file, "--prefix", "[QA] T", "--out", "x.json"])).toMatchObject({ spec: { albums: [{ key: "b" }] }, out: "x.json" });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it.each([
@@ -96,6 +102,7 @@ describe("parseArgs", () => {
     ["no --spec", ["--prefix", "[QA] T"]],
     ["a prefix without [QA]", ["--prefix", "QA T", "--spec", "{}"]],
     ["a bare [QA] prefix", ["--prefix", "[QA] ", "--spec", "{}"]],
+    ["an over-long prefix", ["--prefix", `[QA] ${"x".repeat(41)}`, "--spec", "{}"]],
     ["a prefix with shell characters", ["--prefix", '[QA] T"$(x)', "--spec", "{}"]],
     ["a flag eaten as a value", ["--prefix", "--spec", "{}"]],
     ["broken inline JSON", ["--prefix", "[QA] T", "--spec", "{albums"]],

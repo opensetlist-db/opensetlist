@@ -59,7 +59,12 @@
 // Defaults: album type single, series type standalone, event type concert
 // and status scheduled; dates / URLs / links are null unless given (an
 // album or event without a date is the "undated" state). Enum values are
-// checked by the database's own enum types.
+// checked by the database's own enum types; a value it rejects (or a date
+// it can't store) is reported as a refusal, exit 2, like any spec mistake.
+//
+// On Windows PowerShell 5.1, inline JSON loses its double quotes on the
+// way to a native program: pass --spec as a file there, and hand page-qa
+// the --out file rather than the printed JSON.
 //
 // Output (stdout, and --out when given; only after COMMIT): one JSON
 // object that page-qa takes unchanged as `--fixture` — each row's key maps
@@ -81,7 +86,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // `[QA] ` and then a per-ticket tag. The character set is kept to what is
 // safe inside a double-quoted shell argument, because the prefix is
 // printed into the db-fixture-rm command line.
-const PREFIX = /^\[QA\] [A-Za-z0-9][A-Za-z0-9 ._-]*$/;
+const PREFIX = /^\[QA\] [A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/;
 const KEY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const EXTRA_KEY = /^[A-Za-z][A-Za-z0-9]*$/;
 const BIGINT_ID = /^[1-9][0-9]{0,17}$/;
@@ -121,8 +126,10 @@ function httpUrl(where, v) {
 function day(where, v) {
   const m = typeof v === "string" && DATE.exec(v);
   const d = m && new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-  if (!m || d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) {
-    throw new UsageError(`${where} must be a YYYY-MM-DD date`);
+  // Years below 1000 are refused outright: Date.UTC maps 0–99 to 19xx,
+  // and no QA state needs them.
+  if (!m || +m[1] < 1000 || d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) {
+    throw new UsageError(`${where} must be a YYYY-MM-DD date (year 1000 or later)`);
   }
   return v;
 }
@@ -336,14 +343,14 @@ export function parseArgs(argv) {
   }
   if (prefix === null || specArg === null) throw new UsageError(USAGE);
   if (!PREFIX.test(prefix)) {
-    throw new UsageError(`--prefix must be "[QA] " followed by a tag of letters, digits, spaces, . _ - (got ${JSON.stringify(prefix)})`);
+    throw new UsageError(`--prefix must be "[QA] " followed by a tag of up to 40 letters, digits, spaces, . _ - (got ${JSON.stringify(prefix)})`);
   }
   return { prefix, spec: readJson("--spec", specArg), out, dryRun };
 }
 
 /**
  * A value starting with `{` is inline JSON; anything else is a file path.
- * Shared rule with page-qa's --fixture.
+ * page-qa's --fixture applies the same rule (its own copy).
  */
 export function readJson(flag, value) {
   const inline = value.trimStart().startsWith("{");
@@ -370,17 +377,31 @@ function describeTarget(raw) {
   return `${decodeURIComponent(url.username)}@${url.hostname}:${url.port || "5432"}${url.pathname}`;
 }
 
+// SQLSTATEs for a value the database refuses to store: a bad enum label
+// (22P02 invalid_text_representation), an out-of-range date / time or
+// offset (22007, 22008). They are spec mistakes, so they refuse (exit 2)
+// instead of looking like an infrastructure failure.
+const BAD_VALUE = new Set(["22P02", "22007", "22008"]);
+
 async function insertOne(client, sql, params, what) {
-  const r = await client.query(sql, params);
+  let r;
+  try {
+    r = await client.query(sql, params);
+  } catch (e) {
+    if (BAD_VALUE.has(e?.code)) throw new Refusal(`refused — nothing written: ${what}: ${e.message}`);
+    throw e;
+  }
   if (r.rowCount !== 1) throw new Refusal(`${what}: ${r.rowCount} rows inserted, planned 1 — rolled back`);
   return r.rows[0]?.id;
 }
 
 async function run(client, plan) {
   // 1. Linked artists must exist and not be soft-deleted: a link to a
-  //    deleted artist would render a state no real page has.
+  //    deleted artist would render a state no real page has. FOR SHARE
+  //    holds them until COMMIT, so a concurrent soft delete (an UPDATE)
+  //    waits instead of landing between this check and the inserts.
   if (plan.artistIds.length) {
-    const r = await client.query(`SELECT id::text AS id FROM "Artist" WHERE id = ANY($1::bigint[]) AND NOT "isDeleted"`, [
+    const r = await client.query(`SELECT id::text AS id FROM "Artist" WHERE id = ANY($1::bigint[]) AND NOT "isDeleted" FOR SHARE`, [
       plan.artistIds,
     ]);
     const found = new Set(r.rows.map((x) => x.id));

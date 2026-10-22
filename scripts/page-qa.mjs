@@ -27,7 +27,9 @@
 //     [--fixture <json>]             fixture ids for the scenario's fixture
 //                                    checks (keys: --list shows them): inline
 //                                    JSON (a value starting with `{`) or a
-//                                    JSON file path. The harness never
+//                                    JSON file path (on Windows PowerShell
+//                                    5.1 use a file: inline JSON loses its
+//                                    quotes there). The harness never
 //                                    writes to the DB — create the rows with
 //                                    scripts/db-fixture-add.mjs (its output
 //                                    goes here unchanged) and delete them
