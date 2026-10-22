@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import { entityAlternates, enforceCanonicalSlug, entityPath } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
@@ -488,7 +488,7 @@ export default async function SongPage({ params, searchParams }: Props) {
       status,
       formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
       name: eventName,
-      href: `/${locale}/events/${event.id}/${event.slug}`,
+      href: entityPath("events", locale, event.id, event.slug),
       rawDateMs: new Date(String(event.date)).getTime(),
       trailing: (
         <SongRowTrailing cells={cells} encoreLabel={t("encoreBadge")} />
@@ -712,7 +712,7 @@ export default async function SongPage({ params, searchParams }: Props) {
             <InfoCard artist={primaryArtist}>
               {primaryArtist && primaryArtistName && (
                 <Link
-                  href={`/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`}
+                  href={entityPath("artists", locale, primaryArtist.id, primaryArtist.slug)}
                   style={{ textDecoration: "none" }}
                 >
                   <span
@@ -1196,7 +1196,7 @@ export default async function SongPage({ params, searchParams }: Props) {
                           </div>
                         ) : (
                           <Link
-                            href={`/${locale}/songs/${v.id}/${v.slug}`}
+                            href={entityPath("songs", locale, v.id, v.slug)}
                             className="row-hover-bg"
                             style={{
                               ...rowStyle,

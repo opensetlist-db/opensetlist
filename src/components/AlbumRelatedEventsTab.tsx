@@ -11,6 +11,7 @@ import { displayOriginalName } from "@/lib/display";
 import { AlbumType } from "@/generated/prisma/enums";
 import type { RelatedEvent } from "@/lib/albumRelatedEvents";
 
+import { entityPath } from "@/lib/seo/entityUrl";
 /*
  * Related-events tab content for the Album page (b04). Consumes the
  * already-fetched RelatedEvent[] from getAlbumRelatedEvents and
@@ -130,7 +131,7 @@ export async function AlbumRelatedEventsTab({
       // happened at — same source the sort key uses below.
       formattedDate: formatDate(event.date ?? event.startTime, locale),
       name: eventName,
-      href: `/${locale}/events/${event.id}/${event.slug}`,
+      href: entityPath("events", locale, event.id, event.slug),
       // sort key uses event.startTime (NOT NULL per schema) rather
       // than event.date (nullable — `new Date("null").getTime()` is
       // NaN, which would break the in-bucket sort + the mostRecentMs

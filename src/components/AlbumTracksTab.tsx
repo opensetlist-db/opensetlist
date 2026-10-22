@@ -7,6 +7,7 @@ import {
 } from "@/lib/albumTrackTitle";
 import { displayOriginalTitle } from "@/lib/display";
 
+import { entityPath } from "@/lib/seo/entityUrl";
 /*
  * Tracks tab content for the Album detail page (b04). Renders the
  * album's AlbumTrack rows disc-grouped, with the b01b dispatch
@@ -212,7 +213,7 @@ function TrackRow({
   // page exists for the vocal sibling which is its own
   // Pattern 1 row in the same tracklist.
   const linkHref = track.song
-    ? `/${locale}/songs/${track.song.id}/${track.song.slug}`
+    ? entityPath("songs", locale, track.song.id, track.song.slug)
     : null;
 
   const numberCell = (

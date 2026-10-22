@@ -29,6 +29,7 @@ import {
   SETLIST_DESKTOP_GRID_GAP,
 } from "@/components/setlistLayout";
 
+import { entityPath } from "@/lib/seo/entityUrl";
 // Stable reference for items with no reactions yet — without this, every
 // render produces a fresh `{}` and ReactionButtons' prev-prop guard would
 // needlessly run setState every poll for those items.
@@ -170,15 +171,13 @@ export function SetlistRow({
       s.song.translations,
       locale,
     );
-    // Build the canonical href segment once. Schema declares
-    // `Song.slug` as required + unique, but defensively handle the
-    // empty-string case (some pre-redesign imports left it blank) by
-    // dropping the slug segment entirely — the `[[...slug]]` catch-all
-    // resolves on id alone, so `/songs/{id}` still routes correctly.
-    const slugSegment = s.song.slug ? `/${s.song.slug}` : "";
+    // Schema declares `Song.slug` as required + unique, but some
+    // pre-redesign imports left it blank; `entityPath` drops the slug
+    // segment for an empty slug, and the `[[...slug]]` catch-all
+    // resolves on id alone.
     return {
       id: s.song.id,
-      href: `/${locale}/songs/${s.song.id}${slugSegment}`,
+      href: entityPath("songs", locale, s.song.id, s.song.slug),
       main,
       sub,
       variantLabel: variant,
@@ -595,7 +594,7 @@ function UnitBadge({
   };
   return (
     <Link
-      href={`/${locale}/artists/${artistId}/${artistSlug}`}
+      href={entityPath("artists", locale, artistId, artistSlug)}
       className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-medium hover:underline${spaced ? " ml-1" : ""}`}
       style={styled}
     >

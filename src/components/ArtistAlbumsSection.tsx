@@ -9,6 +9,7 @@ import { AlbumCard } from "@/components/AlbumCard";
 import { SectionLabel } from "@/components/SectionLabel";
 import { colors, radius, shadows } from "@/styles/tokens";
 
+import { entityPath } from "@/lib/seo/entityUrl";
 /*
  * Artist page album surfaces (b09; Sprint B2 QA-pass restructure).
  *
@@ -133,7 +134,7 @@ export async function ArtistAlbumsSection({
           // page resolves both), but every other navigation link in the
           // project goes through the slug form, so match that pattern.
           <Link
-            href={`/${locale}/artists/${artistId}/${artistSlug}?tab=albums`}
+            href={`${entityPath("artists", locale, artistId, artistSlug)}?tab=albums`}
             style={{
               fontSize: 12,
               fontWeight: 600,

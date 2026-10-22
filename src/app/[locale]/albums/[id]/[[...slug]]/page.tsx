@@ -3,7 +3,7 @@ import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import { entityAlternates, enforceCanonicalSlug, entityPath } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import { serializeBigIntAsString } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
@@ -350,7 +350,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   if (primaryArtist && primaryArtistName) {
     breadcrumbItems.push({
       label: primaryArtistName,
-      href: `/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`,
+      href: entityPath("artists", locale, primaryArtist.id, primaryArtist.slug),
     });
   }
   breadcrumbItems.push({ label: t("breadcrumb.albums") });

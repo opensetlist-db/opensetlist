@@ -20,6 +20,7 @@ import { formatDate } from "@/lib/utils";
 import type { BigIntStringified } from "@/lib/utils";
 import { colors, radius, shadows } from "@/styles/tokens";
 
+import { entityPath } from "@/lib/seo/entityUrl";
 /*
  * EventBdSection — mounts between the Setlist card and the Impressions
  * card on `/[locale]/events/[id]/...`. Surfaces the linked BD Album's
@@ -225,7 +226,7 @@ async function FullVariant({
   // Status badge — three label variants matching the v2 mockup.
   const badge = pickBadge(state, t);
 
-  const albumHref = `/${locale}/albums/${album.id}/${album.slug}`;
+  const albumHref = entityPath("albums", locale, album.id, album.slug);
 
   // CTA: details (announced, neutral), compare (preorder, brand
   // gradient), purchase (released, brand gradient). All three link

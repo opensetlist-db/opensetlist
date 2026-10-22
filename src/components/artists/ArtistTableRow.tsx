@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ARTIST_TABLE_COLUMNS } from "@/components/artists/layout";
 import type { ArtistRowData } from "@/lib/artists";
 
+import { entityPath } from "@/lib/seo/entityUrl";
 /*
  * Desktop table row for one artist. Sibling of <ArtistCard>.
  *
@@ -73,7 +74,7 @@ export default async function ArtistTableRow({
       }}
     >
       <Link
-        href={`/${locale}/artists/${artist.id}/${artist.slug}`}
+        href={entityPath("artists", locale, artist.id, artist.slug)}
         className="row-hover-bg"
         style={{
           display: "grid",

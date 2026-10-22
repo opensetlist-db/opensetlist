@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { StatsSubLabel } from "@/components/StatsSubLabel";
 import type { ArtistRowData } from "@/lib/artists";
 
+import { entityPath } from "@/lib/seo/entityUrl";
 /*
  * Mobile card for one artist row in the list page (visible < lg).
  *
@@ -78,7 +79,7 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
       }}
     >
       <Link
-        href={`/${locale}/artists/${artist.id}/${artist.slug}`}
+        href={entityPath("artists", locale, artist.id, artist.slug)}
         className="row-hover-bg"
         style={{
           display: "flex",
