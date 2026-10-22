@@ -52,7 +52,9 @@ export async function SongAlbumPanel({
             <SongAlbumCover src={row.album.imageUrl} alt={title.main} />
             <div className={styles.albumCopy}>
               {row.isCanonical ? (
-                <span className={styles.chip}>
+                // The attribute marks the original-recording chip apart
+                // from the bonus chip (same style) for QA, locale-free.
+                <span className={styles.chip} data-original-recording="">
                   {t("albumOriginalRecording")}
                 </span>
               ) : null}

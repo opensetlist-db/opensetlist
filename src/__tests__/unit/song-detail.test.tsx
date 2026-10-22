@@ -217,6 +217,8 @@ describe("SongAlbumPanel", () => {
     expect(links).toHaveLength(2);
     expect(links[0].getAttribute("href")).toBe("/ko/albums/5/db");
     expect(links[0].textContent).toContain("Song.albumOriginalRecording");
+    expect(links[0].querySelectorAll("[data-original-recording]")).toHaveLength(1);
+    expect(links[1].querySelectorAll("[data-original-recording]")).toHaveLength(0);
     expect(links[0].textContent).toContain("EP · 2023");
     expect(links[1].textContent).not.toContain("Song.albumOriginalRecording");
     expect(links[1].textContent).toContain("두 번째");

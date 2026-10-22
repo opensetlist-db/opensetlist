@@ -185,12 +185,20 @@ const scenario = {
       const albums = await p2.evaluate(() => ({
         rows: document.querySelectorAll('main aside a[class*="__albumMini"]').length,
         total: document.querySelector('main aside [class*="__albumTotal"]')?.textContent ?? "",
-        chips: [...document.querySelectorAll('main aside a[class*="__albumMini"]')].map((a) => !!a.querySelector('[class*="__chip"]')),
+        // Row indexes carrying the original-recording chip (the bonus chip
+        // shares its class, so the data attribute tells them apart).
+        original: [...document.querySelectorAll('main aside a[class*="__albumMini"]')]
+          .map((a, i) => (a.querySelector("[data-original-recording]") ? i : -1))
+          .filter((i) => i >= 0),
       }));
       if (albums.rows < 2) h.skip("multi-album panel", `song 2455 has ${albums.rows} album(s) now`);
       else {
         h.check("every album listed + total", albums.total.includes(String(albums.rows)), `${albums.rows} / ${albums.total}`);
-        h.check("only the oldest album is the original recording", albums.chips[0] && albums.chips.slice(1).every((c) => !c) || albums.chips[0], JSON.stringify(albums.chips));
+        h.check(
+          "only the oldest album is the original recording",
+          albums.original.length === 1 && albums.original[0] === 0,
+          JSON.stringify(albums.original),
+        );
       }
     });
 
