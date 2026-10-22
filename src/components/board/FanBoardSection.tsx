@@ -758,7 +758,7 @@ function ColumnPanel({
                 // Bare-id song URL: catalog rows carry no slug; the
                 // canonical 308 adds it.
                 <Link
-                  href={`/${locale}/songs/${e.songId}`}
+                  href={entityPath("songs", locale, e.songId, "")}
                   onClick={() => trackSong(e.songId, "crowd")}
                   className="min-w-0 flex-1 truncate"
                   style={{ color: colors.textPrimary }}
@@ -819,7 +819,7 @@ function ColumnPanel({
                   }}
                 >
                   <Link
-                    href={`/${locale}/songs/${s.songId}`}
+                    href={entityPath("songs", locale, s.songId, "")}
                     onClick={() => trackSong(s.songId, "operator")}
                     className="min-w-0 flex-1 truncate"
                     style={{ color: colors.textPrimary }}

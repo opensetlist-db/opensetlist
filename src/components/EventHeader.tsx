@@ -9,6 +9,7 @@ import { EventStartTime } from "@/components/EventStartTime";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { colors, radius, shadows } from "@/styles/tokens";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import { entityPath } from "@/lib/seo/entityUrl";
 
 interface Props {
   status: ResolvedEventStatus;
@@ -172,7 +173,7 @@ export function EventHeader({
           <div style={{ marginBottom: 4 }}>
             {artist ? (
               <Link
-                href={`/${locale}/artists/${artist.id}/${artist.slug}`}
+                href={entityPath("artists", locale, artist.id, artist.slug)}
                 className="text-[12px] font-semibold hover:underline"
                 style={{ color: colors.primary }}
               >
@@ -194,7 +195,7 @@ export function EventHeader({
               // Mockup `event-page-desktop-mockup-v2.jsx:525` —
               // `fontWeight: 600`. Tailwind's `font-medium` is 500;
               // use the bracketed semibold equivalent or inline.
-              href={`/${locale}/series/${series.id}/${series.slug}`}
+              href={entityPath("series", locale, series.id, series.slug)}
               className="text-[11px] font-semibold hover:underline"
               style={{ color: colors.primary }}
             >

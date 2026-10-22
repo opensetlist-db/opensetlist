@@ -10,6 +10,7 @@ import {
 import { countActiveBonuses, isEndedListing } from "@/lib/albumBonusDisplay";
 import { formatDate } from "@/lib/utils";
 import type { BigIntStringified } from "@/lib/utils";
+import { entityPath } from "@/lib/seo/entityUrl";
 
 /*
  * Sidebar card for the Album detail page (`/[locale]/albums/[id]/...`).
@@ -174,7 +175,7 @@ export async function AlbumInfoCard({
       label: t("meta.label.artist"),
       value: (
         <Link
-          href={`/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`}
+          href={entityPath("artists", locale, primaryArtist.id, primaryArtist.slug)}
           style={{
             color: colors.primary,
             fontSize: 13,
@@ -360,7 +361,7 @@ export async function AlbumInfoCard({
             return (
               <Link
                 key={a.id}
-                href={`/${locale}/artists/${a.id}/${a.slug}`}
+                href={entityPath("artists", locale, a.id, a.slug)}
                 style={{
                   display: "inline-block",
                   padding: "3px 9px",

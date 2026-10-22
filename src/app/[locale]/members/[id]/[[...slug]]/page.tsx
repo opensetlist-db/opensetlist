@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import { entityAlternates, enforceCanonicalSlug, entityPath } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import {
@@ -481,7 +481,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
         { status: event.status, startTime: event.startTime },
         referenceNow,
       ),
-      href: `/${locale}/events/${event.id}/${event.slug}`,
+      href: entityPath("events", locale, event.id, event.slug),
     };
   };
 
@@ -778,7 +778,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
           // for locales whose translated title slugifies differently,
           // and the song page 308s every non-canonical slug
           // (`enforceCanonicalSlug`), costing each click a redirect hop.
-          href: `/${locale}/songs/${sid}/${song.slug}`,
+          href: entityPath("songs", locale, song.id, song.slug),
           titleMain: main || song.originalTitle,
           titleSub: sub,
           unitName: chipName,
@@ -815,7 +815,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
               ? [
                   {
                     label: parentName,
-                    href: `/${locale}/artists/${parentArtist.id}/${parentArtist.slug}`,
+                    href: entityPath("artists", locale, parentArtist.id, parentArtist.slug),
                   } satisfies BreadcrumbItem,
                 ]
               : []),
@@ -896,7 +896,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                 )}
                 {primaryUnit && primaryUnitName && (
                   <Link
-                    href={`/${locale}/artists/${primaryUnit.artist.id}/${primaryUnit.artist.slug}`}
+                    href={entityPath("artists", locale, primaryUnit.artist.id, primaryUnit.artist.slug)}
                     style={{
                       fontSize: 12,
                       fontWeight: 700,
@@ -1064,7 +1064,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                     </SectionLabel>
                     {totalSongs > songsTop3.length && (
                       <Link
-                        href={`/${locale}/members/${id}/${member.slug}?tab=songs`}
+                        href={`${entityPath("members", locale, id, member.slug)}?tab=songs`}
                         style={{
                           fontSize: 12,
                           color: colors.primary,
@@ -1124,7 +1124,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                     </SectionLabel>
                     {totalEvents > recentEvents.length && (
                       <Link
-                        href={`/${locale}/members/${id}/${member.slug}?tab=history`}
+                        href={`${entityPath("members", locale, id, member.slug)}?tab=history`}
                         style={{
                           fontSize: 12,
                           color: colors.primary,

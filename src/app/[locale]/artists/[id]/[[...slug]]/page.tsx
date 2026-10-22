@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import { entityAlternates, enforceCanonicalSlug, entityPath } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import {
@@ -562,7 +562,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       name:
         displayNameWithFallback(event, event.translations, locale) ||
         evT("unknownEvent"),
-      href: `/${locale}/events/${event.id}/${event.slug}`,
+      href: entityPath("events", locale, eventIdStr, event.slug),
       trailing,
       // serializeBigInt also runs JSON.stringify, which converts
       // Date columns to ISO strings — so the runtime value is a
@@ -679,7 +679,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     return (
       <UnitCard
         key={unit.id}
-        href={`/${locale}/artists/${unit.id}/${unit.slug}`}
+        href={entityPath("artists", locale, unit.id, unit.slug)}
         unitName={unitName}
         unitColor={unitColor}
         stripeBg={stripeBg}
@@ -713,7 +713,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
               ? [
                   {
                     label: parentName,
-                    href: `/${locale}/artists/${artist.parentArtist.id}/${artist.parentArtist.slug}`,
+                    href: entityPath("artists", locale, artist.parentArtist.id, artist.parentArtist.slug),
                   } satisfies BreadcrumbItem,
                 ]
               : []),
@@ -927,7 +927,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                         return (
                           <MemberChip
                             key={sl.id}
-                            href={`/${locale}/members/${sl.stageIdentity.id}/${sl.stageIdentity.slug}`}
+                            href={entityPath("members", locale, sl.stageIdentity.id, sl.stageIdentity.slug)}
                             memberName={memberName}
                             avatarLabel={memberAvatarLabel}
                             unitName={unitName}
@@ -971,7 +971,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     </SectionLabel>
                     {totalEvents > recentEvents.length && (
                       <Link
-                        href={`/${locale}/artists/${artist.id}/${artist.slug}?tab=history`}
+                        href={`${entityPath("artists", locale, artist.id, artist.slug)}?tab=history`}
                         style={{
                           fontSize: 12,
                           color: colors.primary,

@@ -13,11 +13,18 @@ import {
   hexColourAssertionRestrictions,
   hexColourLiteralRestrictions,
 } from "./eslint-rules/hex-colour-literals.mjs";
+import { entityUrlPathRestrictions } from "./eslint-rules/entity-url-paths.mjs";
+import { builtinRules } from "eslint/use-at-your-own-risk";
 
 // One plugin object for every block that uses it: flat config refuses a
 // plugin name bound to two different objects.
 const localPlugin = {
   rules: {
+    // The core `no-restricted-syntax` under a second name. One rule has
+    // one severity per file, and in src/components/ the core rule already
+    // carries the hex-colour entries as warnings; the entity-URL entries
+    // must be errors, so they run as their own rule instead.
+    "no-hand-built-entity-urls": builtinRules.get("no-restricted-syntax"),
     "use-client-exports": useClientExports,
     "no-ticket-ids": noTicketIds,
     "console-format-string": consoleFormatString,
@@ -95,6 +102,18 @@ const eslintConfig = defineConfig([
     files: ["src/app/api/admin/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": ["error", adminTranslationDeleteRestriction],
+    },
+  },
+  // Public entity links go through src/lib/seo/entityUrl.ts
+  // (`entityPath`, `eventHref`), never a hand-built `/${locale}/songs/${id}`
+  // template — CLAUDE.md "URL Strategy". Public pages and components
+  // only: admin and API routes build operator/fetch paths, and src/lib/
+  // holds the approved builders. See eslint-rules/entity-url-paths.mjs.
+  {
+    files: ["src/app/\\[locale\\]/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],
+    plugins: { local: localPlugin },
+    rules: {
+      "local/no-hand-built-entity-urls": ["error", ...entityUrlPathRestrictions],
     },
   },
   // Colours come from src/styles/tokens.ts, not hex literals: the

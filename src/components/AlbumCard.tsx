@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
 import { parseReleaseYear } from "@/lib/utils";
 import { colors, radius, shadows } from "@/styles/tokens";
+import { entityPath } from "@/lib/seo/entityUrl";
 
 /*
  * AlbumCard — reusable album mini-card used across Sprint B2 cross-link
@@ -203,7 +204,7 @@ async function MiniVariant({
     footerSegments.push(String(releaseYear));
   }
 
-  const albumHref = `/${locale}/albums/${album.id}/${album.slug}`;
+  const albumHref = entityPath("albums", locale, album.id, album.slug);
 
   return (
     <Link
@@ -392,7 +393,7 @@ async function ListVariant({
 
   const primaryArtist = album.artists[0]?.artist ?? null;
   const fallbackColor = primaryArtist?.color ?? colors.primary;
-  const albumHref = `/${locale}/albums/${album.id}/${album.slug}`;
+  const albumHref = entityPath("albums", locale, album.id, album.slug);
 
   // Shared sub-elements rendered in both the mobile-row and desktop-card
   // layouts so they can't drift apart.

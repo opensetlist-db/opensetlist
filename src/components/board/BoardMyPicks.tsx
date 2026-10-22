@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
+import { entityPath } from "@/lib/seo/entityUrl";
 import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
 import {
   BOARD_PICKS_PER_GROUP,
@@ -175,7 +176,9 @@ export function BoardMyPicks({
                 <span className="min-w-0 flex-1">
                   {available ? (
                     <Link
-                      href={`/${locale}/songs/${p.songId}`}
+                      // Bare-id song URL: a stored pick carries no
+                      // slug; the song page's canonical 308 adds it.
+                      href={entityPath("songs", locale, p.songId, "")}
                       className="block truncate"
                       style={{ color: colors.textPrimary }}
                     >

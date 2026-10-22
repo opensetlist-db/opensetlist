@@ -1242,7 +1242,7 @@ export default async function EventPage({ params }: Props) {
       ? [
           {
             label: seriesShortName,
-            href: `/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
+            href: entityPath("series", locale, event.eventSeries.id, event.eventSeries.slug),
           } satisfies BreadcrumbItem,
         ]
       : []),

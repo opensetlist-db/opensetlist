@@ -1,18 +1,12 @@
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-// Two `Link` imports for two purposes:
-//   - `IntlLink` (`@/i18n/navigation`) for intra-app paths that are
-//     locale-FREE (the i18n Link auto-prepends locale): childSeries +
-//     parentSeries breadcrumb hops.
-//   - `Link` (`next/link`) for paths that already include the locale
-//     prefix from `eventHref(locale, ...)`: leg event rows + the LIVE
-//     banner. Using the i18n Link with a locale-prefixed href would
-//     double-prefix as `/ko/ko/events/...`.
-import { Link as IntlLink } from "@/i18n/navigation";
+// `Link` from `next/link`, not the i18n Link: every href here comes
+// from `entityPath` / `eventHref`, which already carry the locale
+// prefix. The i18n Link would prepend it again (`/ko/ko/events/...`).
 import Link from "next/link";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import { entityAlternates, enforceCanonicalSlug, entityPath } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import {
   CACHE_TTL,
@@ -174,7 +168,7 @@ async function fetchSongAppearances(completedEventIds: bigint[]) {
 
 type SongRowHydrated = {
   id: number;
-  // Required for the IntlLink href on each row in the songs tab —
+  // Required for the song-detail href on each row in the songs tab —
   // takes the viewer to the song detail page. Returned by the
   // findMany at line 125 by default (base columns aren't stripped
   // unless explicitly omitted).
@@ -537,7 +531,7 @@ export default async function EventSeriesPage({
               ? [
                   {
                     label: parentName || t("unknownSeries"),
-                    href: `/${locale}/series/${series.parentSeries.id}/${series.parentSeries.slug}`,
+                    href: entityPath("series", locale, series.parentSeries.id, series.parentSeries.slug),
                   } satisfies BreadcrumbItem,
                 ]
               : []),
@@ -879,8 +873,8 @@ export default async function EventSeriesPage({
                           ) || t("unknownSeries");
                         return (
                           <li key={String(child.id)} style={{ marginBottom: 4 }}>
-                            <IntlLink
-                              href={`/series/${child.id}/${child.slug}`}
+                            <Link
+                              href={entityPath("series", locale, child.id, child.slug)}
                               style={{
                                 fontSize: 13,
                                 color: colors.primary,
@@ -888,7 +882,7 @@ export default async function EventSeriesPage({
                               }}
                             >
                               {childName}
-                            </IntlLink>
+                            </Link>
                           </li>
                         );
                       })}
@@ -987,13 +981,13 @@ export default async function EventSeriesPage({
                             {/* Whole-row link to song detail. The chevron
                                 on the right was visible signage suggesting
                                 this row was clickable, but the previous
-                                static <li> didn't act on it. Wrapping in
-                                IntlLink (auto-prepends locale) closes the
-                                discoverability gap. `row-hover-bg` matches
-                                the hover/focus treatment on every other
-                                clickable list row in the codebase. */}
-                            <IntlLink
-                              href={`/songs/${row.songId}/${row.song.slug}`}
+                                static <li> didn't act on it. Wrapping in a
+                                Link closes the discoverability gap.
+                                `row-hover-bg` matches the hover/focus
+                                treatment on every other clickable list
+                                row in the codebase. */}
+                            <Link
+                              href={entityPath("songs", locale, row.songId, row.song.slug)}
                               className="row-hover-bg"
                               style={{
                                 display: "flex",
@@ -1071,7 +1065,7 @@ export default async function EventSeriesPage({
                               >
                                 ›
                               </span>
-                            </IntlLink>
+                            </Link>
                           </li>
                         );
                       })}
