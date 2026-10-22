@@ -1,9 +1,10 @@
 "use client";
 
 import type { MouseEvent } from "react";
+import type { Section } from "@/lib/types/legal";
 
 interface Props {
-  sections: { id: string; title: string }[];
+  sections: Pick<Section, "id" | "title">[];
   ariaLabel: string;
   className: string;
 }

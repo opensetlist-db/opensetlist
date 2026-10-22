@@ -85,14 +85,17 @@ describe("LegalLayout", () => {
         cb(0);
         return 0;
       });
-    const { container } = await renderLegal("terms", "en");
-    const [toc] = screen.getAllByRole("navigation", { name: "legal.tocLabel" });
-    const link = within(toc).getAllByRole("link")[1];
-    fireEvent.click(link);
-    expect(document.activeElement).toBe(
-      container.querySelector(`#${termsEn.sections[1].id}`),
-    );
-    raf.mockRestore();
+    try {
+      const { container } = await renderLegal("terms", "en");
+      const [toc] = screen.getAllByRole("navigation", { name: "legal.tocLabel" });
+      const link = within(toc).getAllByRole("link")[1];
+      fireEvent.click(link);
+      expect(document.activeElement).toBe(
+        container.querySelector(`#${termsEn.sections[1].id}`),
+      );
+    } finally {
+      raf.mockRestore();
+    }
   });
 
   it("marks the current page in both page switchers and links the other page", async () => {
@@ -117,6 +120,20 @@ describe("LegalLayout", () => {
   });
 
   it("falls back to the unavailable notice without TOC, date or cross-page CTA", async () => {
+    // Positive control: the same page in a real locale has every element
+    // the fallback must drop, so the absence checks below can't pass
+    // because the selectors are wrong.
+    const real = await renderLegal("privacy", "ko");
+    expect(
+      screen.getAllByRole("navigation", { name: "legal.tocLabel" }),
+    ).toHaveLength(2);
+    expect(real.container.querySelector("details")).not.toBeNull();
+    expect(real.container.querySelector("time")).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "legal.bottomLinkViewTerms" }),
+    ).toBeInTheDocument();
+    real.unmount();
+
     const { container } = await renderLegal("privacy", "zh");
     expect(screen.getByText("legal.unavailableInLocale")).toBeInTheDocument();
     expect(

@@ -18,6 +18,10 @@
  */
 
 .page {
+  /* flex: 1 keeps the footer at the viewport bottom on a short page (the
+     empty fallback), as the pre-redesign `flex-1` main did — body is a
+     flex column. width: 100% stops the flex item shrinking to content. */
+  flex: 1 0 auto;
   width: 100%;
   max-width: 1184px;
   margin: 0 auto;
@@ -83,7 +87,7 @@
 }
 .pageNav a:hover,
 .toc a:hover {
-  background: #edf4ff;
+  background: #edf3fe;
 }
 
 .tocTitle {
@@ -175,7 +179,10 @@
 }
 
 /* Anchor targets: 24px clearance (header is not sticky). Sections carry
-   tabIndex={-1} so a TOC jump can move keyboard focus onto them. */
+   tabIndex={-1} so a TOC jump can move keyboard focus onto them; the
+   shell's :focus-visible ring around the section after a keyboard jump
+   is intended (34-v1: "anchor target section can receive keyboard
+   focus"), so there is no outline reset here. */
 .section {
   scroll-margin-top: 24px;
   margin-bottom: 34px;
@@ -258,7 +265,7 @@
 }
 
 .empty {
-  margin: 0;
+  margin: 0 0 12px;
   padding: 32px 0;
   text-align: center;
   color: #52617a;
