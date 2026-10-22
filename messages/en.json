@@ -404,6 +404,7 @@
       "standalone": "Standalone"
     },
     "organizer": "Organizer",
+    "artistLabel": "Artist",
     "events": "Events",
     "noEvents": "No events registered.",
     "unknownSeries": "Untitled Series",

@@ -404,6 +404,7 @@
       "standalone": "단독 공연"
     },
     "organizer": "주최",
+    "artistLabel": "아티스트",
     "events": "이벤트 목록",
     "noEvents": "등록된 이벤트가 없습니다.",
     "unknownSeries": "이름 없는 시리즈",
