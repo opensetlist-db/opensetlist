@@ -107,6 +107,58 @@
 //   reason. Like --compare, mismatches are reported, not failed; only a
 //   capture that errors exits 1. See runDesign() below for the details.
 //
+// Adapter mode — packets approved before qa-report.json was required have
+// no `{file,url,viewport,locale,ids}` list for --design to replay. This
+// writes one by loading each packet capture's URL on the running mockup and
+// reading the entity ids exactly as --design reads them (same function):
+//   node scripts/redesign-capture.mjs
+//     --adapter-from-mockup http://127.0.0.1:4330   the mockup's base URL
+//     --packet <wiki>/handoffs/30/v1                packet dir (or its
+//                                                   qa-results.json /
+//                                                   qa-report.json)
+//     --out <wiki>/handoffs/31/design-30-v1-adapter.json
+//     [--map <file.json|file.mjs>]   capture → URL, when the manifest has none
+//     [--ids-scope main] [--filter chromium-ko-390-] [--list]
+//   Then: --design <that adapter.json>. Captures come from the packet's
+//   qa-report.json (its `url`s are used as given) or qa-results.json
+//   (`captures[]` entries keyed `<engine>-<locale>-<width>-<scenario>`,
+//   e.g. `chromium-ko-1440-ceras-yanagida-tab-songs`). Each capture's URL
+//   is, first match wins:
+//     1. --map. A .json map is `{ "<scenario or whole key>": "<path>" }`,
+//        the path may hold `{locale}`:
+//          { "ceras-yanagida-overview": "/{locale}/members/37d5…/ceras-yanagida",
+//            "ceras-yanagida-tab-songs": "/{locale}/members/37d5…/ceras-yanagida?tab=songs" }
+//        A .mjs/.js map default-exports a function
+//          ({ key, engine, locale, width, scenario, file, case }) => string | null
+//        returning a path (+ query) or a full URL; null falls through.
+//        `case` is the qa-results `cases[]` entry with the same key, if any.
+//     2. the capture's own `url` (qa-report.json shape);
+//     3. the `url` of the qa-results `cases[]` entry with the same key
+//        (30-v1's qa.cjs records one per capture, so it needs no --map).
+//   Only the path + query is kept, re-based on the mockup origin given (a
+//   base with a path is refused: the mockups serve /<locale>/… at the root).
+//   Each page loads in Chromium (--browser is ignored) at the capture's
+//   width — height from the capture or its case, else 1000, the height
+//   both hand-written adapters used — DPR1, and waits for `load`,
+//   best-effort network idle, `window.__mockupReady` (every mockup since
+//   20-v1 sets it after rendering; one that never does costs a
+//   DESIGN_IDLE_MS wait per capture — 10 s, less if --page-timeout is
+//   shorter — and a printed note) and fonts. Skipped, each with a printed
+//   reason:
+//     - what --design itself skips (mockupOnlyReason: /entry, /review,
+//       state=error|loading);
+//     - every other `state=` value except `state=default`: those are QA
+//       fixtures the mockup fakes, which the app cannot show at that URL.
+//       --design would replay them as the plain page. To keep one, map it
+//       in --map to a real path that shows the same state (an empty list
+//       = a record with no data); the check runs on the resolved URL;
+//     - non-Chromium captures (--design compares Chromium baselines; the
+//       WebKit shots repeat them at other widths);
+//     - captures with no URL from 1–3.
+//   The adapter's `file` is written relative to --out's folder, which is
+//   where --design resolves baselines from (absolute when --out is on
+//   another drive). A capture that fails to load writes nothing (exit 1).
+//
 // Serve a production build, not `next dev` — dev-mode TTFB, bundle bytes and
 // overlay errors make the metrics meaningless. `scripts/serve-build.sh 3110`
 // builds and serves the current checkout with the Sentry variables emptied
@@ -128,7 +180,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { format, parseArgs } from "node:util";
 import dotenv from "dotenv";
 // @playwright/test is the declared dependency and re-exports the browser types.
@@ -192,6 +244,9 @@ const { values: args } = parseArgs({
     "design-map": { type: "string" },
     widths: { type: "string" },
     "ids-scope": { type: "string", default: "main" },
+    "adapter-from-mockup": { type: "string" },
+    packet: { type: "string" },
+    map: { type: "string" },
   },
 });
 
@@ -249,6 +304,7 @@ const WEBKIT_MAX_SHOT = 32767;
 // The design mode has its own scenario list and manifest; it never reaches
 // the page-set code below (runDesign ends the process).
 if (args.design) await runDesign();
+if (args["adapter-from-mockup"]) await runAdapterFromMockup();
 
 const VIEWPORTS = {
   d1440: { width: 1440, height: 900 },
@@ -922,7 +978,8 @@ function compareWithBaseline(before, after) {
 // /<locale>/<kind>/<id>/…, in DOM order, deduplicated (a card's cover and
 // title link the same record). An exact list match against the packet's
 // `ids` is required; order matters because the order IS the design (ranking,
-// grouping). Scenarios without `ids` in the packet are not judged.
+// grouping). Scenarios without `ids` in the packet are not judged. The read
+// itself is entityIdsInPage(), shared with --adapter-from-mockup.
 // ---------------------------------------------------------------------------
 async function runDesign() {
   const qaPath = path.resolve(args.design);
@@ -956,22 +1013,10 @@ async function runDesign() {
     for (const [from, to] of maps) {
       if (!name.startsWith(from)) continue;
       const mapped = path.join(dir, to + name.slice(from.length));
-      if (fs.existsSync(path.join(qaDir, mapped))) return mapped.replaceAll("\\", "/");
+      if (fs.existsSync(path.resolve(qaDir, mapped))) return mapped.replaceAll("\\", "/");
     }
     return listed;
   };
-
-  // Mockup-only states: the design server fakes them with a route or a
-  // query flag the app does not have, so replaying them would capture a 404
-  // or the plain page under a misleading name.
-  const SKIPS = [
-    [(u) => /\/entry\/?$/.test(u.pathname), "mockup-only route /entry"],
-    [(u) => /\/review(\/|$)/.test(u.pathname), "mockup-only route /review"],
-    [
-      (u) => ["error", "loading"].includes(u.searchParams.get("state") ?? ""),
-      "mockup-only state= query",
-    ],
-  ];
 
   // `v1.1-ja-390-menu` → `menu`; a stem without `<locale>-<width>-` keeps
   // its whole name. String search, not a RegExp built from packet values
@@ -999,7 +1044,7 @@ async function runDesign() {
     const stem = path.basename(c.file).replace(/\.[a-z0-9]+$/i, "");
     const key = scenarioKey(stem, locale, width);
     const name = `${locale}-${width}-${key}`;
-    const reason = SKIPS.find(([test]) => test(u))?.[1];
+    const reason = mockupOnlyReason(u);
     if (reason) {
       skipped.push({ name, file: c.file, url: u.pathname + u.search, reason });
       continue;
@@ -1115,25 +1160,15 @@ async function runDesign() {
       }
       // Settle time for the opened menu / client fetches after the idle wait.
       await page.waitForTimeout(500);
-      const metrics = await page.evaluate((scope) => {
-        const KIND = /^\/[^/]+\/(events|artists|songs|albums|members|series)\/([^/?#]+)(?:[/?#]|$)/;
-        const ids = [];
-        for (const a of document.querySelectorAll(`${scope} a[href]`)) {
-          const hit = new URL(a.getAttribute("href"), location.href).pathname.match(KIND);
-          if (!hit) continue;
-          const id = `${hit[1]}:${decodeURIComponent(hit[2])}`;
-          if (!ids.includes(id)) ids.push(id);
-        }
-        return {
-          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-          lang: document.documentElement.lang,
-          robots: document.querySelector('meta[name="robots"]')?.getAttribute("content") ?? null,
-          title: document.title,
-          h1: document.querySelector("main h1")?.textContent?.trim().slice(0, 120) ?? null,
-          docHeight: document.documentElement.scrollHeight,
-          ids,
-        };
-      }, args["ids-scope"]);
+      const metrics = await page.evaluate(() => ({
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        lang: document.documentElement.lang,
+        robots: document.querySelector('meta[name="robots"]')?.getAttribute("content") ?? null,
+        title: document.title,
+        h1: document.querySelector("main h1")?.textContent?.trim().slice(0, 120) ?? null,
+        docHeight: document.documentElement.scrollHeight,
+      }));
+      metrics.ids = await page.evaluate(entityIdsInPage, args["ids-scope"]);
       const pngs = await fullPageShots(page);
       const files = await writeImages(pngs, `${prefix}${s.name}`, { dir });
 
@@ -1141,7 +1176,9 @@ async function runDesign() {
       let pair = null;
       let baselineMissing = false;
       if (s.baseline && args.browser === "chromium") {
-        const src = path.join(qaDir, s.baseline);
+        // resolve, not join: an adapter written on another drive than its
+        // packet (--adapter-from-mockup) lists absolute baseline paths.
+        const src = path.resolve(qaDir, s.baseline);
         if (fs.existsSync(src)) {
           compare = `compare-${s.name}.webp`;
           pair = `pair-${s.name}.webp`;
@@ -1227,6 +1264,231 @@ function comparableIds(expected, actual, url) {
   if (kind) return { expected: ids.map((x) => (x.includes(":") ? x : `${kind}:${x}`)), actual };
   const bare = (x) => x.slice(x.indexOf(":") + 1);
   return { expected: ids.map(bare), actual: actual.map(bare) };
+}
+
+// Mockup-only scenarios: the design server fakes them with a route or a
+// query flag the app does not have, so replaying them would capture a 404
+// or the plain page under a misleading name. --design skips them and
+// --adapter-from-mockup leaves them out of the adapter. Returns the reason,
+// or null. The list lives inside the function: both modes run (and exit)
+// from the top of the module, before a top-level const down here would be
+// initialized.
+function mockupOnlyReason(u) {
+  if (/\/entry\/?$/.test(u.pathname)) return "mockup-only route /entry";
+  if (/\/review(\/|$)/.test(u.pathname)) return "mockup-only route /review";
+  if (["error", "loading"].includes(u.searchParams.get("state") ?? "")) return "mockup-only state= query";
+  return null;
+}
+
+// Runs in the page (pass it to page.evaluate): the entity ids of every link
+// inside `scope`, as `<kind>:<id>`, in DOM order, deduplicated. --design
+// reads the build with it and --adapter-from-mockup reads the mockup with
+// it, so the packet's expected `ids` and the actual ones can never be read
+// by two drifting copies of the regex. Self-contained: Playwright serializes
+// the function source, so it may not reference anything outside itself.
+function entityIdsInPage(scope) {
+  const KIND = /^\/[^/]+\/(events|artists|songs|albums|members|series)\/([^/?#]+)(?:[/?#]|$)/;
+  const ids = [];
+  for (const a of document.querySelectorAll(`${scope} a[href]`)) {
+    const hit = new URL(a.getAttribute("href"), location.href).pathname.match(KIND);
+    if (!hit) continue;
+    const id = `${hit[1]}:${decodeURIComponent(hit[2])}`;
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+// ---------------------------------------------------------------------------
+// --adapter-from-mockup: write a --design adapter for a packet that has no
+// qa-report.json. Usage and URL resolution are in the header comment.
+// ---------------------------------------------------------------------------
+async function runAdapterFromMockup() {
+  const mockupBase = args["adapter-from-mockup"].replace(/\/+$/, "");
+  const fail = (msg) => {
+    console.error("%s", msg);
+    process.exit(1);
+  };
+  if (!/^https?:\/\/[^/]+$/.test(mockupBase))
+    fail(`--adapter-from-mockup must be the mockup's http(s) origin, no path (got ${mockupBase})`);
+  if (!args.packet) fail("--packet <packet dir | qa-results.json | qa-report.json> is required");
+
+  // A packet folder holds one of the two manifests; qa-report.json wins as
+  // the shape --design itself reads.
+  let manifestPath = path.resolve(args.packet);
+  if (fs.existsSync(manifestPath) && fs.statSync(manifestPath).isDirectory()) {
+    const found = ["qa-report.json", "qa-results.json"]
+      .map((n) => path.join(manifestPath, n))
+      .find((p) => fs.existsSync(p));
+    if (!found) fail(`--packet ${args.packet}: no qa-report.json or qa-results.json in it (write a --map and a qa-results.json-shaped list, or the adapter by hand)`);
+    manifestPath = found;
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (!Array.isArray(manifest.captures)) throw new Error("no captures[] array");
+  } catch (e) {
+    fail(`--packet ${manifestPath}: ${e.message}`);
+  }
+  const packetDir = path.dirname(manifestPath);
+  const casesByKey = new Map((Array.isArray(manifest.cases) ? manifest.cases : []).map((c) => [c.key, c]));
+
+  let mapFn = null;
+  if (args.map) {
+    const mapPath = path.resolve(args.map);
+    if (/\.json$/i.test(mapPath)) {
+      let table;
+      try {
+        table = JSON.parse(fs.readFileSync(mapPath, "utf8"));
+      } catch (e) {
+        fail(`--map ${args.map}: ${e.message}`);
+      }
+      // Whole key first, so one capture can override its scenario's entry.
+      mapFn = ({ key, scenario, locale }) => {
+        const t = table[key] ?? table[scenario];
+        return typeof t === "string" ? t.replaceAll("{locale}", locale) : null;
+      };
+    } else {
+      // pathToFileURL: a bare Windows path (F:\…) is not an import specifier.
+      try {
+        mapFn = (await import(pathToFileURL(mapPath).href)).default;
+      } catch (e) {
+        fail(`--map ${args.map}: ${e.message}`);
+      }
+      if (typeof mapFn !== "function") fail(`--map ${args.map}: default export is not a function`);
+    }
+  }
+
+  const outFile = args.out ? path.resolve(args.out) : null;
+  if (!outFile && !args.list) fail("--out <adapter.json> is required");
+  const outDir = outFile ? path.dirname(outFile) : process.cwd();
+
+  // `chromium-ko-1440-ceras-yanagida-tab-songs` → engine, locale, width and
+  // the scenario. qa-report.json files (`captures/v1.1-ja-390-menu.webp`)
+  // carry no engine and may carry a version prefix; their url and viewport
+  // are used as listed instead.
+  const parseKey = (key) => {
+    const m = key.match(/^(?:(chromium|webkit|firefox)-)?(?:v[\d.]+-)?([a-z]{2}(?:-[A-Z]{2})?)-(\d+)-(.+)$/);
+    return m ? { engine: m[1] ?? null, locale: m[2], width: Number(m[3]), scenario: m[4] } : null;
+  };
+  const toUrl = (u) => {
+    if (!u) return null;
+    const parsed = new URL(u, mockupBase + "/");
+    return mockupBase + parsed.pathname + parsed.search;
+  };
+
+  const jobs = [];
+  const skipped = [];
+  for (const c of manifest.captures) {
+    const file = c.file ?? (c.key ? `${c.key}.webp` : null);
+    if (!file) fail(`--packet ${manifestPath}: a capture has neither file nor key`);
+    const key = c.key ?? path.basename(file).replace(/\.[a-z0-9]+$/i, "");
+    const parsed = parseKey(key);
+    const kase = casesByKey.get(key) ?? null;
+    if (parsed?.engine && parsed.engine !== "chromium") {
+      skipped.push({ key, reason: `${parsed.engine} capture (--design compares Chromium baselines)` });
+      continue;
+    }
+    let mapped = null;
+    try {
+      mapped = mapFn?.({ key, engine: parsed?.engine ?? null, locale: parsed?.locale, width: parsed?.width, scenario: parsed?.scenario, file, case: kase }) ?? null;
+    } catch (e) {
+      fail(`--map ${args.map}: ${key}: ${e.message}`);
+    }
+    const url = toUrl(mapped ?? c.url ?? kase?.url);
+    if (!url) {
+      skipped.push({ key, reason: "no URL (none listed, no cases[] entry, no --map match)" });
+      continue;
+    }
+    const u = new URL(url);
+    const locale = c.locale ?? parsed?.locale ?? u.pathname.split("/")[1];
+    const width = c.viewport?.width ?? kase?.viewport?.width ?? parsed?.width;
+    const height = c.viewport?.height ?? kase?.viewport?.height ?? 1000;
+    if (!Number.isInteger(width) || width <= 0) fail(`--packet: ${key} has no usable width`);
+    const shared = mockupOnlyReason(u);
+    if (shared) {
+      skipped.push({ key, reason: shared });
+      continue;
+    }
+    const state = u.searchParams.get("state");
+    if (state && state !== "default") {
+      skipped.push({ key, reason: `mockup-only state=${state} fixture` });
+      continue;
+    }
+    // The baseline lies next to the manifest or in its captures/ folder
+    // (qa-results.json lists bare names); --design resolves it relative to
+    // the adapter, so the path is rewritten to be relative to --out.
+    const abs = [path.join(packetDir, file), path.join(packetDir, "captures", path.basename(file))].find((p) =>
+      fs.existsSync(p),
+    );
+    if (!abs) console.warn("warning: %s: baseline %s not found under %s", key, file, packetDir);
+    const rel = path.relative(outDir, abs ?? path.join(packetDir, file)).replaceAll("\\", "/");
+    jobs.push({ key, file: rel, url, viewport: { width, height }, locale });
+  }
+
+  const prefixes = args.filter?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+  const chosen = prefixes.length ? jobs.filter((j) => prefixes.some((p) => j.key.startsWith(p))) : jobs;
+  for (const s of skipped) console.log("%s SKIP %s", s.key.padEnd(48), s.reason);
+  if (args.list) {
+    for (const j of chosen) console.log("%s %s", j.key.padEnd(48), j.url);
+    process.exit(0);
+  }
+  if (chosen.length === 0) fail("no captures left to read (see --list)");
+
+  const browser = await chromium.launch();
+  const captures = [];
+  let errors = 0;
+  let noReadySignal = 0;
+  for (const j of chosen) {
+    const ctx = await browser.newContext({
+      viewport: j.viewport,
+      deviceScaleFactor: 1,
+      locale: j.locale,
+      timezoneId: "Asia/Seoul",
+      reducedMotion: "reduce",
+    });
+    ctx.setDefaultTimeout(PAGE_TIMEOUT_MS);
+    ctx.setDefaultNavigationTimeout(PAGE_TIMEOUT_MS);
+    try {
+      const page = await ctx.newPage();
+      const resp = await page.goto(j.url, { waitUntil: "load" });
+      if (!resp?.ok()) throw new Error(`HTTP ${resp?.status()}`);
+      await page.waitForLoadState("networkidle", { timeout: DESIGN_IDLE_MS }).catch(() => {});
+      // The flag appears only once the mockup has rendered, so "absent" and
+      // "not yet" look alike: wait for it, bounded, and note a mockup that
+      // never sets it.
+      const ready = await page
+        .waitForFunction(() => window.__mockupReady === true, null, { timeout: DESIGN_IDLE_MS })
+        .then(() => true, () => false);
+      if (!ready) noReadySignal++;
+      await page.evaluate(() => document.fonts.ready);
+      const ids = await page.evaluate(entityIdsInPage, args["ids-scope"]);
+      captures.push({ file: j.file, url: j.url, viewport: j.viewport, locale: j.locale, ids });
+      console.log("%s ids=%d%s", j.key, ids.length, ready ? "" : " (no __mockupReady)");
+    } catch (e) {
+      errors++;
+      console.log("ERR %s %s", j.key, String(e.message ?? e).slice(0, 200));
+    } finally {
+      await ctx.close();
+    }
+  }
+  await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 10000))]);
+  // No partial adapter: a capture missing from it would just go unjudged
+  // by --design, which reads as a pass.
+  if (errors) fail(`${errors} capture(s) failed to load; nothing written`);
+
+  const manifestName = path.relative(outDir, manifestPath).replaceAll("\\", "/");
+  const skipNote = skipped.length
+    ? ` Skipped: ${[...new Set(skipped.map((s) => s.reason.replace(/=\S+ fixture$/, "= fixtures")))].join("; ")}.`
+    : "";
+  const adapter = {
+    note: `Adapter for redesign-capture --design, generated by --adapter-from-mockup from ${manifestName}: ids read from the mockup's <${args["ids-scope"]}> link order (entityIdsInPage, the same read --design applies to the build).${skipNote}`,
+    captures,
+  };
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(outFile, JSON.stringify(adapter, null, 1) + "\n");
+  console.log("wrote %s: %d captures, %d skipped", outFile, captures.length, skipped.length);
+  if (noReadySignal) console.log("note: %d page(s) never set window.__mockupReady; read after a %d ms wait", noReadySignal, DESIGN_IDLE_MS);
+  process.exit(0);
 }
 
 // Baseline | 24px grey gap | actual cropped to the baseline's box, so the
