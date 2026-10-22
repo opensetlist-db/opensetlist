@@ -21,7 +21,6 @@ import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
 import { groupByCity, type SeriesEventInput } from "@/lib/seriesGrouping";
 import { getSeriesStats } from "@/lib/seriesStats";
-import { formatDateRange } from "@/lib/dateRange";
 import {
   getScheduleSongCount,
   getSeriesDetail,
@@ -48,7 +47,10 @@ import {
 } from "@/components/series/detail/SeriesSongsPanel";
 import { SeriesStatusPill } from "@/components/series/detail/SeriesStatusPill";
 import { SeriesBdSection } from "@/components/series/detail/SeriesBdSection";
-import { SERIES_DATE_FORMAT } from "@/components/series/detail/seriesDate";
+import {
+  SERIES_DATE_FORMAT,
+  formatSeriesDateRange,
+} from "@/components/series/detail/seriesDate";
 import styles from "@/components/series/detail/seriesDetail.module.css";
 
 type Props = {
@@ -368,11 +370,10 @@ export default async function EventSeriesPage({
             lang: fieldLang(first, first.translations, locale, "venue"),
           }
         : null,
-      dateRangeLabel: formatDateRange(
+      dateRangeLabel: formatSeriesDateRange(
         leg.dateRange.start,
         leg.dateRange.end,
         locale,
-        SERIES_DATE_FORMAT,
       ),
       status: rollup ? { status: rollup, label: statusLabels[rollup] } : null,
       countLabel: t("eventCountInLeg", { count: leg.events.length }),
