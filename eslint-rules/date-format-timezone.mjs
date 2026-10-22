@@ -7,8 +7,7 @@
  * stored as UTC midnight. Formatted without a `timeZone`, `Intl` reads
  * that instant in the process or browser zone, and anywhere west of UTC
  * the 29th renders as the 28th. Vercel and CI run in UTC, so the shift
- * never shows there — it surfaced on a member page viewed from a US-west
- * zone and in a local production build. `formatDate`'s default options
+ * never shows there — only on a viewer's machine. `formatDate`'s default options
  * carry `timeZone: "UTC"`, but a caller passing its own options replaces
  * the default whole, and a raw `toLocaleDateString` never had one.
  *
@@ -22,9 +21,13 @@
  *       · the options argument of `formatDate(date, locale, {…})`,
  *       · the options argument of `x.toLocaleDateString(locale, {…})` or
  *         `x.toLocaleString(locale, {…})`,
- *       · the options argument of `new Intl.DateTimeFormat(locale, {…})`;
- *   - `x.toLocaleDateString()` / `x.toLocaleDateString(locale)` with no
- *     options at all — always the local zone.
+ *       · the options argument of `[new] Intl.DateTimeFormat(locale, {…})`;
+ *   - `x.toLocaleDateString()` and `[new] Intl.DateTimeFormat()` with no
+ *     options (or a literal `undefined`) — both default to a numeric
+ *     calendar day in the local zone. `Intl.DateTimeFormat()
+ *     .resolvedOptions()` is exempt: it reads the zone, it formats
+ *     nothing. `x.toLocaleString()` without options is left alone because
+ *     the receiver is as often a number as a Date.
  *
  * The zone itself is the caller's call: `"UTC"` for a stored date, an
  * explicit zone when the surface means one (admin timestamps pin
@@ -58,9 +61,24 @@ function keyName(prop) {
   return null;
 }
 
-// True when `obj` renders a calendar day and nothing pins (or may pin)
-// its zone.
-function lacksZone(obj) {
+// `{…} as const`, `{…} as const satisfies T`, `<T>{…}`: the literal
+// under the type wrappers.
+function unwrapTypeAssertions(node) {
+  let n = node;
+  while (
+    n?.type === "TSAsExpression" ||
+    n?.type === "TSSatisfiesExpression" ||
+    n?.type === "TSTypeAssertion"
+  ) {
+    n = n.expression;
+  }
+  return n;
+}
+
+// True when `node` is an options literal that renders a calendar day and
+// nothing pins (or may pin) its zone.
+function needsExplicitZone(node) {
+  const obj = unwrapTypeAssertions(node);
   if (obj?.type !== "ObjectExpression") return false;
   if (obj.properties.some((p) => p.type === "SpreadElement")) return false;
   const keys = obj.properties.map(keyName);
@@ -80,6 +98,12 @@ function isDateTimeFormatOptionsType(typeNode) {
     name.left.name === "Intl" &&
     name.right.name === "DateTimeFormatOptions"
   );
+}
+
+// No options argument, or a literal `undefined` in its place: Intl then
+// uses its defaults, which include the local zone.
+function isOmitted(arg) {
+  return !arg || (arg.type === "Identifier" && arg.name === "undefined");
 }
 
 function memberName(callee) {
@@ -109,27 +133,50 @@ const rule = {
     messages: {
       missingTimeZone:
         'Date-format options without `timeZone` render in the process/browser zone, so a stored UTC date (date-only columns are UTC midnight) shows the previous day west of UTC. Add `timeZone: "UTC"` for a stored date, or the zone the surface means.',
-      bareToLocaleDateString:
-        '`toLocaleDateString()` without options renders in the process/browser zone. Use `formatDate(date, locale)` (UTC by default) or pass options with `timeZone`.',
+      noOptions:
+        'Date formatting without options renders a calendar day in the process/browser zone. Use `formatDate(date, locale)` (UTC by default) or pass options with `timeZone`.',
     },
   },
   create(context) {
-    const report = (node) =>
-      context.report({ node, messageId: "missingTimeZone" });
+    // One literal can match two selectors (`const F: T = {…} as T`);
+    // report it once.
+    const reported = new Set();
+    const report = (node) => {
+      const obj = unwrapTypeAssertions(node);
+      if (reported.has(obj)) return;
+      reported.add(obj);
+      context.report({ node: obj, messageId: "missingTimeZone" });
+    };
+
+    // `Intl.DateTimeFormat(...)` with or without `new`.
+    const checkIntlDateTimeFormat = (node) => {
+      if (!isIntlDateTimeFormat(node.callee)) return;
+      const options = node.arguments[1];
+      if (isOmitted(options)) {
+        const parent = node.parent;
+        const readsZoneOnly =
+          parent?.type === "MemberExpression" &&
+          parent.object === node &&
+          memberName(parent) === "resolvedOptions";
+        if (!readsZoneOnly) context.report({ node, messageId: "noOptions" });
+      } else if (needsExplicitZone(options)) {
+        report(options);
+      }
+    };
 
     return {
       VariableDeclarator(node) {
         if (
           isDateTimeFormatOptionsType(node.id.typeAnnotation?.typeAnnotation) &&
-          lacksZone(node.init)
+          needsExplicitZone(node.init)
         ) {
           report(node.init);
         }
       },
-      "TSSatisfiesExpression, TSAsExpression"(node) {
+      "TSSatisfiesExpression, TSAsExpression, TSTypeAssertion"(node) {
         if (
           isDateTimeFormatOptionsType(node.typeAnnotation) &&
-          lacksZone(node.expression)
+          needsExplicitZone(node.expression)
         ) {
           report(node.expression);
         }
@@ -137,27 +184,27 @@ const rule = {
       CallExpression(node) {
         const { callee, arguments: args } = node;
         if (callee.type === "Identifier" && callee.name === "formatDate") {
-          if (lacksZone(args[2])) report(args[2]);
+          if (needsExplicitZone(args[2])) report(args[2]);
+          return;
+        }
+        if (isIntlDateTimeFormat(callee)) {
+          checkIntlDateTimeFormat(node);
           return;
         }
         const method = memberName(callee);
         if (method === "toLocaleDateString") {
-          if (args.length < 2) {
-            context.report({ node, messageId: "bareToLocaleDateString" });
-          } else if (lacksZone(args[1])) {
+          if (isOmitted(args[1])) {
+            context.report({ node, messageId: "noOptions" });
+          } else if (needsExplicitZone(args[1])) {
             report(args[1]);
           }
           return;
         }
-        if (method === "toLocaleString" && lacksZone(args[1])) {
+        if (method === "toLocaleString" && needsExplicitZone(args[1])) {
           report(args[1]);
         }
       },
-      NewExpression(node) {
-        if (isIntlDateTimeFormat(node.callee) && lacksZone(node.arguments[1])) {
-          report(node.arguments[1]);
-        }
-      },
+      NewExpression: checkIntlDateTimeFormat,
     };
   },
 };
