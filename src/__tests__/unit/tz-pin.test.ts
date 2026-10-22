@@ -11,8 +11,10 @@ import { formatVenueDate } from "@/lib/eventDateTime";
 const STORED_UTC_MIDNIGHT = new Date("2023-03-29T00:00:00.000Z");
 
 // No timeZone option → local zone → March 28 in Los Angeles. Every case
-// below only means something when this holds.
+// below only means something when this holds. The zone-less options are
+// the point of this control, so local/date-format-timezone is off here.
 const localDay = () =>
+  // eslint-disable-next-line local/date-format-timezone -- reads the local zone on purpose
   STORED_UTC_MIDNIGHT.toLocaleDateString("en-US", { day: "numeric" });
 
 describe("unit suite timezone pin", () => {
