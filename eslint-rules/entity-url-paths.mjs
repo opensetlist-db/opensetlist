@@ -22,6 +22,11 @@
  * "/api/events/"), as well as list pages (`/${locale}/events` ends in a
  * tail chunk with nothing interpolated after it).
  *
+ * Not caught: string concatenation (`"/songs/" + id`) and a hard-coded
+ * locale (`` `/ko/songs/${id}` ``). Neither appears in the linted paths
+ * today (the `/ko/events/…` links live in admin pages, out of scope);
+ * the template form is the one review kept finding.
+ *
  * eslint.config.mjs applies these to `src/app/[locale]/**` and
  * `src/components/**` only. Admin and API routes build operator and
  * fetch paths, not public links; `src/lib/` holds the approved builders

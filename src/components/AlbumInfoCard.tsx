@@ -10,8 +10,8 @@ import {
 import { countActiveBonuses, isEndedListing } from "@/lib/albumBonusDisplay";
 import { formatDate } from "@/lib/utils";
 import type { BigIntStringified } from "@/lib/utils";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 /*
  * Sidebar card for the Album detail page (`/[locale]/albums/[id]/...`).
  *

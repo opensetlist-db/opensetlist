@@ -28,8 +28,8 @@ import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
 } from "@/components/setlistLayout";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 // Stable reference for items with no reactions yet — without this, every
 // render produces a fresh `{}` and ReactionButtons' prev-prop guard would
 // needlessly run setState every poll for those items.

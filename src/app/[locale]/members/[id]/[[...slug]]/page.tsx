@@ -778,7 +778,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
           // for locales whose translated title slugifies differently,
           // and the song page 308s every non-canonical slug
           // (`enforceCanonicalSlug`), costing each click a redirect hop.
-          href: entityPath("songs", locale, sid, song.slug),
+          href: entityPath("songs", locale, song.id, song.slug),
           titleMain: main || song.originalTitle,
           titleSub: sub,
           unitName: chipName,

@@ -19,8 +19,8 @@ import {
 import { formatDate } from "@/lib/utils";
 import type { BigIntStringified } from "@/lib/utils";
 import { colors, radius, shadows } from "@/styles/tokens";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 /*
  * EventBdSection — mounts between the Setlist card and the Impressions
  * card on `/[locale]/events/[id]/...`. Surfaces the linked BD Album's

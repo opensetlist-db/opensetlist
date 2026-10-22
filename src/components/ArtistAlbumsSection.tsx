@@ -8,8 +8,8 @@ import { albumCardInclude } from "@/lib/albumHighlights";
 import { AlbumCard } from "@/components/AlbumCard";
 import { SectionLabel } from "@/components/SectionLabel";
 import { colors, radius, shadows } from "@/styles/tokens";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 /*
  * Artist page album surfaces (b09; Sprint B2 QA-pass restructure).
  *

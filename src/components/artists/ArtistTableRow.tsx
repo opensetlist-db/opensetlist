@@ -6,8 +6,8 @@ import ArtistAvatar from "@/components/ArtistAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ARTIST_TABLE_COLUMNS } from "@/components/artists/layout";
 import type { ArtistRowData } from "@/lib/artists";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 /*
  * Desktop table row for one artist. Sibling of <ArtistCard>.
  *

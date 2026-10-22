@@ -6,8 +6,8 @@ import ArtistAvatar from "@/components/ArtistAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatsSubLabel } from "@/components/StatsSubLabel";
 import type { ArtistRowData } from "@/lib/artists";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 /*
  * Mobile card for one artist row in the list page (visible < lg).
  *

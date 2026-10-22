@@ -4,8 +4,9 @@
 // errors on hand-built `/${locale}/<kind>/${id}` templates with these
 // `no-restricted-syntax` entries — pinned here so a selector typo (or an
 // esquery regex quirk) can't silently turn the rule into a no-op.
-import { describe, it } from "vitest";
-import { RuleTester, type Rule } from "eslint";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { ESLint, RuleTester, type Rule } from "eslint";
 import { builtinRules } from "eslint/use-at-your-own-risk";
 import tsParser from "@typescript-eslint/parser";
 import { entityUrlPathRestrictions } from "../../../eslint-rules/entity-url-paths.mjs";
@@ -81,4 +82,39 @@ tester.run("hand-built entity URLs", rule, {
       errors: [error],
     },
   ],
+});
+
+// The cases above pin the selector; these pin the eslint.config.mjs
+// wiring — the files globs (`src/app/[locale]` needs its brackets
+// escaped), the `error` severity, and the `local/` alias — which the
+// RuleTester never loads. Same source in an in-scope and an
+// out-of-scope path: the admin case passes only because the in-scope
+// cases show the rule does fire.
+describe("hand-built entity URLs (eslint.config.mjs wiring)", () => {
+  const root = path.resolve(__dirname, "../../..");
+  const code = "export const h = (locale: string, id: string) => `/${locale}/songs/${id}`;\n";
+  const ruleId = "local/no-hand-built-entity-urls";
+
+  async function hits(file: string) {
+    const eslint = new ESLint({ cwd: root });
+    const [result] = await eslint.lintText(code, { filePath: path.join(root, file) });
+    return result.messages.filter((m) => m.ruleId === ruleId);
+  }
+
+  it.each([
+    "src/components/Fixture.tsx",
+    "src/app/[locale]/songs/[id]/[[...slug]]/fixture.tsx",
+  ])("errors in %s", async (file) => {
+    const found = await hits(file);
+    expect(found).toHaveLength(1);
+    expect(found[0].severity).toBe(2);
+  }, 60_000);
+
+  it.each(["src/app/admin/fixture.tsx", "src/lib/fixture.ts"])(
+    "stays silent in %s",
+    async (file) => {
+      expect(await hits(file)).toHaveLength(0);
+    },
+    60_000,
+  );
 });

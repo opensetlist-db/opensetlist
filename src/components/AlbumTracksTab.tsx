@@ -6,8 +6,8 @@ import {
   type EnrichedAlbumTrack,
 } from "@/lib/albumTrackTitle";
 import { displayOriginalTitle } from "@/lib/display";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 /*
  * Tracks tab content for the Album detail page (b04). Renders the
  * album's AlbumTrack rows disc-grouped, with the b01b dispatch

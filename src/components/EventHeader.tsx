@@ -9,8 +9,8 @@ import { EventStartTime } from "@/components/EventStartTime";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { colors, radius, shadows } from "@/styles/tokens";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 interface Props {
   status: ResolvedEventStatus;
   statusLabel: string;

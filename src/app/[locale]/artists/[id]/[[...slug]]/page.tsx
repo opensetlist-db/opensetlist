@@ -562,7 +562,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       name:
         displayNameWithFallback(event, event.translations, locale) ||
         evT("unknownEvent"),
-      href: entityPath("events", locale, event.id, event.slug),
+      href: entityPath("events", locale, eventIdStr, event.slug),
       trailing,
       // serializeBigInt also runs JSON.stringify, which converts
       // Date columns to ISO strings — so the runtime value is a

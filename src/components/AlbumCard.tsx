@@ -3,8 +3,8 @@ import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
 import { parseReleaseYear } from "@/lib/utils";
 import { colors, radius, shadows } from "@/styles/tokens";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 /*
  * AlbumCard — reusable album mini-card used across Sprint B2 cross-link
  * surfaces. Owner: b08 (Song → Album sidebar). Designed for b09 / b10b

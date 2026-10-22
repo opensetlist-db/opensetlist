@@ -10,8 +10,8 @@ import { formatDate } from "@/lib/utils";
 import { displayOriginalName } from "@/lib/display";
 import { AlbumType } from "@/generated/prisma/enums";
 import type { RelatedEvent } from "@/lib/albumRelatedEvents";
-
 import { entityPath } from "@/lib/seo/entityUrl";
+
 /*
  * Related-events tab content for the Album page (b04). Consumes the
  * already-fetched RelatedEvent[] from getAlbumRelatedEvents and

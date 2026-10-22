@@ -983,9 +983,9 @@ export default async function EventSeriesPage({
                                 this row was clickable, but the previous
                                 static <li> didn't act on it. Wrapping in a
                                 Link closes the discoverability gap.
-                                `row-hover-bg` matches
-                                the hover/focus treatment on every other
-                                clickable list row in the codebase. */}
+                                `row-hover-bg` matches the hover/focus
+                                treatment on every other clickable list
+                                row in the codebase. */}
                             <Link
                               href={entityPath("songs", locale, row.songId, row.song.slug)}
                               className="row-hover-bg"
