@@ -1,0 +1,437 @@
+/*
+ * Privacy / terms pages — layout from the approved redesign packet 34-v1
+ * (wiki `output/redesign/handoffs/34/v1/style.css` + design-contract.md).
+ *
+ * A CSS module rather than inline styles because the approved layout
+ * changes geometry at 1100 / 1024 / 700px: the sidebar narrows, then
+ * disappears in favour of the mobile route switcher + Contents
+ * disclosure, and padding / type sizes step down with it. One rule block
+ * per band keeps each band reviewable against the mockup line by line.
+ *
+ * The packet's style.css was written on top of browser defaults. The
+ * app's Tailwind preflight strips heading weights, list markers and
+ * margins, so `font-weight` and `list-style` are explicit here.
+ *
+ * Colours mirror `src/styles/tokens.ts` (03 contract). The note tint
+ * (#F1F6FF / #A4B9D8) and code chip (#EDF1F8) are page-local values
+ * fixed by 34-v1.
+ */
+
+.page {
+  width: 100%;
+  max-width: 1184px;
+  margin: 0 auto;
+  padding: 32px 32px 64px;
+  color: #172445;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+/* Shared Breadcrumb links are text-height only; 34-v1 gives them a
+   32px row so the target clears 24px. */
+.breadcrumb > nav {
+  margin-bottom: 24px;
+}
+.breadcrumb a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+/* ── Desktop grid: 240px sidebar + 32px gap + content ─────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+/* Sticky 24px from the viewport top — the site header is not sticky, so
+   no header clearance is needed. Independently scrollable when the
+   viewport is shorter than the TOC; the 7px padding / -7px margin keep
+   the 3px+4px focus ring inside the scroll box instead of clipped. */
+.sidebar {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 7px;
+  margin: -7px;
+}
+
+.pageNav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 26px;
+}
+.pageNav a {
+  display: block;
+  padding: 11px 16px;
+  min-height: 48px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #52617a;
+  text-decoration: none;
+}
+.pageNav a[aria-current="page"] {
+  background: #eaf2ff;
+  color: #165dcc;
+  font-weight: 700;
+}
+.pageNav a:hover,
+.toc a:hover {
+  background: #edf4ff;
+}
+
+.tocTitle {
+  margin: 0 16px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #52617a;
+}
+
+.toc {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toc a {
+  display: block;
+  padding: 10px 16px;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #52617a;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.content {
+  min-width: 0;
+}
+
+/* ── Title card ───────────────────────────────────────────────────── */
+
+.titleCard {
+  padding: 28px 32px;
+  border: 1px solid #dce3ef;
+  border-radius: 20px;
+  background: linear-gradient(115deg, #ffffff 38%, #fff6fa 75%, #f0edff);
+  box-shadow: 0 5px 18px #233c6808;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #165dcc;
+}
+
+.title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.025em;
+  color: #172445;
+}
+
+.updated {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #52617a;
+}
+
+.intro {
+  margin: 20px 4px;
+  font-size: 15px;
+  line-height: 1.9;
+  color: #52617a;
+  overflow-wrap: anywhere;
+}
+
+/* ── Mobile-only route switcher + Contents disclosure ─────────────── */
+
+.mobilePages,
+.mobileToc {
+  display: none;
+}
+
+/* ── Document body ────────────────────────────────────────────────── */
+
+.document {
+  margin-top: 24px;
+  padding: 32px;
+  background: #ffffff;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  box-shadow: 0 5px 18px #233c6808;
+}
+
+/* Anchor targets: 24px clearance (header is not sticky). Sections carry
+   tabIndex={-1} so a TOC jump can move keyboard focus onto them. */
+.section {
+  scroll-margin-top: 24px;
+  margin-bottom: 34px;
+  overflow-wrap: anywhere;
+}
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.sectionTitle {
+  margin: 0 0 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #dce3ef;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #172445;
+}
+
+.subTitle {
+  margin: 20px 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #172445;
+}
+
+.paragraph {
+  margin: 0 0 12px;
+  color: #52617a;
+}
+
+.list {
+  margin: 8px 0 16px;
+  padding: 0 0 0 22px;
+  list-style: disc;
+  color: #52617a;
+}
+.list li {
+  margin: 6px 0;
+  padding-left: 2px;
+  line-height: 1.85;
+}
+.list li::marker {
+  color: #165dcc;
+}
+
+.code {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: #edf1f8;
+  color: #172445;
+  /* font-family comes from preflight's `code` rule (Tailwind mono). */
+  font-size: 0.88em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.note {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-left: 3px solid #a4b9d8;
+  border-radius: 0 8px 8px 0;
+  background: #f1f6ff;
+  font-size: 14px;
+  color: #52617a;
+}
+
+.contact {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #165dcc;
+  text-underline-offset: 4px;
+}
+.contact:hover {
+  color: #104aa9;
+}
+
+.empty {
+  margin: 0;
+  padding: 32px 0;
+  text-align: center;
+  color: #52617a;
+}
+
+/* ── Bottom cross-page switch ─────────────────────────────────────── */
+
+.bottomSwitch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: #ffffff;
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+}
+.bottomSwitch p {
+  margin: 0;
+  font-size: 13px;
+  color: #52617a;
+}
+.bottomSwitch a {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #165dcc;
+  text-underline-offset: 4px;
+}
+.bottomSwitch a:hover {
+  color: #104aa9;
+}
+
+/* ── 1024–1099: narrower sidebar, 24px gutters ────────────────────── */
+
+@media (max-width: 1099px) {
+  .page {
+    padding-inline: 24px;
+  }
+  .grid {
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 24px;
+  }
+  .titleCard,
+  .document {
+    padding: 24px;
+  }
+  .title {
+    font-size: 29px;
+  }
+}
+
+/* ── <1024: one readable column, route switcher + Contents ────────── */
+
+@media (max-width: 1023px) {
+  .page {
+    max-width: 800px;
+    padding-top: 24px;
+  }
+  .grid {
+    display: block;
+  }
+  .sidebar {
+    display: none;
+  }
+  .mobilePages {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    margin-bottom: 20px;
+    padding: 4px;
+    background: #ffffff;
+    border: 1px solid #dce3ef;
+    border-radius: 12px;
+  }
+  .mobilePages a {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    padding: 10px 6px;
+    font-size: 14px;
+    text-align: center;
+  }
+  .mobileToc {
+    display: block;
+    margin-top: 20px;
+    padding: 0 16px;
+    background: #ffffff;
+    border: 1px solid #dce3ef;
+    border-radius: 12px;
+  }
+  .mobileToc[open] {
+    padding-bottom: 12px;
+  }
+  /* Preflight resets `summary` to display:list-item with its marker; the
+     packet keeps the native disclosure triangle, so only size it. */
+  .mobileToc summary {
+    min-height: 48px;
+    padding: 12px 0;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    color: #165dcc;
+  }
+  .mobileToc .toc a {
+    padding-left: 8px;
+  }
+  .document {
+    margin-top: 20px;
+  }
+  .titleCard {
+    border-radius: 16px;
+  }
+}
+
+/* ── <700: phone gutters and type ─────────────────────────────────── */
+
+@media (max-width: 699px) {
+  .page {
+    padding: 16px 16px 40px;
+  }
+  .breadcrumb > nav {
+    margin-bottom: 16px;
+  }
+  .mobilePages {
+    margin-bottom: 16px;
+  }
+  .mobilePages a {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .titleCard {
+    padding: 22px 20px;
+  }
+  .title {
+    font-size: 25px;
+    overflow-wrap: anywhere;
+  }
+  .updated {
+    font-size: 12px;
+  }
+  .document {
+    padding: 24px 20px;
+  }
+  .section {
+    margin-bottom: 30px;
+  }
+  .sectionTitle {
+    margin-bottom: 16px;
+    font-size: 20px;
+  }
+  .bottomSwitch {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .bottomSwitch a {
+    align-self: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page *,
+  .page *::before,
+  .page *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
