@@ -29,6 +29,20 @@
 .breadcrumb > nav {
   margin-bottom: 22px;
 }
+/*
+ * WCAG 2.2 target size (24×24): the 12px crumb link ("홈" is 11px wide)
+ * gets a padded hit area; the equal negative margin keeps the approved
+ * visual position and line height. Page-local, as on the song page (29):
+ * the shared Breadcrumb is not changed by a page ticket.
+ */
+.breadcrumb > nav a {
+  display: inline-block;
+  min-width: 24px;
+  /* 5px, not 4px: 16px text + 8px measured just under 24px in WebKit. */
+  margin: -5px -6px;
+  padding: 5px 6px;
+  text-align: center;
+}
 
 /* ── Identity panel ───────────────────────────────────────────── */
 
@@ -117,6 +131,9 @@
   font-size: 12px;
 }
 .metaRow a {
+  /* 24px target height without moving the baseline-aligned row. */
+  display: inline-block;
+  min-height: 24px;
   color: #165dcc;
   text-decoration: none;
   overflow-wrap: anywhere;
