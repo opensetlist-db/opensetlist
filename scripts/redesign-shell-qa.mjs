@@ -51,7 +51,13 @@
 //
 // Usage (from the repo root, against a running production build — see
 // scripts/serve-build.sh):
-//   node scripts/redesign-shell-qa.mjs --base http://localhost:3110 --out <dir>
+//   node scripts/redesign-shell-qa.mjs --base http://localhost:3110
+//     [--out <dir>]                  default test-results/shell-qa/<browser>
+//                                    (…/<browser>-quick with --quick) under
+//                                    the root of the checkout holding the
+//                                    cwd (gitignored); a rerun, --path runs
+//                                    included, overwrites it, so pass --out
+//                                    for evidence to keep
 //     [--browser chromium|webkit]   default chromium
 //     [--quick]                      layout matrix limited to ko × 390/1100/
 //                                    1440 × home/events (a full WebKit run
@@ -80,9 +86,10 @@
 // whole run exceeds --run-timeout, it records "run (timeout)", writes what it
 // has, and exits 1.
 //
-// Creates --out (with any missing parents) and writes <out>/<browser>-qa.json
+// Prints the resolved output folder as its first line ("out: <abs path>"),
+// creates it (with any missing parents) and writes <out>/<browser>-qa.json
 // (every check with ok/na/detail), <out>/<browser>-qa.log (every line printed
-// to stdout or stderr after --out exists, as it is printed — no need to
+// to stdout or stderr after the output folder exists, as it is printed — no need to
 // redirect stdout into the evidence folder) and two screenshots (open menu at 390, desktop focus ring). Exits 1
 // if any check FAILs.
 //
@@ -92,11 +99,31 @@
 // press a key first so :focus-visible still matches as it would for a
 // keyboard user who enabled "Press Tab to highlight each item".
 import { AsyncLocalStorage } from "node:async_hooks";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { format, parseArgs } from "node:util";
 // @playwright/test is the declared dependency and re-exports the browser types.
 import { chromium, webkit } from "@playwright/test";
+
+// The checkout holding the current directory, so a copy extracted into
+// another checkout (a redesign worktree's .claude/tmp/) writes its default
+// output there; the script-relative root only outside a git work tree.
+// Same rule as checkoutRoot() in scripts/page-qa/harness.mjs, inlined so
+// this script stays a single file to extract.
+function checkoutRoot() {
+  try {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (top) return path.resolve(top);
+  } catch {
+    // not in a work tree, or git missing
+  }
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+}
 
 // From here on every console line also lands in `file`, so a caller never
 // redirects stdout into a folder that may not exist yet (a shell redirect
@@ -138,10 +165,6 @@ if (!browserType) {
   console.error(`--browser must be one of: ${Object.keys(BROWSERS).join(", ")}`);
   process.exit(1);
 }
-if (!args.out) {
-  console.error("--out <dir> is required");
-  process.exit(1);
-}
 const CHECK_MS = Number(args.timeout) * 1000;
 // A single-page check gets twice the navigation timeout, so a page that loads
 // just under it still has time for fonts and the in-page measurements.
@@ -153,9 +176,21 @@ if (!(CHECK_MS > 0) || !(RUN_MS > 0) || CHECK_MS > 86_400_000 || RUN_MS > 86_400
   process.exit(1);
 }
 const WEBKIT = args.browser === "webkit";
-const outDir = path.resolve(args.out);
+// A run started without --out still writes its log and JSON somewhere
+// predictable instead of failing on a usage error. The default sits under
+// the checkout root, where /test-results/ is gitignored — not under the cwd,
+// which may be scripts/ or an extracted copy's folder, where nothing ignores
+// it. It is split by browser and --quick, so a chromium full run and a
+// webkit --quick run kept side by side do not overwrite each other's files;
+// a --path run shares its browser's folder with the fixed-page run. An
+// explicit --out still resolves against the cwd.
+const outDir =
+  args.out !== undefined
+    ? path.resolve(args.out)
+    : path.join(checkoutRoot(), "test-results", "shell-qa", `${args.browser}${args.quick ? "-quick" : ""}`);
 fs.mkdirSync(outDir, { recursive: true });
 teeConsoleTo(path.join(outDir, `${args.browser}-qa.log`));
+console.log(`out: ${outDir}`);
 
 // ---------------------------------------------------------------------------
 // Shell geometry. Mirrors src/styles/tokens.ts — `layout.navHeight`
