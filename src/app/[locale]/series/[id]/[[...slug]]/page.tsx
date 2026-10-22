@@ -1,13 +1,8 @@
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-// Two `Link` imports for two purposes:
-//   - `IntlLink` (`@/i18n/navigation`) for intra-app paths that are
-//     locale-FREE (the i18n Link auto-prepends locale): child series.
-//   - `Link` (`next/link`) for paths that already include the locale
-//     prefix from `eventHref(locale, ...)`: the LIVE banner. Using the
-//     i18n Link with a locale-prefixed href would double-prefix as
-//     `/ko/ko/events/...`.
-import { Link as IntlLink } from "@/i18n/navigation";
+// Every link on this page is a locale-prefixed canonical path from
+// `entityPath` / `eventHref`, so the plain `next/link` is the right one
+// (the i18n Link would prefix the locale a second time).
 import Link from "next/link";
 import type { Metadata } from "next";
 import {
@@ -58,7 +53,7 @@ import styles from "@/components/series/detail/seriesDetail.module.css";
 
 type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
-  searchParams: Promise<{ tab?: string | string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const TABS = ["schedule", "songs"] as const;
@@ -164,10 +159,10 @@ export default async function EventSeriesPage({
   // canonical `/series/<id>/<db slug>`, query preserved.
   enforceCanonicalSlug("series", locale, id, series.slug, slug, sp);
 
-  const t = await getTranslations("EventSeries");
-  const ct = await getTranslations("Common");
-  const evT = await getTranslations("Event");
-  const aT = await getTranslations("Artist");
+  const t = await getTranslations({ locale, namespace: "EventSeries" });
+  const ct = await getTranslations({ locale, namespace: "Common" });
+  const evT = await getTranslations({ locale, namespace: "Event" });
+  const aT = await getTranslations({ locale, namespace: "Artist" });
 
   // One reference instant for every getEventStatus() call in this
   // render, so an event near a boundary can't be classified differently
@@ -248,7 +243,12 @@ export default async function EventSeriesPage({
     meta = {
       kind: "artist",
       label: t("artistLabel"),
-      href: `/artists/${series.artist.id}/${series.artist.slug}`,
+      href: entityPath(
+        "artists",
+        locale,
+        series.artist.id,
+        series.artist.slug,
+      ),
       name: {
         text:
           displayNameWithFallback(
@@ -397,7 +397,7 @@ export default async function EventSeriesPage({
       : "";
     return {
       key: row.songId,
-      href: `/songs/${row.songId}/${song.slug}`,
+      href: entityPath("songs", locale, row.songId, song.slug),
       title: { text: display.main, lang: song.originalLanguage },
       variant: display.variant
         ? {
@@ -449,6 +449,7 @@ export default async function EventSeriesPage({
         tabs={tabs}
         active={activeTab}
         basePath={entityPath("series", locale, series.id, series.slug)}
+        searchParams={sp}
         ariaLabel={ct("tabsAriaLabel")}
       />
 
@@ -481,8 +482,13 @@ export default async function EventSeriesPage({
                   <ul>
                     {series.childSeries.map((child) => (
                       <li key={String(child.id)}>
-                        <IntlLink
-                          href={`/series/${child.id}/${child.slug}`}
+                        <Link
+                          href={entityPath(
+                            "series",
+                            locale,
+                            child.id,
+                            child.slug,
+                          )}
                           lang={nameLang(child, child.translations, locale)}
                         >
                           {displayNameWithFallback(
@@ -491,7 +497,7 @@ export default async function EventSeriesPage({
                             locale,
                           ) || t("unknownSeries")}{" "}
                           <span aria-hidden="true">›</span>
-                        </IntlLink>
+                        </Link>
                       </li>
                     ))}
                   </ul>

@@ -1,7 +1,8 @@
 import { getTranslations } from "next-intl/server";
-import { Link } from "@/i18n/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { formatDate, serializeBigInt } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
+import { entityPath } from "@/lib/seo/entityUrl";
 import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { AlbumType } from "@/generated/prisma/enums";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
@@ -31,6 +32,10 @@ import styles from "./seriesDetail.module.css";
  * the active-bonus count (listings whose status is not ended — the
  * existing `countActiveBonuses` meaning), and a link to the canonical
  * album page. Renders nothing when the tour has no BD.
+ *
+ * Raw rows (bigint ids): the cache codec revives bigint, and this is a
+ * server component, so the album id goes into `entityPath` exact —
+ * `serializeBigInt` would narrow it to a JS number (lossy above 2^53).
  */
 const getSeriesBdAlbums = cachedQuery(
   "series-bd-albums",
@@ -53,12 +58,11 @@ const getSeriesBdAlbums = cachedQuery(
     const bdAlbumIds = collectBdAlbumIds(events);
     if (bdAlbumIds.length === 0) return [];
 
-    const albums = await prisma.album.findMany({
+    return prisma.album.findMany({
       where: { id: { in: bdAlbumIds }, type: AlbumType.live_album },
       orderBy: [{ releaseDate: { sort: "asc", nulls: "last" } }, { id: "asc" }],
       include: albumCardInclude(locale),
     });
-    return serializeBigInt(albums);
   },
   { revalidate: CACHE_TTL.entity },
 );
@@ -96,7 +100,7 @@ export async function SeriesBdSection({
           return (
             <li key={String(album.id)}>
               <Link
-                href={`/albums/${album.id}/${album.slug}`}
+                href={entityPath("albums", locale, album.id, album.slug)}
                 className={styles.bdCard}
               >
                 <CoverImage

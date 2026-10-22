@@ -1,10 +1,10 @@
-import { Link } from "@/i18n/navigation";
+import Link from "next/link";
 import type { LangText } from "./SeriesIdentity";
 import styles from "./seriesDetail.module.css";
 
 export interface SeriesSongRow {
   key: string;
-  /** Locale-free canonical song path; the i18n Link adds the locale. */
+  /** Locale-prefixed canonical song path (`entityPath`). */
   href: string;
   /** Original title (headline — song identity is the original). */
   title: LangText;

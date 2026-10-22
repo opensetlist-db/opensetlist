@@ -40,9 +40,15 @@ const base = {
 
 describe("<SeriesIdentity />", () => {
   it("typography: no logo slot, H1 + original subtitle with their languages", () => {
-    const { container } = render(
-      <SeriesIdentity {...base} logo={{ image: null, color: null }} />,
+    // Positive control: the same panel with an image does render the slot.
+    const { container, rerender } = render(
+      <SeriesIdentity
+        {...base}
+        logo={{ image: { url: "https://img.example/a.webp", width: 300, height: 100 }, color: null }}
+      />,
     );
+    expect(screen.getByTestId("series-logo")).toBeTruthy();
+    rerender(<SeriesIdentity {...base} logo={{ image: null, color: null }} />);
     expect(screen.queryByTestId("series-logo")).toBeNull();
     const h1 = screen.getByRole("heading", { level: 1 });
     expect(h1.textContent).toBe("하스노소라 6th Live");
@@ -66,7 +72,12 @@ describe("<SeriesIdentity />", () => {
   });
 
   it("organizer fallback is plain text, not a link", () => {
-    render(
+    // Positive control: the artist form of the same row is a link.
+    const { rerender } = render(
+      <SeriesIdentity {...base} logo={{ image: null, color: null }} />,
+    );
+    expect(screen.getByRole("link")).toBeTruthy();
+    rerender(
       <SeriesIdentity
         {...base}
         meta={{ kind: "organizer", label: "주최", name: { text: "러브라이브! 시리즈", lang: "ko" } }}

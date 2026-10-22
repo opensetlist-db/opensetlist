@@ -39,9 +39,13 @@ export interface SeriesLeg {
  * keyboard-operable and exposes its expanded state without any client
  * JavaScript.
  *
- * The summary holds the city heading (h2), roll-up status, venue (first
+ * The summary holds the city heading, roll-up status, venue (first
  * event's) · date range, and the "N공연" count over a chevron that
- * rotates when open. Rows link to the canonical event page with the
+ * rotates when open. The h2 is a DIRECT child of <summary> — the only
+ * place its content model allows a heading (phrasing content plus one
+ * heading); a heading nested in the layout spans would be invalid. So
+ * the h2 itself is the middle flex cell and carries city, status and
+ * the venue/date line. Rows link to the canonical event page with the
  * full calendar date, status and the full short name — wrapped, never
  * ellipsized. No per-event song count: the series query does not fetch
  * one and 32-v1 does not invent it.
@@ -53,9 +57,11 @@ export function SeriesLegGroup({ leg }: { leg: SeriesLeg }) {
         <span className={styles.pin} aria-hidden="true">
           ⌖
         </span>
-        <span className={styles.legHeading}>
+        <h2 className={styles.legHeading}>
           <span className={styles.legTitle}>
-            <h2 lang={leg.city.lang}>{leg.city.text}</h2>
+            <span className={styles.legCity} lang={leg.city.lang}>
+              {leg.city.text}
+            </span>
             {leg.status ? (
               <SeriesStatusPill
                 status={leg.status.status}
@@ -72,7 +78,7 @@ export function SeriesLegGroup({ leg }: { leg: SeriesLeg }) {
             ) : null}
             {leg.dateRangeLabel}
           </span>
-        </span>
+        </h2>
         <span className={styles.legCount}>
           {leg.countLabel}
           <span className={styles.chevron} aria-hidden="true">

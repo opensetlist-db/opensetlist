@@ -121,13 +121,23 @@ describe("series detail logo (07 resolver inside the cached read)", () => {
   });
 
   it("own typography stops an ancestor's custom logo", async () => {
+    // Positive control: with the series inheriting, the ancestor's logo shows.
+    graphRows.mockResolvedValue(chain({ "1": { logoMode: "custom", logoAsset: asset } }));
+    expect(await logoUrl()).toBe(asset.publicUrl);
+
     graphRows.mockResolvedValue(
       chain({ "1": { logoMode: "custom", logoAsset: asset }, "3": { logoMode: "typography" } }),
     );
+    revalidatePublicData();
     expect(await logoUrl()).toBeNull();
   });
 
   it("an unusable chosen asset is typography, not the ancestor's logo", async () => {
+    // Positive control: with the middle node inheriting, the top logo shows.
+    graphRows.mockResolvedValue(chain({ "1": { logoMode: "custom", logoAsset: asset } }));
+    expect(await logoUrl()).toBe(asset.publicUrl);
+
+    revalidatePublicData();
     graphRows.mockResolvedValue(
       chain({
         "1": { logoMode: "custom", logoAsset: asset },

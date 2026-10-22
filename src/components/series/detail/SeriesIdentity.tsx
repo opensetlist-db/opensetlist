@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Link } from "@/i18n/navigation";
+import Link from "next/link";
 import type { PublicLogo } from "@/lib/logoResolution";
 import { SeriesLogo } from "./SeriesLogo";
 import styles from "./seriesDetail.module.css";
@@ -11,7 +11,7 @@ export type SeriesMeta =
   | {
       kind: "artist";
       label: string;
-      /** Locale-free canonical path; the i18n Link adds the locale. */
+      /** Locale-prefixed canonical path (`entityPath`). */
       href: string;
       name: LangText;
     }
