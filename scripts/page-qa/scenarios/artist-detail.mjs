@@ -68,8 +68,11 @@ const scenario = {
         hrefs.join() === ["overview", "albums", "history"].map((t) => `/ko${A1}?tab=${t}`).join(),
         hrefs.join(),
       );
-      await Promise.all([page.waitForURL(/tab=history/), h.pressOn(page, `${TABS}:nth-child(3)`)]);
-      await page.waitForSelector('[class*="historyGroup"]');
+      await h.afterNav(page, {
+        url: /tab=history/,
+        ready: '[class*="historyGroup"]',
+        action: () => h.pressOn(page, `${TABS}:nth-child(3)`),
+      });
       const cur = await page.$eval(`${TABS}[aria-current="page"]`, (a) => a.textContent);
       h.check("tabs: Enter navigates, aria-current moves", /49/.test(cur), cur);
       const scrollY = await page.evaluate(() => scrollY);
@@ -155,7 +158,13 @@ const scenario = {
       const exp = await page.getAttribute('button[class*="toggle"]', "aria-expanded");
       h.check("overview: other units toggle opens all 9", vis === 9 && exp === "true", `${vis} ${exp}`);
       // Unit card → its own page, with the parent in the breadcrumb.
-      await Promise.all([page.waitForURL(/artists\/2\//), page.locator('a[class*="unitCard"]').first().click()]);
+      // Ready on the breadcrumb link back to the parent: artist 1's own page
+      // has no link to itself in its breadcrumb, so it cannot satisfy this.
+      await h.afterNav(page, {
+        url: /artists\/2\//,
+        ready: `nav[aria-label] a[href="/ko${A1}"]`,
+        action: () => page.locator('a[class*="unitCard"]').first().click(),
+      });
       const crumbs = await page.$$eval("nav[aria-label] a", (as) => as.map((a) => a.getAttribute("href")));
       h.check("unit page: breadcrumb has parent", crumbs.includes(`/ko${A1}`), crumbs.join());
     });

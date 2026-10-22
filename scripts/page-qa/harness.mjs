@@ -39,8 +39,11 @@
 //                              { ctx, page, resp, errors } (opts below)
 //   layoutMatrix(opts)         locales × widths; the generic checks per cell
 //                              plus the scenario's own `cell` callback;
-//                              `basics: true` adds one <h1> in <main> and no
-//                              control under 24×24px, `capture: true` a
+//                              `basics: true` adds one <h1> in <main>, no
+//                              control under 24×24px and valid heading
+//                              markup (no heading in a phrasing-only parent,
+//                              <summary> headings direct and at most one),
+//                              `capture: true` a
 //                              full-page PNG per cell taken BEFORE `cell` (so
 //                              no focus ring or skip link is in it)
 //   reducedMotion(opts)        transitions/animations off under reduce, and
@@ -60,6 +63,11 @@
 //   expectStatus(name, path, { status, location })   request API, no redirect
 //                              following; `location` a RegExp on the header
 //   getText(path)              response body through the request API
+//   afterNav(page, { url, ready, action })  client-side navigation done:
+//                              the URL matches AND `ready` is in <main> (the
+//                              URL flips before the RSC payload re-renders);
+//                              `action` (a click, goBack) runs with the URL
+//                              wait armed. One --timeout for both waits
 //   pressOn(page, selector, key)  focus + key, WebKit-safe (see below)
 //   shot(page, label)          full-page PNG into --out (WebKit, over
 //                              32,767px: `.partN.png` parts); returns paths
@@ -151,6 +159,64 @@ function basicsInPage() {
     }),
     smallCount: small.length,
   };
+}
+
+// In-page (serialised into page.evaluate, so every helper stays inside
+// the function): layoutMatrix `basics` heading markup. Headings in <main> are
+// flow content; React builds the DOM by hand, so a design that wraps one in
+// a <span> (or puts it inside <summary> behind a wrapper) renders exactly
+// as written instead of being repaired by the HTML parser — the invalid
+// tree reaches the accessibility tree and any reader of the markup. FAILs:
+//   - a heading whose parent only takes phrasing content (span, strong,
+//     label, button, p, another heading, …; plus address, dt and th; the list is
+//     not exhaustive). `a`, `ins` and `del` are transparent (their
+//     content model is their parent's), so a heading in a card link
+//     (<div><a><h3>) is valid and is judged by the first ancestor above
+//     them;
+//   - a <summary> heading that is not a direct child (summary takes
+//     phrasing content, optionally intermixed with ONE heading, as a child);
+//   - a <summary> with more than one heading as direct children.
+// `headings` (how many were inspected) is the positive control. Exported
+// for its unit test (src/__tests__/unit/page-qa-markup.test.ts), which runs
+// it under jsdom against a bad and a good structure.
+export function markupInPage() {
+  const main = document.querySelector("main");
+  const HEADING = "h1, h2, h3, h4, h5, h6";
+  const PHRASING_ONLY = new Set([
+    "abbr", "b", "bdi", "bdo", "button", "cite", "code", "data", "dfn", "em", "i", "kbd", "label",
+    "mark", "meter", "output", "p", "pre", "progress", "q", "rp", "rt", "ruby", "s", "samp", "small", "span",
+    "strong", "sub", "sup", "time", "u", "var",
+    // Not phrasing-only, but they forbid heading content all the same.
+    "address", "dt", "th",
+    // A heading's own content is phrasing too, so a nested heading fails.
+    // Not `legend`: it takes phrasing optionally intermixed with headings.
+    "h1", "h2", "h3", "h4", "h5", "h6",
+  ]);
+  const TRANSPARENT = new Set(["a", "ins", "del"]);
+  const tag = (el) => el.tagName.toLowerCase();
+  const describe = (el) => {
+    const cls = typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\s+/).join(".") : "";
+    return `${tag(el)}${cls}`;
+  };
+  const headings = [...(main?.querySelectorAll(HEADING) ?? [])];
+  // One entry per offending element, with every reason it fails.
+  const bad = new Map();
+  const flag = (el, why) => bad.set(el, [...(bad.get(el) ?? []), why]);
+  for (const hd of headings) {
+    let parent = hd.parentElement;
+    while (parent && TRANSPARENT.has(tag(parent))) parent = parent.parentElement;
+    if (parent && PHRASING_ONLY.has(tag(parent))) flag(hd, `inside <${describe(parent)}>`);
+  }
+  for (const s of main?.querySelectorAll("summary") ?? []) {
+    const direct = [...s.children].filter((c) => c.matches(HEADING));
+    for (const hd of s.querySelectorAll(HEADING)) if (hd.parentElement !== s) flag(hd, "in <summary> but not its direct child");
+    if (direct.length > 1) flag(s, `${direct.length} headings directly inside`);
+  }
+  const entries = [...bad].map(([el, why]) => {
+    const text = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 25);
+    return `${describe(el)} "${text}" ${why.join("; ")}`;
+  });
+  return { headings: headings.length, bad: entries.slice(0, 3), badCount: entries.length };
 }
 
 // In-page: contrast(). Per pair, one entry per visible element whose class
@@ -527,6 +593,28 @@ export async function runScenario({
       return { ctx, page, resp, errors };
     },
 
+    // Client-side navigation (a Link click, a ?tab= link, page.goBack()):
+    // the URL changes before the RSC payload re-renders <main>, so a DOM
+    // read right after waitForURL sees the old (or an empty) page. Waits
+    // for `url` (anything page.waitForURL takes: RegExp, glob string or
+    // URL predicate), then for `ready` attached inside <main> — a selector
+    // that exists only on the destination, or the wait passes on the old
+    // page. `action` (optional) is started together with the URL wait, so
+    // a fast navigation cannot finish before the wait is armed; without
+    // it, call this after the navigation (waitForURL also accepts a URL
+    // that already matches). Both waits share one --timeout deadline.
+    // Returns the `ready` locator.
+    async afterNav(page, { url, ready, action }) {
+      const deadline = Date.now() + timeoutMs;
+      const left = () => Math.max(1, deadline - Date.now());
+      const nav = page.waitForURL(url, { timeout: timeoutMs });
+      if (action) await Promise.all([nav, action()]);
+      else await nav;
+      const target = page.locator("main").locator(ready).first();
+      await target.waitFor({ state: "attached", timeout: left() });
+      return target;
+    },
+
     async pressOn(page, selector, key = "Enter") {
       await page.keyboard.press("Shift");
       await page.focus(selector);
@@ -617,7 +705,8 @@ export async function runScenario({
     // and `cell({ page, loc, width, name, check, errors })` for the
     // scenario's own checks, `name(suffix)` giving "<prefix> <loc> <w>: …".
     // Opt-in, between the generic checks and `cell`:
-    //   basics   "one h1" (in <main>) and "no target under 24px"
+    //   basics   "one h1" (in <main>), "no target under 24px" and "heading
+    //            markup" (markupInPage)
     //   capture  h.shot(page, "<prefix>-<loc>-<w>") — before `cell`, so a
     //            focus ring or the skip link from the cell's keyboard steps
     //            never lands in a comparison capture
@@ -666,6 +755,12 @@ export async function runScenario({
                   name("no target under 24px"),
                   b.targets > 0 && b.smallCount === 0,
                   `${b.smallCount}/${b.targets}${b.smallCount ? ": " + b.small.join(", ") : ""}`,
+                );
+                const m = await page.evaluate(markupInPage);
+                check(
+                  name("heading markup"),
+                  m.headings > 0 && m.badCount === 0,
+                  `${m.badCount} bad of ${m.headings} headings${m.badCount ? ": " + m.bad.join(" | ") : ""}`,
                 );
               }
               if (capture) await h.shot(page, `${prefix}-${loc}-${width}`);

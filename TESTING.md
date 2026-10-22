@@ -220,8 +220,12 @@ through the request API, with a per-action `--timeout` and a whole-run
 to the DB; fixture rows come in through `--fixture <json>`. A page ticket
 adds a scenario under `scripts/page-qa/scenarios/` (copy `artist-detail`)
 instead of its own QA script: chromium in full, `--browser webkit --quick`
-for Safari. `layoutMatrix({ basics, capture })` adds one h1 and 24px
-targets per cell and a capture taken before any focus step;
+for Safari. `layoutMatrix({ basics, capture })` adds one h1, 24px
+targets and heading markup (no heading in a phrasing-only parent such
+as a span, `<summary>` headings direct and at most one; unit-tested in
+`page-qa-markup.test.ts`) per cell and a capture taken before any focus
+step; `h.afterNav(page, { url, ready, action })` waits out a client
+navigation (Link, `?tab=`, `goBack`) until `ready` is in the new `<main>`;
 `h.contrast` (exact CSS-module suffix `__<name>`, translucent backgrounds
 composited), `h.focusRing`, `h.scrollRegion` (fresh-load ArrowRight) and
 `reducedMotion({ rest, optional })` cover the rest of a page ticket's
