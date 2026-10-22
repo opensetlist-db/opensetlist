@@ -273,12 +273,17 @@ describe("member detail page (30-v1)", () => {
     const html = await render(
       member({
         performances: [
+          perf(event(), [song(4, null), song(3)]),
           perf(ev, [song(1), song(2)]),
           perf(event(), [song(1)]),
-          perf(event(), [song(3), song(4, null)]),
         ],
       }),
     );
+    // Count desc, equal counts by song id — not encounter order.
+    const order = [...html.matchAll(/href="\/ko\/songs\/(\d+)\//g)].map(
+      (m) => m[1],
+    );
+    expect(order).toEqual(["1", "2", "3"]);
     expect(html).toContain("songCountUnit(2)");
     expect(html.match(/class="[^"]*songRow/g)).toHaveLength(3);
     // One view-all (songs: 4 > 3); recent events: exactly 3, so none.

@@ -426,7 +426,16 @@ export default async function MemberPage({ params, searchParams }: Props) {
     groupLabel: string;
     groupLang?: string;
     rawDateMs: number;
+    startMs: number;
   };
+  // Newest first: date, then start time (Day.2 evening before Day.2
+  // matinee), then id. The query has no ORDER BY on these relations, so
+  // without the tie-breaks same-day rows came back in whatever order
+  // Postgres returned them and could swap between builds.
+  const byNewest = (a: EventView, b: EventView) =>
+    b.rawDateMs - a.rawDateMs ||
+    b.startMs - a.startMs ||
+    Number(b.id) - Number(a.id);
 
   const buildView = (event: MemberEvent): EventView => {
     const series = event.eventSeries;
@@ -461,6 +470,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       groupLabel: seriesName ?? name,
       groupLang: seriesName ? seriesLang : nameLang,
       rawDateMs: isoDate ? new Date(isoDate).getTime() : 0,
+      startMs: new Date(String(event.startTime)).getTime() || 0,
     };
   };
 
@@ -504,31 +514,27 @@ export default async function MemberPage({ params, searchParams }: Props) {
   }
   const seriesGroups: SeriesGroup[] = [...groupMap.entries()]
     .map(([sid, list]) => {
-      const events = [...list].sort((a, b) => b.rawDateMs - a.rawDateMs);
+      const events = [...list].sort(byNewest);
       const hasOngoing = events.some((e) => e.status === "ongoing");
-      const mostRecentMs = events.reduce(
-        (m, e) => (e.rawDateMs > m ? e.rawDateMs : m),
-        0,
-      );
+      const mostRecentMs = events[0].rawDateMs;
       return {
         id: sid,
         // Every event in a series resolves to the same series label;
-        // for the standalone bucket the first-inserted event's name
-        // labels the group (the previous page's behaviour).
-        label: list[0].groupLabel,
-        labelLang: list[0].groupLang,
+        // the standalone bucket (id 0) is labelled by its newest event.
+        label: events[0].groupLabel,
+        labelLang: events[0].groupLang,
         events,
         hasOngoing,
         sortKey: hasOngoing ? Number.MAX_SAFE_INTEGER : mostRecentMs,
       };
     })
-    .sort((a, b) => b.sortKey - a.sortKey);
+    .sort((a, b) => b.sortKey - a.sortKey || b.id - a.id);
 
   // Recent-3 across all series for the overview tab, newest first
   // (future scheduled dates included). The series name shows as a
   // subtitle only when it adds something beyond the event name.
   const recentEvents: EventView[] = [...eventViewsById.values()]
-    .sort((a, b) => b.rawDateMs - a.rawDateMs)
+    .sort(byNewest)
     .slice(0, 3);
 
   // ─── Songs aggregation ───────────────────────────────────────────
@@ -587,10 +593,11 @@ export default async function MemberPage({ params, searchParams }: Props) {
       entry.timesPerformed += 1;
     }
   }
-  // Count desc; equal counts keep query encounter order (30-v1 contract
-  // allows tie order to differ from the standalone snapshot).
+  // Count desc, then song id asc — the 30-v1 snapshot's tie rule. The
+  // performances relation has no ORDER BY, so ties left in encounter
+  // order reshuffled the top 3 between builds.
   const songsAll: MemberSongView[] = [...songMap.values()].sort(
-    (a, b) => b.timesPerformed - a.timesPerformed,
+    (a, b) => b.timesPerformed - a.timesPerformed || a.id - b.id,
   );
   const songsTop3 = songsAll.slice(0, 3);
   const totalSongs = songsAll.length;
