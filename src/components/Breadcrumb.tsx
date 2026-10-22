@@ -33,6 +33,23 @@ interface Props {
 }
 
 /**
+ * WCAG 2.2 target size (24×24) for a crumb link. The 12px label alone is
+ * far smaller (the ko "홈" is 11×16), so the link gets a padded hit area,
+ * and an equal negative margin cancels it: the visual position and the
+ * line height stay what the approved designs show. 5px, not 4px,
+ * vertically — 16px text + 8px measured just under 24px in WebKit
+ * (sub-pixel rounding). `min-w-6` covers labels narrower than 12px.
+ * The link is a flex item of its `flex` wrapper span, so the box model
+ * applies without an explicit `display`.
+ *
+ * Utility classes, not an inline style: Tailwind's utilities sit in a
+ * cascade layer, so a page module can still override one property
+ * (legal's 32px row resets the vertical margin) — an inline style would
+ * beat every page rule.
+ */
+const LINK_HIT_AREA = "min-w-6 -mx-1.5 -my-[5px] px-1.5 py-[5px] text-center";
+
+/**
  * Page breadcrumb — `Home › Series › Current page` style. Padding lives
  * on the parent `<main>` (currently `px-4 py-8` across pages); the
  * component just contributes a bottom margin so it sits cleanly above
@@ -56,7 +73,7 @@ export function Breadcrumb({ items, ariaLabel }: Props) {
           {item.href ? (
             <Link
               href={item.href}
-              className="hover:underline"
+              className={`${LINK_HIT_AREA} hover:underline`}
               style={{ color: colors.primary }}
             >
               {item.label}

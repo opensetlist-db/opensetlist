@@ -78,6 +78,23 @@ describe("Breadcrumb", () => {
     expect(nav.getAttribute("aria-label")).toBe("탐색 경로");
   });
 
+  it("gives each link a 24px hit area cancelled by an equal negative margin", () => {
+    // jsdom does no layout, so this pins the classes rather than the
+    // measured box; page-qa's "no target under 24px" check measures it.
+    render(
+      <Breadcrumb
+        ariaLabel="Breadcrumb"
+        items={[{ label: "홈", href: "/ko" }, { label: "X" }]}
+      />,
+    );
+    const link = screen.getByText("홈");
+    for (const cls of ["min-w-6", "px-1.5", "-mx-1.5", "py-[5px]", "-my-[5px]"]) {
+      expect(link.classList).toContain(cls);
+    }
+    // The current-page crumb is not a target, so it stays unpadded.
+    expect(screen.getByText("X").className).toBe("");
+  });
+
   it("hides the › separator from assistive tech", () => {
     render(
       <Breadcrumb

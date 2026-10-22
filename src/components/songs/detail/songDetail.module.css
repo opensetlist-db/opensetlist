@@ -30,19 +30,6 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-/*
- * WCAG 2.2 target size (24×24): the 12px crumb link ("홈" is 11px wide)
- * gets a padded hit area; the equal negative margin keeps the approved
- * visual position and line height unchanged.
- */
-.breadcrumb > nav a {
-  display: inline-block;
-  min-width: 24px;
-  /* 5px, not 4px: 16px text + 8px measured just under 24px in WebKit. */
-  margin: -5px -6px;
-  padding: 5px 6px;
-  text-align: center;
-}
 
 /* ── Identity card ────────────────────────────────────────────── */
 

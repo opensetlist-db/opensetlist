@@ -30,19 +30,6 @@
 .breadcrumb > nav {
   margin-bottom: 22px;
 }
-/*
- * The shared Breadcrumb renders bare 16px-high text links ("홈" is 11px
- * wide). Give them a 24×24 minimum target (WCAG 2.5.8) on this page
- * without touching the shared component; the text stays centred, so the
- * crumb line looks the same.
- */
-.breadcrumb a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  min-height: 24px;
-}
 
 /* ── Identity card ────────────────────────────────────────────── */
 
