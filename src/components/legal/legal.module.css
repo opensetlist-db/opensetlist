@@ -31,8 +31,9 @@
   line-height: 1.8;
 }
 
-/* Shared Breadcrumb links are text-height only; 34-v1 gives them a
-   32px row so the target clears 24px. */
+/* Shared Breadcrumb links are text-size only; 34-v1 gives them a 32px
+   row. min-width covers the one-glyph ko "홈" (11px wide), so the target
+   clears 24px both ways; the text stays left-aligned, so nothing moves. */
 .breadcrumb > nav {
   margin-bottom: 24px;
 }
@@ -40,6 +41,7 @@
   display: inline-flex;
   align-items: center;
   min-height: 32px;
+  min-width: 24px;
 }
 
 /* ── Desktop grid: 240px sidebar + 32px gap + content ─────────────── */
@@ -251,6 +253,8 @@
   color: #52617a;
 }
 
+/* Underlined like a plain link in 34-v1 (browser default there; Tailwind
+   preflight strips it here). Same for the bottom CTA below. */
 .contact {
   display: inline-flex;
   align-items: center;
@@ -258,6 +262,7 @@
   font-size: 16px;
   font-weight: 500;
   color: #165dcc;
+  text-decoration: underline;
   text-underline-offset: 4px;
 }
 .contact:hover {
@@ -297,6 +302,7 @@
   font-size: 14px;
   font-weight: 700;
   color: #165dcc;
+  text-decoration: underline;
   text-underline-offset: 4px;
 }
 .bottomSwitch a:hover {

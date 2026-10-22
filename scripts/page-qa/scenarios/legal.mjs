@@ -107,12 +107,20 @@ const scenario = {
           await page.waitForFunction((id) => document.activeElement?.id === id, target, { timeout: 3000 }).catch(() => {});
           const jump = await page.evaluate((id) => {
             const el = document.getElementById(id);
-            return { focused: document.activeElement === el, top: Math.round(el?.getBoundingClientRect().top ?? -1), hash: location.hash };
+            const se = document.scrollingElement;
+            return {
+              focused: document.activeElement === el,
+              top: Math.round(el?.getBoundingClientRect().top ?? -1),
+              hash: location.hash,
+              // A short page (terms at desktop widths) cannot scroll a late
+              // section up to 24px: the browser stops at the document end.
+              atEnd: se.scrollTop + innerHeight >= se.scrollHeight - 1,
+            };
           }, target);
           check(
-            name("TOC jump focuses section at 24px"),
-            jump.focused && jump.hash === `#${target}` && Math.abs(jump.top - 24) <= 2,
-            `focused ${jump.focused}, top ${jump.top}, ${jump.hash}`,
+            name("TOC jump focuses section at 24px (or page end)"),
+            jump.focused && jump.hash === `#${target}` && (Math.abs(jump.top - 24) <= 2 || (jump.atEnd && jump.top > 24)),
+            `focused ${jump.focused}, top ${jump.top}${jump.atEnd ? " (page end)" : ""}, ${jump.hash}`,
           );
         },
       });
