@@ -31,9 +31,10 @@
   line-height: 1.8;
 }
 
-/* Shared Breadcrumb links are text-size only; 34-v1 gives them a 32px
-   row. min-width covers the one-glyph ko "홈" (11px wide), so the target
-   clears 24px both ways; the text stays left-aligned, so nothing moves. */
+/* 34-v1 gives the crumb links a 32px row. The shared Breadcrumb already
+   pads each link to a 24px target and cancels the padding with a negative
+   margin; resetting the vertical margin here lets the 32px box take up
+   its full row. */
 .breadcrumb > nav {
   margin-bottom: 24px;
 }
@@ -41,7 +42,7 @@
   display: inline-flex;
   align-items: center;
   min-height: 32px;
-  min-width: 24px;
+  margin-block: 0;
 }
 
 /* ── Desktop grid: 240px sidebar + 32px gap + content ─────────────── */
