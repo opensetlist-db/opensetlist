@@ -10,9 +10,6 @@
 //
 // Usage (from the repo root, against a running server):
 //   node scripts/redesign-capture.mjs --base http://localhost:3110 --out <dir>
-//   --out is created (with any missing parents) and every progress line goes
-//   to stdout AND <out>/captures.log (<out>/design-<browser>.log in
-//   --design mode), so do not redirect stdout into the evidence folder.
 //     [--browser chromium|webkit]   default chromium
 //     [--filter ko-event-,admin-]   comma-separated key prefixes; keys are
 //                                    `<locale>-<page>` for public pages and
@@ -64,6 +61,13 @@
 //                                    about 15 minutes; raise M for a full run
 //                                    with a large --repeat.
 //
+// --out is created with any missing parents, and from then on every line the
+// run prints (stdout and stderr) also goes to <out>/captures.log
+// (<out>/design-<browser>.log in --design mode). Do not redirect stdout into
+// the evidence folder: a redirect into a folder that does not exist yet
+// fails in the shell before the script starts. Only argument errors, printed
+// before --out exists, stay out of the log.
+//
 // Navigations wait for `load`, never `networkidle`: a page that keeps a
 // connection open (polling, a stalled analytics request) never goes idle,
 // and a networkidle wait on WebKit hung a QA run for ~30 minutes. The
@@ -94,8 +98,7 @@
 //   at the packet's viewport, DPR1, and records status, entity IDs vs the
 //   packet's `ids`, horizontal overflow, console errors, <html lang> and
 //   robots meta into `design-<browser>.json` (log: `design-<browser>.log`).
-//   Chromium runs also write
-//   `compare-<locale>-<width>-<key>.webp` (baseline | actual full page) and
+//   Chromium runs also write `compare-<locale>-<width>-<key>.webp` (baseline | actual full page) and
 //   `pair-<locale>-<width>-<key>.webp` (baseline | actual cropped to the
 //   baseline's width × height — the one to read side by side). Packet ids
 //   may be bare (`165`); they take the URL's entity kind. On WebKit a page
@@ -157,7 +160,8 @@ const repoRoot = checkoutRoot();
 // Called right after --out is created. Synchronous append, as in
 // scripts/page-qa/harness.mjs: a hung or killed run still shows the last
 // line it reached. An uncaught error's stack, which Node prints without
-// going through console, is appended too.
+// going through console, is appended too. redesign-shell-qa.mjs carries a
+// copy (this script stays a single file to extract); change both together.
 function teeConsoleTo(file) {
   fs.writeFileSync(file, "");
   for (const level of ["log", "warn", "error"]) {

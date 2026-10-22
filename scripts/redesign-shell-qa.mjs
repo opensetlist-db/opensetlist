@@ -81,9 +81,9 @@
 // has, and exits 1.
 //
 // Creates --out (with any missing parents) and writes <out>/<browser>-qa.json
-// (every check with ok/na/detail), <out>/<browser>-qa.log (everything printed
-// to stdout, as it is printed — no need to redirect stdout into the evidence
-// folder) and two screenshots (open menu at 390, desktop focus ring). Exits 1
+// (every check with ok/na/detail), <out>/<browser>-qa.log (every line printed
+// to stdout or stderr after --out exists, as it is printed — no need to
+// redirect stdout into the evidence folder) and two screenshots (open menu at 390, desktop focus ring). Exits 1
 // if any check FAILs.
 //
 // WebKit: Playwright's WebKit follows Safari's default, where plain Tab skips
