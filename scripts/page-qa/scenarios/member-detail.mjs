@@ -20,7 +20,11 @@ const UMI = "/members/ea68f46d-7e4a-4ab9-bb83-a5599f9bf45d/sonoda-umi";
 const SHION = "/members/f5816244-dcca-496e-bce7-241b7b53927e/sasaki-shion";
 const TABS = 'nav[class*="tabs"] a';
 // Solid text/background pairs by CSS-module class suffix (h.contrast).
-const CONTRAST = ["eyebrow", "subtitle", "unitLink", "voiceLabel", "unitTag", "status", "more", "eventSeries"];
+// Text drawn straight on the identity card's gradient (eyebrow, original
+// name, VA label) cannot be measured by the harness ("background image").
+// Worst case is the gradient's darkest stop #f1efff: blue #165dcc 5.34:1,
+// muted #52617a 5.53:1, ink 13.48:1 (computed by hand, ticket 31 handoff).
+const CONTRAST = ["unitLink", "unitTag", "status", "more", "eventSeries"];
 const CONTRAST_WIDTHS = [390, 1440];
 
 const scenario = {
@@ -85,7 +89,7 @@ const scenario = {
           events: all('a[class*="eventRow"]').length,
           more: all('a[class*="more"]').map((a) => [a.getAttribute("aria-label"), a.textContent, a.getAttribute("href")]),
           unitHref: document.querySelector('a[class*="unitLink"]')?.getAttribute("href"),
-          crumbs: all('main nav[aria-label] a').map((a) => a.getAttribute("href")),
+          crumbs: all('[class*="breadcrumb"] nav a').map((a) => a.getAttribute("href")),
           avatar: document.querySelector('[class*="avatar"]')?.textContent,
           ellipsis: all("main *").filter((el) => getComputedStyle(el).textOverflow === "ellipsis").length,
         };
