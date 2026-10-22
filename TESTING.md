@@ -150,6 +150,7 @@ the skip count.
 | `album-cross-links.spec.ts` | GET only | `E2E_MULTI_ALBUM_SONG_ID`, `E2E_DISCOGRAPHY_ARTIST_ID`, `E2E_BD_SERIES_ID` |
 | `bonus-scrape.spec.ts` | GET only | `E2E_BONUS_ALBUM_ID` |
 | `event-bd-section.spec.ts` | GET only | `E2E_BD_EVENT_ID`, `E2E_PLAIN_EVENT_ID` |
+| `home.spec.ts` | GET only | none — asserts roles, landmarks and URLs, so any dev catalog state passes |
 | `search.spec.ts` | GET only | a catalog where `a` matches >20 songs (any seeded dev DB) |
 | `seo-canonical.spec.ts` | GET only | events in the sitemap |
 | `setlist-unknown-song.spec.ts` | **writes** | `E2E_UNKNOWN_SONG_EVENT_ID`, `E2E_MULTI_ALBUM_SONG_ID`, `ADMIN_PASSWORD` |
