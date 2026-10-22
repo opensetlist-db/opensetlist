@@ -6,7 +6,7 @@ import { ShareCardModal } from "@/components/ShareCardModal";
 import { PrimaryButton } from "@/components/ui/Button";
 import { calcShareCardScore } from "@/lib/predictScore";
 import { trackEvent } from "@/lib/analytics";
-import { BASE_URL } from "@/lib/config";
+import { absoluteUrl, entityPath } from "@/lib/seo/entityUrl";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { colors } from "@/styles/tokens";
@@ -104,11 +104,11 @@ export function ShareCardButton({
   // Pre-v0.11.5 these were synthesized in-place as `eventTitle =
   // seriesName` + `dateLine = ""` placeholders — see the Props
   // docstring for the iOS-feedback rationale.
-  // Use the project's BASE_URL helper so preview / local / prod all
-  // emit correct share URLs. BASE_URL pulls from
-  // NEXT_PUBLIC_BASE_URL with a vercel.app fallback (see
-  // src/lib/config.ts).
-  const eventUrl = `${BASE_URL}/${locale}/events/${eventId}`;
+  // `absoluteUrl` prefixes BASE_URL so preview / local / prod all
+  // emit correct share URLs (NEXT_PUBLIC_BASE_URL with a vercel.app
+  // fallback, see src/lib/config.ts). Bare-id path: this button gets
+  // no event slug, and the event page's canonical 308 adds it.
+  const eventUrl = absoluteUrl(entityPath("events", locale, eventId, ""));
 
   const buttonLabel =
     mode === "prediction" ? t("shareButtonPrediction") : t("shareButton");

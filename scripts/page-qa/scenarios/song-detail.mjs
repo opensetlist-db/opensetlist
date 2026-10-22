@@ -206,11 +206,13 @@ const scenario = {
     await h.section("canonical", async () => {
       await h.expectStatus("bare id → 308 canonical", `/ko/songs/${VARIANT.id}`, {
         status: 308,
-        location: new RegExp(`/ko/songs/${VARIANT.id}/${VARIANT.slug}$`),
+        // Regex literals: the scenario lint bans `new RegExp(<dynamic>)`.
+        // VARIANT is song 62 / dream-believers-104 (top of file).
+        location: /\/ko\/songs\/62\/dream-believers-104$/,
       });
       await h.expectStatus("wrong slug keeps ?tab", `/ko/songs/${VARIANT.id}/wrong?tab=variations`, {
         status: 308,
-        location: new RegExp(`/ko/songs/${VARIANT.id}/${VARIANT.slug}\\?tab=variations$`),
+        location: /\/ko\/songs\/62\/dream-believers-104\?tab=variations$/,
       });
       await h.expectStatus("canonical 200", path("en", SONG), { status: 200 });
       // A song without versions clamps ?tab=variations to history.

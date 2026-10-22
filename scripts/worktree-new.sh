@@ -35,10 +35,33 @@
 #     worktree). So after linking, the worktree's lockfile is checked
 #     against the linked copy; on a mismatch the link is removed again
 #     and the script exits 4 with the worktree created but WITHOUT
-#     node_modules: run `npm ci` in it yourself, in the background. Not
-#     run here because it takes ~10 min on Windows — longer than an
-#     agent's foreground command limit, and a killed `npm ci` leaves a
-#     half-installed tree that looks present.
+#     node_modules. It then prints, first, the one command that closes
+#     the gap in the main checkout:
+#       (cd <main> && npm install --no-save <pkg>@<version> ...)
+#     with each version read from the NEW worktree's lockfile. --no-save
+#     leaves the main checkout's package.json and package-lock.json
+#     alone, and the gap is usually one or two packages (aws4fetch
+#     above), so this takes seconds; afterwards link node_modules into
+#     the worktree by hand (the printed command) and it is ready — no
+#     `npm ci`. The extra package stays until the main checkout's next
+#     `npm ci`, by which time its own branch has usually gained it. It
+#     is not a pure add, though: npm reconciles the whole tree against
+#     the main checkout's lockfile, so it may also prune an earlier
+#     --no-save extra or reset a drifted package — hence the confirm
+#     step the message prints after linking.
+#     The install is printed, never run: the main checkout belongs to
+#     the owner, and installing there changes node_modules under every
+#     linked worktree and any dev server running on it. Only top-level
+#     lock entries become specs: a nested one
+#     (node_modules/a/node_modules/b) is listed but left out, since a
+#     top-level `b@<its version>` could clash with a top-level `b` at
+#     another version and would not land in the nested folder anyway;
+#     its parent is normally missing too and brings it along. The
+#     fallback, second in the message, is `npm ci` inside
+#     the worktree, in the background. Neither is run here: `npm ci`
+#     takes 10–50 min on Windows (parallel sessions contend for the
+#     disk) — longer than an agent's foreground command limit, and a
+#     killed `npm ci` leaves a half-installed tree that looks present.
 #     After a later dependency change, UNLINK first (`cmd //c rmdir
 #     node_modules` on Windows, `rm node_modules` elsewhere) and only then
 #     `npm ci`. Never `npm install` through the link: it rewrites the main
@@ -183,11 +206,46 @@ if [ -d "$main/node_modules" ]; then
         exit 1
       fi
       # Only the package lines: the checker's repair recipe is for a
-      # damaged copy, not for a branch that needs other packages.
-      grep -E '^  node_modules/' "$report" | head -20 >&2 || true
+      # damaged copy, not for a branch that needs other packages. Each
+      # line reads `  node_modules/<key>  <name>@<version>  (<problem>)`,
+      # and the version is the WORKTREE's lockfile's (the check above ran
+      # on $path), which is the one the branch needs. The checker prints
+      # `<version>` for an entry without one — the pasted command then
+      # fails on it, which beats installing a guessed version. `|| true`:
+      # under pipefail a report with no package line would otherwise end
+      # the script here, before the path and exit 4. Nested keys are
+      # shown but not turned into specs (see the header).
+      lines="$(grep -E '^  node_modules/' "$report" || true)"
       rm -f "$report"
+      if [ -n "$lines" ]; then printf '%s\n' "$lines" | head -20 >&2; fi
+      specs="$(printf '%s\n' "$lines" | awk '$1 !~ /\/node_modules\// && NF > 1 {print $2}' | sort -u | tr '\n' ' ')"
+      specs="${specs% }"
+      case "${OSTYPE:-}" in
+        msys*) relink="cmd //c mklink //J \"$(cygpath -w "$path/node_modules")\" \"$(cygpath -w "$main/node_modules")\"" ;;
+        *) relink="ln -s \"$main/node_modules\" \"$path/node_modules\"" ;;
+      esac
+      # Point the confirm step at the NEW worktree's checker when its
+      # branch has one: this script may run from a short-lived worktree
+      # whose path is gone by the time someone pastes the command.
+      checker="$script_dir/check-node-modules.mjs"
+      if [ -f "$path/scripts/check-node-modules.mjs" ]; then
+        checker="$path/scripts/check-node-modules.mjs"
+      fi
       echo "$path"
-      echo "worktree-new: $base needs packages the main checkout's node_modules lacks (above) — the worktree has NO node_modules. Run \`npm ci\` in $path (in the background: ~10 min on Windows). Do not link it back." >&2
+      {
+        echo "worktree-new: $base needs packages the main checkout's node_modules lacks (above) — the worktree has NO node_modules."
+        if [ -n "$specs" ]; then
+          echo "  1. Fill the gap in the main checkout without touching its package.json or lockfile (seconds; not run for you — the main checkout is the owner's, and the change reaches every linked worktree):"
+          echo "       (cd \"$main\" && npm install --no-save $specs)"
+          echo "     then link node_modules into the worktree and confirm — no \`npm ci\` needed:"
+          echo "       $relink"
+          echo "       node \"$checker\" \"$path\""
+          echo "     (or remove the worktree with scripts/worktree-rm.sh and rerun scripts/worktree-new.sh)"
+        else
+          echo "  1. (no top-level package to install in the main checkout — see the list above)"
+        fi
+        echo "  2. Otherwise run \`npm ci\` in $path, in the background (10–50 min on Windows); that worktree then keeps its own node_modules, so leave it unlinked."
+      } >&2
       exit 4
       ;;
     *)

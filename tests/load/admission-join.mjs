@@ -171,7 +171,11 @@ export function faultEvidence(logText, mode = "getnull") {
   for (const l of lookups) {
     const r = /\bresult=(\S+)/.exec(l)?.[1] ?? "?";
     results[r] = (results[r] || 0) + 1;
-    if (new RegExp(`\\bfault=${mode}\\b`).test(l)) tagged++;
+    // `fault=` carries one token (liveWarm's `oneToken`), so compare it
+    // whole — a spec like `slow:400+locale:ja` holds regex metacharacters.
+    // Exact on purpose: a lookup tagged with a combined spec
+    // (`getnull+slow:400`) ran a different fault than the one measured.
+    if (/\bfault=(\S+)/.exec(l)?.[1] === mode) tagged++;
   }
   const hits = results.hit ?? 0;
   const complete = armed > 0 && hits === 0 && invalid === 0 && blocked === 0 && armedOther === 0 && lookups.length > 0 && tagged === lookups.length;

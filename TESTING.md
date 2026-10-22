@@ -18,8 +18,22 @@
 | Event-detail TTFB | `scripts/ttfb-event-detail.sh <base-url> [label]` | — | `scripts/` | dev DB through the app (reads) |
 | Load (manual) | see `tests/load/README.md` | — | `tests/load/` | some scripts write to dev |
 
-CI (`.github/workflows/ci.yml`) runs only lint, `tsc --noEmit` and the
-unit suite. Integration and E2E run locally, by hand.
+CI (`.github/workflows/ci.yml`) runs only lint, the TESTING.md row
+check, `tsc --noEmit`, the unit suite and a report-only dead-code pass. Integration and E2E run
+locally, by hand.
+
+The unit suite runs with `TZ=America/Los_Angeles` (set in
+`vitest.config.ts`), on every machine and in CI. A stored UTC date
+formatted without `timeZone: "UTC"` therefore renders a day early and
+fails, instead of passing on UTC hosts (Vercel, CI) and drifting only on
+a developer's machine. Write date tests against that zone, never by
+reading the host's. `tz-pin.test.ts` fails if the pin stops taking effect.
+
+`npm run lint` is ESLint plus `npm run lint:css` (stylelint over
+`src/**/*.module.css`, `stylelint.config.mjs`: hex colour literals
+warn). `npm run lint:dead` (knip, `knip.config.ts`) lists files nothing
+imports and exports nothing uses; CI does not fail on it
+(`continue-on-error`).
 
 Filtering a long unit run once instead of rerunning it to find the
 failing file (the echo keeps vitest's exit code visible through the
@@ -27,6 +41,20 @@ pipe):
 
 ```bash
 npx vitest run 2>&1 | grep -E "FAIL|×|Test Files|Tests "; echo "exit=${PIPESTATUS[0]}"
+```
+
+Before review, lint every file the branch changed, with warnings
+failing. Warnings do not fail CI, so a file left out of a partial lint
+reaches the PR with its warning (a `hex-colour-literals`, say) as a mere
+CI annotation. The diff limits the check to this branch's files, so the
+repo's pre-existing warnings do not block it; replace `dev` with the
+PR's base (`feature/redesign` for redesign tickets). The guard skips an
+empty list (a bare `npx eslint` lints the whole repo), and
+`--no-warn-ignored` keeps a changed file under an ignore pattern from
+counting as a warning:
+
+```bash
+files=$(git diff --name-only --diff-filter=d origin/dev...HEAD -- '*.ts' '*.tsx' '*.mjs'); [ -z "$files" ] || npx eslint --max-warnings=0 --no-warn-ignored $files
 ```
 
 ### Unit — no database
@@ -67,10 +95,23 @@ know what each suite leaves behind:
 | `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
+Every `*.test.ts` here needs a row, and every row a file:
+`npm run check:testing-md` (a CI step right after Lint) fails otherwise. The
+same holds for the E2E table below.
+
 A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`
 and leaves its fixture rows in dev. A new integration test must create
 its own fixtures and delete them in `afterAll`; never assert on, or
 mutate, rows another feature depends on.
+
+A suite that asserts an exact list or count must also remove an earlier
+run's leftovers before it starts, or one interrupted run fails every
+later one. Start every fixture slug with a fixed prefix of the file's
+own, and at the start of `beforeAll` hard-delete everything matching
+that prefix (a per-run token after it is fine; the purge must not
+depend on it). Reference: `purge(PREFIX)` in
+`src/__tests__/integration/home-events.test.ts` (on `feature/redesign`
+until it merges).
 
 **Inspecting the dev DB by hand** (row counts, grants, RLS, before/after
 checks for a test or migration): use `node scripts/db-ro.mjs "<sql>"
@@ -80,6 +121,19 @@ script. It is dev-only (same URL guard as the integration setup, from
 `BEGIN READ ONLY … ROLLBACK`, writes and session `SET` are refused before
 connecting). It runs from any directory or task worktree and prints
 timestamps as UTC.
+
+**Adding QA fixtures** (new Album / EventSeries / Event rows, optional
+AlbumArtist links to existing artists, series / event logo modes with
+their own ImageAsset rows, for states the seed data lacks):
+`node scripts/db-fixture-add.mjs --prefix "[QA] <Tag>" --spec <json>
+--dry-run` first — guarded insert, spec format in its header; never an
+ad-hoc insert script. Its stdout goes to `scripts/page-qa.mjs --fixture`
+unchanged, and it prints the `db-fixture-rm` command for the same rows.
+
+**Removing QA fixtures** (EventSeries / Event / Album / ImageAsset rows
+made through the admin UI, which only soft-deletes): `node
+scripts/db-fixture-rm.mjs --dry-run …` — guarded hard delete, usage in
+its header; never an ad-hoc delete script.
 
 ### E2E — through the app
 
@@ -144,7 +198,20 @@ regressions: new horizontal scroll, CLS, console errors, `lang`, status.
 overflow, menu keyboard behaviour, focus ring, locale switch, reduced
 motion) across locales × widths and exits 1 on any FAIL. Page tickets run
 it after any shared-style change (redesign spec story 51): chromium in
-full, `--browser webkit --quick` for Safari.
+full, `--browser webkit --quick` for Safari. `--summary` prints only the
+FAIL lines (timeouts included) and the tally; every check, PASS and N/A
+too, stays in `<out>/<browser>-qa.json`. Without `--out`, `<out>` is
+`test-results/shell-qa/<browser>` (`<browser>-quick` with `--quick`) under
+the checkout root, printed as the first line; a rerun overwrites it.
+
+A production hydration mismatch shows up only as "Minified React error
+#418/#423/#425", with no component or text. `redesign-capture.mjs` then
+prints a hint line naming `scripts/hydration-diff.mjs <url> --timezone
+Asia/Seoul`. That script diffs the SSR HTML against the hydrated DOM in
+each `--timezone` (repeatable, default UTC) and prints the page errors
+plus the text found on only one side, with an ancestor path. Compare two
+zones to tell a timezone-dependent render from post-hydration client
+updates.
 
 Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
 (build + `next start`, Sentry blanked, refuses a foreign port holder,
@@ -152,6 +219,36 @@ Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
 --scenario <name>`, which logs in, creates and always deletes a dev-DB
 fixture, and runs overflow/keyboard/label/motion/referrer checks; a page
 adds a scenario under `scripts/admin-qa/scenarios/` (copy `album-cover`).
+
+Public pages (artist detail, album detail, …) use `scripts/page-qa.mjs
+--scenario <name>` against the same kind of build: it runs the locale ×
+width layout matrix (overflow, `<html lang>`, raw i18n keys, runtime
+errors), reduced motion with a positive control and canonical/404 checks
+through the request API, with a per-action `--timeout` and a whole-run
+`--timeout-min`, and writes a `.log` and `.json` per run. It never writes
+to the DB; fixture rows come in through `--fixture <json>`. A page ticket
+adds a scenario under `scripts/page-qa/scenarios/` (copy `artist-detail`)
+instead of its own QA script: chromium in full, `--browser webkit --quick`
+for Safari. `layoutMatrix({ basics, capture })` adds one h1, 24px
+targets and heading markup (no heading in a phrasing-only parent such
+as a span, `<summary>` headings direct and at most one; unit-tested in
+`page-qa-markup.test.ts`) per cell and a capture taken before any focus
+step; `h.afterNav(page, { url, ready, action })` waits out a client
+navigation (Link, `?tab=`, `goBack`) until `ready` is in the new `<main>`;
+`h.contrast` (exact CSS-module suffix `__<name>`, translucent backgrounds
+composited), `h.focusRing`, `h.scrollRegion` (fresh-load ArrowRight) and
+`reducedMotion({ rest, optional })` cover the rest of a page ticket's
+checklist — `home` uses them all. Responses ≥400 count as errors except
+the local `_vercel/speed-insights` 404; a check whose subject is absent
+on the build or data prints SKIP, which never fails a run.
+
+`page-qa.mjs`, `admin-qa.mjs` and `redesign-capture.mjs` read
+`messages/` and `.env` from the git checkout holding the current
+directory, and their scenarios from beside the script. A copy extracted
+from another branch (e.g. into a redesign worktree's gitignored
+`.claude/tmp/`, with its `page-qa/` or `admin-qa/` folder, plus
+`dev-db-guard.mjs` for admin-qa) therefore runs against the worktree it
+is started from.
 
 ---
 

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { formatDate, serializeBigInt } from "@/lib/utils";
+import {
+  formatDate,
+  OPERATOR_TIMESTAMP_DATE_FORMAT,
+  serializeBigInt,
+} from "@/lib/utils";
 import type { AlbumBonusImportJobStatus } from "@/generated/prisma/enums";
 import CreateJobClient from "./CreateJobClient";
 
@@ -117,20 +121,7 @@ export default async function ImportReviewListPage({ searchParams }: Props) {
           {rows.map((j) => (
             <tr key={j.id} className="border-b border-zinc-100 align-top">
               <td className="py-2 whitespace-nowrap text-zinc-500">
-                {/* `createdAt` is a timestamp (full instant), not a
-                    date-only value like Event.date. Without an
-                    explicit timeZone option, `formatDate` falls
-                    through to the runtime's local zone — UTC on
-                    Vercel — and a late-night-KST job would display
-                    the next-day's date (silent 9h shift). Pin to
-                    Asia/Seoul (operator-only surface, single
-                    locale). */}
-                {formatDate(j.createdAt, "ko", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                  timeZone: "Asia/Seoul",
-                })}
+                {formatDate(j.createdAt, "ko", OPERATOR_TIMESTAMP_DATE_FORMAT)}
               </td>
               <td className="py-2">
                 {j.album ? (

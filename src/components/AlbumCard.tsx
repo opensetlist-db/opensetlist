@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
 import { parseReleaseYear } from "@/lib/utils";
 import { colors, radius } from "@/styles/tokens";
+import { entityPath } from "@/lib/seo/entityUrl";
 
 /*
  * AlbumCard — reusable album mini-card used across Sprint B2 cross-link
@@ -160,7 +161,7 @@ async function MiniVariant({
     footerSegments.push(String(releaseYear));
   }
 
-  const albumHref = `/${locale}/albums/${album.id}/${album.slug}`;
+  const albumHref = entityPath("albums", locale, album.id, album.slug);
 
   return (
     <Link
