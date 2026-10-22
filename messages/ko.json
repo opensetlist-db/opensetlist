@@ -259,6 +259,8 @@
     "noPerformances": "공연 기록이 없습니다.",
     "unknown": "이름 없는 멤버",
     "eyebrow": "멤버",
+    "viewAllSongs": "곡 전체 보기",
+    "viewAllHistory": "공연 이력 전체 보기",
     "tabOverview": "개요",
     "tabSongs": "곡 ({count})",
     "tabHistory": "공연 이력 ({count})",

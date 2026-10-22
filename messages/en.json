@@ -259,6 +259,8 @@
     "noPerformances": "No performance records.",
     "unknown": "Untitled Member",
     "eyebrow": "Member",
+    "viewAllSongs": "View all songs",
+    "viewAllHistory": "View all concert history",
     "tabOverview": "Overview",
     "tabSongs": "Songs ({count})",
     "tabHistory": "History ({count})",

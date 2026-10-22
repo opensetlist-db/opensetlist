@@ -788,6 +788,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                 {totalSongs > songsTop3.length && (
                   <Link
                     href={`${memberHref}?tab=songs`}
+                    aria-label={t("viewAllSongs")}
                     scroll={false}
                     className={styles.more}
                   >
@@ -809,6 +810,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                 {totalEvents > recentEvents.length && (
                   <Link
                     href={`${memberHref}?tab=history`}
+                    aria-label={t("viewAllHistory")}
                     scroll={false}
                     className={styles.more}
                   >
