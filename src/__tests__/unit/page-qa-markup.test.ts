@@ -29,10 +29,11 @@ describe("markupInPage", () => {
   });
 
   it("fails a heading in a phrasing-only parent outside summary", () => {
-    const r = render(`<h1>A</h1><button><h3>Inside a button</h3></button><label><h4>x</h4></label>`);
-    expect(r.badCount).toBe(2);
+    const r = render(`<h1>A</h1><button><h3>Inside a button</h3></button><label><h4>x</h4></label><address><h2>Contact</h2></address>`);
+    expect(r.badCount).toBe(3);
     expect(r.bad[0]).toMatch(/^h3 "Inside a button" inside <button>$/);
     expect(r.bad[1]).toMatch(/^h4 "x" inside <label>$/);
+    expect(r.bad[2]).toMatch(/^h2 "Contact" inside <address>$/);
   });
 
   it("fails a heading nested in a heading, and passes one in a legend", () => {

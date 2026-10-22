@@ -168,7 +168,7 @@ function basicsInPage() {
 // as written instead of being repaired by the HTML parser — the invalid
 // tree reaches the accessibility tree and any reader of the markup. FAILs:
 //   - a heading whose parent only takes phrasing content (span, strong,
-//     label, button, p, another heading, …; plus dt and th; the list is
+//     label, button, p, another heading, …; plus address, dt and th; the list is
 //     not exhaustive). `a`, `ins` and `del` are transparent (their
 //     content model is their parent's), so a heading in a card link
 //     (<div><a><h3>) is valid and is judged by the first ancestor above
@@ -184,10 +184,10 @@ export function markupInPage() {
   const HEADING = "h1, h2, h3, h4, h5, h6";
   const PHRASING_ONLY = new Set([
     "abbr", "b", "bdi", "bdo", "button", "cite", "code", "data", "dfn", "em", "i", "kbd", "label",
-    "mark", "meter", "output", "p", "progress", "q", "s", "samp", "small", "span",
+    "mark", "meter", "output", "p", "pre", "progress", "q", "rp", "rt", "ruby", "s", "samp", "small", "span",
     "strong", "sub", "sup", "time", "u", "var",
     // Not phrasing-only, but they forbid heading content all the same.
-    "dt", "th",
+    "address", "dt", "th",
     // A heading's own content is phrasing too, so a nested heading fails.
     // Not `legend`: it takes phrasing optionally intermixed with headings.
     "h1", "h2", "h3", "h4", "h5", "h6",
