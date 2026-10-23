@@ -121,7 +121,8 @@ beforeAll(async () => {
   // Older than the window: only the archive may show it.
   await item(await event("old", "2099-03-01T09:00:00Z", { status: "completed" }), 1);
 
-  // Upcoming: six scheduled, one beyond 30 days; cancelled/deleted extras.
+  // Upcoming: six scheduled, two tied beyond 30 days at the take(5)
+  // cutoff; cancelled/deleted extras never qualify.
   for (const [i, day] of ["06-05", "06-12", "06-19", "06-26", "08-01", "08-01"].entries()) {
     await event(`up-${i}`, `2099-${day}T09:00:00Z`);
   }

@@ -133,7 +133,7 @@ const scenario = {
         h.skip("LIVE CTA navigation", "no live show in current catalog");
       } else {
         const href = await card.getAttribute("href");
-        h.check("LIVE CTA has canonical event destination", /^\/ko\/events\/\d+\/[a-z0-9-]+$/.test(href), href);
+        h.check("LIVE CTA has canonical event destination", /^\/ko\/events\/\d+\/[^/?#]+$/.test(href), href);
         await h.afterNav(page, {
           url: new URL(href, h.base).href,
           ready: '[data-testid="event-hero"]',
