@@ -74,7 +74,7 @@ try {
         Assert-TaskInactive $target (Get-TaskProcesses)
         $status = Get-TaskGitText $target @('status', '--porcelain', '--untracked-files=all')
         if ($status) { throw 'Dirty worktree: commit or preserve every tracked/untracked change first' }
-        if ((Get-TaskGitText $target @('ls-files','-v')) -match '(?m)^[a-zS] ') { throw 'Hidden index flags (assume-unchanged/skip-worktree) must be cleared before cleanup' }
+        if ((Get-TaskGitText $target @('ls-files','-v')) -cmatch '(?m)^[a-zS] ') { throw 'Hidden index flags (assume-unchanged/skip-worktree) must be cleared before cleanup' }
         if ($MergeRef -notin @('origin/dev','origin/main','origin/feature/redesign')) { throw 'MergeRef must name a project remote integration branch: origin/dev, origin/main, origin/feature/redesign' }
         $merged = Invoke-TaskGit $main @('merge-base', '--is-ancestor', $tree.Head, "refs/remotes/$MergeRef")
         if ($merged.Code -ne 0) { throw "Unmerged HEAD (or invalid merge ref): $MergeRef" }
@@ -136,7 +136,7 @@ try {
             if ((Get-TaskGitText $target @('rev-parse', 'HEAD')) -ne $ReleasedHead -or (Get-TaskGitText $target @('status', '--porcelain', '--untracked-files=all'))) { throw 'Worktree changed during validation' }
             Assert-TaskInactive $target (Get-TaskProcesses)
             Assert-TaskGitUnlocked $target $tree.Branch
-            if ((Get-TaskGitText $target @('ls-files','-v')) -match '(?m)^[a-zS] ') { throw 'Hidden index flags appeared during validation' }
+            if ((Get-TaskGitText $target @('ls-files','-v')) -cmatch '(?m)^[a-zS] ') { throw 'Hidden index flags appeared during validation' }
             if (@(Get-TaskWorktrees $main | Where-Object { (Test-SameTaskPath $_.Path $target) -and $_.Locked }).Count) { throw 'Worktree became Git-locked' }
             # Unlink the dependency root first, then every nested build junction.
             $links = @($inventory | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } | Sort-Object @{Expression={ if (Test-SameTaskPath $_.FullName (Join-Path $target 'node_modules')) { 0 } else { 1 } }})
