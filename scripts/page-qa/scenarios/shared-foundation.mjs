@@ -145,7 +145,11 @@ const scenario = {
                   page.on("requestfailed", (r) => {
                     const telemetry = /google-analytics|googletagmanager|sentry\.io|speed-insights/.test(r.url());
                     const fontFault = state !== "normal" && FONT_URL.test(r.url());
-                    if (!telemetry && !fontFault) unexpectedFailures.push(`${r.url()} ${r.failure()?.errorText}`);
+                    // The diagnostic overlay moves links out of view. Next
+                    // cancels their speculative prefetches; active navigation
+                    // and API requests never carry this prefetch header.
+                    const prefetchAbort = r.headers()["next-router-prefetch"] === "1" && /ERR_ABORTED|cancelled|canceled/i.test(r.failure()?.errorText ?? "");
+                    if (!telemetry && !fontFault && !prefetchAbort) unexpectedFailures.push(`${r.url()} ${r.failure()?.errorText}`);
                   });
                   await page.addInitScript(() => {
                     if (PerformanceObserver.supportedEntryTypes?.includes("layout-shift")) {
