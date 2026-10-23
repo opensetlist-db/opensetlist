@@ -8,13 +8,10 @@
  * here, so the page keeps one readable module instead (same pattern as
  * `search.module.css`).
  *
- * Shared shell colours come from the `:root` custom properties in
- * globals.css (`--primary-hover`, `--focus-ring`, …), like
- * search.module.css. Colours that are not shared tokens (the lavender
- * ongoing card, the raspberry LIVE capsule, Hero gradient) are
- * home-only by the 14 contract ("No global shared token changes"), so
- * they stay local. `#165dcc` (`colors.primary`) has no custom property
- * yet; adding one belongs to the shared shell, not this page.
+ * The approved colours, including home-specific ones such as the
+ * lavender ongoing card, raspberry LIVE capsule and Hero gradient,
+ * come from `:root` CSS aliases in globals.css. Their values remain
+ * those of the 14 contract; `--primary` mirrors `colors.primary`.
  */
 
 .page {
@@ -34,8 +31,8 @@
   margin: 28px auto 0;
   overflow: hidden;
   border-radius: 24px;
-  color: #fff;
-  background: #0e133d;
+  color: var(--bg-card);
+  background: var(--surface-hero);
 }
 
 .heroPicture,
@@ -74,7 +71,7 @@
 
 .heroEyebrow {
   margin: 0 0 10px;
-  color: #d7e5ff;
+  color: var(--text-hero-eyebrow);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.15em;
@@ -94,7 +91,7 @@
 
 .heroLead {
   margin: 0;
-  color: #f0f3ff;
+  color: var(--text-hero-lead);
   font-size: 14px;
 }
 
@@ -109,14 +106,14 @@
   min-width: 0;
   height: 50px;
   padding: 0 48px 0 16px;
-  border: 1px solid #7c8ba3;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--bg-card);
   color: var(--foreground);
   font-size: 14px;
 }
 .heroInput::placeholder {
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .heroInput::-webkit-search-cancel-button {
   display: none;
@@ -132,7 +129,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #165dcc;
+  color: var(--primary);
   cursor: pointer;
 }
 .heroSubmit:hover {
@@ -155,7 +152,7 @@
 .heroInput:focus-visible,
 .heroSubmit:focus-visible,
 .button:focus-visible {
-  outline: 3px solid #fff;
+  outline: 3px solid var(--bg-card);
   outline-offset: 3px;
   box-shadow: 0 0 0 7px var(--foreground);
 }
@@ -182,8 +179,8 @@
     border-color 0.15s;
 }
 .buttonPrimary {
-  background: #165dcc;
-  color: #fff;
+  background: var(--primary);
+  color: var(--bg-card);
 }
 .buttonPrimary:hover {
   background: var(--primary-hover);
@@ -192,11 +189,11 @@
   background: var(--primary-pressed);
 }
 .buttonGlass {
-  background: #ffffffee;
+  background: var(--surface-button-glass);
   color: var(--foreground);
 }
 .buttonGlass:hover {
-  background: #fff;
+  background: var(--bg-card);
 }
 .buttonGlass:active {
   background: var(--primary-pressed-bg);
@@ -211,8 +208,8 @@
   max-width: calc(100% - 28px);
   padding: 5px 9px;
   border-radius: 4px;
-  background: #0b1538;
-  color: #f4f6ff;
+  background: var(--surface-hero-caption);
+  color: var(--text-hero-caption);
   font-size: 12px;
 }
 
@@ -237,7 +234,7 @@
 }
 .eyebrow {
   margin: 0 0 10px;
-  color: #165dcc;
+  color: var(--primary);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.15em;
@@ -260,7 +257,7 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #d12c74;
+  background: var(--surface-live-badge);
 }
 
 .textLink {
@@ -268,7 +265,7 @@
   align-items: center;
   min-height: 44px;
   padding: 10px 0;
-  color: #165dcc;
+  color: var(--primary);
   font-size: 13px;
   font-weight: 700;
 }
@@ -282,7 +279,7 @@
 
 .sectionIntro {
   margin: -10px 0 20px;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .railHint {
@@ -292,10 +289,10 @@
 .empty {
   grid-column: 1 / -1;
   padding: 20px 24px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
-  color: #52617a;
+  background: var(--bg-card);
+  color: var(--text-secondary);
 }
 .empty p {
   margin: 0 0 8px;
@@ -319,17 +316,17 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 5px 18px #233c6810;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-card);
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
 }
 .card:hover {
-  border-color: #a8bce5;
-  box-shadow: 0 8px 24px #233c681b;
+  border-color: var(--border-card-hover);
+  box-shadow: 0 8px 24px var(--shadow-card-hover);
 }
 /* Outline itself comes from the global base-layer `:focus-visible`
    (3px var(--focus-ring)); the card only tightens the offset. */
@@ -366,16 +363,16 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 9px;
-  color: #165dcc;
+  color: var(--primary);
   font-size: 14px;
   font-weight: 700;
 }
 .day {
   padding: 3px 7px;
-  border: 1px solid #d2e1fa;
+  border: 1px solid var(--primary-border);
   border-radius: 6px;
-  background: #edf3ff;
-  color: #2457a6;
+  background: var(--day-chip-bg);
+  color: var(--day-chip-ink);
   font-size: 12px;
 }
 .cardTitle {
@@ -392,7 +389,7 @@
   align-items: flex-start;
   gap: 6px;
   margin: 0;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .venue svg {
@@ -421,7 +418,7 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
-  color: #165dcc;
+  color: var(--primary);
 }
 .badges {
   display: flex;
@@ -434,16 +431,16 @@
   gap: 6px;
   padding: 5px 8px;
   border-radius: 6px;
-  background: #eaf2ff;
-  color: #2457a6;
+  background: var(--primary-bg);
+  color: var(--day-chip-ink);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.5;
 }
 .badgeWish {
-  border: 1px solid #eab7cd;
-  background: #fff0f6;
-  color: #a61d55;
+  border: 1px solid var(--border-badge-wish);
+  background: var(--accent-pink);
+  color: var(--text-badge-wish);
 }
 
 /* ── Past / ongoing compact cards ─────────────────────────────────── */
@@ -460,17 +457,17 @@
   align-items: center;
   gap: 16px;
   padding: 18px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 5px 18px #233c6810;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-card);
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
 }
 .compact:hover {
-  border-color: #a8bce5;
-  box-shadow: 0 8px 24px #233c681b;
+  border-color: var(--border-card-hover);
+  box-shadow: 0 8px 24px var(--shadow-card-hover);
 }
 .compact .dateLine {
   font-size: 13px;
@@ -481,12 +478,12 @@
 }
 .meta {
   margin: 10px 0 0;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.8;
 }
 .metaLink {
-  color: #165dcc;
+  color: var(--primary);
   font-weight: 700;
 }
 .compact:hover .metaLink {
@@ -499,15 +496,15 @@
 .live {
   gap: 20px;
   padding: 24px;
-  border-color: #3e4266;
-  background: linear-gradient(115deg, #3e4266, #525b80);
-  box-shadow: 0 6px 18px #33344f1a;
-  color: #fff;
+  border-color: var(--gradient-live-card-start);
+  background: linear-gradient(115deg, var(--gradient-live-card-start), var(--gradient-live-card-end));
+  box-shadow: 0 6px 18px var(--shadow-live-hover);
+  color: var(--bg-card);
 }
 .live:hover {
-  border-color: #3e4266;
-  background: linear-gradient(115deg, #363a5a, #48507a);
-  box-shadow: 0 6px 18px #33344f1a;
+  border-color: var(--gradient-live-card-start);
+  background: linear-gradient(115deg, var(--gradient-live-card-hover-start), var(--gradient-live-card-hover-end));
+  box-shadow: 0 6px 18px var(--shadow-live-hover);
 }
 .live:focus-visible {
   outline: 3px solid var(--focus-ring);
@@ -516,7 +513,7 @@
 .live .cardTitle {
   font-size: 18px;
   line-height: 1.6;
-  color: #fff;
+  color: var(--bg-card);
 }
 :global(html:lang(ko)) .live .cardTitle {
   word-break: keep-all;
@@ -525,19 +522,19 @@
 .live .venue,
 .live .meta,
 .live > svg {
-  color: #f0eefa;
+  color: var(--text-live);
 }
 .live .day {
-  border-color: #a39fc1;
-  background: #494e73;
-  color: #f0eefa;
+  border-color: var(--border-live-day);
+  background: var(--surface-live-day);
+  color: var(--text-live);
 }
 .live [data-testid="event-art"] {
-  border: 1px solid #a39fc1;
-  background: #494e73 !important;
+  border: 1px solid var(--border-live-day);
+  background: var(--surface-live-day) !important;
 }
 .live [data-testid="event-art"] strong {
-  color: #fff !important;
+  color: var(--bg-card) !important;
 }
 .live .meta {
   display: flex;
@@ -553,7 +550,7 @@
   min-height: 44px;
   padding: 9px 14px;
   border-radius: 8px;
-  background: #f0edff;
+  background: var(--accent-lavender);
   color: var(--foreground);
   font-size: 13px;
   font-weight: 700;
@@ -564,10 +561,10 @@
   gap: 6px;
   margin-bottom: 12px;
   padding: 5px 10px;
-  border: 1px solid #ffb9d8;
+  border: 1px solid var(--border-live-badge);
   border-radius: 999px;
-  background: #d12c74;
-  color: #fff;
+  background: var(--surface-live-badge);
+  color: var(--bg-card);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.5;
@@ -576,7 +573,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--bg-card);
   /* The pulse itself is `motion.livePulse` set inline: CSS Modules would
      rename a keyframe referenced here, and the global `live-pulse` is
      the one StatusBadge already uses. */
@@ -733,7 +730,7 @@
   .railHint {
     display: block;
     margin: -6px 0 14px;
-    color: #52617a;
+    color: var(--text-secondary);
     font-size: 12px;
   }
   .empty {

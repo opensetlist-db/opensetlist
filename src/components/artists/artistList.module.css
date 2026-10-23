@@ -34,7 +34,7 @@
   line-height: 1.4;
   letter-spacing: -0.035em;
   overflow-wrap: anywhere;
-  color: #172445;
+  color: var(--foreground);
 }
 
 /* ── Category filter ─────────────────────────────────────────── */
@@ -51,27 +51,27 @@
   justify-content: center;
   min-height: 44px;
   padding: 8px 20px;
-  border: 1px solid #7c8ba3;
+  border: 1px solid var(--border-strong);
   border-radius: 24px;
-  background: #fff;
+  background: var(--bg-card);
   font-size: 14px;
   font-weight: 600;
-  color: #172445;
+  color: var(--foreground);
   text-decoration: none;
   transition: background 0.15s;
 }
 .filter:hover {
-  background: #eaf2ff;
-  color: #165dcc;
+  background: var(--primary-bg);
+  color: var(--primary);
 }
 .filter[aria-current] {
-  color: #fff;
-  background: #165dcc;
-  border-color: #165dcc;
+  color: var(--bg-card);
+  background: var(--primary);
+  border-color: var(--primary);
 }
 .filter[aria-current]:hover {
-  background: #134fae;
-  color: #fff;
+  background: var(--surface-filter-hover);
+  color: var(--bg-card);
 }
 .filter:focus-visible {
   outline-offset: 3px;
@@ -82,24 +82,24 @@
 .group {
   min-width: 0;
   margin-bottom: 24px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 5px 18px #233c680a;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-surface);
 }
 .groupHead {
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 22px 24px;
-  border-bottom: 1px solid #dce3ef;
+  border-bottom: 1px solid var(--border);
   border-radius: 16px 16px 0 0;
-  background: linear-gradient(105deg, #fff7fb 20%, #f0edff);
+  background: linear-gradient(105deg, var(--gradient-group-heading-pink) 20%, var(--accent-lavender));
 }
 /* Synthetic "other / uncategorised" buckets are not a real Group:
    neutral light blue so they never read as a group board header. */
 .groupHead.synthetic {
-  background: #edf2fa;
+  background: var(--surface-group-head-synthetic);
 }
 .groupTitle {
   min-width: 0;
@@ -108,7 +108,7 @@
   font-weight: 700;
   line-height: 1.5;
   overflow-wrap: anywhere;
-  color: #172445;
+  color: var(--foreground);
 }
 .badge {
   display: inline-block;
@@ -117,15 +117,15 @@
   border-radius: 6px;
   font-size: 12px;
   line-height: 1.65;
-  color: #244f92;
-  background: #eaf2ff;
+  color: var(--text-kind-badge);
+  background: var(--primary-bg);
 }
 .teamCount {
   flex-shrink: 0;
   margin-left: auto;
   font-size: 13px;
   white-space: nowrap;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 /* ── Rows ────────────────────────────────────────────────────── */
@@ -140,9 +140,9 @@
 }
 .columnHead {
   padding-block: 12px;
-  border-bottom: 1px solid #dce3ef;
+  border-bottom: 1px solid var(--border);
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .columnHeadEvents {
   text-align: right;
@@ -154,7 +154,7 @@
   padding: 0;
 }
 .list > li + li {
-  border-top: 1px solid #e8ecf3;
+  border-top: 1px solid var(--border-list);
 }
 
 .row {
@@ -163,15 +163,15 @@
   margin: 2px 4px;
   padding-inline: 20px;
   border-radius: 8px;
-  color: #172445;
+  color: var(--foreground);
   text-decoration: none;
   transition: background 0.15s;
 }
 .row:hover {
-  background: #f0f5ff;
+  background: var(--surface-list-row-hover);
 }
 .row:hover .artistTitle {
-  color: #165dcc;
+  color: var(--primary);
 }
 .row:focus-visible {
   outline-offset: -4px;
@@ -193,13 +193,13 @@
    against that token, so a drift here would paint a colour the check
    never measured. */
 .glyphInk {
-  color: #172445;
+  color: var(--foreground);
 }
 .glyphWhite {
-  color: #fff;
+  color: var(--bg-card);
 }
 .glyphBlack {
-  color: #000;
+  color: var(--text-glyph-black);
 }
 
 .name {
@@ -216,7 +216,7 @@
   font-size: 15px;
   font-weight: 700;
   line-height: 1.6;
-  color: #172445;
+  color: var(--foreground);
 }
 .originalName {
   display: block;
@@ -224,7 +224,7 @@
   font-size: 12px;
   line-height: 1.6;
   overflow-wrap: anywhere;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .live {
   display: inline-flex;
@@ -235,14 +235,14 @@
   font-size: 11px;
   line-height: 1.6;
   white-space: nowrap;
-  color: #fff;
-  background: #b42150;
+  color: var(--bg-card);
+  background: var(--status-live-compact-surface);
 }
 .liveDot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--bg-card);
 }
 
 .units {
@@ -258,12 +258,12 @@
   font-size: 12px;
   line-height: 1.7;
   overflow-wrap: anywhere;
-  color: #52617a;
-  background: #f0f3f8;
+  color: var(--text-secondary);
+  background: var(--surface-unit-chip);
 }
 .noUnits {
   font-size: 13px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 .eventCount {
@@ -279,23 +279,23 @@
 }
 .eventCount small {
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .chevron {
   justify-self: end;
   font-size: 23px;
-  color: #165dcc;
+  color: var(--primary);
 }
 
 /* ── Empty state ─────────────────────────────────────────────── */
 
 .empty {
   padding: 64px 20px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
+  background: var(--bg-card);
   text-align: center;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .emptySymbol {
   display: grid;
@@ -305,8 +305,8 @@
   margin: 0 auto 20px;
   border-radius: 16px;
   font-size: 24px;
-  color: #165dcc;
-  background: #eaf2ff;
+  color: var(--primary);
+  background: var(--primary-bg);
 }
 .emptyText {
   margin: 0;

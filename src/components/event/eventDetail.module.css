@@ -6,11 +6,11 @@
  * elements change display mode, padding and type size together, so one
  * rule block per band keeps each band reviewable against the mockup.
  *
- * Colours mirror `src/styles/tokens.ts` (03 contract). The per-section
- * accents (pink participation, lavender setlist/impressions, orange
- * performers, blue info) are page-local: 18-v2/v3 fixed them for this
- * page only, and the panel heading bar is their only carrier — headings
- * and copy stay on the ink tones.
+ * Colours mirror `src/styles/tokens.ts` (03 contract) through the CSS
+ * aliases in globals.css. The per-section accents (pink participation,
+ * lavender setlist/impressions, orange performers, blue info) retain
+ * their 18-v2/v3 values. The panel heading bar is their only carrier —
+ * headings and copy stay on the ink tones.
  *
  * Artist colours arrive as `--artist` set inline per chip/card and are
  * mixed toward white (`color-mix`), never used as text colour, so an
@@ -58,7 +58,7 @@
 .seriesLink {
   font-size: 13px;
   font-weight: 700;
-  color: #165dcc;
+  color: var(--primary);
   overflow-wrap: anywhere;
 }
 .seriesLink:hover {
@@ -70,7 +70,7 @@
   font-weight: 700;
   line-height: 1.45;
   letter-spacing: -0.035em;
-  color: #172445;
+  color: var(--foreground);
   overflow-wrap: anywhere;
 }
 .title:lang(ko) {
@@ -82,7 +82,7 @@
   gap: 10px 18px;
   margin: 0;
   font-size: 14px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .stateLine {
   grid-column: 2;
@@ -92,7 +92,7 @@
   align-items: center;
   gap: 10px;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 /* ── In-page jump links ───────────────────────────────────────── */
@@ -102,23 +102,23 @@
   gap: 24px;
   margin-bottom: 24px;
   overflow-x: auto;
-  border-bottom: 1px solid #dce3ef;
+  border-bottom: 1px solid var(--border);
 }
 .jump a {
   min-height: 48px;
   padding: 13px 0;
   font-size: 14px;
   white-space: nowrap;
-  color: #172445;
+  color: var(--foreground);
   border-bottom: 3px solid transparent;
 }
 .jump a:hover {
-  color: #165dcc;
+  color: var(--primary);
 }
 .jump a:first-child {
   font-weight: 700;
-  color: #165dcc;
-  border-bottom-color: #165dcc;
+  color: var(--primary);
+  border-bottom-color: var(--primary);
 }
 
 /* ── Two-column layout ────────────────────────────────────────── */
@@ -142,10 +142,10 @@
 .panel {
   min-width: 0;
   padding: 24px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 5px 20px #49639809;
+  background: var(--bg-card);
+  box-shadow: 0 5px 20px var(--shadow-panel);
   scroll-margin-top: 20px;
 }
 .sideColumn .panel {
@@ -171,62 +171,62 @@
   font-weight: 700;
   line-height: 1.5;
   letter-spacing: -0.025em;
-  color: #172445;
+  color: var(--foreground);
 }
 .panelTitle::before {
   content: "";
   flex: 0 0 7px;
   height: 20px;
   border-radius: 5px;
-  background: var(--bar, #7399eb);
+  background: var(--bar, var(--accent-info-panel));
 }
 .sideColumn .panelTitle {
   font-size: 16px;
 }
 .panelCount {
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
 .setlistPanel {
-  --bar: #a18bdf;
-  background: linear-gradient(135deg, #f8f5ff, #fff 60%);
-  border-color: #d9d1ee;
+  --bar: var(--accent-impressions-panel);
+  background: linear-gradient(135deg, var(--gradient-setlist-lavender), var(--bg-card) 60%);
+  border-color: var(--border-setlist-panel);
 }
 .impressionsPanel {
-  --bar: #a18bdf;
-  background: linear-gradient(120deg, #f4efff, #fff 80%);
-  border-color: #ddd2f1;
+  --bar: var(--accent-impressions-panel);
+  background: linear-gradient(120deg, var(--gradient-feedback-lavender), var(--bg-card) 80%);
+  border-color: var(--border-impressions-panel);
 }
 .performersPanel {
-  --bar: #f0a56b;
+  --bar: var(--accent-performers-panel);
 }
 .infoPanel {
-  --bar: #7399eb;
+  --bar: var(--accent-info-panel);
 }
 
 .liveNotice {
   margin-bottom: 18px;
   padding: 14px 18px;
-  border: 1px solid #efbcd5;
+  border: 1px solid var(--border-live-notice);
   border-radius: 12px;
-  background: #ffeaf4;
+  background: var(--surface-live-notice);
   font-size: 13px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .liveNotice strong {
   display: block;
   margin-bottom: 3px;
   font-size: 14px;
   font-weight: 700;
-  color: #a21956;
+  color: var(--text-live-notice);
 }
 .emptyCopy {
   margin: 0;
   padding: 4px 0;
   font-size: 14px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .emptyCopy + .emptyCopy {
   margin-top: 8px;
@@ -241,7 +241,7 @@
 }
 .facts > div {
   padding-bottom: 12px;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid var(--surface-facts);
 }
 .facts > div:last-child {
   padding-bottom: 0;
@@ -250,16 +250,16 @@
 .facts dt {
   margin-bottom: 3px;
   font-size: 11px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .facts dd {
   margin: 0;
   font-size: 13px;
-  color: #172445;
+  color: var(--foreground);
   overflow-wrap: anywhere;
 }
 .facts a {
-  color: #165dcc;
+  color: var(--primary);
 }
 .facts a:hover {
   text-decoration: underline;
@@ -268,7 +268,7 @@
 .seriesName {
   margin: 0;
   font-size: 13px;
-  color: #172445;
+  color: var(--foreground);
   overflow-wrap: anywhere;
 }
 .blockButton {
@@ -279,18 +279,18 @@
   min-height: 46px;
   margin-top: 12px;
   padding: 11px 18px;
-  border: 1px solid #7c8ba3;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--bg-card);
   font-size: 13px;
   font-weight: 700;
-  color: #165dcc;
+  color: var(--primary);
 }
 .blockButton:hover {
-  background: #edf4ff;
+  background: var(--primary-hover-bg);
 }
 .blockButton:active {
-  background: #dae7ff;
+  background: var(--primary-pressed-bg);
 }
 
 /* ── Performers (출연진) ───────────────────────────────────────── */
@@ -308,11 +308,11 @@
   align-items: center;
   min-height: 32px;
   padding: 5px 10px;
-  border: 1px solid color-mix(in srgb, var(--artist) 50%, #bdc5d4);
+  border: 1px solid color-mix(in srgb, var(--artist) 50%, var(--border-group-chip));
   border-radius: 9px;
   background: color-mix(in srgb, var(--artist) 30%, white);
   font-size: 12px;
-  color: #172445;
+  color: var(--foreground);
   overflow-wrap: anywhere;
 }
 a.groupChip:hover {
@@ -320,7 +320,7 @@ a.groupChip:hover {
 }
 .groupChipMuted {
   margin-left: 4px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .rosterGrid {
   display: grid;
@@ -333,7 +333,7 @@ a.groupChip:hover {
 .member {
   min-width: 0;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--artist) 28%, #e3e8f2);
+  border: 1px solid color-mix(in srgb, var(--artist) 28%, var(--border-member));
   border-radius: 12px;
   background: color-mix(in srgb, var(--artist) 9%, white);
 }
@@ -341,7 +341,7 @@ a.groupChip:hover {
   display: block;
   font-size: 13px;
   font-weight: 700;
-  color: #172445;
+  color: var(--foreground);
   overflow-wrap: anywhere;
 }
 .member a:hover strong {
@@ -350,7 +350,7 @@ a.groupChip:hover {
 .memberNote {
   display: block;
   font-size: 11px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .initial {
   display: grid;
@@ -361,7 +361,7 @@ a.groupChip:hover {
   border-radius: 50%;
   background: color-mix(in srgb, var(--artist) 32%, white);
   font-weight: 700;
-  color: #172445;
+  color: var(--foreground);
 }
 .more {
   margin-top: 12px;
@@ -371,7 +371,7 @@ a.groupChip:hover {
   min-height: 36px;
   padding: 8px 0;
   cursor: pointer;
-  color: #165dcc;
+  color: var(--primary);
 }
 .more > .rosterGrid {
   margin-top: 8px;
@@ -491,20 +491,20 @@ a.groupChip:hover {
   gap: 10px;
   margin: 8px 0;
   padding: 16px 12px;
-  border: 1px solid #e0e5f0;
+  border: 1px solid var(--border-row-divider);
   border-radius: 10px;
-  background: #fff;
+  background: var(--bg-card);
 }
 .songNum {
   display: grid;
   place-items: center;
   height: 28px;
   border-radius: 6px;
-  background: #e9eef8;
+  background: var(--surface-song-num);
   font-family: var(--font-dm-sans);
   font-size: 14px;
   font-weight: 500;
-  color: #485b7d;
+  color: var(--text-song-num);
   font-variant-numeric: tabular-nums;
 }
 .songBody {
@@ -518,25 +518,25 @@ a.groupChip:hover {
   font-size: 15px;
   line-height: 1.5;
   font-weight: 700;
-  color: #172445;
+  color: var(--foreground);
   overflow-wrap: anywhere;
 }
 .songTitle a {
-  color: #172445;
+  color: var(--foreground);
 }
 .songTitle a:hover {
-  color: #165dcc;
+  color: var(--primary);
   text-decoration: underline;
 }
 .songSub {
   font-size: 13px;
   font-weight: 400;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .medleyJoin {
   margin: 0 2px;
   font-weight: 400;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .nonSongLabel {
   font-style: italic;
@@ -556,7 +556,7 @@ a.groupChip:hover {
   background: color-mix(in srgb, var(--artist) 32%, white);
   font-size: 12px;
   line-height: 1.4;
-  color: #172445;
+  color: var(--foreground);
 }
 a.artistTag:hover {
   text-decoration: underline;
@@ -564,13 +564,13 @@ a.artistTag:hover {
 .creditDetails {
   margin-top: 8px;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .creditDetails > summary {
   min-height: 30px;
   padding: 3px 0;
   cursor: pointer;
-  color: #165dcc;
+  color: var(--primary);
 }
 .creditDetails > p {
   margin: 2px 0 0;
@@ -583,16 +583,16 @@ a.artistTag:hover {
   margin: 16px 0 0;
   padding: 9px 12px;
   border-radius: 6px;
-  background: #e8ddff;
+  background: var(--surface-encore);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: #5b3ca1;
+  color: var(--setlist-tab-active);
 }
 .confirmHelp {
   margin-top: 12px;
   font-size: 11px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 @media (min-width: 1100px) {
@@ -626,25 +626,25 @@ a.artistTag:hover {
 /* ── Fan board (18-v3 `#participate`, color-v3 ballots) ────────── */
 
 .participatePanel {
-  --bar: #e968a6;
-  background: linear-gradient(130deg, #fff 45%, #f2f7ff);
-  border-color: #cfdcef;
+  --bar: var(--accent-participate-panel);
+  background: linear-gradient(130deg, var(--bg-card) 45%, var(--gradient-participation-blue));
+  border-color: var(--border-participate-panel);
 }
 .boardStatus {
   margin: 2px 0 0;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .boardLead {
   margin: 6px 0 0;
   font-size: 14px;
-  color: #172445;
+  color: var(--foreground);
 }
 .boardTally {
   margin: 6px 0 0;
   font-size: 13px;
   font-weight: 700;
-  color: #172445;
+  color: var(--foreground);
 }
 .groupTabs {
   display: flex;
@@ -655,16 +655,16 @@ a.artistTag:hover {
 .groupTab {
   min-height: 44px;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--artist) 50%, #bdc5d4);
+  border: 1px solid color-mix(in srgb, var(--artist) 50%, var(--border-group-chip));
   border-radius: 9px;
   background: color-mix(in srgb, var(--artist) 30%, white);
   font-size: 12px;
-  color: #172445;
+  color: var(--foreground);
 }
 .groupTab[aria-selected="true"] {
-  border-color: #172445;
+  border-color: var(--foreground);
   background: color-mix(in srgb, var(--artist) 45%, white);
-  box-shadow: inset 0 0 0 1px #172445;
+  box-shadow: inset 0 0 0 1px var(--foreground);
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 4px;
@@ -677,15 +677,15 @@ a.artistTag:hover {
 .ballot {
   min-width: 0;
   padding: 18px;
-  border: 1px solid #efbcd5;
+  border: 1px solid var(--border-live-notice);
   border-radius: 12px;
-  background: linear-gradient(135deg, #ffe3f0 0%, #fff6fa 58%, #fff 100%);
-  box-shadow: inset 0 4px #ee92bc;
+  background: linear-gradient(135deg, var(--gradient-ballot) 0%, var(--gradient-ballot-soft-highlight) 58%, var(--bg-card) 100%);
+  box-shadow: inset 0 4px var(--shadow-ballot);
 }
 .ballotExpect {
-  border-color: #b9d9f7;
-  background: linear-gradient(135deg, #dcedff 0%, #f2f8ff 58%, #fff 100%);
-  box-shadow: inset 0 4px #91c8f6;
+  border-color: var(--border-ballot-expect);
+  background: linear-gradient(135deg, var(--gradient-ballot-expect-start) 0%, var(--gradient-ballot-expect-end) 58%, var(--bg-card) 100%);
+  box-shadow: inset 0 4px var(--shadow-ballot-expect);
 }
 .ballotTitle {
   display: flex;
@@ -695,23 +695,23 @@ a.artistTag:hover {
   margin: 0 0 6px;
   font-size: 16px;
   font-weight: 700;
-  color: #b41463;
+  color: var(--text-wish-panel-title);
 }
 .ballotExpect .ballotTitle {
-  color: #165dcc;
+  color: var(--primary);
 }
 .ballotNote {
   margin: 4px 0;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .earlyTag {
   padding: 1px 6px;
   border-radius: 4px;
-  background: #fff6e9;
+  background: var(--surface-early-tag);
   font-size: 11px;
   font-weight: 400;
-  color: #67502e;
+  color: var(--text-early-tag);
 }
 .crowdList {
   margin: 12px 0;
@@ -724,31 +724,31 @@ a.artistTag:hover {
   gap: 9px;
   margin: 7px 0;
   padding: 12px 9px;
-  border: 1px solid #fff;
+  border: 1px solid var(--bg-card);
   border-radius: 8px;
-  background: #ffffffc9;
+  background: var(--surface-crowd-item);
   font-size: 13px;
   line-height: 1.5;
 }
 .crowdItemStarter {
   border-style: dashed;
-  border-color: #c1cbda;
+  border-color: var(--reaction-border);
 }
 .crowdTitle {
   flex: 1;
   min-width: 0;
   font-weight: 700;
-  color: #172445;
+  color: var(--foreground);
   overflow-wrap: anywhere;
 }
 a.crowdTitle:hover {
-  color: #165dcc;
+  color: var(--primary);
   text-decoration: underline;
 }
 .crowdMuted {
   flex: 1;
   min-width: 0;
-  color: #67758b;
+  color: var(--text-muted);
   overflow-wrap: anywhere;
 }
 .rank {
@@ -758,45 +758,45 @@ a.crowdTitle:hover {
   width: 24px;
   min-height: 28px;
   border-radius: 6px;
-  background: #ffe5a2;
+  background: var(--surface-rank-gold);
   font-size: 12px;
   font-weight: 700;
-  color: #694200;
+  color: var(--text-rank-gold);
 }
 .crowdItem:nth-child(2) .rank {
-  background: #e1e9f3;
-  color: #47566d;
+  background: var(--surface-rank-silver);
+  color: var(--text-rank-silver);
 }
 .crowdItem:nth-child(3) .rank {
-  background: #f7d9c7;
-  color: #79472c;
+  background: var(--surface-rank-bronze);
+  color: var(--text-rank-bronze);
 }
 .crowdCount,
 .crowdTag {
   flex-shrink: 0;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 .crowdTag {
   padding: 1px 6px;
   border-radius: 4px;
-  background: #f4f6fa;
+  background: var(--setlist-tab-idle-bg);
   font-size: 11px;
 }
 .crowdMine {
   flex-shrink: 0;
   font-size: 11px;
   font-weight: 700;
-  color: #165dcc;
+  color: var(--primary);
 }
 .myChoices {
   margin-top: 10px;
   padding-top: 14px;
-  border-top: 1px solid #ddc9da;
+  border-top: 1px solid var(--border-my-choices);
 }
 .ballotExpect .myChoices {
-  border-color: #c0d8ed;
+  border-color: var(--border-expect-my-choices);
 }
 .myChoicesHead {
   display: flex;
@@ -809,14 +809,14 @@ a.crowdTitle:hover {
   margin: 0;
   font-size: 12px;
   font-weight: 700;
-  color: #b41463;
+  color: var(--text-wish-panel-title);
 }
 .ballotExpect .myChoicesTitle {
-  color: #165dcc;
+  color: var(--primary);
 }
 .myChoicesCounter {
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 .myChoiceList {
@@ -833,17 +833,17 @@ a.crowdTitle:hover {
   gap: 4px;
   max-width: 100%;
   padding: 4px 4px 4px 9px;
-  border: 1px solid #efaacb;
+  border: 1px solid var(--border-my-choice);
   border-radius: 8px;
-  background: #ffd2e8;
+  background: var(--surface-my-choice);
   font-size: 13px;
   line-height: 1.7;
-  color: #8b1452;
+  color: var(--text-my-choice);
 }
 .ballotExpect .myChoice {
-  border-color: #9bc7ef;
-  background: #cce8ff;
-  color: #164c93;
+  border-color: var(--border-expect-my-choice);
+  background: var(--surface-expect-my-choice);
+  color: var(--text-expect-my-choice);
 }
 .myChoice a {
   color: inherit;
@@ -853,8 +853,8 @@ a.crowdTitle:hover {
   text-decoration: underline;
 }
 .myChoicePlayed {
-  border-color: #165dcc;
-  box-shadow: inset 0 0 0 1px #165dcc;
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 .myChoiceRemove {
   display: grid;
@@ -866,7 +866,7 @@ a.crowdTitle:hover {
   color: inherit;
 }
 .myChoiceRemove:hover {
-  background: #ffffff80;
+  background: var(--surface-my-choice-remove-hover);
 }
 .myChoiceNote {
   display: block;
@@ -881,26 +881,26 @@ a.crowdTitle:hover {
   min-height: 46px;
   margin-top: 6px;
   padding: 11px 18px;
-  border: 1px solid #b41463;
+  border: 1px solid var(--text-wish-panel-title);
   border-radius: 8px;
-  background: #b41463;
+  background: var(--text-wish-panel-title);
   font-size: 13px;
   font-weight: 700;
-  color: #fff;
+  color: var(--bg-card);
 }
 .ballotExpect .pickButton {
-  border-color: #165dcc;
-  background: #165dcc;
+  border-color: var(--primary);
+  background: var(--primary);
 }
 .pickButton:disabled {
-  border-color: #dce3ef;
-  background: #edf0f5;
-  color: #67758b;
+  border-color: var(--border);
+  background: var(--surface-facts);
+  color: var(--text-muted);
 }
 .capNote {
   margin: 6px 0 0;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .bridgeStrip {
   display: flex;
@@ -912,7 +912,7 @@ a.crowdTitle:hover {
 }
 .bridgeLink {
   font-size: 13px;
-  color: #52617a;
+  color: var(--text-secondary);
   text-decoration: underline;
 }
 .bridgeActions {
@@ -926,23 +926,23 @@ a.crowdTitle:hover {
   justify-content: center;
   min-height: 46px;
   padding: 11px 18px;
-  border: 1px solid #7c8ba3;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--bg-card);
   font-size: 13px;
   font-weight: 700;
-  color: #165dcc;
+  color: var(--primary);
 }
 .secondaryButton:hover:not(:disabled) {
-  background: #edf4ff;
+  background: var(--primary-hover-bg);
 }
 .secondaryButton:active:not(:disabled) {
-  background: #dae7ff;
+  background: var(--primary-pressed-bg);
 }
 .secondaryButton:disabled {
-  border-color: #dce3ef;
-  background: #edf0f5;
-  color: #67758b;
+  border-color: var(--border);
+  background: var(--surface-facts);
+  color: var(--text-muted);
 }
 .legacyBlock {
   margin-top: 16px;
@@ -951,7 +951,7 @@ a.crowdTitle:hover {
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: #172445;
+  color: var(--foreground);
 }
 
 @media (max-width: 1150px) {
@@ -987,12 +987,12 @@ a.crowdTitle:hover {
 /* ── Event-wide wishlist (18-v3 legacy / `#locked-wishes`) ──────── */
 
 .lockedWishPanel {
-  --bar: #e968a6;
-  background: #fff0f7;
-  border-color: #efc5da;
+  --bar: var(--accent-participate-panel);
+  background: var(--surface-locked-wish-panel);
+  border-color: var(--border-locked-wish-panel);
 }
 .lockedWishPanel .panelTitle {
-  color: #b41463;
+  color: var(--text-wish-panel-title);
 }
 .wishStack {
   display: flex;
@@ -1004,7 +1004,7 @@ a.crowdTitle:hover {
   margin: 0 0 6px;
   font-size: 14px;
   font-weight: 700;
-  color: #172445;
+  color: var(--foreground);
 }
 .wishStack .crowdList {
   margin: 0 0 8px;
@@ -1015,18 +1015,18 @@ a.crowdTitle:hover {
   justify-content: center;
   min-height: 46px;
   padding: 11px 18px;
-  border: 1px solid #165dcc;
+  border: 1px solid var(--primary);
   border-radius: 8px;
-  background: #165dcc;
+  background: var(--primary);
   font-size: 13px;
   font-weight: 700;
-  color: #fff;
+  color: var(--bg-card);
 }
 .primaryButton:hover {
-  background: #104aa9;
+  background: var(--primary-hover);
 }
 .primaryButton:active {
-  background: #0c3d8c;
+  background: var(--primary-pressed);
 }
 
 /* ── Predicted setlist (18-v3 `.predict-layout`, color-v3) ──────── */
@@ -1042,12 +1042,12 @@ a.crowdTitle:hover {
 .predictHint {
   margin: 0 0 6px;
   font-size: 14px;
-  color: #172445;
+  color: var(--foreground);
 }
 .predictNote {
   margin: 6px 0 10px;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .resultStrip {
   display: flex;
@@ -1055,19 +1055,19 @@ a.crowdTitle:hover {
   gap: 14px;
   margin: 14px 0;
   padding: 14px 16px;
-  border: 1px solid #d3c3f2;
+  border: 1px solid var(--border-result-strip);
   border-radius: 10px;
-  background: #ece4ff;
+  background: var(--surface-result-strip);
 }
 .resultStrip strong {
   font-size: 18px;
   font-weight: 700;
-  color: #5b3ca1;
+  color: var(--setlist-tab-active);
 }
 .predictBridge {
   margin: 8px 0;
   font-size: 13px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .predictBridge p {
   margin: 2px 0;
@@ -1077,7 +1077,7 @@ a.crowdTitle:hover {
   margin-right: 14px;
   font-size: 13px;
   font-weight: 700;
-  color: #165dcc;
+  color: var(--primary);
 }
 .textButton:hover {
   text-decoration: underline;
@@ -1091,13 +1091,13 @@ a.crowdTitle:hover {
   gap: 12px;
   margin: 7px 0;
   padding: 11px 10px;
-  border: 1px solid #ded6ee;
+  border: 1px solid var(--border-predict-row);
   border-radius: 8px;
-  background: #fff;
+  background: var(--bg-card);
   font-size: 13px;
 }
 .predictRowOut {
-  background: #f4f2f8;
+  background: var(--surface-predict-row-out);
 }
 .predictRank {
   display: grid;
@@ -1106,15 +1106,15 @@ a.crowdTitle:hover {
   min-width: 27px;
   min-height: 29px;
   border-radius: 6px;
-  background: #e9e2fb;
+  background: var(--surface-predict-rank);
   font-weight: 700;
-  color: #5b3ca1;
+  color: var(--setlist-tab-active);
   font-variant-numeric: tabular-nums;
 }
 .predictTitle {
   flex: 1;
   min-width: 0;
-  color: #172445;
+  color: var(--foreground);
   overflow-wrap: anywhere;
 }
 .predictTool {
@@ -1123,14 +1123,14 @@ a.crowdTitle:hover {
   flex-shrink: 0;
   min-width: 40px;
   min-height: 40px;
-  border: 1px solid #aab8cf;
+  border: 1px solid var(--setlist-tab-idle-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--bg-card);
   font-size: 13px;
-  color: #172445;
+  color: var(--foreground);
 }
 .predictTool:hover {
-  background: #edf4ff;
+  background: var(--primary-hover-bg);
 }
 .predictActions {
   display: flex;
@@ -1141,12 +1141,12 @@ a.crowdTitle:hover {
 .progressDivider {
   margin: 7px 0;
   padding: 10px;
-  border-top: 2px solid #165dcc;
+  border-top: 2px solid var(--primary);
   border-radius: 5px;
-  background: #eaf2ff;
+  background: var(--primary-bg);
   font-size: 12px;
   font-weight: 700;
-  color: #165dcc;
+  color: var(--primary);
 }
 .inlinePicker {
   display: flex;
@@ -1154,9 +1154,9 @@ a.crowdTitle:hover {
   min-width: 0;
   height: min(640px, 80vh);
   overflow: hidden;
-  border: 1px solid #ded4f3;
+  border: 1px solid var(--border-inline-picker);
   border-radius: 12px;
-  background: #f0ebfc;
+  background: var(--surface-inline-picker);
 }
 
 @media (max-width: 699px) {
@@ -1170,11 +1170,11 @@ a.crowdTitle:hover {
 .notice {
   margin-bottom: 24px;
   padding: 18px 20px;
-  border: 1px solid #cadcf6;
+  border: 1px solid var(--border-notice);
   border-radius: 12px;
-  background: #eaf2ff;
+  background: var(--primary-bg);
   font-size: 14px;
-  color: #172445;
+  color: var(--foreground);
 }
 .notice strong {
   display: block;
@@ -1186,9 +1186,9 @@ a.crowdTitle:hover {
   font-weight: 700;
 }
 .noticeCancel {
-  border-color: #d3d8e1;
-  background: #f0f1f5;
-  color: #394557;
+  border-color: var(--border-notice-cancel);
+  background: var(--surface-notice-cancel);
+  color: var(--text-notice-cancel);
 }
 .mainColumn > .notice {
   margin-bottom: 0;

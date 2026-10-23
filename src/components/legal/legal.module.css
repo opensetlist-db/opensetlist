@@ -12,8 +12,8 @@
  * app's Tailwind preflight strips heading weights, list markers and
  * margins, so `font-weight` and `list-style` are explicit here.
  *
- * Colours mirror `src/styles/tokens.ts` (03 contract). The note tint
- * (#F1F6FF / #A4B9D8) and code chip (#EDF1F8) are page-local values
+ * Colours mirror `src/styles/tokens.ts` (03 contract) through the CSS
+ * aliases in globals.css. The note tint and code chip retain the values
  * fixed by 34-v1.
  */
 
@@ -26,7 +26,7 @@
   max-width: 1184px;
   margin: 0 auto;
   padding: 32px 32px 64px;
-  color: #172445;
+  color: var(--foreground);
   font-size: 16px;
   line-height: 1.8;
 }
@@ -80,17 +80,17 @@
   border-radius: 10px;
   font-size: 15px;
   font-weight: 500;
-  color: #52617a;
+  color: var(--text-secondary);
   text-decoration: none;
 }
 .pageNav a[aria-current="page"] {
-  background: #eaf2ff;
-  color: #165dcc;
+  background: var(--primary-bg);
+  color: var(--primary);
   font-weight: 700;
 }
 .pageNav a:hover,
 .toc a:hover {
-  background: #edf3fe;
+  background: var(--surface-toc-hover);
 }
 
 .tocTitle {
@@ -98,7 +98,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 .toc {
@@ -113,7 +113,7 @@
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.65;
-  color: #52617a;
+  color: var(--text-secondary);
   text-decoration: none;
   overflow-wrap: anywhere;
 }
@@ -126,10 +126,10 @@
 
 .titleCard {
   padding: 28px 32px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: linear-gradient(115deg, #ffffff 38%, #fff6fa 75%, #f0edff);
-  box-shadow: 0 5px 18px #233c6808;
+  background: linear-gradient(115deg, var(--bg-card) 38%, var(--gradient-ballot-soft-highlight) 75%, var(--accent-lavender));
+  box-shadow: 0 5px 18px var(--shadow-surface-soft);
 }
 
 .eyebrow {
@@ -137,7 +137,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: #165dcc;
+  color: var(--primary);
 }
 
 .title {
@@ -146,20 +146,20 @@
   font-weight: 700;
   line-height: 1.45;
   letter-spacing: -0.025em;
-  color: #172445;
+  color: var(--foreground);
 }
 
 .updated {
   margin: 12px 0 0;
   font-size: 13px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 .intro {
   margin: 20px 4px;
   font-size: 15px;
   line-height: 1.9;
-  color: #52617a;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -175,10 +175,10 @@
 .document {
   margin-top: 24px;
   padding: 32px;
-  background: #ffffff;
-  border: 1px solid #dce3ef;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 5px 18px #233c6808;
+  box-shadow: 0 5px 18px var(--shadow-surface-soft);
 }
 
 /* Anchor targets: 24px clearance (header is not sticky). Sections carry
@@ -198,11 +198,11 @@
 .sectionTitle {
   margin: 0 0 18px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #dce3ef;
+  border-bottom: 1px solid var(--border);
   font-size: 21px;
   font-weight: 700;
   line-height: 1.45;
-  color: #172445;
+  color: var(--foreground);
 }
 
 .subTitle {
@@ -210,19 +210,19 @@
   font-size: 16px;
   font-weight: 700;
   line-height: 1.45;
-  color: #172445;
+  color: var(--foreground);
 }
 
 .paragraph {
   margin: 0 0 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 .list {
   margin: 8px 0 16px;
   padding: 0 0 0 22px;
   list-style: disc;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .list li {
   margin: 6px 0;
@@ -230,14 +230,14 @@
   line-height: 1.85;
 }
 .list li::marker {
-  color: #165dcc;
+  color: var(--primary);
 }
 
 .code {
   padding: 2px 4px;
   border-radius: 4px;
-  background: #edf1f8;
-  color: #172445;
+  background: var(--surface-event-status);
+  color: var(--foreground);
   /* font-family comes from preflight's `code` rule (Tailwind mono). */
   font-size: 0.88em;
   overflow-wrap: anywhere;
@@ -247,11 +247,11 @@
 .note {
   margin-top: 12px;
   padding: 14px 16px;
-  border-left: 3px solid #a4b9d8;
+  border-left: 3px solid var(--border-note);
   border-radius: 0 8px 8px 0;
-  background: #f1f6ff;
+  background: var(--surface-note-hover);
   font-size: 14px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 /* Underlined like a plain link in 34-v1 (browser default there; Tailwind
@@ -262,19 +262,19 @@
   min-height: 44px;
   font-size: 16px;
   font-weight: 500;
-  color: #165dcc;
+  color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 .contact:hover {
-  color: #104aa9;
+  color: var(--primary-hover);
 }
 
 .empty {
   margin: 0 0 12px;
   padding: 32px 0;
   text-align: center;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 /* ── Bottom cross-page switch ─────────────────────────────────────── */
@@ -286,14 +286,14 @@
   gap: 16px;
   margin-top: 20px;
   padding: 16px 20px;
-  background: #ffffff;
-  border: 1px solid #dce3ef;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
 }
 .bottomSwitch p {
   margin: 0;
   font-size: 13px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .bottomSwitch a {
   display: flex;
@@ -302,12 +302,12 @@
   min-height: 44px;
   font-size: 14px;
   font-weight: 700;
-  color: #165dcc;
+  color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 .bottomSwitch a:hover {
-  color: #104aa9;
+  color: var(--primary-hover);
 }
 
 /* ── 1024–1099: narrower sidebar, 24px gutters ────────────────────── */
@@ -348,8 +348,8 @@
     gap: 4px;
     margin-bottom: 20px;
     padding: 4px;
-    background: #ffffff;
-    border: 1px solid #dce3ef;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 12px;
   }
   .mobilePages a {
@@ -366,8 +366,8 @@
     display: block;
     margin-top: 20px;
     padding: 0 16px;
-    background: #ffffff;
-    border: 1px solid #dce3ef;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 12px;
   }
   .mobileToc[open] {
@@ -381,7 +381,7 @@
     cursor: pointer;
     font-size: 14px;
     font-weight: 700;
-    color: #165dcc;
+    color: var(--primary);
   }
   .mobileToc .toc a {
     padding-left: 8px;
