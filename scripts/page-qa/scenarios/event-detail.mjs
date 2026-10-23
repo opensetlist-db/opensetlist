@@ -279,7 +279,11 @@ const scenario = {
         h.check(`live+records ${width}: saved predictions shown`, SEED_SONGS.every((s) => p.text.includes(s.song.translations.find((t) => t.locale === loc)?.title ?? s.song.originalTitle) || p.text.includes(s.song.originalTitle)), "");
         h.check(`live+records ${width}: read-only (no add / remove / picker)`, p.removeButtons === 0 && !p.addButton && !p.search, JSON.stringify({ r: p.removeButtons, a: p.addButton, s: p.search }));
         h.check(`live+records ${width}: share = live`, p.share === tShare, String(p.share));
-        await page.getByRole("button", { name: tShare }).click();
+        // Keyboard path (focus + Enter): WebKit, like Safari, does not focus
+        // a button on a mouse click, so a click-opened modal has no trigger
+        // to hand focus back to there.
+        await page.getByRole("button", { name: tShare }).focus();
+        await page.keyboard.press("Enter");
         const dialog = page.getByRole("dialog");
         await dialog.waitFor();
         h.check(`live+records ${width}: share modal opens`, await dialog.isVisible(), "");
