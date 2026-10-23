@@ -363,7 +363,7 @@
     "sameSeriesTitle": "同じシリーズ",
     "viewSeries": "シリーズを見る",
     "creditsToggle": "出演クレジット",
-    "performersMore": "もっと見る（{count}）",
+    "songPerformers": "この曲の出演メンバー",
     "liveNotice": "リアルタイムで更新中",
     "cancelledTitle": "開催中止",
     "cancelledBody": "この公演は中止です。聴きたい曲・予想曲の保存や編集はできません。",

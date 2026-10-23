@@ -363,7 +363,7 @@
     "sameSeriesTitle": "Same series",
     "viewSeries": "View series",
     "creditsToggle": "Credits",
-    "performersMore": "Show more ({count})",
+    "songPerformers": "Performers on this song",
     "liveNotice": "Updating live",
     "cancelledTitle": "Cancelled",
     "cancelledBody": "This concert is cancelled. Song wishes and predictions cannot be saved or edited.",

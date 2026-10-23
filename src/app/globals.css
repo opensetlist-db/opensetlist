@@ -41,6 +41,11 @@
   --surface-live-card: #fff8f6;
   --border-live-card: #f0c4bc;
   --shadow-live-card: #17244506;
+  /* Concert detail (consistency-03-v3): the neutral "updating live"
+     notice and the per-song performer toggle's hover pair. */
+  --surface-notice-neutral: #f7f9fc;
+  --surface-credit-toggle-hover: #eeefff;
+  --text-credit-toggle-hover: #5156a6;
   /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
      so a palette change is one edit, not a grep across components.
      Consumed by `.row-hover-bg:hover` below; available as a Tailwind

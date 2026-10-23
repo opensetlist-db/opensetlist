@@ -64,12 +64,17 @@
 .seriesLink:hover {
   text-decoration: underline;
 }
+/*
+ * Identity title role (consistency-03-v3 §4): 32px down to 700px, 24px
+ * below, line-height 1.4, tracking -.03em. Replaces 18-v3's 29/26/24/20
+ * steps; the long-name wrap below stays.
+ */
 .title {
   margin: 9px 0 12px;
-  font-size: 29px;
+  font-size: 32px;
   font-weight: 700;
-  line-height: 1.45;
-  letter-spacing: -0.035em;
+  line-height: 1.4;
+  letter-spacing: -0.03em;
   color: var(--foreground);
   overflow-wrap: anywhere;
 }
@@ -83,6 +88,17 @@
   margin: 0;
   font-size: 14px;
   color: var(--text-secondary);
+}
+/*
+ * LIVE hero (consistency-03-v3 §8): a 3px coral rule on the left and a
+ * warm wash that fades out by 65% of the width, so the logo slot and the
+ * title read as "on now" without tinting the whole band. Colours are the
+ * shared LIVE roles from 04/05 (dot coral, live-card surface).
+ */
+.hero[data-status="ongoing"] {
+  border-left: 3px solid var(--status-live-dot);
+  padding-left: 13px;
+  background: linear-gradient(90deg, var(--surface-live-card), transparent 65%);
 }
 .stateLine {
   grid-column: 2;
@@ -206,12 +222,17 @@
   --bar: var(--accent-info-panel);
 }
 
+/*
+ * "Updating live" notice. Neutral since consistency-03-v3 §8: the LIVE
+ * colour belongs to the hero badge and rule, so the in-card notice is a
+ * plain grey-blue box with navy text instead of a second pink signal.
+ */
 .liveNotice {
   margin-bottom: 18px;
   padding: 14px 18px;
-  border: 1px solid var(--border-live-notice);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--surface-live-notice);
+  background: var(--surface-notice-neutral);
   font-size: 13px;
   color: var(--text-secondary);
 }
@@ -220,7 +241,7 @@
   margin-bottom: 3px;
   font-size: 14px;
   font-weight: 700;
-  color: var(--text-live-notice);
+  color: var(--foreground);
 }
 .emptyCopy {
   margin: 0;
@@ -363,19 +384,6 @@ a.groupChip:hover {
   font-weight: 700;
   color: var(--foreground);
 }
-.more {
-  margin-top: 12px;
-  font-size: 12px;
-}
-.more > summary {
-  min-height: 36px;
-  padding: 8px 0;
-  cursor: pointer;
-  color: var(--primary);
-}
-.more > .rosterGrid {
-  margin-top: 8px;
-}
 
 /* ── Bands ────────────────────────────────────────────────────── */
 
@@ -388,9 +396,6 @@ a.groupChip:hover {
 @media (max-width: 1099px) {
   .layout {
     grid-template-columns: minmax(0, 1fr) 260px;
-  }
-  .title {
-    font-size: 26px;
   }
   .rosterGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -408,9 +413,6 @@ a.groupChip:hover {
   .hero {
     grid-template-columns: 156px minmax(0, 1fr);
     column-gap: 22px;
-  }
-  .title {
-    font-size: 24px;
   }
 }
 
@@ -437,8 +439,7 @@ a.groupChip:hover {
   }
   .title {
     margin-top: 7px;
-    font-size: 20px;
-    line-height: 1.5;
+    font-size: 24px;
   }
   .seriesLink {
     font-size: 12px;
@@ -521,7 +522,18 @@ a.groupChip:hover {
   color: var(--foreground);
   overflow-wrap: anywhere;
 }
+/*
+ * Song-name links only (consistency-03-v3 §3, F14): at least 24px tall
+ * through 3px block padding, so a one-line title is a fair touch target.
+ * The reactions and the row itself keep their density — this is not the
+ * 44px control rule.
+ */
 .songTitle a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding-block: 3px;
+  line-height: 1.5;
   color: var(--foreground);
 }
 .songTitle a:hover {
@@ -542,12 +554,84 @@ a.groupChip:hover {
   font-style: italic;
   font-weight: 500;
 }
+/*
+ * Chip line + 28×28 performer toggle on one row (consistency-03-v3
+ * §7.3). The chips wrap inside their own flex box; the toggle stays at
+ * the end of the line instead of dropping to a row of its own.
+ */
+.creditHeading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 4px;
+}
 .creditLine {
   display: flex;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
+  min-width: 0;
+}
+.creditToggle {
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.creditToggle:hover {
+  background: var(--surface-credit-toggle-hover);
+  color: var(--text-credit-toggle-hover);
+}
+.creditToggle svg {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s;
+}
+.creditToggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+/* Chip-less rows: the toggle carries its visible label, so it sizes to
+   the text instead of the 28px square. */
+.creditToggleText {
+  flex: 0 1 auto;
+  width: auto;
+  gap: 2px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--primary);
+}
+.creditBody {
+  margin-top: 5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--background);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.creditBody[hidden] {
+  display: none;
+}
+.creditBody strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.creditBody p {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
 }
 .artistTag {
   display: inline-block;
@@ -560,21 +644,6 @@ a.groupChip:hover {
 }
 a.artistTag:hover {
   text-decoration: underline;
-}
-.creditDetails {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.creditDetails > summary {
-  min-height: 30px;
-  padding: 3px 0;
-  cursor: pointer;
-  color: var(--primary);
-}
-.creditDetails > p {
-  margin: 2px 0 0;
-  overflow-wrap: anywhere;
 }
 .songReactions {
   margin-top: 8px;
