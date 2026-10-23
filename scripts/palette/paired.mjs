@@ -75,6 +75,7 @@ export async function runPaired({ before, after, cases, canary, out, expand = fa
           const errors = [];
           page.on("pageerror", (e) => errors.push(e.message));
           const response = await page.goto(new URL(c.path, base).href, { waitUntil: "domcontentloaded" });
+          if (c.readySelector) await page.locator(c.readySelector).first().waitFor({ state: "visible" });
           const readiness = await waitForVisualReady(page, { timeoutMs });
           row.sides[side] = { status: response?.status(), url: new URL(page.url()).pathname + new URL(page.url()).search,
             readiness, errors };
@@ -145,6 +146,8 @@ export function validateCases(cases, canary) {
       throw new Error("case path must be a same-origin absolute path");
     if (![c.viewport?.width, c.viewport?.height].every((n) => Number.isInteger(n) && n > 0 && n <= 16384))
       throw new Error("case viewport must contain positive integer width/height <= 16384");
+    if (c.readySelector !== undefined && (typeof c.readySelector !== "string" || !c.readySelector.trim()))
+      throw new Error("case readySelector must be a nonempty CSS selector");
   }
   if (!keys.has(canary)) throw new Error("--canary must name a case (choose the heaviest page)");
 }

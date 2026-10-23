@@ -1,9 +1,9 @@
 // Wait for a screenshot-worthy frame. This runs in the page so its deadline
 // also bounds decode() promises, which can otherwise wait forever on a stalled
 // image. The returned diagnostics are useful even when the deadline expires.
-export async function waitForVisualReady(page, { timeoutMs = 15000 } = {}) {
+export async function waitForVisualReady(page, { timeoutMs = 15000, sweep = true } = {}) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("timeoutMs must be positive");
-  return page.evaluate(async ({ timeoutMs }) => {
+  return page.evaluate(async ({ timeoutMs, sweep }) => {
     const started = performance.now();
     const deadline = started + timeoutMs;
     const images = new Map();
@@ -60,9 +60,10 @@ export async function waitForVisualReady(page, { timeoutMs = 15000 } = {}) {
     // added while the first sweep loaded images.
     const originalScroll = { x: scrollX, y: scrollY };
     const originalBehavior = document.documentElement.style.scrollBehavior;
-    document.documentElement.style.scrollBehavior = "auto";
+    const originalPriority = document.documentElement.style.getPropertyPriority("scroll-behavior");
+    document.documentElement.style.setProperty("scroll-behavior", "auto", "important");
     try {
-      for (let pass = 0; pass < 2 && remaining() > 0; pass++) {
+      for (let pass = 0; sweep && pass < 2 && remaining() > 0; pass++) {
         sweeps++;
         scan();
         const step = Math.max(1, Math.floor(innerHeight * 0.8));
@@ -78,7 +79,8 @@ export async function waitForVisualReady(page, { timeoutMs = 15000 } = {}) {
       }
     } finally {
       scrollTo(originalScroll.x, originalScroll.y);
-      document.documentElement.style.scrollBehavior = originalBehavior;
+      if (originalBehavior) document.documentElement.style.setProperty("scroll-behavior", originalBehavior, originalPriority);
+      else document.documentElement.style.removeProperty("scroll-behavior");
     }
 
     let stableSince = null;
@@ -138,5 +140,5 @@ export async function waitForVisualReady(page, { timeoutMs = 15000 } = {}) {
       sweeps,
       painted,
     };
-  }, { timeoutMs });
+  }, { timeoutMs, sweep });
 }

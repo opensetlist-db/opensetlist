@@ -183,7 +183,7 @@ QA report comparison. [The runbook](docs/palette-verification.md) defines the
 evidence scope, config formats, limitations and matrix expansion conditions.
 Run its no-DB deterministic tests with
 `node --test scripts/capture/*.test.mjs scripts/palette/*.test.mjs` (installed
-Playwright Chromium required). `redesign-capture.mjs --visual-ready` opts into
+Playwright Chromium and WebKit required). `redesign-capture.mjs --visual-ready` opts into
 bounded image/font decode and paint readiness; the default performance capture
 mode retains its historical wait and measurements.
 

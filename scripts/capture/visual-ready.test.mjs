@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { chromium } from "@playwright/test";
+import { chromium, webkit } from "@playwright/test";
 import { waitForVisualReady } from "./visual-ready.mjs";
 
 const pixel = '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="red"/></svg>';
@@ -31,6 +31,39 @@ test("waits for delayed decode and promotes an offscreen lazy image", async () =
     assert.equal(await page.evaluate(() => scrollY), 0);
   } finally {
     await browser.close();
+  }
+});
+
+test("post-action readiness preserves a scroll-dismissed menu", async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+    await page.setContent('<button aria-expanded="false" onclick="this.setAttribute(\'aria-expanded\',\'true\')">menu</button><div style="height:1400px"></div><script>onscroll=()=>document.querySelector("button").setAttribute("aria-expanded","false")</script>');
+    await waitForVisualReady(page, { timeoutMs: 2000 });
+    await page.locator("button").click();
+    assert.equal(await page.locator("button").getAttribute("aria-expanded"), "true");
+    assert.equal((await waitForVisualReady(page, { timeoutMs: 2000, sweep: false })).ready, true);
+    assert.equal(await page.locator("button").getAttribute("aria-expanded"), "true");
+    await waitForVisualReady(page, { timeoutMs: 2000 });
+    assert.equal(await page.locator("button").getAttribute("aria-expanded"), "false");
+  } finally { await browser.close(); }
+});
+
+test("viewBox-only SVG is ready both cached and delayed in Chromium and WebKit", async () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="red"/></svg>';
+  for (const engine of [chromium, webkit]) {
+    const browser = await engine.launch();
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`<img src="data:image/svg+xml,${encodeURIComponent(svg)}">`, { waitUntil: "load" });
+      assert.equal((await waitForVisualReady(page, { timeoutMs: 2000 })).ready, true);
+      await page.route("https://images.test/viewbox.svg", async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        await route.fulfill({ contentType: "image/svg+xml", body: svg });
+      });
+      await page.setContent('<img src="https://images.test/viewbox.svg">', { waitUntil: "domcontentloaded" });
+      assert.equal((await waitForVisualReady(page, { timeoutMs: 2000 })).ready, true);
+    } finally { await browser.close(); }
   }
 });
 
@@ -133,7 +166,7 @@ test("capture writes readiness diagnostics into a partial manifest", async () =>
     if (request.url === "/slow.svg") {
       setTimeout(() => {
         if (!response.destroyed) response.writeHead(200, { "content-type": "image/svg+xml" }).end(pixel);
-      }, 1000);
+      }, 10000).unref();
     } else {
       response.writeHead(200, { "content-type": "text/html" }).end(
         '<!doctype html><html lang="ko"><body><div style="height:4000px"></div><img loading="lazy" src="/slow.svg"></body></html>',

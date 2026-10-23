@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
+import { gunzipSync } from "node:zlib";
 import { test } from "node:test";
 import { runPaired, validateCases } from "./paired.mjs";
 
@@ -15,6 +16,10 @@ test("paired gate retains deferred/pending cases and rejects a changed canary be
   let changed = false;
   const server = http.createServer((req, res) => {
     res.setHeader("Content-Type", "text/html");
+    if (req.url === "/delayed") {
+      res.end('<html><body><p id="state">loading</p><script>setTimeout(() => {document.querySelector("p").id="loaded";document.querySelector("p").textContent="loaded"},400)</script></body></html>');
+      return;
+    }
     res.end(`<html lang="ja"><body><p style="color:${changed ? "red" : "black"}">canary</p></body></html>`);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -27,6 +32,11 @@ test("paired gate retains deferred/pending cases and rejects a changed canary be
     assert.deepEqual(same.deferred, ["light"]);
     assert.deepEqual(same.pending, []);
     assert.equal(same.results[0].pixels.equal, true);
+    const delayed = await runPaired({ before: base, after: base,
+      cases: [{ ...cases[0], path: "/delayed", readySelector: "#loaded" }], canary: "heavy", out: path.join(root, "delayed") });
+    assert.equal(delayed.status, "passed");
+    const observed = JSON.parse(gunzipSync(fs.readFileSync(path.join(root, "delayed", delayed.results[0].sides.before.computed))));
+    assert.deepEqual(observed.text, ["loaded"]);
 
     // Change only the second response in the paired load. This proves the
     // gate sees a real measured change, before checking deferred coverage.

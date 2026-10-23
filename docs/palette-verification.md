@@ -57,7 +57,9 @@ The audit compares PostCSS rule/at-rule structure, selectors, declaration order,
 property names, importance and value tokens. Only an approved literal color
 token may become `var(--approved-name)` with the same RGBA. It traverses gradients
 and existing `var()` fallback branches, preserving their structure. Strings and
-URLs are opaque. It checks every approved token's actual global value and rejects
+URLs are opaque. Only style-rule declarations allow substitutions; at-rule
+descriptors (for example `@property initial-value`) must remain exact because
+they cannot all consume `var()`. It checks every approved token's actual global value and rejects
 unapproved additions, scoped overrides and `@property` registrations for approved
 tokens. It also checks changed CSS outside the explicit list and approved-token
 shadowing across both trees' `src/**/*.css` inventory. Existing references to a
@@ -100,6 +102,12 @@ has a 2× timeout hard cap. `--run-timeout` is minutes (default 10).
 
 The run promotes native lazy images and sweeps the page to trigger intersection
 loading, restores scroll, waits for image decode and fonts, and waits for paint.
+Resource readiness describes the resources currently present; it cannot predict
+future hydration or client fetches. For pages with asynchronous content, a case
+must supply `"readySelector":"[data-testid=loaded-content]"` for a visible loaded
+state before the resource wait. A missing marker fails rather than passing on
+two matching skeletons. The bounded two sweeps are not a completeness proof for
+virtualized or infinite lists; prepare an explicit finite state for those pages.
 Broken images/fonts fail readiness and are recorded; two matching placeholders
 cannot count as successful image evidence. Timeout and SIGINT/SIGTERM preserve
 the incremental `paired.json` with the active side and pending keys. Abrupt OS
@@ -124,6 +132,9 @@ node scripts/redesign-capture.mjs --base http://localhost:3181 --out <dir> --vis
 ```
 
 Default capture mode retains its historical fixed wait and performance metrics.
+Visual mode keeps the existing settle window and accepts `--ready-selector CSS`
+for a loaded-content marker. Design captures sweep before the menu/focus action,
+then check resources without scrolling after it, preserving the selected state.
 Visual mode changes resource loading, scroll and byte/CLS observations, so do
 not compare those metrics against a default-mode baseline. Navigation TTFB is
 still sampled before readiness; later `--repeat` rounds remain TTFB-only.
@@ -143,7 +154,7 @@ are written to files; console output is a short PASS/FAIL and report path.
 
 Tests use local HTML, intercepted fonts/images and tiny PNGs, with no database.
 They include delayed load/decode, failed resources, deadlines, single-pixel/color/
-selector mutations and canary/partial-manifest controls. Playwright Chromium must
+selector mutations and canary/partial-manifest controls. Playwright Chromium and WebKit must
 already be installed. On hosts with a separate browser cache, set the process's
 `PLAYWRIGHT_BROWSERS_PATH` to it. All CLI modes exit 0 on equality/success, 1 on a
 comparison/readiness failure and 2 on invalid input or an unrecoverable CLI error.

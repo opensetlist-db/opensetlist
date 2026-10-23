@@ -155,7 +155,12 @@ function compareTree(before, after, colors) {
       } else if (old.type === "decl") {
         if (old.prop !== next.prop) differences.push({ kind: "property", at: place, before: old.prop, after: next.prop });
         if (Boolean(old.important) !== Boolean(next.important)) differences.push({ kind: "important", at: place, before: Boolean(old.important), after: Boolean(next.important) });
-        compareValues(old.value, next.value, colors, place, differences, substitutions);
+        // A descriptor such as @property initial-value cannot necessarily
+        // consume var() even when a style declaration with that color can.
+        // Prove substitutions only in rule declarations; leave descriptors
+        // exact instead of assuming the browser treats them alike.
+        const allowedColors = old.parent.type === "rule" && next.parent.type === "rule" ? colors : new Map();
+        compareValues(old.value, next.value, allowedColors, place, differences, substitutions);
       }
     }
   }

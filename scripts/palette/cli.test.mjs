@@ -27,6 +27,9 @@ test("static CLI audits the inventory, scoped overrides and replacement count", 
     write("after/src/globals.css", ":root {--space: 1px; --ink: #fff}");
     assert.equal(run().status, 0);
     assert.equal(report().substitutions, 1);
+    config.files = ["./src/card.module.css"];
+    config.globals = "src\\globals.css";
+    assert.equal(run().status, 0);
     write("after/src/other.css", ".other {color:red}");
     assert.equal(run().status, 1);
     assert.deepEqual(report().unexpectedChangedCss, ["src/other.css"]);

@@ -58,6 +58,8 @@
 //                                    fails that entry and records diagnostics.
 //     [--visual-timeout S]           default 15 (seconds), capped by
 //                                    --page-timeout for each readiness wait.
+//     [--ready-selector CSS]         visible content marker before visual
+//                                    readiness (required for async content).
 //     [--run-timeout M]              default 90 (minutes). Whole-run guard:
 //                                    once M minutes have passed, entries not
 //                                    yet loaded are recorded as "timeout:"
@@ -80,8 +82,8 @@
 // settle time after `load` is an explicit fixed wait instead. --design mode
 // adds a best-effort idle wait capped at 10 s, and its navigation and
 // actions also use --page-timeout (--repeat and --run-timeout do not apply
-// to it). --visual-ready replaces these best-effort waits in both capture
-// modes; later --repeat rounds still measure TTFB only.
+// to it). --visual-ready adds bounded resource readiness after the existing
+// settle waits; later --repeat rounds still measure TTFB only.
 //
 // With --repeat, loads run in rounds — every entry once (with screenshots),
 // then every entry again for TTFB only, and so on — rather than N loads of
@@ -249,6 +251,7 @@ const { values: args } = parseArgs({
     "page-timeout": { type: "string", default: "30" },
     "visual-ready": { type: "boolean", default: false },
     "visual-timeout": { type: "string", default: "15" },
+    "ready-selector": { type: "string" },
     "run-timeout": { type: "string", default: "90" },
     design: { type: "string" },
     "design-map": { type: "string" },
@@ -622,7 +625,12 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round, live) {
   const resp = await page.goto(BASE + url, { waitUntil: "load" });
   let visualReadiness = null;
   if (full) {
+    // Resource readiness cannot prove that a future client fetch completed.
+    // Keep the historical hydration settle window; async page captures also
+    // name a content marker explicitly rather than matching two skeletons.
+    await page.waitForTimeout(2500);
     if (args["visual-ready"]) {
+      if (args["ready-selector"]) await page.locator(args["ready-selector"]).first().waitFor({ state: "visible" });
       visualReadiness = await waitForVisualReady(page, { timeoutMs: Math.min(VISUAL_TIMEOUT_MS, PAGE_TIMEOUT_MS) });
       if (!visualReadiness.ready) {
         const reason = visualReadiness.timedOut ? "timeout" : visualReadiness.brokenImages.length ? "broken images" : "failed fonts";
@@ -630,9 +638,6 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round, live) {
         error.visualReadiness = visualReadiness;
         throw error;
       }
-    } else {
-      // Default performance captures keep their historical fixed settle time.
-      await page.waitForTimeout(2500);
     }
   }
   // An admin page without a valid session redirects to /admin-login and
@@ -1185,10 +1190,16 @@ async function runDesign() {
         consoleErrors.push({ text: `pageerror: ${String(err.message ?? err).slice(0, 190)}`, at: "" });
       });
       const resp = await page.goto(BASE + s.url, { waitUntil: "load" });
+      await page.waitForLoadState("networkidle", { timeout: DESIGN_IDLE_MS }).catch(() => {});
       if (!args["visual-ready"]) {
         // Preserve the approved-design capture's historical settle path.
-        await page.waitForLoadState("networkidle", { timeout: DESIGN_IDLE_MS }).catch(() => {});
         await page.evaluate(() => document.fonts.ready);
+      }
+      if (args["visual-ready"] && args["ready-selector"])
+        await page.locator(args["ready-selector"]).first().waitFor({ state: "visible" });
+      if (args["visual-ready"]) {
+        visualReadiness = await waitForVisualReady(page, { timeoutMs: Math.min(VISUAL_TIMEOUT_MS, PAGE_TIMEOUT_MS) });
+        if (!visualReadiness.ready) throw new Error(`visual readiness failed before action: ${s.name}`);
       }
       if (s.action === "menu") {
         await page.locator("header button[aria-controls][aria-expanded]").filter({ visible: true }).first().click();
@@ -1197,7 +1208,9 @@ async function runDesign() {
         await page.keyboard.press("End");
       }
       if (args["visual-ready"]) {
-        visualReadiness = await waitForVisualReady(page, { timeoutMs: Math.min(VISUAL_TIMEOUT_MS, PAGE_TIMEOUT_MS) });
+        // The page was swept before opening/focusing. Sweeping again could
+        // dismiss a scroll-sensitive menu and capture the wrong state.
+        visualReadiness = await waitForVisualReady(page, { timeoutMs: Math.min(VISUAL_TIMEOUT_MS, PAGE_TIMEOUT_MS), sweep: false });
         if (!visualReadiness.ready) {
           const reason = visualReadiness.timedOut ? "timeout" : visualReadiness.brokenImages.length ? "broken images" : "failed fonts";
           throw new Error(`visual readiness ${reason}: ${s.name}`);

@@ -36,12 +36,15 @@ try {
     const config = read(args.config);
     if (!Array.isArray(config.files) || !config.files.length || !config.globals || !config.variables ||
         !Array.isArray(config.addedVariables)) throw new Error("config requires files[], globals, variables{}, addedVariables[]");
-    const files = [...config.files, config.globals];
-    if (new Set(files).size !== files.length) throw new Error("config files/globals must be unique");
-    for (const file of files) {
+    const listed = [...config.files, config.globals];
+    for (const file of listed) {
       if (typeof file !== "string" || path.isAbsolute(file) || file.split(/[\\/]/).includes("..") || !file.endsWith(".css"))
         throw new Error("config paths must be relative CSS file paths without ..");
     }
+    const files = listed.map((file) => path.posix.normalize(file.replaceAll("\\", "/")));
+    if (new Set(files).size !== files.length) throw new Error("config files/globals must be unique");
+    config.files = files.slice(0, -1);
+    config.globals = files.at(-1);
     const beforeDir = path.resolve(args.before), afterDir = path.resolve(args.after);
     const cssFiles = (dir, prefix = "src") => {
       const folder = path.join(dir, prefix);

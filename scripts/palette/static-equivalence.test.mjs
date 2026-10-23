@@ -111,3 +111,11 @@ test("comments in var arguments and escaped identifiers cannot hide prior refere
   }
   assert.throws(() => compareCss(String.raw`@\70roperty --new {inherits: true}`, "", options));
 });
+
+test("style colors may substitute but at-rule descriptors must remain exact", () => {
+  const options = { variables: { "--white": "#fff" } };
+  assert.equal(compareCss(".x {color:#fff}", ".x {color:var(--white)}", options).equal, true);
+  const descriptor = "@property --other {syntax:'<color>'; inherits:false; initial-value:#fff}";
+  assert.equal(compareCss(descriptor, descriptor, options).equal, true);
+  assert.equal(compareCss(descriptor, descriptor.replace("#fff", "var(--white)"), options).equal, false);
+});
