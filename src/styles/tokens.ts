@@ -108,10 +108,17 @@ export const colors = {
   // variables in globals.css for the `.shell-interactive` class.
   primaryPressedBg: "#DAE7FF",
 
-  // Event status palette (consumed by <StatusBadge>)
-  live: "#dc2626",
-  liveBg: "#fef2f2",
-  liveBorder: "#fecaca",
+  // LIVE foreground/dot/surface/border from consistency-03-v3. Keep the
+  // separate dot role: its saturated coral is an indicator, while the
+  // darker foreground keeps small badge labels readable. The dark pair
+  // is for the existing dark share theme, not a site-wide dark mode.
+  // CSS consumers use the matching --status-live-* variables.
+  live: "#B9322A",
+  liveDot: "#E5473B",
+  liveBg: "#FFF1EE",
+  liveBorder: "#F2B8AE",
+  liveDark: "#FFD3C9",
+  liveDarkBg: "#482C2B",
 
   // Confirm-row disagree button (Phase 1B/1C). Active state for
   // the ✕ button in `<NumberSlot>` when the viewer has voted
@@ -124,10 +131,8 @@ export const colors = {
   disagreeBg: "#fff1f2",
   disagreeText: "#9f1239",
 
-  // Error feedback (validation + submission failures). Same red as `live`
-  // today, but semantically distinct: a future brand shift moving live to
-  // orange (rare but possible per CR) shouldn't recolor error text. Keep
-  // both hexes here so the divergence is one-line easy if it happens.
+  // Error feedback stays separate from LIVE status so status palette
+  // changes do not recolor validation or submission failures.
   error: "#dc2626",
 
   // Predicted Setlist during-show divider (Phase 1B Stage C).
@@ -153,6 +158,8 @@ export const colors = {
   completed: "#64748b",
   completedBg: "#f8fafc",
   completedBorder: "#e2e8f0",
+  cancelledBg: "#fafafa",
+  cancelledBorder: "#e5e7eb",
 
   // Concert-list palette (approved packet 16-v1, all text pairs ≥4.5:1
   // in its contrast.json). Separate from the status family above, which

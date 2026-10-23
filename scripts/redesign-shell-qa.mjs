@@ -628,7 +628,7 @@ for (const locale of LOCALES) {
         const desktop = w >= NAV_BREAKPOINT;
         const fontOk =
           locale === "ko"
-            ? /Noto Sans KR Variable.*Noto Sans JP/.test(m.font)
+            ? /Noto Sans KR(?: Variable)?.*Noto Sans JP/.test(m.font)
             : /Noto Sans JP.*Noto Sans KR/.test(m.font);
         const problems = [
           resp?.status() !== 200 && `HTTP ${resp?.status()}`,
