@@ -254,6 +254,19 @@ is started from.
 
 ---
 
+## Windows task tools
+
+Use `powershell -NoProfile -File scripts/task-runtime.ps1 serve-build
+-Runtime GitBash -Port 3191` to select Git Bash explicitly, or select
+`-Runtime WSL -Distro <name>` with Linux Node installed. Windows removal
+uses the same entry point with `worktree-rm -Path <absolute-path>
+-ReleasedHead <full-handoff-head> -MergeRef origin/dev` (first add `-DryRun`).
+It always runs natively and refuses dirty, active, unmerged, or unsafe paths.
+See [Windows runtime and cleanup](docs/windows-task-runtime.md) for archive
+requirements, process ownership, sweep behavior, JSON results and exit codes.
+Run the independent Windows Git/junction/lock/process fixtures with
+`powershell -NoProfile -NonInteractive -File scripts/windows/runtime.test.ps1`.
+
 ## What to test
 
 **"If this breaks, the site is broken."** Test first what a fan
