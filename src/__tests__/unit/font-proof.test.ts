@@ -21,35 +21,63 @@ describe("actual font proof", () => {
   it("halts smoke on completed assertion failures and section exceptions/timeouts", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "font-proof-smoke-")); temps.push(dir);
     const screenshot = await sharp({ create: { width: 1, height: 1, channels: 3, background: "white" } }).png().toBuffer();
+    let state = "normal";
+    let released = false;
+    let wrongWeight = false;
+    let selected = "";
+    const checks: { name: string; ok: boolean }[] = [];
+    const selectors = ["header .font-josefin", "footer .font-josefin", "main h1", "main h2", "main a"];
     const page = Object.assign(new EventEmitter(), {
       addInitScript: async () => {}, waitForTimeout: async () => {},
-      evaluate: async () => ({ roles: [], faces: [], lang: "ko", overflow: 0 }),
+      evaluate: async (fn: () => unknown) => {
+        if (String(fn).includes("document.fonts.ready")) { released = true; return; }
+        return {
+          roles: selectors.map((selector) => ({ selector, text: "Readable", width: 100, height: 20, weight: "400", transform: "uppercase", tracking: ".4px", size: "20px" })),
+          faces: [{ status: state === "normal" || released ? "loaded" : state === "cold" ? "loading" : "error" }], lang: "ko", overflow: 0,
+        };
+      },
       screenshot: async () => screenshot,
       url: () => "http://localhost/ko/privacy",
       locator: () => ({ evaluate: async () => {} }),
     });
-    const ctx = { route: async () => {}, newCDPSession: async () => ({
-      send: async (method: string) => method === "DOM.getDocument" ? { root: { nodeId: 1 } } : { nodeId: 0 }, detach: async () => {},
+    const ctx = { route: async (_pattern: string, handler: (route: unknown) => Promise<void>) => {
+      // Do not await the cold route: the scenario releases it after capture.
+      void handler({ request: () => ({ method: () => "GET", url: () => "/face.woff2" }), abort: async () => {}, continue: async () => {} });
+    }, newCDPSession: async () => ({
+      send: async (method: string, args?: { selector: string }) => {
+        if (method === "DOM.getDocument") return { root: { nodeId: 1 } };
+        if (method === "DOM.querySelector") { selected = args!.selector; return { nodeId: 2 }; }
+        if (method === "CSS.getPlatformFontsForNode") {
+          const row = specimen().find((row) => row.selector === selected);
+          if (row) {
+            if (wrongWeight && selected === "#foundation-latin-500") row.fonts[0].postScriptName = "DMSans9pt-Regular";
+            return { fonts: row.fonts };
+          }
+          return { fonts: [{ isCustomFont: state === "normal" || released, glyphCount: 10 }] };
+        }
+        return {};
+      }, detach: async () => {},
     }) };
-    const failures: string[] = [];
     const h = {
       outDir: dir, browserName: "chromium", timeoutMs: 1000, quick: false, webkit: false, base: "http://localhost",
-      check: (name: string, ok: boolean) => { if (!ok) failures.push(name); },
-      section: vi.fn(async (_name, fn) => { await fn(); return true; }),
+      check: (name: string, ok: boolean) => { checks.push({ name, ok }); },
+      section: vi.fn(async (name, fn) => { state = name.split("/").at(-1); released = false; await fn(); return true; }),
       open: async (_url: string, options: { beforeNavigate: (value: unknown) => Promise<void> }) => {
         page.removeAllListeners(); // Model the fresh page/context of each real cell.
         await options.beforeNavigate({ ctx, page });
         return { ctx, page, resp: { status: () => 200 }, errors: [] };
       },
     };
-    // The same failing page traverses all 39 quick cells without smoke, so
-    // one section below proves early termination rather than an inert mock.
-    await createFoundationScenario().run({ ...h, quick: true });
-    expect(h.section).toHaveBeenCalledTimes(39);
-    h.section.mockClear();
-    failures.length = 0;
+    // Every actual scenario assertion passes before introducing exactly one
+    // wrong face. This catches a preflight that incorrectly stops while green.
     await createFoundationScenario({ smoke: true }).run(h);
-    expect(failures).toContain("privacy/ko/390/normal actual custom glyphs and weights");
+    expect(checks.filter((check) => !check.ok)).toEqual([]);
+    expect(h.section.mock.calls.map(([name]) => name)).toEqual(["privacy/ko/390/normal", "privacy/ko/390/cold", "privacy/ko/390/failure"]);
+    h.section.mockClear();
+    checks.length = 0;
+    wrongWeight = true;
+    await createFoundationScenario({ smoke: true }).run(h);
+    expect(checks.filter((check) => !check.ok).map((check) => check.name)).toEqual(["privacy/ko/390/normal actual custom glyphs and weights"]);
     expect(h.section).toHaveBeenCalledTimes(1);
     // A section that threw/timed out returns false instead of throwing to the
     // scenario. It must also prevent the next state from being attempted.
