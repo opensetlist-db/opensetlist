@@ -89,7 +89,7 @@ describe("concert list server page", () => {
     expect(screen.getByRole("link", { name: "2" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("propagates a data failure to the existing application error boundary", async () => {
+  it("rejects the server render on a data failure", async () => {
     load.mockResolvedValue({ activeGroups: [], pastGroups: [] });
     await expect(EventsPage({ params: Promise.resolve({ locale: "en" }), searchParams: Promise.resolve({}) })).resolves.toBeTruthy();
     load.mockRejectedValue(new Error("fixture database unavailable"));
