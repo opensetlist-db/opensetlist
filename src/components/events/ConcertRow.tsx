@@ -56,7 +56,9 @@ export function ConcertRow({
       className="group mx-4 grid grid-cols-[76px_minmax(0,1fr)_14px] items-start gap-x-3 gap-y-2 border-b py-[18px] last:border-b-0 min-[700px]:mx-[18px] min-[700px]:grid-cols-[76px_minmax(0,1fr)_24px] min-[700px]:items-center min-[700px]:gap-[14px] min-[700px]:py-5 min-[1100px]:mx-6 min-[1100px]:grid-cols-[96px_minmax(0,1fr)_180px_24px] min-[1100px]:gap-5"
       style={
         {
-          borderColor: colors.border,
+          borderColor: status === "ongoing" ? "var(--border-live-card)" : colors.border,
+          background: status === "ongoing" ? "var(--surface-live-card)" : undefined,
+          boxShadow: status === "ongoing" ? `inset 3px 0 ${colors.liveDot}` : undefined,
           // Title colours as variables: the hover class must win over
           // the resting colour, which an inline `color` would not allow.
           "--row-title": colors.textPrimary,

@@ -114,6 +114,40 @@ beforeEach(() => {
 });
 
 describe("getEventsListGrouped — display fields", () => {
+  it("orders simultaneous rows by ID, independently of database return order", async () => {
+    const startTime = new Date("2026-11-01T00:00:00Z");
+    mocked.eventSeries.findMany.mockResolvedValue([series(1)]);
+    mocked.event.findMany.mockResolvedValue([
+      event(3, { eventSeriesId: BigInt(1), startTime }),
+      event(1, { eventSeriesId: BigInt(1), startTime }),
+      event(2, { eventSeriesId: BigInt(1), startTime: new Date("2026-10-31T23:59:59Z") }),
+    ]);
+
+    const { activeGroups } = await getEventsListGrouped("ja", NOW);
+    expect(activeGroups[0].events.map((ev) => ev.id)).toEqual([2, 1, 3]);
+    expect(mocked.event.findMany.mock.calls[0][0].orderBy).toEqual([
+      { startTime: "asc" }, { id: "asc" },
+    ]);
+  });
+
+  it("breaks equal active and past group times by their first chronological row ID", async () => {
+    const future = new Date("2026-11-01T00:00:00Z");
+    const past = new Date("2026-10-01T00:00:00Z");
+    mocked.eventSeries.findMany.mockResolvedValue([series(1), series(2), series(3), series(4)]);
+    // Reverse database order is intentional; a stable sort alone would
+    // keep the larger IDs first and fail to define the pagination order.
+    mocked.event.findMany.mockResolvedValue([
+      event(4, { eventSeriesId: BigInt(4), startTime: past, status: "completed" }),
+      event(3, { eventSeriesId: BigInt(3), startTime: future }),
+      event(2, { eventSeriesId: BigInt(2), startTime: past, status: "completed" }),
+      event(1, { eventSeriesId: BigInt(1), startTime: future }),
+    ]);
+
+    const { activeGroups, pastGroups } = await getEventsListGrouped("en", NOW);
+    expect(activeGroups.map((g) => g.id)).toEqual(["series:1", "series:3"]);
+    expect(pastGroups.map((g) => g.id)).toEqual(["series:2", "series:4"]);
+  });
+
   it("tags the group with the ROOT series type and the art with the event's own series", async () => {
     // Root festival (1) → child leg (2). The group is the root; the art
     // text is the leg's own short name, localized.
