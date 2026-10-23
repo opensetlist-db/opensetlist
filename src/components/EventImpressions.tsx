@@ -593,7 +593,7 @@ export function EventImpressions({
               <span
                 className="h-1.5 w-1.5 rounded-full"
                 style={{
-                  background: colors.live,
+                  background: colors.liveDot,
                   animation: motion.livePulse,
                 }}
               />

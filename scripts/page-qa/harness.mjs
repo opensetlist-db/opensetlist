@@ -76,7 +76,11 @@
 //   quick, browserName, webkit, base, outDir, timeoutMs
 //
 // open(path, opts): { width = 1440, height = 900, reducedMotion =
-// "no-preference", timezoneId = "UTC", hydrate = "main" }. It waits for the
+// "no-preference", timezoneId = "UTC", hydrate = "main", beforeNavigate,
+// waitUntil = "load", waitForFonts = true }. beforeNavigate({ctx, page})
+// installs resource fault simulation/observers before the first request;
+// cold-font checks use domcontentloaded and waitForFonts:false so they
+// can inspect the fallback while the font responses are held. It waits for the
 // `load` event, a non-empty <main> (on a 2xx answer), web fonts, and React
 // hydration of the `hydrate` selector (null skips it) — never
 // `networkidle`, which never settles on a page with a long-lived request
@@ -559,7 +563,7 @@ export async function runScenario({
       return ok;
     },
 
-    async open(p, { width = 1440, height = 900, reducedMotion = "no-preference", timezoneId = "UTC", hydrate = "main" } = {}) {
+    async open(p, { width = 1440, height = 900, reducedMotion = "no-preference", timezoneId = "UTC", hydrate = "main", beforeNavigate, waitUntil = "load", waitForFonts = true } = {}) {
       const ctx = await newContext({ viewport: { width, height }, reducedMotion, timezoneId });
       const page = await ctx.newPage();
       const errors = [];
@@ -575,9 +579,10 @@ export async function runScenario({
       page.on("response", (r) => {
         if (r.status() >= 400 && !knownNoiseResponse(r, base)) errors.push(`${r.status()} ${r.url().slice(0, 200)}`);
       });
-      const resp = await page.goto(base + p, { waitUntil: "load" });
+      if (beforeNavigate) await beforeNavigate({ ctx, page });
+      const resp = await page.goto(base + p, { waitUntil });
       if (resp?.ok()) await page.locator("main > *").first().waitFor({ state: "attached" });
-      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      if (waitForFonts) await page.evaluate(() => document.fonts.ready.then(() => undefined));
       // React tags every hydrated host node with `__reactFiber$…`; a key
       // press or client-side Link navigation before that lands on inert
       // server HTML.

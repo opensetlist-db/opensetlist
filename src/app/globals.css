@@ -28,7 +28,15 @@
      so Han characters take Japanese glyph forms on ja/en and Korean
      forms on ko (the two Noto families draw some shared ideographs
      differently). All faces are self-hosted via @fontsource. */
-  --font-body: 'DM Sans', 'Noto Sans JP', 'Noto Sans KR Variable', sans-serif;
+  --font-body: 'DM Sans', 'Noto Sans JP', 'Noto Sans KR', sans-serif;
+  /* LIVE semantic roles (consistency-03-v3). Match colors.live* in
+     tokens.ts; page-specific card surfaces retain their own contracts. */
+  --status-live-text: #b9322a;
+  --status-live-dot: #e5473b;
+  --status-live-surface: #fff1ee;
+  --status-live-border: #f2b8ae;
+  --status-live-dark-text: #ffd3c9;
+  --status-live-dark-surface: #482c2b;
   /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
      so a palette change is one edit, not a grep across components.
      Consumed by `.row-hover-bg:hover` below; available as a Tailwind
@@ -215,7 +223,7 @@
   --legal-anchor-offset: 88px;
 }
 html:lang(ko) {
-  --font-body: 'DM Sans', 'Noto Sans KR Variable', 'Noto Sans JP', sans-serif;
+  --font-body: 'DM Sans', 'Noto Sans KR', 'Noto Sans JP', sans-serif;
 }
 @media (min-width: 700px) {
   :root {
@@ -234,8 +242,8 @@ html:lang(ko) {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-body);
-  --font-josefin: 'Josefin Sans', 'Noto Sans KR Variable', sans-serif;
-  --font-dm-sans: 'DM Sans', 'Noto Sans KR Variable', sans-serif;
+  --font-josefin: 'Josefin Sans', var(--font-body);
+  --font-dm-sans: var(--font-body);
 }
 
 

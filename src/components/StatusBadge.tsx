@@ -2,14 +2,12 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors, motion, radius } from "@/styles/tokens";
 
 /*
- * Per-status visual config — verbatim from shared-components-handoff §5
- * (ongoing red, upcoming green, completed gray, cancelled lighter gray).
+ * Per-status visual config (LIVE updated by consistency-03-v3;
+ * upcoming green, completed gray, cancelled lighter gray stay unchanged).
  * `dot: true` for ongoing means an extra pulsing dot is rendered before
  * the label, animated via the global `live-pulse` keyframe.
  *
- * Cancelled uses the two literal hex values from handoff §5 directly —
- * not in `tokens.ts` since the redesign treats cancelled as a one-off
- * "muted gray" without a dedicated semantic token.
+ * Cancelled retains the muted gray pair from shared-components-handoff §5.
  */
 const CONFIG: Record<
   ResolvedEventStatus,
@@ -40,9 +38,9 @@ const CONFIG: Record<
   },
   cancelled: {
     dot: false,
-    bg: "#fafafa",
+    bg: colors.cancelledBg,
     color: colors.textMuted,
-    border: "#e5e7eb",
+    border: colors.cancelledBorder,
   },
 };
 
@@ -93,7 +91,7 @@ export function StatusBadge({ status, label, size = "sm" }: Props) {
             width: s.dotSize,
             height: s.dotSize,
             borderRadius: "50%",
-            background: cfg.color,
+            background: colors.liveDot,
             animation: motion.livePulse,
           }}
         />
