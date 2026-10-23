@@ -10,10 +10,9 @@
  * dozens of class strings; one rule block per band keeps each band
  * reviewable against the mockup line by line.
  *
- * Colours mirror `src/styles/tokens.ts` (03 contract). Hex literals
- * appear here only where the token module has no CSS variable; the
- * status-pill tones are page-local because 20-v1 fixed them with
- * measured contrast (6.0–7.2:1, packet qa-summary.md).
+ * Colours mirror `src/styles/tokens.ts` (03 contract) through the CSS
+ * aliases in globals.css. The status-pill tones retain the values 20-v1
+ * fixed with measured contrast (6.0–7.2:1, packet qa-summary.md).
  *
  * Unit/member colours arrive as the `--accent` custom property set
  * inline per element; `--wash` is the same colour at ~9% alpha. Raw
@@ -42,9 +41,9 @@
   align-items: center;
   gap: 36px;
   padding: 28px 32px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: linear-gradient(110deg, #fff 42%, #fff4f9 80%, #f0edff);
+  background: linear-gradient(110deg, var(--bg-card) 42%, var(--gradient-identity-pink-faint) 80%, var(--accent-lavender));
 }
 .identity::before {
   content: "";
@@ -62,7 +61,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
-  color: #165dcc;
+  color: var(--primary);
 }
 .badge {
   display: inline-block;
@@ -71,8 +70,8 @@
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0;
-  color: #244f92;
-  background: #eaf2ff;
+  color: var(--text-kind-badge);
+  background: var(--primary-bg);
 }
 .eyebrow .badge {
   margin-left: 10px;
@@ -89,12 +88,12 @@
 .original {
   margin: 8px 0 0;
   font-size: 14px;
-  color: #52617a;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 .bio {
   margin: 14px 0 0;
-  color: #52617a;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -104,7 +103,7 @@
   gap: 22px;
   margin: 0;
   padding-left: 28px;
-  border-left: 1px solid #dce3ef;
+  border-left: 1px solid var(--border);
 }
 .stats > div {
   display: flex;
@@ -112,7 +111,7 @@
 }
 .stats dt {
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .stats dd {
   margin: 0;
@@ -129,7 +128,7 @@
   align-items: stretch;
   gap: 8px;
   margin: 24px 0;
-  border-bottom: 1px solid #dce3ef;
+  border-bottom: 1px solid var(--border);
 }
 .tab {
   min-height: 48px;
@@ -138,18 +137,18 @@
   justify-content: center;
   padding: 10px 24px;
   font-weight: 700;
-  color: #52617a;
+  color: var(--text-secondary);
   text-decoration: none;
   border-bottom: 3px solid transparent;
   transition: background 0.15s;
 }
 .tab:hover {
-  background: #eaf2ff;
-  color: #165dcc;
+  background: var(--primary-bg);
+  color: var(--primary);
 }
 .tab[aria-current] {
-  color: #165dcc;
-  border-color: #165dcc;
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
 /* ── Overview grid + panels ───────────────────────────────────── */
@@ -169,10 +168,10 @@
 .panel {
   min-width: 0;
   padding: 22px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 5px 18px #233c6810;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-card);
 }
 .sectionHead {
   display: flex;
@@ -194,7 +193,7 @@
   display: flex;
   align-items: center;
   font-size: 12px;
-  color: #165dcc;
+  color: var(--primary);
   text-decoration: none;
 }
 .more:hover {
@@ -210,12 +209,12 @@
   padding: 32px 16px;
   text-align: center;
   font-size: 14px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .arrow {
   flex-shrink: 0;
   font-size: 20px;
-  color: #165dcc;
+  color: var(--primary);
 }
 
 /* Shared hover wash for every row/card link on the page. */
@@ -224,7 +223,7 @@
 .albumRow:hover,
 .eventRow:hover {
   background: var(--primary-hover-bg);
-  box-shadow: 0 4px 12px #233c6810;
+  box-shadow: 0 4px 12px var(--shadow-card);
 }
 
 /* ── Units ────────────────────────────────────────────────────── */
@@ -245,9 +244,9 @@
   min-width: 0;
   height: 100%;
   padding: 17px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: linear-gradient(140deg, #fff, var(--wash));
+  background: linear-gradient(140deg, var(--bg-card), var(--wash));
   color: var(--foreground);
   text-decoration: none;
   overflow-wrap: anywhere;
@@ -280,18 +279,18 @@
   padding: 0 0 0 18px;
   list-style: none;
   font-size: 13px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .toggle {
   min-height: 44px;
   margin-top: 16px;
   padding: 8px 14px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 24px;
-  background: #fff;
+  background: var(--bg-card);
   font: inherit;
   font-size: 13px;
-  color: #165dcc;
+  color: var(--primary);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -316,7 +315,7 @@
   align-items: center;
   gap: 10px;
   padding: 12px 10px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 12px;
   color: var(--foreground);
   text-decoration: none;
@@ -348,7 +347,7 @@
   display: block;
   margin-top: 2px;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 /* ── Album rows ───────────────────────────────────────────────── */
@@ -359,7 +358,7 @@
   align-items: center;
   gap: 12px;
   padding: 14px 0;
-  border-top: 1px solid #dce3ef;
+  border-top: 1px solid var(--border);
   color: var(--foreground);
   text-decoration: none;
   transition: background 0.15s;
@@ -384,7 +383,7 @@
   display: block;
   font-size: 12px;
   line-height: 1.6;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .albumMeta {
   display: flex;
@@ -393,14 +392,14 @@
   gap: 10px;
   margin-top: 6px;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .bonus {
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 12px;
-  color: #176547;
-  background: #eaf8f0;
+  color: var(--status-upcoming-text);
+  background: var(--status-upcoming-surface);
 }
 .discography {
   max-width: 900px;
@@ -420,7 +419,7 @@
   align-items: flex-start;
   gap: 12px;
   padding: 15px 0;
-  border-top: 1px solid #dce3ef;
+  border-top: 1px solid var(--border);
   color: var(--foreground);
   text-decoration: none;
   transition: background 0.15s;
@@ -440,7 +439,7 @@
   gap: 10px;
   margin-bottom: 6px;
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .eventName {
   display: block;
@@ -453,33 +452,33 @@
   margin-top: 5px;
   font-size: 12px;
   line-height: 1.65;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .songCount {
   margin-top: 5px;
   font-size: 12px;
   white-space: nowrap;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .status {
   padding: 1px 7px;
   border-radius: 5px;
   font-size: 12px;
   white-space: nowrap;
-  color: #52617a;
-  background: #f0f3f8;
+  color: var(--text-secondary);
+  background: var(--surface-unit-chip);
 }
 .status[data-status="upcoming"] {
-  color: #176547;
-  background: #eaf8f0;
+  color: var(--status-upcoming-text);
+  background: var(--status-upcoming-surface);
 }
 .status[data-status="ongoing"] {
-  color: #a91d45;
-  background: #fff0f3;
+  color: var(--status-ongoing-text);
+  background: var(--status-ongoing-soft-surface);
 }
 .status[data-status="cancelled"] {
-  color: #8b4a0c;
-  background: #fff2e4;
+  color: var(--status-cancelled-text);
+  background: var(--status-cancelled-surface);
 }
 
 /* ── History ──────────────────────────────────────────────────── */
@@ -491,9 +490,9 @@
 }
 .historyGroup {
   overflow: hidden;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
+  background: var(--bg-card);
 }
 .groupHeading {
   margin: 0;
@@ -508,7 +507,7 @@
   padding: 18px 22px;
   border: 0;
   border-radius: 0;
-  background: #edf2fb;
+  background: var(--surface-group-toggle);
   font: inherit;
   font-size: 16px;
   font-weight: 700;
@@ -530,7 +529,7 @@
   font-size: 12px;
   font-weight: 400;
   white-space: nowrap;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .groupBody {
   padding: 0 22px;
@@ -554,9 +553,9 @@
 }
 .historyColumns {
   padding: 12px 0;
-  border-bottom: 1px solid #dce3ef;
+  border-bottom: 1px solid var(--border);
   font-size: 12px;
-  color: #52617a;
+  color: var(--text-secondary);
 }
 .history .eventRow {
   align-items: start;
@@ -602,7 +601,7 @@
     margin-top: 20px;
     padding: 18px 0 0;
     border-left: 0;
-    border-top: 1px solid #dce3ef;
+    border-top: 1px solid var(--border);
   }
   .title {
     font-size: 30px;

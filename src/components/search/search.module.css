@@ -10,12 +10,12 @@
   display: none;
 }
 .input::placeholder {
-  color: #52617a;
+  color: var(--text-secondary);
 }
 
 .primary {
-  background: #165dcc;
-  color: #fff;
+  background: var(--primary);
+  color: var(--bg-card);
   transition: background 0.15s;
 }
 .primary:hover {
@@ -39,9 +39,9 @@
 }
 .secondary {
   composes: button;
-  border-color: #8b99b0;
-  background: #fff;
-  color: #165dcc;
+  border-color: var(--border-secondary);
+  background: var(--bg-card);
+  color: var(--primary);
   transition: background 0.15s;
 }
 .secondary:hover {
@@ -53,22 +53,22 @@
 }
 .disabled {
   composes: button;
-  border-color: #dce3ef;
-  background: #edf0f5;
-  color: #67758b;
+  border-color: var(--border);
+  background: var(--surface-facts);
+  color: var(--text-muted);
 }
 
 .typeLink:hover {
-  box-shadow: 0 0 0 1px #165dcc;
+  box-shadow: 0 0 0 1px var(--primary);
 }
 
 .row:hover .title {
-  color: #165dcc;
+  color: var(--primary);
   text-decoration: underline;
 }
 
 .more:hover {
-  background: #f2f6ff;
+  background: var(--surface-more-hover);
 }
 
 @media (prefers-reduced-motion: reduce) {

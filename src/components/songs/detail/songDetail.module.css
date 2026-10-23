@@ -13,9 +13,10 @@
  * resets heading weight/size and list markers, so headings set
  * `font-weight` and `font-size` explicitly here.
  *
- * Colours mirror `src/styles/tokens.ts` (03 contract). The status-pill,
- * variant-pill and position-chip tones are page-local because 28-v1
- * fixed them with measured contrast (packet qa-summary.md).
+ * Colours mirror `src/styles/tokens.ts` (03 contract) through the CSS
+ * aliases in globals.css. The status-pill, variant-pill and position-chip
+ * tones retain the values 28-v1 fixed with measured contrast (packet
+ * qa-summary.md).
  */
 
 .page {
@@ -43,11 +44,11 @@
   grid-template-columns: minmax(0, 1fr) 230px;
   gap: 32px;
   padding: 32px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-top: 4px solid var(--artist-color);
   border-radius: 20px;
-  background: linear-gradient(115deg, #fff 30%, #fff0f6 72%, #f0edff);
-  box-shadow: 0 5px 18px #233c680a;
+  background: linear-gradient(115deg, var(--bg-card) 30%, var(--accent-pink) 72%, var(--accent-lavender));
+  box-shadow: 0 5px 18px var(--shadow-surface);
 }
 
 .info {
@@ -60,7 +61,7 @@
   gap: 10px;
   min-width: 0;
   min-height: 32px;
-  color: #165dcc;
+  color: var(--primary);
   font-size: 13px;
   font-weight: 700;
   overflow-wrap: anywhere;
@@ -72,15 +73,15 @@
   margin-bottom: 12px;
   padding: 3px 10px;
   border-radius: 6px;
-  background: #eaf2ff;
-  color: #244f92;
+  background: var(--primary-bg);
+  color: var(--text-kind-badge);
   font-size: 12px;
   font-weight: 700;
 }
 
 .h1 {
   margin: 10px 0 0;
-  color: #172445;
+  color: var(--foreground);
   font-size: 38px;
   font-weight: 700;
   line-height: 1.38;
@@ -90,7 +91,7 @@
 
 .subtitle {
   margin: 7px 0 0;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 15px;
   overflow-wrap: anywhere;
 }
@@ -108,8 +109,8 @@
   max-width: 100%;
   padding: 3px 9px;
   border-radius: 7px;
-  background: #f0edff;
-  color: #71409d;
+  background: var(--accent-lavender);
+  color: var(--text-variant-pill);
   font-size: 12px;
   font-weight: 500;
   overflow-wrap: anywhere;
@@ -121,7 +122,7 @@
   gap: 5px;
   min-width: 0;
   min-height: 32px;
-  color: #165dcc;
+  color: var(--primary);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -140,7 +141,7 @@
   min-width: 0;
 }
 .meta dt {
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -155,7 +156,7 @@
   align-items: center;
   justify-content: center;
   gap: 28px;
-  border-left: 1px solid #dce3ef;
+  border-left: 1px solid var(--border);
 }
 .stat {
   display: flex;
@@ -164,14 +165,14 @@
   gap: 3px;
 }
 .stat strong {
-  color: #172445;
+  color: var(--foreground);
   font-size: 32px;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.04em;
 }
 .stat span {
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
   text-align: center;
 }
@@ -207,14 +208,14 @@
   grid-row: 1;
   min-width: 0;
   padding: 22px 20px;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 5px 18px #233c680a;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-surface);
 }
 .albumPanel h2 {
   margin: 0 0 18px;
-  color: #172445;
+  color: var(--foreground);
   font-size: 19px;
   font-weight: 700;
 }
@@ -225,15 +226,15 @@
   align-items: center;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px solid #dce3ef;
-  color: #172445;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
 }
 .albumMini:last-of-type {
   border-bottom: 0;
 }
 .albumMini:hover {
-  background: #f7f9fd;
-  color: #165dcc;
+  background: var(--background);
+  color: var(--primary);
 }
 
 /*
@@ -251,13 +252,13 @@
   width: 64px;
   height: 64px;
   overflow: hidden;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: linear-gradient(140deg, #eaf2ff, #f0edff);
-  color: #52617a;
+  background: linear-gradient(140deg, var(--primary-bg), var(--accent-lavender));
+  color: var(--text-secondary);
 }
 .miniCover[data-state="image"] {
-  background: #fff;
+  background: var(--bg-card);
 }
 .miniCover img {
   position: absolute;
@@ -288,7 +289,7 @@
 }
 .albumCopy p {
   margin: 4px 0 0;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -297,19 +298,19 @@
   display: inline-block;
   padding: 2px 7px;
   border-radius: 5px;
-  background: #eaf2ff;
-  color: #165dcc;
+  background: var(--primary-bg);
+  color: var(--primary);
   font-size: 11px;
 }
 
 .albumArrow {
   align-self: center;
-  color: #165dcc;
+  color: var(--primary);
 }
 
 .albumTotal {
   margin: 14px 0 0;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
   text-align: center;
 }
@@ -320,7 +321,7 @@
   display: flex;
   gap: 8px;
   margin: 0 0 18px;
-  border-bottom: 1px solid #dce3ef;
+  border-bottom: 1px solid var(--border);
 }
 .tab {
   display: flex;
@@ -330,28 +331,28 @@
   min-height: 52px;
   padding: 10px 20px;
   border-bottom: 3px solid transparent;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 14px;
   font-weight: 700;
   transition: background 0.15s;
 }
 .tab:hover {
-  background: #eaf2ff;
-  color: #165dcc;
+  background: var(--primary-bg);
+  color: var(--primary);
 }
 .tab[aria-current="page"] {
-  border-color: #165dcc;
-  color: #165dcc;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* ── Shared panel / count ─────────────────────────────────────── */
 
 .panel {
   overflow: hidden;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 5px 18px #233c680a;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-surface);
 }
 
 .panelHead {
@@ -360,11 +361,11 @@
   justify-content: space-between;
   gap: 16px;
   padding: 22px 26px;
-  border-bottom: 1px solid #dce3ef;
+  border-bottom: 1px solid var(--border);
 }
 .panelHead h2 {
   margin: 0;
-  color: #172445;
+  color: var(--foreground);
   font-size: 22px;
   font-weight: 700;
 }
@@ -372,21 +373,21 @@
 .count {
   padding: 1px 7px;
   border-radius: 12px;
-  background: #edf1f8;
-  color: #52617a;
+  background: var(--surface-event-status);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
 }
 
 .empty {
   padding: 44px 24px;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 14px;
   text-align: center;
 }
 .empty h2 {
   margin: 0 0 10px;
-  color: #172445;
+  color: var(--foreground);
   font-size: 19px;
   font-weight: 700;
 }
@@ -407,7 +408,7 @@
 }
 .historyColumns {
   padding-block: 4px;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .historyColumns span:last-child {
@@ -417,9 +418,9 @@
 .eventGroup {
   margin-top: 12px;
   overflow: hidden;
-  border: 1px solid #dce3ef;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
+  background: var(--bg-card);
 }
 /*
  * Native <details open>: groups start expanded, collapse without JS and
@@ -429,8 +430,8 @@
 .eventGroup summary {
   min-height: 56px;
   padding: 17px 20px;
-  background: linear-gradient(105deg, #eaf2ff, #f5f2ff);
-  color: #172445;
+  background: linear-gradient(105deg, var(--primary-bg), var(--gradient-summary-lavender));
+  color: var(--foreground);
   font-size: 14px;
   font-weight: 700;
   line-height: 1.7;
@@ -453,13 +454,13 @@
    title inherits it, the pills keep their own tones. */
 .performance {
   min-height: 76px;
-  border-top: 1px solid #dce3ef;
-  color: #172445;
+  border-top: 1px solid var(--border);
+  color: var(--foreground);
   transition: background 0.15s;
 }
 .performance:hover {
-  background: #f2f6ff;
-  color: #165dcc;
+  background: var(--surface-more-hover);
+  color: var(--primary);
 }
 .performance:focus-visible {
   outline-offset: -5px;
@@ -468,7 +469,7 @@
   font-size: 11px;
 }
 .performance time {
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -484,23 +485,23 @@
   justify-self: start;
   padding: 1px 7px;
   border-radius: 5px;
-  background: #edf1f8;
-  color: #52617a;
+  background: var(--surface-event-status);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 400;
   white-space: nowrap;
 }
 .status[data-status="ongoing"] {
-  background: #fff0f6;
-  color: #a91d45;
+  background: var(--accent-pink);
+  color: var(--status-ongoing-text);
 }
 .status[data-status="upcoming"] {
-  background: #eaf8f0;
-  color: #176547;
+  background: var(--status-upcoming-surface);
+  color: var(--status-upcoming-text);
 }
 .status[data-status="cancelled"] {
-  background: #fff2e4;
-  color: #8b4a0c;
+  background: var(--status-cancelled-surface);
+  color: var(--status-cancelled-text);
 }
 
 .trailing {
@@ -512,8 +513,8 @@
 .encore {
   padding: 2px 5px;
   border-radius: 7px;
-  background: #f0edff;
-  color: #71409d;
+  background: var(--accent-lavender);
+  color: var(--text-variant-pill);
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
@@ -521,8 +522,8 @@
 .position {
   padding: 2px 6px;
   border-radius: 5px;
-  background: #edf1f8;
-  color: #52617a;
+  background: var(--surface-event-status);
+  color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -539,22 +540,22 @@
   align-items: center;
   gap: 16px;
   padding: 18px 24px;
-  border-bottom: 1px solid #dce3ef;
-  color: #172445;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
   transition: background 0.15s;
 }
 .versionList li:last-child .versionRow {
   border-bottom: 0;
 }
 a.versionRow:hover {
-  background: #f7f9fd;
-  color: #165dcc;
+  background: var(--background);
+  color: var(--primary);
 }
 .versionRow:focus-visible {
   outline-offset: -5px;
 }
 .currentVersion {
-  background: #eaf2ff;
+  background: var(--primary-bg);
 }
 .versionCopy {
   flex: 1;
@@ -567,11 +568,11 @@ a.versionRow:hover {
   font-weight: 700;
 }
 .currentVersion .versionCopy strong {
-  color: #165dcc;
+  color: var(--primary);
 }
 .versionCopy small {
   display: block;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .pills {
@@ -583,7 +584,7 @@ a.versionRow:hover {
 }
 .versionCount {
   flex-shrink: 0;
-  color: #52617a;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -706,7 +707,7 @@ a.versionRow:hover {
     gap: 28px;
     margin-top: 20px;
     padding-top: 16px;
-    border-top: 1px solid #dce3ef;
+    border-top: 1px solid var(--border);
     border-left: 0;
   }
   .stat {
@@ -731,7 +732,7 @@ a.versionRow:hover {
   .albumMini {
     gap: 14px;
     padding: 12px 0;
-    border-bottom: 1px solid #dce3ef;
+    border-bottom: 1px solid var(--border);
   }
   .tabs {
     gap: 0;
