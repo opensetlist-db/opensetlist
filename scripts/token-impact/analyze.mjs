@@ -113,7 +113,7 @@ function snapshot(input, tokenFiles) {
     for (const declaration of property.declarations) {
       if (tokenNodes.has(declaration)) matches.push({ key: tokenNodes.get(declaration), reason: null });
       else if (prefixNodes.has(declaration)) matches.push(...prefixOrigins(prefixNodes.get(declaration), "Token collection member; candidate set only"));
-      else if (declaration.initializer) matches.push(...origins(declaration.initializer, seen));
+      else if (declaration.initializer) matches.push(...origins(declaration.initializer, seen).map((row) => ({ ...row, reason: row.reason ?? "Indirect object property; verify downstream use" })));
       else return null;
     }
     return matches;
@@ -122,6 +122,15 @@ function snapshot(input, tokenFiles) {
     const node = unwrap(raw);
     if (!node || seen.has(node)) return [];
     seen = new Set([...seen, node]);
+    // Union properties can have several declarations. Resolve all of them
+    // together before the identifier path, which follows one binding.
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      const argument = ts.isElementAccessExpression(node) ? unwrap(node.argumentExpression) : null;
+      const literalName = ts.isPropertyAccessExpression(node) ? node.name.text : argument && (ts.isStringLiteralLike(argument) || ts.isNumericLiteral(argument)) ? argument.text : null;
+      const exact = literalName !== null ? memberOrigins(node.expression, literalName, seen) : null;
+      if (exact !== null) return exact;
+      return origins(node.expression, seen).map((row) => ({ ...row, reason: "Unproven member selection; candidate set only" }));
+    }
     let symbol = checker.getSymbolAtLocation(ts.isPropertyAccessExpression(node) ? node.name : node);
     if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
     for (const declaration of symbol?.declarations ?? []) {
@@ -142,14 +151,6 @@ function snapshot(input, tokenFiles) {
           return base.map((row) => ({ ...row, reason: "Destructured binding; candidate set only, verify downstream use" }));
         }
       }
-    }
-    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-      const argument = ts.isElementAccessExpression(node) ? unwrap(node.argumentExpression) : null;
-      const literalName = ts.isPropertyAccessExpression(node) ? node.name.text : argument && (ts.isStringLiteralLike(argument) || ts.isNumericLiteral(argument)) ? argument.text : null;
-      const exact = literalName !== null ? memberOrigins(node.expression, literalName, seen) : null;
-      if (exact !== null) return exact;
-      const base = origins(node.expression, seen);
-      return base.map((row) => ({ ...row, reason: "Unproven member selection; candidate set only" }));
     }
     const indirect = [];
     // Object maps, templates, calls and conditional expressions are candidate
@@ -260,7 +261,7 @@ export function renderImpact(report) {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(`${row.file}:${row.line}`);
     }
-    lines.push("## Diagnostics requiring manual review", "", "Repeated diagnostics are grouped here; impact.json retains every source location.", "", ...[...groups].map(([reason, locations]) => `- ${escapeCell(reason)} (${locations.length} locations): ${escapeCell(locations.slice(0, 3).join(", "))}${locations.length > 3 ? "; see full JSON for remaining locations" : ""}`), "");
+    lines.push("## Diagnostics requiring manual review", "", "Repeated diagnostics are grouped here; impact.json retains every source location.", "", ...[...groups].map(([reason, locations]) => `- ${escapeCell(reason)} (${locations.length} locations): ${escapeCell(locations.slice(0, 10).join(", "))}${locations.length > 10 ? "; see full JSON for remaining locations" : ""}`), "");
   }
   return lines.join("\n");
 }

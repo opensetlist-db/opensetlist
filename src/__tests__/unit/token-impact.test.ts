@@ -117,6 +117,16 @@ describe("shared token impact inventory", () => {
     ]));
   });
 
+  it("keeps every token origin of a union-selected object property", () => {
+    const source = { ...after, "src/union.tsx": "import { colors } from './styles/tokens'; const CONFIG = { live: {color: colors.live}, dot: {color: colors.liveDot} }; export function UnionDot({status}: {status: keyof typeof CONFIG}) { const cfg = CONFIG[status]; return <i style={{background:cfg.color}}/>; }" };
+    const report = analyzeImpact(before, source);
+    for (const name of ["colors.live", "colors.liveDot"]) {
+      expect(report.changes.find((row) => row.name === name)!.consumers).toEqual(expect.arrayContaining([
+        expect.objectContaining({ side: "after", file: "src/union.tsx", expression: "cfg.color", property: "background" }),
+      ]));
+    }
+  });
+
   it("reports CSS in TS strings, dynamic names and cyclic aliases without looping", () => {
     const source = { ...after, "src/runtime.tsx": "const name = 'live'; export const C = () => <i style={{color: 'var(--live)', background: `var(--${name})`}}/>;", "src/cycle.css": ":root { --a: var(--b); --b: var(--a); } .x { color: var(--a); }" };
     const report = analyzeImpact(before, source);
