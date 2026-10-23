@@ -9,6 +9,7 @@ import {
   getAlbumArtistFilters,
   parseAlbumPageParam,
   albumPageParamValue,
+  albumListQuery,
 } from "@/lib/albums";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
 import { AlbumListRow } from "@/components/albums/AlbumListRow";
@@ -42,7 +43,10 @@ import styles from "@/components/albums/albumList.module.css";
  *   - a page past the end redirects to the last page; with no results
  *     at all, to the bare list (the empty panel);
  *   - the `?artist=` filter is kept on every page link, and changing it
- *     (filter chips carry no `page`) starts again at page 1.
+ *     (filter chips carry no `page`) starts again at page 1. An unknown
+ *     or repeated `?artist=` renders as before (unknown → all, repeated
+ *     → first) and is normalised the same way, so the address never
+ *     names a filter the page isn't showing.
  * The redirect is temporary: the last page moves as the catalog grows.
  *
  * Body is a flex column: `<main>` takes the remaining height
@@ -99,15 +103,16 @@ export default async function AlbumsPage({
 
   // Past the end → last page (bare list when there are no results).
   const page = Math.min(requestedPage, Math.max(totalPages, 1));
-  const canonicalPage = albumPageParamValue(page);
-  if (sp.page !== canonicalPage) {
+  if (
+    sp.page !== albumPageParamValue(page) ||
+    (sp.artist ?? null) !== activeArtist
+  ) {
     // `redirect` throws, so nothing below runs for a non-canonical URL.
-    // The query is rebuilt from validated values only: an unknown
-    // `?artist=` (already treated as "all") is dropped with it.
-    const query: Record<string, string> = {};
-    if (activeArtist) query.artist = activeArtist;
-    if (canonicalPage) query.page = canonicalPage;
-    redirect({ href: { pathname: "/albums", query }, locale });
+    // The query is rebuilt from validated values only.
+    redirect({
+      href: { pathname: "/albums", query: albumListQuery(activeArtist, page) },
+      locale,
+    });
   }
 
   const groups = groupAlbumsByYear(albums);

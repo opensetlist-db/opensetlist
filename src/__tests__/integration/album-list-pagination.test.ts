@@ -23,9 +23,47 @@ import {
 //    undated albums. Every row carries the per-run token
 //    `c07itest<ts>`; afterAll hard-deletes them and asserts nothing is
 //    left. No existing record is written.
+//
+// The catalog comparisons of part 1 read the live shared dev DB, so a
+// concurrent album insert/delete by another session between the count,
+// the page queries and the reference query would fail them; nothing in
+// this repo writes albums on a schedule, and a rerun settles it.
 
-const TOKEN = `c07itest${Date.now()}`;
+const PREFIX = "c07itest";
+const TOKEN = `${PREFIX}${Date.now()}`;
 const created = { artists: [] as bigint[], albums: [] as bigint[] };
+
+/*
+ * An interrupted run (Ctrl-C, hook timeout) skips afterAll and leaves its
+ * 2099 rows at the top of the shared dev catalog (and a fixture chip).
+ * Remove any earlier run's rows first — keyed on the file's own fixed
+ * prefix, not this run's token, so nothing else matches it. Runs before
+ * part 1 so the catalog comparison never sees them either.
+ */
+async function purge(prefix: string) {
+  const albums = await prisma.album.findMany({
+    where: { slug: { startsWith: prefix } },
+    select: { id: true },
+  });
+  const artists = await prisma.artist.findMany({
+    where: { slug: { startsWith: prefix } },
+    select: { id: true },
+  });
+  const albumIds = albums.map((a) => a.id);
+  const artistIds = artists.map((a) => a.id);
+  await prisma.albumArtist.deleteMany({
+    where: { OR: [{ albumId: { in: albumIds } }, { artistId: { in: artistIds } }] },
+  });
+  await prisma.album.deleteMany({ where: { id: { in: albumIds } } });
+  await prisma.artist.deleteMany({
+    where: { id: { in: artistIds }, parentArtistId: { not: null } },
+  });
+  await prisma.artist.deleteMany({ where: { id: { in: artistIds } } });
+}
+
+beforeAll(async () => {
+  await purge(PREFIX);
+});
 
 /*
  * Independent reference ordering: raw SQL with the same filter semantics
@@ -94,10 +132,7 @@ describe("album list pagination — existing catalog (read-only)", () => {
   });
 
   it("pages every artist chip in the reference order", async () => {
-    const chips = (await getAlbumArtistFilters("ko")).filter(
-      // Fixture artists of part 2 may already exist; part 2 covers them.
-      (c) => !created.artists.includes(BigInt(c.id)),
-    );
+    const chips = await getAlbumArtistFilters("ko");
     expect(chips.length).toBeGreaterThan(1);
     for (const chip of chips) {
       const id = BigInt(chip.id);

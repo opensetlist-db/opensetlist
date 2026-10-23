@@ -70,6 +70,7 @@ import { AlbumListRow } from "@/components/albums/AlbumListRow";
 import { AlbumListCover } from "@/components/albums/AlbumListCover";
 import { AlbumArtistFilter } from "@/components/albums/AlbumArtistFilter";
 import { AlbumPagination } from "@/components/albums/AlbumPagination";
+import { ALBUMS_PER_PAGE } from "@/lib/albums";
 
 type Any = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -305,7 +306,7 @@ describe("AlbumsPage", () => {
   const pageResult = (albums: unknown[], total: number) => ({
     albums,
     total,
-    totalPages: Math.ceil(total / 20),
+    totalPages: Math.ceil(total / ALBUMS_PER_PAGE),
   });
 
   it("shows the empty panel, without summary or pager, for no albums", async () => {
@@ -334,7 +335,7 @@ describe("AlbumsPage", () => {
       total: 42,
       start: 41,
       end: 42,
-      perPage: 20,
+      perPage: ALBUMS_PER_PAGE,
       page: 3,
       totalPages: 3,
     });
@@ -351,14 +352,29 @@ describe("AlbumsPage", () => {
       { id: "109", name: "B" },
     ]);
     lib.getAlbumsPage.mockResolvedValue(pageResult([album()], 1));
-    await runPage({ artist: "109" });
+    expect(await redirectOf({ artist: "109" })).toBeNull();
     expect(lib.getAlbumsPage).toHaveBeenLastCalledWith("ko", BigInt(109), 1);
-    // An unknown artist is "all" (existing rule); the URL keeps it unless
-    // the page itself has to be redirected.
-    await runPage({ artist: "999" });
+    // Unknown → the unfiltered list, and the URL drops the filter.
+    expect(await redirectOf({ artist: "999" })).toBe("ko:/albums");
     expect(lib.getAlbumsPage).toHaveBeenLastCalledWith("ko", undefined, 1);
-    await runPage({ artist: ["109", "1"] });
+    // Repeated → the first, spelled once.
+    expect(await redirectOf({ artist: ["109", "1"] })).toBe("ko:/albums?artist=109");
     expect(lib.getAlbumsPage).toHaveBeenLastCalledWith("ko", BigInt(109), 1);
+  });
+
+  // generateMetadata never receives searchParams, so every `?page=` /
+  // `?artist=` variant shares the bare list's canonical and hreflang set
+  // (the concert list's rule). The origin comes from the site-URL env.
+  it("keeps the canonical on the bare list for any filter or page", async () => {
+    const { generateMetadata } = await import("@/app/[locale]/albums/page");
+    const { absoluteUrl } = await import("@/lib/seo/entityUrl");
+    const meta = await generateMetadata({ params: Promise.resolve({ locale: "ja" }) });
+    expect(meta.alternates?.canonical).toBe(absoluteUrl("/ja/albums"));
+    expect(meta.alternates?.languages).toMatchObject({
+      ko: absoluteUrl("/ko/albums"),
+      en: absoluteUrl("/en/albums"),
+      "x-default": absoluteUrl("/ja/albums"),
+    });
   });
 
   it.each([

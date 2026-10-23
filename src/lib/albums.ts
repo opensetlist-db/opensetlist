@@ -210,6 +210,23 @@ export function albumPageParamValue(page: number): string | undefined {
   return page > 1 ? String(page) : undefined;
 }
 
+/*
+ * Query of the canonical list URL for a filter + page: `artist` when a
+ * validated filter is active, `page` only from page 2 on. Shared by the
+ * page's normalising redirect and every pager link, so the two can't
+ * disagree about which URL is canonical.
+ */
+export function albumListQuery(
+  artist: string | null,
+  page: number,
+): Record<string, string> {
+  const query: Record<string, string> = {};
+  if (artist) query.artist = artist;
+  const pageValue = albumPageParamValue(page);
+  if (pageValue) query.page = pageValue;
+  return query;
+}
+
 export type AlbumPageItem = number | "ellipsis";
 
 /*

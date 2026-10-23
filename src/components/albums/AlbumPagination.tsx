@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
-import { albumPageItems, albumPageParamValue } from "@/lib/albums";
+import { albumListQuery, albumPageItems } from "@/lib/albums";
 import styles from "./albumList.module.css";
 
 /*
@@ -28,12 +28,12 @@ interface Props {
   artist: string | null;
 }
 
-export function albumListHref(artist: string | null, page: number) {
-  const query: Record<string, string> = {};
-  if (artist) query.artist = artist;
-  const pageValue = albumPageParamValue(page);
-  if (pageValue) query.page = pageValue;
-  return { pathname: "/albums" as const, query, hash: ALBUM_RESULTS_ID };
+function albumListHref(artist: string | null, page: number) {
+  return {
+    pathname: "/albums" as const,
+    query: albumListQuery(artist, page),
+    hash: ALBUM_RESULTS_ID,
+  };
 }
 
 export async function AlbumPagination({ page, totalPages, artist }: Props) {
