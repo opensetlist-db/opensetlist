@@ -178,6 +178,9 @@ const scenario = {
   name: "event-detail",
   async run(h) {
     const found = new Set();
+    // Set once a LIVE cell actually ran its checks; the contrast
+    // "found at some width" controls below only mean something then.
+    let liveChecked = false;
 
     // ── LIVE record, full matrix ──────────────────────────────────────
     await h.layoutMatrix({
@@ -191,6 +194,7 @@ const scenario = {
           h.skip(name("LIVE checks"), `record ${LIVE} is ${d.status}`);
           return;
         }
+        liveChecked = true;
         const want = width >= MOBILE_BELOW ? 32 : 24;
         check(name(`title ${want}px / 1.4 / -.03em`), d.title.size === want && Math.abs(d.title.lh - 1.4) < 0.01 && Math.abs(d.title.ls + 0.03) < 0.002 && d.title.wrap === "anywhere", JSON.stringify(d.title));
         check(name("LIVE hero rule + warm wash"), d.heroRule === `solid 3px ${CORAL}` && /linear-gradient/.test(d.heroBg), `${d.heroRule} | ${d.heroBg.slice(0, 80)}`);
@@ -295,7 +299,13 @@ const scenario = {
     }
 
     {
-      for (const n of [...CONTRAST, ...CONTRAST_OPEN]) h.check(`contrast ${n} found at some width`, found.has(n), found.has(n) ? "" : `no .*__${n}`);
+      // A LIVE record that has drifted out of `ongoing` skipped every cell,
+      // so nothing was measured: SKIP, not a contrast FAIL.
+      if (liveChecked) {
+        for (const n of [...CONTRAST, ...CONTRAST_OPEN]) h.check(`contrast ${n} found at some width`, found.has(n), found.has(n) ? "" : `no .*__${n}`);
+      } else {
+        h.skip("contrast found at some width", `record ${LIVE} not ongoing`);
+      }
     }
 
     // ── Trending via the live polling path (synthetic, browser only) ──
@@ -345,7 +355,16 @@ const scenario = {
           // The SSR seed shows the real (small) state first; the polled,
           // rewritten answer must replace it without a reload.
           const updated = await page
-            .waitForFunction(() => document.querySelectorAll('[data-testid="trending-songs"] ol > li').length === 3, null, { timeout: 90_000 })
+            // Three items alone could already be the real SSR seed; the
+            // long synthetic title proves the rewritten polled answer landed.
+            .waitForFunction(
+              (long) => {
+                const card = document.querySelector('[data-testid="trending-songs"]');
+                return !!card && card.querySelectorAll("ol > li").length === 3 && card.textContent.includes(long);
+              },
+              LONG.ja,
+              { timeout: 90_000 },
+            )
             .then(() => true)
             .catch(() => false);
           h.check(name("polled update reaches the card (3 songs)"), updated, "");
