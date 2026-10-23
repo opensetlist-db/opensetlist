@@ -53,7 +53,7 @@ case "${OSTYPE:-}" in
     # A detached child can inherit extra PowerShell pipe handles even when its
     # standard output/error are redirected. Give PowerShell file/null stdio as
     # well, otherwise a caller capturing this script waits until the server dies.
-    control="$(git rev-parse --absolute-git-dir)/serve-build-$port.control.log"
+    control="$(git rev-parse --absolute-git-dir)/serve-build-windows-$port.control.log"
     rc=0
     powershell.exe -NoProfile -NonInteractive -File "$native" -Port "$port" "${args[@]}" < /dev/null > "$control" 2>&1 || rc=$?
     cat "$control"

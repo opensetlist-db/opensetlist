@@ -1,9 +1,42 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# A PS7 -> Git Bash -> powershell.exe call can inherit only PS7 module paths.
+# Prefer this host's modules so PS5.1 resolves its own Get-FileHash/CIM cmdlets.
+$env:PSModulePath=(Join-Path $PSHOME 'Modules') + [IO.Path]::PathSeparator + $env:PSModulePath
+
+if (-not ('OpenSetlistRuntime.NativePath' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+namespace OpenSetlistRuntime {
+  public static class NativePath {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern uint GetLongPathNameW(string path, StringBuilder output, uint size);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern uint GetShortPathNameW(string path, StringBuilder output, uint size);
+  }
+}
+'@
+}
 
 function Get-AbsoluteTaskPath([string]$Path) {
     if ($Path -notmatch '^[A-Za-z]:[\\/]') { throw "Expected an absolute local drive path: $Path" }
-    return [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $full=[IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $suffix=New-Object 'Collections.Generic.Stack[string]'
+    $existing=$full
+    while (-not (Test-Path -LiteralPath $existing)) {
+        $suffix.Push([IO.Path]::GetFileName($existing))
+        $existing=[IO.Path]::GetDirectoryName($existing)
+        if (-not $existing) { throw "Cannot resolve path: $Path" }
+    }
+    $buffer=[Text.StringBuilder]::new(32768)
+    $length=[OpenSetlistRuntime.NativePath]::GetLongPathNameW($existing,$buffer,32768)
+    if ($length -eq 0 -or $length -ge 32768) { throw "Cannot expand the long Windows path: $existing" }
+    $resolved=$buffer.ToString()
+    if ($resolved -notmatch '^[A-Za-z]:\\$') { $resolved=$resolved.TrimEnd('\') }
+    while ($suffix.Count) { $resolved=Join-Path $resolved $suffix.Pop() }
+    return $resolved
 }
 
 function Test-SameTaskPath([string]$Left, [string]$Right) {
@@ -25,11 +58,15 @@ function Invoke-TaskGit([string]$Root, [string[]]$Arguments) {
     # Native stderr is diagnostic data, never PowerShell source. Temporarily
     # relax PS 5.1's native-stderr promotion, then require the actual exit code.
     $saved = $ErrorActionPreference
+    $savedConsoleEncoding=[Console]::OutputEncoding
+    $savedOutputEncoding=$OutputEncoding
     try {
+        [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+        $OutputEncoding=[Text.UTF8Encoding]::new($false)
         $ErrorActionPreference = 'Continue'
         $lines = @(& git.exe -C $Root @Arguments 2>&1)
         $code = $LASTEXITCODE
-    } finally { $ErrorActionPreference = $saved }
+    } finally { $ErrorActionPreference = $saved; [Console]::OutputEncoding=$savedConsoleEncoding; $OutputEncoding=$savedOutputEncoding }
     return @{ Code = $code; Text = ($lines | ForEach-Object { "$_" }) -join "`n" }
 }
 
@@ -75,6 +112,7 @@ function Get-TaskInventory([string]$Root) {
 
 function Remove-TaskLink([IO.FileSystemInfo]$Item) {
     if (-not ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Not a link: $($Item.FullName)" }
+    Assert-TaskLinkType $Item
     Assert-NoTaskReparseAncestor ([IO.Path]::GetDirectoryName($Item.FullName))
     # No recursive Remove-Item, cmd/rmdir, MSYS find, or cross-shell path lists.
     # DirectoryInfo.Delete(false) removes a junction itself, not its target.
@@ -85,8 +123,22 @@ function Remove-TaskLink([IO.FileSystemInfo]$Item) {
     }
 }
 
+function Assert-TaskLinkType([IO.FileSystemInfo]$Item) {
+    $native=Get-Item -LiteralPath $Item.FullName -Force
+    if ($native.LinkType -notin @('Junction','SymbolicLink')) { throw "Unsupported reparse point; preserve it manually: $($Item.FullName)" }
+}
+
 function Get-TaskProcesses {
     return @(Get-CimInstance Win32_Process -ErrorAction Stop)
+}
+
+function Assert-TaskGitUnlocked([string]$Root, [string]$Branch) {
+    $gitDir=Get-AbsoluteTaskPath (Get-TaskGitText $Root @('rev-parse','--absolute-git-dir'))
+    $common=Get-AbsoluteTaskPath (Get-TaskGitText $Root @('rev-parse','--path-format=absolute','--git-common-dir'))
+    foreach ($directory in @($gitDir,$common) | Select-Object -Unique) {
+        if (@(([IO.DirectoryInfo]::new($directory)).EnumerateFiles('*.lock')).Count) { throw 'Active Git operation: administrative lock file is present' }
+    }
+    if (Test-Path -LiteralPath (Join-Path $common "refs/heads/$Branch.lock")) { throw 'Active Git operation: branch ref is locked' }
 }
 
 function Assert-TaskInactive([string]$Path, [object[]]$Processes) {

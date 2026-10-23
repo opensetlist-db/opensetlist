@@ -1,11 +1,13 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$OutputEncoding=[Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'task-common.psm1') -Force -DisableNameChecking
 if ($env:OS -ne 'Windows_NT') { throw 'Windows fixtures require actual Windows junctions and processes' }
 $shell = (Get-Process -Id $PID).Path
 $repoScripts = Split-Path $PSScriptRoot -Parent
-$fixture = Join-Path ([IO.Path]::GetTempPath()) ('opensetlist runtime ' + [guid]::NewGuid().ToString('N'))
+$fixture = Join-Path ([IO.Path]::GetTempPath()) ('opensetlist runtime ' + [guid]::NewGuid().ToString('N') + ' ' + [char]0xD55C + [char]0xAE00)
 $repo = Join-Path $fixture 'repo'
 $checks = 0
 $children = New-Object 'Collections.Generic.List[Diagnostics.Process]'
@@ -49,7 +51,8 @@ New-Item -ItemType Directory -Path $repo -Force | Out-Null
 Git $repo @('init','--initial-branch=dev')
 Git $repo @('config','user.name','Runtime Fixture')
 Git $repo @('config','user.email','runtime@example.invalid')
-[IO.File]::WriteAllText((Join-Path $repo '.gitignore'), "node_modules/`n.next/`n.claude/`nraw/`n.env.local`n")
+$unicodeName=[string][char]0x8A3C + [char]0x62E0 + '.json'
+[IO.File]::WriteAllText((Join-Path $repo '.gitignore'), "node_modules/`n.next/`n.claude/`nraw/`n.env.local`n$unicodeName`n")
 [IO.File]::WriteAllText((Join-Path $repo 'tracked.txt'), 'tracked fixture')
 Git $repo @('add','.gitignore','tracked.txt')
 Git $repo @('commit','-m','fixture baseline')
@@ -70,6 +73,16 @@ try {
     Git $repo @('worktree','lock',$clean)
     Assert ((Run-Remove $clean @('-ReleasedHead',$tip)).reason -match 'lock') 'Git-locked worktree refused'
     Git $repo @('worktree','unlock',$clean)
+    $indexLock=Join-Path (Get-TaskGitText $clean @('rev-parse','--absolute-git-dir')) 'index.lock'
+    [IO.File]::WriteAllText($indexLock,'active fixture Git operation')
+    Assert ((Run-Remove $clean @('-ReleasedHead',$tip)).reason -match 'administrative lock') 'Git administrative lock blocks cleanup'
+    [IO.File]::Delete($indexLock)
+    Assert ((Run-Remove $clean @('-ReleasedHead',$tip,'-MergeRef','task/clean')).reason -match 'remote integration') 'own branch cannot bypass the merge guard'
+    $gitControl=Join-Path $clean '.git'
+    $gitControlText=[IO.File]::ReadAllText($gitControl)
+    [IO.File]::Delete($gitControl)
+    Assert ((Run-Remove $clean @('-ReleasedHead',$tip,'-DryRun')).reason -match 'Broken registration') 'missing worktree .git cannot fall back to the main repository'
+    [IO.File]::WriteAllText($gitControl,$gitControlText)
     Push-Location $clean
     try { Assert ((Run-Remove $clean @('-ReleasedHead',$tip)).reason -match 'current directory') 'current worktree refused' }
     finally { Pop-Location }
@@ -86,6 +99,9 @@ try {
     Assert ((Get-TaskGitText $repo @('rev-parse','task/clean')) -eq $unmerged) 'unmerged branch preserved'
 
     $linked = New-Tree 'linked'
+    [IO.File]::WriteAllText((Join-Path $linked $unicodeName),'non-ASCII ignored evidence')
+    Assert ((Run-Remove $linked @('-ReleasedHead',$tip)).reason -match 'archive entry') 'non-ASCII ignored filename requires archive proof under a non-ASCII checkout root'
+    [IO.File]::Delete((Join-Path $linked $unicodeName))
     New-Item -ItemType Directory -Path (Join-Path $repo 'node_modules/next') -Force | Out-Null
     $sharedFile = Join-Path $repo 'node_modules/next/package.json'
     [IO.File]::WriteAllText($sharedFile, '{"name":"next","version":"0.0.0"}')
@@ -106,8 +122,33 @@ try {
     [IO.File]::WriteAllText($copy, 'corrupt copy')
     Assert ((Run-Remove $linked @('-ReleasedHead',$tip,'-ArchiveManifest',$manifest)).reason -match 'mismatch') 'archive hash mismatch refused'
     Copy-Item -LiteralPath (Join-Path $linked 'raw/evidence.txt') -Destination $copy -Force
+    $archiveAlias=Join-Path $fixture 'archive-alias'
+    New-Item -ItemType Junction -Path $archiveAlias -Target (Join-Path $linked 'raw') | Out-Null
+    $aliasFile=Join-Path $archiveAlias 'evidence.txt'
+    Assert ((Get-FileHash -LiteralPath $aliasFile).Hash -eq $archiveProof.files[0].sha256) 'external archive junction alias positive control matches the source hash'
+    $archiveProof.files[0].archivePath=$aliasFile
+    Write-Receipt $archiveProof $manifest
+    Assert ((Run-Remove $linked @('-ReleasedHead',$tip,'-ArchiveManifest',$manifest)).reason -match 'Reparse ancestor') 'archive alias back into deleted worktree refused'
+    Assert (Test-Path -LiteralPath (Join-Path $linked 'raw/evidence.txt')) 'archive alias refusal preserves raw source'
+    [IO.Directory]::Delete($archiveAlias,$false)
+    $archiveProof.files[0].archivePath=$copy
+    Write-Receipt $archiveProof $manifest
+    $shortBuffer=[Text.StringBuilder]::new(32768)
+    $shortLength=[OpenSetlistRuntime.NativePath]::GetShortPathNameW((Join-Path $linked 'raw/evidence.txt'),$shortBuffer,32768)
+    if ($shortLength -gt 0 -and $shortBuffer.ToString() -ne (Join-Path $linked 'raw/evidence.txt')) {
+        $archiveProof.files[0].archivePath=$shortBuffer.ToString()
+        Write-Receipt $archiveProof $manifest
+        Assert ((Run-Remove $linked @('-ReleasedHead',$tip,'-ArchiveManifest',$manifest)).reason -match 'outside') '8.3 short-path alias into deleted worktree refused'
+        $archiveProof.files[0].archivePath=$copy
+        Write-Receipt $archiveProof $manifest
+    } else { Write-Output 'SKIP: volume does not expose an 8.3 short-path alias' }
     $dry = Run-Remove $linked @('-ReleasedHead',$tip,'-ArchiveManifest',$manifest,'-DryRun')
     Assert ($dry.exitCode -eq 0 -and $dry.status -eq 'would-remove' -and (Test-Path -LiteralPath (Join-Path $linked 'node_modules'))) 'dry-run validates archive without unlinking'
+    $gitExe=(Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
+    $gitBash=Join-Path (Split-Path (Split-Path $gitExe -Parent) -Parent) 'bin/bash.exe'
+    $adapterJson=& $gitBash (Join-Path $repoScripts 'worktree-rm.sh') --dry-run --released-head $tip --archive-manifest $manifest $linked
+    $adapter=($adapterJson -join "`n") | ConvertFrom-Json
+    Assert ($LASTEXITCODE -eq 0 -and $adapter.status -eq 'would-remove') "Git Bash cleanup adapter invokes native validation from a different checkout: $($adapter.reason)"
     $removed = Run-Remove $linked @('-ReleasedHead',$tip,'-ArchiveManifest',$manifest)
     Assert ($removed.exitCode -eq 0 -and $removed.registration -eq 'absent' -and $removed.folder -eq 'absent' -and $removed.unlinked -eq 2) 'registered worktree and nested junctions removed with separate states'
     Assert ((Get-FileHash -LiteralPath $sharedFile).Hash -eq $sharedHash -and (Test-Path -LiteralPath (Join-Path $outside 'sentinel'))) 'shared dependency hash and external junction target preserved'
@@ -141,6 +182,9 @@ Start-Sleep -Seconds 120
     try {
         $locked=Run-Remove $leftover
         Assert ($locked.exitCode -eq 2 -and $locked.folder -eq 'empty-locked' -and $locked.registration -eq 'absent') "empty Windows folder lock distinguished from Git registration: $($locked | ConvertTo-Json -Compress)"
+        $sweepJson=& $shell -NoProfile -NonInteractive -File (Join-Path $repoScripts 'worktree-rm.ps1') -Sweep
+        $sweep=($sweepJson -join "`n") | ConvertFrom-Json
+        Assert ($LASTEXITCODE -eq 0 -and @($sweep.entries | Where-Object status -EQ 'active').Count -gt 0 -and @($sweep.entries | Where-Object status -EQ 'locked').Count -eq 1) 'sweep preserves active registrations and reports locked empty folder separately'
     } finally { $locker.Kill(); $null=$locker.WaitForExit(5000) }
     Assert ((Run-Remove $leftover).folder -eq 'absent') 'empty leftover removed after handle release'
 
@@ -158,7 +202,7 @@ http.createServer((req,res) => { res.end('fixture robots'); }).listen(Number(pro
     try {
         $port=Free-Port
         $started=Run-Serve $port @('-NoBuild')
-        $state=Join-Path (Get-TaskGitText $serverTree @('rev-parse','--absolute-git-dir')) "serve-build-$port.json"
+        $state=Join-Path (Get-TaskGitText $serverTree @('rev-parse','--absolute-git-dir')) "serve-build-windows-$port.json"
         $receipt=Get-Content -LiteralPath $state -Raw | ConvertFrom-Json
         $serverProcess=Get-Process -Id $receipt.pid
         $children.Add($serverProcess)
@@ -171,25 +215,53 @@ http.createServer((req,res) => { res.end('fixture robots'); }).listen(Number(pro
         $original=$receipt.startTicks
         $receipt.startTicks=([long]$original+1).ToString()
         Write-Receipt $receipt $state
-        Assert ((Run-Serve $port @('-Stop')).code -ne 0 -and -not $serverProcess.HasExited) 'stale creation time cannot terminate a reused PID'
+        $refused=Run-Serve $port @('-Stop')
+        Assert ($refused.code -ne 0 -and $refused.text -match 'unverified PID' -and -not $serverProcess.HasExited) 'stale creation time cannot terminate a reused PID'
         $receipt.startTicks=$original
         $receipt.port=$port+1
         Write-Receipt $receipt $state
-        Assert ((Run-Serve $port @('-Stop')).code -ne 0 -and -not $serverProcess.HasExited) 'wrong-port receipt cannot terminate a live holder'
+        $refused=Run-Serve $port @('-Stop')
+        Assert ($refused.code -ne 0 -and $refused.text -match 'unverified PID' -and -not $serverProcess.HasExited) 'wrong-port receipt cannot terminate a live holder'
         $receipt.port=$port
         $receipt.pid=$PID
         $receipt.startTicks=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks.ToString()
         Write-Receipt $receipt $state
-        Assert ((Run-Serve $port @('-Stop')).code -ne 0 -and -not $serverProcess.HasExited) 'receipt pointing at an unrelated live process cannot terminate it'
+        $refused=Run-Serve $port @('-Stop')
+        Assert ($refused.code -ne 0 -and $refused.text -match 'unverified PID' -and -not $serverProcess.HasExited) 'receipt pointing at an unrelated live process cannot terminate it'
         $receipt.pid=$serverProcess.Id
         $receipt.startTicks=$original
         Write-Receipt $receipt $state
         [IO.File]::Delete($state)
-        Assert ((Run-Serve $port @('-Stop')).code -ne 0 -and -not $serverProcess.HasExited) 'legacy PID alone cannot stop an unverified port holder'
+        $refused=Run-Serve $port @('-Stop')
+        Assert ($refused.code -ne 0 -and $refused.text -match 'unverified PID' -and -not $serverProcess.HasExited) 'legacy PID alone cannot stop an unverified port holder'
         Write-Receipt $receipt $state
         Assert ((Run-Serve $port @('-Stop')).code -eq 0) 'matching receipt stops only the owned server'
         Assert ($serverProcess.WaitForExit(5000)) 'owned server actually exited'
         Assert ((Run-Serve $port @('-Stop')).code -eq 0) 'repeated stop is safe'
+        $mutexPort=Free-Port
+        $testMutex=[Threading.Mutex]::new($false,"Local\OpenSetlistServe-$mutexPort")
+        $null=$testMutex.WaitOne(0)
+        try {
+            $busy=Run-Serve $mutexPort @('-Stop')
+            Assert ($busy.code -ne 0 -and $busy.text -match 'Another native serve-build operation') 'per-port mutex refuses a concurrent native operation'
+        } finally { $testMutex.ReleaseMutex(); $testMutex.Dispose() }
+        [IO.File]::WriteAllText((Join-Path $serverTree 'package.json'), '{"scripts":{"build":"node build-fixture.cjs"}}')
+        [IO.File]::WriteAllText((Join-Path $serverTree 'build-fixture.cjs'), @'
+const fs = require('node:fs');
+for (const key of ['SENTRY_AUTH_TOKEN', 'SENTRY_DSN', 'NEXT_PUBLIC_SENTRY_DSN']) {
+  if (process.env[key] !== '') throw new Error('Build Sentry not blanked: ' + key);
+}
+fs.mkdirSync('.next', { recursive: true });
+fs.writeFileSync('.next/build-fixture', 'built');
+'@)
+        $savedSentry=$env:SENTRY_DSN
+        $env:SENTRY_DSN='fixture-nonempty-before-build'
+        try { $built=Run-Serve $port } finally { $env:SENTRY_DSN=$savedSentry }
+        $builtReceipt=Get-Content -LiteralPath $state -Raw | ConvertFrom-Json
+        $builtServer=Get-Process -Id $builtReceipt.pid
+        $children.Add($builtServer)
+        Assert ($built.code -eq 0 -and (Test-Path -LiteralPath (Join-Path $serverTree '.next/build-fixture'))) 'npm build and detached server both receive empty Sentry values'
+        Assert ((Run-Serve $port @('-Stop')).code -eq 0 -and $builtServer.WaitForExit(5000)) 'built fixture server stops with its new verified receipt'
     } finally { Pop-Location }
     $success=$true
     Write-Output "Windows runtime fixture: $checks checks passed"

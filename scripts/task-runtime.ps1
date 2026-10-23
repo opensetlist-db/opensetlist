@@ -14,6 +14,8 @@ param(
     [switch]$Sweep
 )
 $ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$OutputEncoding=[Text.UTF8Encoding]::new($false)
 try {
     if ($env:OS -ne 'Windows_NT') { throw 'Use the .sh entry points on Linux/macOS' }
     if ($Task -eq 'worktree-rm') {
@@ -54,7 +56,9 @@ try {
         if ($LASTEXITCODE -ne 0 -or -not $linuxScript) { throw 'WSL distro or wslpath unavailable' }
         $linuxCwd = & $wsl --distribution $Distro --exec wslpath -a (Get-Location).Path
         if ($LASTEXITCODE -ne 0 -or -not $linuxCwd) { throw 'Cannot map the current checkout into WSL' }
-        & $wsl --distribution $Distro --cd $linuxCwd.Trim() --exec bash -c 'command -v node >/dev/null && command -v npm >/dev/null && command -v lsof >/dev/null && command -v curl >/dev/null && test "$(node -p process.platform)" = linux'
+        $checkScript = & $wsl --distribution $Distro --exec wslpath -a (Join-Path $PSScriptRoot 'windows/check-wsl-runtime.sh')
+        if ($LASTEXITCODE -ne 0 -or -not $checkScript) { throw 'Cannot map the WSL prerequisite script' }
+        & $wsl --distribution $Distro --cd $linuxCwd.Trim() --exec bash $checkScript.Trim()
         if ($LASTEXITCODE -ne 0) { throw 'WSL needs Linux node, npm, lsof and curl; Windows node.exe is not supported for this runtime' }
         & $wsl --distribution $Distro --cd $linuxCwd.Trim() --exec bash $linuxScript.Trim() @serveArgs
     }

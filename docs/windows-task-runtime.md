@@ -25,12 +25,15 @@ supported. Linux/macOS callers continue to use `bash scripts/serve-build.sh`.
 
 The native helper blanks Sentry inside Node before dotenv loading, builds via
 the existing npm script, and starts a hidden detached process. Its worktree Git
-directory stores logs, the legacy `.pid` file, and a new `.json` receipt with
+directory stores `serve-build-windows-<port>` logs, a `.pid` file, and a `.json` receipt with
 checkout, port, PID, and process creation ticks. Stopping requires all of them to
 match the exact Next CLI invocation. A pinned process handle prevents PID reuse
 from selecting another process. Every Listen/Bound holder must match; a foreign
 holder or a legacy PID file without a valid receipt is preserved and refused.
 For an old server, use its original tool to stop it after verifying ownership.
+Native Windows and WSL use separate receipt namespaces; a native per-port mutex
+serializes concurrent start/stop operations. The hidden launcher avoids leaking
+ancestor capture pipes into the server, including from PowerShell 5.1 callers.
 
 ## Remove a released worktree
 
@@ -49,7 +52,9 @@ powershell -NoProfile -File scripts/task-runtime.ps1 worktree-rm -Path $task -Re
 powershell -NoProfile -File scripts/task-runtime.ps1 worktree-rm -Sweep -DryRun
 ```
 
-Fetch the intended merge ref before using it. Removal requires HEAD to be its
+Fetch the intended merge ref before using it. `-MergeRef` accepts only the
+project integration refs `origin/dev`, `origin/main`, and `origin/feature/redesign`.
+Removal requires HEAD to be its
 ancestor; squash merges without ancestry are deliberately refused. Branches are
 always retained so their later deletion is a separate owner action. Sweep only
 tries unregistered empty leftovers and reports registered worktrees as active.
@@ -57,10 +62,15 @@ Neither the Windows CLI nor its Git Bash adapter accepts a force bypass.
 
 The helper requires an absolute local drive path directly inside the main
 checkout's `.claude/worktrees`. It rejects a junction/symlink at the target or
-any ancestor. It refuses dirty/untracked, detached, Git-locked, active, and
+any ancestor. Long paths are expanded before comparison, so 8.3 aliases cannot
+make an archive inside the target appear external. Git output is decoded as
+UTF-8, including non-ASCII checkout paths and evidence filenames. It refuses
+dirty/untracked, detached, Git-locked (including administrative lock files), active, and
 unmerged worktrees. Dependency junctions are removed first, followed by all
 nested reparse points, with native .NET nonrecursive unlinking and verification.
-Only then may Git remove the worktree. There is no cross-shell deletion or
+Only junctions and symbolic links are eligible for unlinking; other reparse types
+(such as cloud placeholder files) are refused. Only then may Git remove the
+worktree. There is no cross-shell deletion or
 global `worktree prune`. A nonempty unregistered leftover is preserved for
 inspection; an empty folder held by Windows can be retried after release.
 
@@ -81,7 +91,8 @@ copy path:
 
 Pass `-ArchiveManifest D:\archives\task\manifest.json`. Source and archived copy
 must both match the recorded SHA256. The manifest and preserved copy must live
-outside the target. Dry-run performs the same preservation checks without
+outside the target, with no reparse point at either path or any ancestor.
+Dry-run performs the same preservation checks without
 unlinking. Existing archives are read-only inputs, never rewritten by cleanup.
 
 ### Machine-readable result

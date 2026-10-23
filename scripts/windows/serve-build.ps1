@@ -2,6 +2,8 @@
 param([Parameter(Mandatory=$true)][ValidateRange(1,65535)][int]$Port, [switch]$NoBuild, [switch]$Stop)
 Import-Module (Join-Path $PSScriptRoot 'task-common.psm1') -Force -DisableNameChecking
 $ErrorActionPreference = 'Stop'
+$serverMutex=$null
+$ownsServerMutex=$false
 
 function Get-PortHolders {
     # A Bound socket can prevent listen() just as a listener can. Never select
@@ -28,13 +30,16 @@ function Get-OwnedServer($Receipt) {
 
 try {
     if ($env:OS -ne 'Windows_NT') { throw 'Native Windows helper only' }
+    $serverMutex=[Threading.Mutex]::new($false,"Local\OpenSetlistServe-$Port")
+    $ownsServerMutex=$serverMutex.WaitOne(0)
+    if (-not $ownsServerMutex) { throw "Another native serve-build operation owns port $Port" }
     $root = Get-AbsoluteTaskPath (Get-TaskGitText (Get-Location).Path @('rev-parse','--show-toplevel'))
     $gitDir = Get-AbsoluteTaskPath (Get-TaskGitText $root @('rev-parse','--absolute-git-dir'))
     $nextBin = Join-Path $root 'node_modules/next/dist/bin/next'
-    $stateFile = Join-Path $gitDir "serve-build-$Port.json"
-    $pidFile = Join-Path $gitDir "serve-build-$Port.pid"
-    $logFile = Join-Path $gitDir "serve-build-$Port.log"
-    $receipt = if (Test-Path -LiteralPath $stateFile) { Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json } else { $null }
+    $stateFile = Join-Path $gitDir "serve-build-windows-$Port.json"
+    $pidFile = Join-Path $gitDir "serve-build-windows-$Port.pid"
+    $logFile = Join-Path $gitDir "serve-build-windows-$Port.log"
+    $receipt = if (Test-Path -LiteralPath $stateFile) { Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
     $owned = Get-OwnedServer $receipt
     $holders = @(Get-PortHolders)
     foreach ($holder in $holders) {
@@ -63,8 +68,14 @@ try {
         finally { Pop-Location }
     }
     if (@(Get-PortHolders).Count) { throw "Port $Port was taken during the build; no process was stopped" }
-    & $node (Join-Path $PSScriptRoot 'start-server.mjs') $nextBin $Port $root $logFile $pidFile
-    if ($LASTEXITCODE -ne 0) { throw "Server launch failed; see $logFile.err" }
+    $launcherPath=Join-Path $PSScriptRoot 'start-server.mjs'
+    # ShellExecute (no redirected handles) prevents inheriting *additional*
+    # ancestor capture-pipe handles. WaitForExit waits only for this launcher;
+    # Start-Process -Wait would wait for its detached descendants as well.
+    $launcher=Start-Process -FilePath $node -ArgumentList @(('"'+$launcherPath+'"'),('"'+$nextBin+'"'),"$Port",('"'+$root+'"'),('"'+$logFile+'"'),('"'+$pidFile+'"')) -WindowStyle Hidden -PassThru
+    try {
+        if (-not $launcher.WaitForExit(10000) -or $launcher.ExitCode -ne 0) { throw "Server launch failed; see $logFile.err" }
+    } finally { $launcher.Dispose() }
     $server = [Diagnostics.Process]::GetProcessById([int]([IO.File]::ReadAllText($pidFile)))
     try {
         $null = $server.Handle
@@ -94,4 +105,8 @@ try {
         throw "No verified /robots.txt 200 in 120s; server left running, stop with the same runtime and port. Log: $logFile"
     } finally { $server.Dispose() }
 } catch { Write-Error $_ -ErrorAction Continue; exit 1 }
-finally { if (Test-Path variable:savedNodeOptions) { $env:NODE_OPTIONS=$savedNodeOptions } }
+finally {
+    if (Test-Path variable:savedNodeOptions) { $env:NODE_OPTIONS=$savedNodeOptions }
+    if ($ownsServerMutex) { $serverMutex.ReleaseMutex() }
+    if ($serverMutex) { $serverMutex.Dispose() }
+}

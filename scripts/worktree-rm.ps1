@@ -9,6 +9,8 @@ param(
 )
 Import-Module (Join-Path $PSScriptRoot 'windows/task-common.psm1') -Force -DisableNameChecking
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$OutputEncoding=[Text.UTF8Encoding]::new($false)
 if ($Sweep) {
     try {
         if ($Path -or $ReleasedHead -or $ArchiveManifest) { throw 'Sweep accepts only -DryRun; release registered worktrees individually' }
@@ -59,9 +61,18 @@ try {
         if (-not $tree.Branch) { throw 'Detached HEAD is not eligible for cleanup' }
         if ($ReleasedHead -notmatch '^[0-9a-fA-F]{40}$' -or $ReleasedHead -ne $tree.Head) { throw 'Active until explicitly released: pass -ReleasedHead with the exact full HEAD from its completed session handoff' }
         if (-not (Test-Path -LiteralPath $target -PathType Container)) { throw 'Registered worktree folder is missing; inspect its Git metadata manually' }
+        if (-not (Test-Path -LiteralPath (Join-Path $target '.git') -PathType Leaf)) { throw 'Broken registration: target .git file is missing' }
+        Assert-NoTaskReparseAncestor (Join-Path $target '.git')
+        if (-not (Test-SameTaskPath (Get-TaskGitText $target @('rev-parse','--show-toplevel')) $target) -or (Get-TaskGitText $target @('rev-parse','HEAD')) -ne $tree.Head) { throw 'Target no longer matches its Git registration' }
+        $targetCommon=Get-AbsoluteTaskPath (Get-TaskGitText $target @('rev-parse','--path-format=absolute','--git-common-dir'))
+        $mainCommon=Get-AbsoluteTaskPath (Get-TaskGitText $main @('rev-parse','--path-format=absolute','--git-common-dir'))
+        if (-not (Test-SameTaskPath $targetCommon $mainCommon)) { throw 'Target .git points to another repository' }
+        if ((Get-TaskGitText $target @('symbolic-ref','--short','HEAD')) -ne $tree.Branch) { throw 'Target branch differs from its registration' }
+        Assert-TaskGitUnlocked $target $tree.Branch
         Assert-TaskInactive $target (Get-TaskProcesses)
         $status = Get-TaskGitText $target @('status', '--porcelain', '--untracked-files=all')
         if ($status) { throw 'Dirty worktree: commit or preserve every tracked/untracked change first' }
+        if ($MergeRef -notin @('origin/dev','origin/main','origin/feature/redesign')) { throw 'MergeRef must name a project remote integration branch: origin/dev, origin/main, origin/feature/redesign' }
         $merged = Invoke-TaskGit $main @('merge-base', '--is-ancestor', $tree.Head, $MergeRef)
         if ($merged.Code -ne 0) { throw "Unmerged HEAD (or invalid merge ref): $MergeRef" }
     } elseif (Test-Path -LiteralPath $target) {
@@ -80,26 +91,27 @@ try {
         # archive. Unknown ignored artifacts (screenshots, raw traces, scratchpad)
         # need an external manifest proving source AND preserved copy hashes.
         $inventory = @(Get-TaskInventory $target)
-        $ignored = Get-TaskGitText $target @('-c', 'core.quotePath=false', 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory')
-        $ignoredPaths = @($ignored -split "`n" | Where-Object { $_ })
+        $tracked = Get-TaskGitText $target @('-c', 'core.quotePath=false', 'ls-files')
+        $trackedPaths = @($tracked -split "`n" | Where-Object { $_ })
         $proof = $null
         if ($ArchiveManifest) {
             $manifestPath = Get-AbsoluteTaskPath $ArchiveManifest
+            Assert-NoTaskReparseAncestor $manifestPath
             if ((Test-SameTaskPath $manifestPath $target) -or $manifestPath.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Archive manifest must live outside the deleted worktree' }
-            $proof = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+            $proof = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
         }
         foreach ($item in $inventory) {
-            if (($item.Attributes -band [IO.FileAttributes]::Directory) -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { Assert-TaskLinkType $item; continue }
+            if ($item.Attributes -band [IO.FileAttributes]::Directory) { continue }
             $relative = $item.FullName.Substring($target.Length + 1).Replace('\', '/')
-            if ($relative -match '^(node_modules/|\.next/|src/generated/|\.env(\.local)?$|AGENTS\.local\.md$|CLAUDE\.local\.md$)') { continue }
-            $isIgnored = $false
-            foreach ($ignoredPath in $ignoredPaths) {
-                if ($relative -ceq $ignoredPath -or ($ignoredPath.EndsWith('/') -and $relative.StartsWith($ignoredPath,[StringComparison]::Ordinal))) { $isIgnored=$true; break }
-            }
-            if (-not $isIgnored) { continue }
+            if ($relative -match '^(node_modules/|\.next/|src/generated/|\.git$|\.env(\.local)?$|AGENTS\.local\.md$|CLAUDE\.local\.md$)') { continue }
+            # An unrecognised path requires proof. A decoding/matching failure
+            # must never turn an ignored evidence file into permission to delete.
+            if ($trackedPaths -ccontains $relative) { continue }
             $entry = @($proof.files | Where-Object path -CEQ $relative)
             if ($entry.Count -ne 1) { throw "Ignored evidence needs one verified archive entry: $relative" }
             $archive = Get-AbsoluteTaskPath $entry[0].archivePath
+            Assert-NoTaskReparseAncestor $archive
             if ($archive.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Archive copy must live outside the deleted worktree' }
             $sourceHash = (Get-FileHash -LiteralPath (Join-Path $target $relative) -Algorithm SHA256).Hash
             if ($sourceHash -ne $entry[0].sha256 -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $sourceHash) { throw "Archive hash mismatch: $relative" }
@@ -118,6 +130,7 @@ try {
             # SHA never overrides a newly dirty, locked, or active worktree.
             if ((Get-TaskGitText $target @('rev-parse', 'HEAD')) -ne $ReleasedHead -or (Get-TaskGitText $target @('status', '--porcelain', '--untracked-files=all'))) { throw 'Worktree changed during validation' }
             Assert-TaskInactive $target (Get-TaskProcesses)
+            Assert-TaskGitUnlocked $target $tree.Branch
             if (@(Get-TaskWorktrees $main | Where-Object { (Test-SameTaskPath $_.Path $target) -and $_.Locked }).Count) { throw 'Worktree became Git-locked' }
             # Unlink the dependency root first, then every nested build junction.
             $links = @($inventory | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } | Sort-Object @{Expression={ if (Test-SameTaskPath $_.FullName (Join-Path $target 'node_modules')) { 0 } else { 1 } }})
@@ -126,7 +139,10 @@ try {
             $removal = Invoke-TaskGit $main @('worktree', 'remove', $target)
             $remaining = @(Get-TaskWorktrees $main | Where-Object { Test-SameTaskPath $_.Path $target })
             $result.registration = if ($remaining.Count) { 'registered' } else { 'absent' }
-            if ($remaining.Count) { throw "Git refused removal; branch and registration retained; relink dependencies before reuse. $($removal.Text)" }
+            if ($remaining.Count) {
+                $result.folder=if (-not (Test-Path -LiteralPath $target)) { 'absent' } elseif (-not (Test-Path -LiteralPath (Join-Path $target '.git'))) { 'partial' } elseif ((Invoke-TaskGit $target @('status','--porcelain','--untracked-files=all')).Text) { 'partial' } else { 'present' }
+                throw "Git refused removal; branch and registration retained; inspect folder state and relink dependencies before reuse. $($removal.Text)"
+            }
         }
         if (Test-Path -LiteralPath $target) {
             Assert-NoTaskReparseAncestor $target
