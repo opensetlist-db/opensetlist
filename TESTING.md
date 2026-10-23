@@ -176,6 +176,17 @@ as the workflow does.
 
 ### Redesign captures and shell QA
 
+For color-literal to custom-property refactors, use
+[`scripts/palette-verify.mjs`](scripts/palette-verify.mjs): static AST/value audit,
+paired image/computed canary before expanding a chosen case list, and existing
+QA report comparison. [The runbook](docs/palette-verification.md) defines the
+evidence scope, config formats, limitations and matrix expansion conditions.
+Run its no-DB deterministic tests with
+`node --test scripts/capture/*.test.mjs scripts/palette/*.test.mjs` (installed
+Playwright Chromium and WebKit required). `redesign-capture.mjs --visual-ready` opts into
+bounded image/font decode and paint readiness; the default performance capture
+mode retains its historical wait and measurements.
+
 Both run against a production build like the TTFB script above
 (`npx next start -p 3110`), and their output stays out of the repo.
 

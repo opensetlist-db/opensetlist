@@ -52,6 +52,14 @@
 //                                    round 1's capture) and the run moves on
 //                                    to the next entry; either fails the run
 //                                    (exit 1) at the end.
+//     [--visual-ready]               opt in to bounded font, image decode,
+//                                    lazy-image and paint readiness before
+//                                    screenshots. A broken image or timeout
+//                                    fails that entry and records diagnostics.
+//     [--visual-timeout S]           default 15 (seconds), capped by
+//                                    --page-timeout for each readiness wait.
+//     [--ready-selector CSS]         visible content marker before visual
+//                                    readiness (required for async content).
 //     [--run-timeout M]              default 90 (minutes). Whole-run guard:
 //                                    once M minutes have passed, entries not
 //                                    yet loaded are recorded as "timeout:"
@@ -74,7 +82,8 @@
 // settle time after `load` is an explicit fixed wait instead. --design mode
 // adds a best-effort idle wait capped at 10 s, and its navigation and
 // actions also use --page-timeout (--repeat and --run-timeout do not apply
-// to it).
+// to it). --visual-ready adds bounded resource readiness after the existing
+// settle waits; later --repeat rounds still measure TTFB only.
 //
 // With --repeat, loads run in rounds — every entry once (with screenshots),
 // then every entry again for TTFB only, and so on — rather than N loads of
@@ -182,6 +191,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { format, parseArgs } from "node:util";
+import { waitForVisualReady } from "./capture/visual-ready.mjs";
 import dotenv from "dotenv";
 // @playwright/test is the declared dependency and re-exports the browser types.
 import { chromium, webkit } from "@playwright/test";
@@ -239,6 +249,9 @@ const { values: args } = parseArgs({
     compare: { type: "string" },
     repeat: { type: "string", default: "1" },
     "page-timeout": { type: "string", default: "30" },
+    "visual-ready": { type: "boolean", default: false },
+    "visual-timeout": { type: "string", default: "15" },
+    "ready-selector": { type: "string" },
     "run-timeout": { type: "string", default: "90" },
     design: { type: "string" },
     "design-map": { type: "string" },
@@ -249,6 +262,11 @@ const { values: args } = parseArgs({
     map: { type: "string" },
   },
 });
+
+if (args["ready-selector"] !== undefined && (!args["visual-ready"] || !args["ready-selector"].trim())) {
+  console.error("--ready-selector requires --visual-ready and a nonempty selector");
+  process.exit(1);
+}
 
 // Positive-number options; a typo fails here rather than as NaN timeouts.
 // `max` keeps the timeouts under setTimeout's 2^31−1 ms ceiling (~24.8
@@ -265,6 +283,7 @@ function positive(name, { integer = false, max = Infinity } = {}) {
 }
 const REPEAT = positive("repeat", { integer: true });
 const PAGE_TIMEOUT_MS = positive("page-timeout", { max: 3600 }) * 1000;
+const VISUAL_TIMEOUT_MS = positive("visual-timeout", { max: 3600 }) * 1000;
 // One load's hard cap: navigation alone may use PAGE_TIMEOUT_MS, and the
 // settle wait, screenshot and WebP encoding of a long page come on top.
 const LOAD_BUDGET_MS = PAGE_TIMEOUT_MS * 2;
@@ -609,10 +628,22 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round, live) {
   }
   const capturedAt = new Date().toISOString();
   const resp = await page.goto(BASE + url, { waitUntil: "load" });
+  let visualReadiness = null;
   if (full) {
-    // Settle time for hydration, client fetches and late layout shifts:
-    // a fixed wait, not networkidle (see the header).
+    // Resource readiness cannot prove that a future client fetch completed.
+    // Keep the historical hydration settle window; async page captures also
+    // name a content marker explicitly rather than matching two skeletons.
     await page.waitForTimeout(2500);
+    if (args["visual-ready"]) {
+      if (args["ready-selector"]) await page.locator(args["ready-selector"]).first().waitFor({ state: "visible" });
+      visualReadiness = await waitForVisualReady(page, { timeoutMs: Math.min(VISUAL_TIMEOUT_MS, PAGE_TIMEOUT_MS) });
+      if (!visualReadiness.ready) {
+        const reason = visualReadiness.timedOut ? "timeout" : visualReadiness.brokenImages.length ? "broken images" : "failed fonts";
+        const error = new Error(`visual readiness ${reason}: ${key} ${vpKey}`);
+        error.visualReadiness = visualReadiness;
+        throw error;
+      }
+    }
   }
   // An admin page without a valid session redirects to /admin-login and
   // answers 200, so the capture would otherwise "succeed" with the login
@@ -675,6 +706,7 @@ async function loadOnce(ctx, { key, url, admin }, vpKey, round, live) {
     nonGetRequests: writes,
     failedResponses,
     consoleErrors,
+    ...(visualReadiness ? { visualReadiness } : {}),
     ...files,
   };
 }
@@ -729,14 +761,20 @@ const slots = selected.flatMap((t) =>
   Object.keys(VIEWPORTS).map((vpKey) => ({ t, vpKey, entry: null, loading: false, samples: [], repeatErrors: [] })),
 );
 
-const errorEntry = (s, error) => ({ key: s.t.key, vp: s.vpKey, browser: args.browser, error });
+const errorEntry = (s, error, visualReadiness = null) => ({
+  key: s.t.key,
+  vp: s.vpKey,
+  browser: args.browser,
+  error,
+  ...(visualReadiness ? { visualReadiness } : {}),
+});
 
 // Builds the manifest from whatever has been captured so far, so the run
 // guard can write a partial one. Entries not yet loaded become "timeout:"
 // errors; an entry whose later rounds were cut short keeps the samples it
 // has and lists the missing rounds in `repeatErrors`.
-function buildManifest(cutShort) {
-  const runLimit = `timeout: run limit (--run-timeout ${args["run-timeout"]} min) reached`;
+function buildManifest(cutShort, interruption = null) {
+  const runLimit = interruption ?? `timeout: run limit (--run-timeout ${args["run-timeout"]} min) reached`;
   return slots.map((s) => {
     // `loading`: the backstop timer fired while this entry's first load was
     // still in flight, so it was cut, not skipped.
@@ -757,10 +795,10 @@ function buildManifest(cutShort) {
 }
 
 let finished = false;
-async function finish(cutShort) {
+async function finish(cutShort, interruption = null) {
   if (finished) return;
   finished = true;
-  const manifest = buildManifest(cutShort);
+  const manifest = buildManifest(cutShort, interruption);
   // Manifest first: Playwright's WebKit on Windows can hang in
   // browser.close() (its network process lingers), and a run that captured
   // everything must not lose its manifest to that. The close is bounded and
@@ -772,7 +810,7 @@ async function finish(cutShort) {
   // stands), but it is still a load that did not complete, so it fails the
   // run too: a run whose every repeat timed out must not exit 0.
   const repeatErrors = manifest.reduce((n, e) => n + (e.repeatErrors?.length ?? 0), 0);
-  if (cutShort) console.log(`RUN TIMEOUT: --run-timeout ${args["run-timeout"]} min reached; manifest is partial`);
+  if (cutShort) console.log("%s; manifest is partial", interruption ?? `RUN TIMEOUT: --run-timeout ${args["run-timeout"]} min reached`);
   console.log(`done: ${manifest.length} captures, ${errors} errors, ${repeatErrors} repeat errors → ${outDir}`);
   printHydrationHint(
     manifest.flatMap((e) => (e.consoleErrors ?? []).map((text) => ({ text, url: selected.find((t) => t.key === e.key)?.url }))),
@@ -788,6 +826,15 @@ setTimeout(() => {
   console.log("ERR run timeout while a load was in flight");
   finish(true);
 }, RUN_TIMEOUT_MS).unref();
+
+// A console interruption should leave the same partial evidence as the run
+// guard. The first signal writes synchronously before closing the browser;
+// a second signal retains Node's usual force-quit escape hatch.
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.once(signal, () => {
+    console.log("ERR run interrupted by %s", signal);
+    void finish(true, `interrupted: ${signal}`);
+  });
 
 // A NaN timing (an odd navigation entry) is not a sample; it is noted in
 // repeatErrors so samples + repeatErrors still account for every round. With
@@ -821,7 +868,7 @@ run: for (let round = 1; round <= REPEAT; round++) {
       }
     } catch (e) {
       const err = errorText(e);
-      if (round === 1) s.entry = errorEntry(s, err);
+      if (round === 1) s.entry = errorEntry(s, err, e.visualReadiness);
       else s.repeatErrors.push(`round ${round}: ${err}`);
       console.log("ERR r%s %s %s %s", round, s.vpKey, s.t.key, err.slice(0, 200));
     } finally {
@@ -1129,6 +1176,7 @@ async function runDesign() {
     // click / input focus too, so one value governs every wait.
     ctx.setDefaultTimeout(PAGE_TIMEOUT_MS);
     ctx.setDefaultNavigationTimeout(PAGE_TIMEOUT_MS);
+    let visualReadiness = null;
     try {
       const page = await ctx.newPage();
       const consoleErrors = [];
@@ -1147,19 +1195,35 @@ async function runDesign() {
         consoleErrors.push({ text: `pageerror: ${String(err.message ?? err).slice(0, 190)}`, at: "" });
       });
       const resp = await page.goto(BASE + s.url, { waitUntil: "load" });
-      // The mockups were captured after client fetches settled, so wait for
-      // network idle — best effort and bounded: a page that never goes idle
-      // (see the header) is captured after DESIGN_IDLE_MS instead of hanging.
       await page.waitForLoadState("networkidle", { timeout: DESIGN_IDLE_MS }).catch(() => {});
-      await page.evaluate(() => document.fonts.ready);
+      if (!args["visual-ready"]) {
+        // Preserve the approved-design capture's historical settle path.
+        await page.evaluate(() => document.fonts.ready);
+      }
+      if (args["visual-ready"] && args["ready-selector"])
+        await page.locator(args["ready-selector"]).first().waitFor({ state: "visible" });
+      if (args["visual-ready"]) {
+        visualReadiness = await waitForVisualReady(page, { timeoutMs: Math.min(VISUAL_TIMEOUT_MS, PAGE_TIMEOUT_MS) });
+        if (!visualReadiness.ready) throw new Error(`visual readiness failed before action: ${s.name}`);
+      }
       if (s.action === "menu") {
         await page.locator("header button[aria-controls][aria-expanded]").filter({ visible: true }).first().click();
       } else if (s.action === "focus") {
         await page.locator('main input:not([type="hidden"])').filter({ visible: true }).first().focus();
         await page.keyboard.press("End");
       }
-      // Settle time for the opened menu / client fetches after the idle wait.
-      await page.waitForTimeout(500);
+      if (args["visual-ready"]) {
+        // The page was swept before opening/focusing. Sweeping again could
+        // dismiss a scroll-sensitive menu and capture the wrong state.
+        visualReadiness = await waitForVisualReady(page, { timeoutMs: Math.min(VISUAL_TIMEOUT_MS, PAGE_TIMEOUT_MS), sweep: false });
+        if (!visualReadiness.ready) {
+          const reason = visualReadiness.timedOut ? "timeout" : visualReadiness.brokenImages.length ? "broken images" : "failed fonts";
+          throw new Error(`visual readiness ${reason}: ${s.name}`);
+        }
+      } else {
+        // Settle time for the opened menu / client fetches after idle.
+        await page.waitForTimeout(500);
+      }
       const metrics = await page.evaluate(() => ({
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         lang: document.documentElement.lang,
@@ -1211,6 +1275,7 @@ async function runDesign() {
         idsMatch,
         idsEmpty,
         consoleErrors,
+        ...(visualReadiness ? { visualReadiness } : {}),
         webp: files.webp,
         png: files.png,
         baseline: s.baseline,
@@ -1227,7 +1292,13 @@ async function runDesign() {
         idsMatch === null ? "" : idsEmpty ? " match (empty)" : idsMatch ? " match" : " MISMATCH",
       );
     } catch (e) {
-      results.push({ name: s.name, url: s.url, extra: !!s.extra, error: String(e).slice(0, 300) });
+      results.push({
+        name: s.name,
+        url: s.url,
+        extra: !!s.extra,
+        error: String(e).slice(0, 300),
+        ...(visualReadiness ? { visualReadiness } : {}),
+      });
       console.log("ERR %s %s", s.name, String(e.message ?? e).slice(0, 200));
     } finally {
       await ctx.close();
