@@ -36,6 +36,31 @@
 # server; elsewhere lsof/ps/nohup.
 set -euo pipefail
 
+# Git Bash is explicit at the Windows entry point. Process handles, receipts,
+# port ownership and detached startup stay in one native implementation.
+case "${OSTYPE:-}" in
+  msys*|cygwin*)
+    native="$(cygpath -w "$(dirname "${BASH_SOURCE[0]}")/windows/serve-build.ps1")"
+    port=""; args=()
+    for a in "$@"; do
+      case "$a" in
+        --stop) args+=(-Stop) ;;
+        --no-build) args+=(-NoBuild) ;;
+        *) [[ "$a" =~ ^[0-9]+$ ]] && [ -z "$port" ] || { echo 'expected one numeric port, --stop, --no-build' >&2; exit 2; }; port="$a" ;;
+      esac
+    done
+    [ -n "$port" ] || { echo 'port required' >&2; exit 2; }
+    # A detached child can inherit extra PowerShell pipe handles even when its
+    # standard output/error are redirected. Give PowerShell file/null stdio as
+    # well, otherwise a caller capturing this script waits until the server dies.
+    control="$(git rev-parse --absolute-git-dir)/serve-build-$port.control.log"
+    rc=0
+    powershell.exe -NoProfile -NonInteractive -File "$native" -Port "$port" "${args[@]}" < /dev/null > "$control" 2>&1 || rc=$?
+    cat "$control"
+    exit "$rc"
+    ;;
+esac
+
 usage() {
   echo "usage: serve-build.sh <port> [--no-build] | serve-build.sh --stop <port>" >&2
   exit 2

@@ -56,6 +56,33 @@
 # something was refused; locked and active folders alone are not a failure.
 set -euo pipefail
 
+# Windows deletion never passes an enumerated path list to cmd/MSYS. Keep the
+# POSIX implementation below for Linux/macOS; Windows uses the native helper.
+case "${OSTYPE:-}" in
+  msys*|cygwin*)
+    native="$(cygpath -w "$(dirname "${BASH_SOURCE[0]}")/worktree-rm.ps1")"
+    args=()
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --dry-run) args+=(-DryRun); shift ;;
+        --sweep) args+=(-Sweep); shift ;;
+        --released-head|--merge-ref|--archive-manifest)
+          [ "$#" -ge 2 ] || { echo "missing value: $1" >&2; exit 1; }
+          case "$1" in
+            --released-head) args+=(-ReleasedHead "$2") ;;
+            --merge-ref) args+=(-MergeRef "$2") ;;
+            --archive-manifest) args+=(-ArchiveManifest "$(cygpath -aw "$2")") ;;
+          esac
+          shift 2 ;;
+        --force) echo '--force is not supported on Windows; preserve dirty/unmerged/unregistered data' >&2; exit 1 ;;
+        -*) echo "unknown option: $1" >&2; exit 1 ;;
+        *) args+=(-Path "$(cygpath -aw "$1")"); shift ;;
+      esac
+    done
+    exec powershell.exe -NoProfile -NonInteractive -File "$native" "${args[@]}"
+    ;;
+esac
+
 force=""
 dry=""
 sweep=""
