@@ -69,8 +69,7 @@ describe("concert list server page", () => {
     const rows = [...document.querySelectorAll<HTMLAnchorElement>("a[data-status]")];
     expect(rows.map((row) => row.getAttribute("href"))).toEqual(["/en/events/3/concert-3"]);
     expect(rows[0]).toHaveAttribute("data-status", "upcoming");
-    expect(rows[0].querySelector("time")).toHaveTextContent("2026");
-    expect(rows[0].querySelector("time")).toHaveTextContent("23");
+    expect(rows[0].querySelector("time")).toHaveTextContent("Oct 23, 2026");
     expect(load).toHaveBeenLastCalledWith("en", NOW);
   });
 

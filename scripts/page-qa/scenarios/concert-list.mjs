@@ -50,6 +50,7 @@ const scenario = {
     const measured = new Set();
     await h.layoutMatrix({
       path: (loc) => `/${loc}/events`, basics: true, capture: true,
+      widths: h.quick ? h.WIDTHS : [...h.WIDTHS, 699, 700],
       cell: async ({ page, loc, width, name, check }) => {
         const rows = await rowState(page);
         check(name("canonical single row links"), rows.length > 0 && rows.every((r) =>
@@ -186,6 +187,11 @@ const scenario = {
           const found = await h.contrast(page, pairs, `${loc}/${width} fixture contrast`);
           h.check(`${loc}/${width} all required fixture contrast roles measured`, pairs.every((role) => found.includes(role)), found.join(","));
           await h.shot(page, `fixture-${loc}-${width}`);
+          const dot = live.locator('time + div > span > span[aria-hidden="true"]');
+          const normalAnimation = await dot.evaluate((el) => getComputedStyle(el).animationName);
+          await page.emulateMedia({ reducedMotion: "reduce" });
+          const reduced = await dot.evaluate((el) => ({ animation: getComputedStyle(el).animationName, opacity: getComputedStyle(el).opacity }));
+          h.check(`${loc}/${width} fixture LIVE pulse stops with positive control`, normalAnimation !== "none" && reduced.animation === "none" && reduced.opacity === "1", `${normalAnimation} -> ${JSON.stringify(reduced)}`);
           const upcoming = await h.open(`/${loc}/events?filter=upcoming`, { width });
           h.check(`${loc}/${width} Upcoming excludes LIVE/cancelled with positive controls`, await upcoming.page.locator(`a[href*="/events/${fx.future}/"]`).count() === 1 && await upcoming.page.locator(`a[href*="/events/${fx.live}/"],a[href*="/events/${fx.cancel}/"]`).count() === 0, "");
           const completed = await h.open(`/${loc}/events?filter=completed`, { width });
