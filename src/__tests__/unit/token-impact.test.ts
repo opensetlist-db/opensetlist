@@ -52,6 +52,8 @@ describe("shared token impact inventory", () => {
       "src/consumer.tsx": "import { tone } from './barrel'; const { live: alias } = tone; const key = getKey(); const tint = tone[key]; export const View = () => <i style={{color: alias, background: tint}}/>; export function Shadow(tone: {live: string}) { return <b style={{color: tone.live}}/> }",
       "src/derived.ts": "import { colors } from './styles/tokens'; export const emphasis = `${colors.live}20`;",
       "src/derived-consumer.tsx": "import { emphasis } from './derived'; export const Derived = () => <i style={{background: emphasis}}/>;",
+      "src/destructured.tsx": "import { colors } from './styles/tokens'; const config = { color: colors.live }; const { color: tint } = config; export const Dot = () => <i style={{background: tint}}/>;",
+      "src/namespace.tsx": "import * as tokens from './styles/tokens'; const selected = tokens[getKey()]; export const NamespaceDot = () => <i style={{background: selected.live}}/>;",
       "src/never-run.ts": "throw new Error('SOURCE WAS EXECUTED');",
     };
     const live = analyzeImpact(before, source).changes.find((row) => row.name === "colors.live")!;
@@ -59,7 +61,12 @@ describe("shared token impact inventory", () => {
       expect.objectContaining({ side: "after", expression: "alias", property: "color", status: "unresolved" }),
       expect.objectContaining({ side: "after", expression: "tone[key]", status: "unresolved" }),
       expect.objectContaining({ side: "after", expression: "emphasis", property: "background", status: "unresolved" }),
+      expect.objectContaining({ side: "after", file: "src/destructured.tsx", expression: "tint", property: "background", status: "unresolved" }),
+      expect.objectContaining({ side: "after", file: "src/namespace.tsx", expression: "selected.live", property: "background", status: "unresolved" }),
     ]));
+    const unshadowed = { ...source, "src/consumer.tsx": source["src/consumer.tsx"].replace("Shadow(tone: {live: string})", "Shadow()") };
+    const controlLive = analyzeImpact(before, unshadowed).changes.find((row) => row.name === "colors.live")!;
+    expect(controlLive.consumers.some((row) => row.side === "after" && row.expression === "tone.live" && row.component === "Shadow")).toBe(true);
     expect(live.consumers.some((row) => row.side === "after" && row.expression === "tone.live" && row.component === "Shadow")).toBe(false);
   });
 

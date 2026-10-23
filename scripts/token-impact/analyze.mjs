@@ -91,7 +91,7 @@ function snapshot(input, tokenFiles) {
       }
     }
   }
-  const prefixOrigins = (prefix, reason) => [...definitions.values()].filter((row) => row.file === prefix.file && (row.name === prefix.parts.join(".") || row.name.startsWith(`${prefix.parts.join(".")}.`))).map((row) => ({ key: row.key, reason }));
+  const prefixOrigins = (prefix, reason) => [...definitions.values()].filter((row) => row.file === prefix.file && (!prefix.parts.length || row.name === prefix.parts.join(".") || row.name.startsWith(`${prefix.parts.join(".")}.`))).map((row) => ({ key: row.key, reason }));
   const origins = (raw, seen = new Set()) => {
     const node = unwrap(raw);
     if (!node || seen.has(node)) return [];
@@ -99,13 +99,20 @@ function snapshot(input, tokenFiles) {
     let symbol = checker.getSymbolAtLocation(ts.isPropertyAccessExpression(node) ? node.name : node);
     if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
     for (const declaration of symbol?.declarations ?? []) {
+      if (ts.isSourceFile(declaration)) return prefixOrigins({ file: declaration.fileName, parts: [] }, "Module namespace escapes or is selected dynamically; candidate set only");
       if (tokenNodes.has(declaration)) return [{ key: tokenNodes.get(declaration), reason: null }, ...origins(declaration.initializer, seen).map((row) => ({ ...row, reason: "Indirect token definition; verify derived consumers" }))];
       if (prefixNodes.has(declaration)) return prefixOrigins(prefixNodes.get(declaration), "Token collection escapes or is selected dynamically; candidate set only");
       if (ts.isVariableDeclaration(declaration) && declaration.initializer) return origins(declaration.initializer, seen).map((row) => ({ ...row, reason: row.reason ?? "Indirect local binding; verify downstream use" }));
       if (ts.isPropertyAssignment(declaration)) return origins(declaration.initializer, seen).map((row) => ({ ...row, reason: row.reason ?? "Indirect object property; verify downstream use" }));
       if (ts.isBindingElement(declaration)) {
         const binding = declaration.parent.parent;
-        if (ts.isVariableDeclaration(binding) && binding.initializer) return origins(binding.initializer, seen).filter((row) => row.key.endsWith(`.${nameOf(declaration.propertyName ?? declaration.name)}`)).map((row) => ({ ...row, reason: "Destructured binding; verify downstream use" }));
+        if (ts.isVariableDeclaration(binding) && binding.initializer) {
+          const base = origins(binding.initializer, seen);
+          const narrowed = base.filter((row) => row.key.endsWith(`.${nameOf(declaration.propertyName ?? declaration.name)}`));
+          // An intermediate object's field (color) need not have the token's
+          // name (live). Preserve candidates when that field cannot be proven.
+          return (narrowed.length ? narrowed : base).map((row) => ({ ...row, reason: "Destructured binding; candidate set only, verify downstream use" }));
+        }
       }
     }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
