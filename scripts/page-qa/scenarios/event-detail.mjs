@@ -10,6 +10,13 @@
 //     expanded / aria-controls, titled panel, keyboard), and the 18-v3
 //     <details> kept on chip-less rows
 //   - the whole roster in one grid (no "more" step), no duplicate cards
+//   - trending songs card (trending-v1): amber top rule, 20/18px heading,
+//     3 columns from a 1024px viewport / 1 below, 24px to the setlist card
+//     (no doubled margin), absent while upcoming; a synthetic polling
+//     response (browser-only route rewrite) drives 3 songs with a long
+//     title, translation, variant and four-digit counts through the live
+//     path, so the update, wrapping and reaction order are checked without
+//     writing a single reaction
 //
 // Participation (fixed dev records, personal state seeded ONLY in this
 // browser's localStorage — no DB write, no wish/board POST):
@@ -127,6 +134,46 @@ function readDisplay() {
   };
 }
 
+// Trending card geometry. `null` when the card is not on the page.
+function readTrending() {
+  const card = document.querySelector('[data-testid="trending-songs"]');
+  if (!card) return null;
+  const cs = getComputedStyle(card);
+  const h2 = card.querySelector("h2");
+  const ol = card.querySelector("ol");
+  const next = card.nextElementSibling;
+  const items = ol ? [...ol.children] : [];
+  return {
+    top: `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}`,
+    radius: cs.borderTopLeftRadius,
+    bg: cs.backgroundImage,
+    title: h2 ? parseFloat(getComputedStyle(h2).fontSize) : null,
+    titleLevel: h2?.tagName ?? null,
+    titleText: h2?.textContent ?? null,
+    cols: ol ? getComputedStyle(ol).gridTemplateColumns.split(" ").filter(Boolean).length : 0,
+    role: ol?.getAttribute("role") ?? null,
+    items: items.length,
+    texts: items.map((li) => li.innerText),
+    labels: items.map((li) => [...li.querySelectorAll('[role="img"]')].map((x) => x.getAttribute("aria-label"))),
+    focusable: card.querySelectorAll("a,button,input,[tabindex]").length,
+    gapBelow: next ? Math.round(next.getBoundingClientRect().top - card.getBoundingClientRect().bottom) : null,
+    overflowX: [...card.querySelectorAll("*")].some((el) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX !== "visible"),
+    right: Math.round(card.getBoundingClientRect().right),
+  };
+}
+
+// Display checks shared by every matrix that shows the card.
+function checkTrending(t, { width, name, check, loc }) {
+  const amber = "rgb(216, 183, 125)";
+  check(name("trending: card look"), t.top === `3px solid ${amber}` && t.radius === "16px" && /linear-gradient/.test(t.bg), `${t.top} r${t.radius}`);
+  check(name(`trending: heading h2 ${width >= MOBILE_BELOW ? 20 : 18}px`), t.titleLevel === "H2" && t.title === (width >= MOBILE_BELOW ? 20 : 18), `${t.titleLevel} ${t.title}`);
+  check(name(`trending: ${width >= 1024 ? 3 : 1} column(s)`), t.cols === (width >= 1024 ? 3 : 1) && t.role === "list", `${t.cols} cols, role ${t.role}`);
+  check(name("trending: 1–3 items, display only"), t.items >= 1 && t.items <= 3 && t.focusable === 0, `${t.items} items, ${t.focusable} focusable`);
+  check(name("trending: 24px to the next card"), t.gapBelow === 24, String(t.gapBelow));
+  check(name("trending: within viewport, no clipped box"), !t.overflowX && t.right <= width, `right ${t.right}`);
+  check(name("trending: localized title"), t.titleText === msg(loc, "Reaction.trending"), t.titleText);
+}
+
 const scenario = {
   name: "event-detail",
   async run(h) {
@@ -161,8 +208,11 @@ const scenario = {
         check(name("roster: one grid, no more step"), !!r && r.more === 0 && r.grids === 1, JSON.stringify(r && { more: r.more, grids: r.grids }));
         check(name("roster: every card, no duplicates"), !!r && r.cards === r.count && new Set(r.names).size === r.names.length && r.cards > 6, `${r?.cards} cards / count ${r?.count}`);
         check(name("roster: colours kept"), !!r && r.colours.every(Boolean), "");
-        const clipped = await h.clipped(page, ['#event-performers li strong', '[class*="__creditBody"] p', "main h1"]);
+        const clipped = await h.clipped(page, ['#event-performers li strong', '[class*="__creditBody"] p', "main h1", '[data-testid="trending-songs"] li div']);
         check(name("never clipped"), clipped.length === 0, JSON.stringify(clipped.slice(0, 3)));
+        const tr = await page.evaluate(readTrending);
+        if (tr) checkTrending(tr, { width, name, check, loc });
+        else h.skip(name("trending checks"), `record ${LIVE} has no reactions now`);
 
         if (width === 390 || width === 1440) {
           for (const n of await h.contrast(page, CONTRAST, name("contrast"))) found.add(n);
@@ -216,6 +266,9 @@ const scenario = {
         const summary = await page.locator('section[id^="setlist-card-"] li details[class*="__creditDetails"] > summary').first().textContent();
         check(name("disclosure label"), summary?.trim() === msg(loc, "EventDetail.creditsToggle"), summary);
         check(name("roster: one grid"), !!d.roster && d.roster.more === 0 && d.roster.cards === d.roster.count, JSON.stringify(d.roster && { cards: d.roster.cards, count: d.roster.count }));
+        const tr = await page.evaluate(readTrending);
+        if (tr) checkTrending(tr, { width, name, check, loc });
+        else h.skip(name("trending checks"), `record ${DONE} has no reactions now`);
       },
     });
 
@@ -234,6 +287,9 @@ const scenario = {
           check(name(`title ${width >= MOBILE_BELOW ? 32 : 24}px`), d.title.size === (width >= MOBILE_BELOW ? 32 : 24), String(d.title.size));
           check(name("no LIVE rule / notice"), !d.heroRule.includes(" 3px ") && d.notice === null && !d.badgeDot, d.heroRule);
           check(name("roster: one grid"), !d.roster || (d.roster.more === 0 && d.roster.cards === d.roster.count), JSON.stringify(d.roster && { cards: d.roster.cards, count: d.roster.count }));
+          // Positive control: the LIVE / completed matrices above found the
+          // card; before the show it must not render at all.
+          check(name("trending: hidden while upcoming"), (await page.locator('[data-testid="trending-songs"]').count()) === 0, "");
         },
       });
     }
@@ -241,6 +297,81 @@ const scenario = {
     {
       for (const n of [...CONTRAST, ...CONTRAST_OPEN]) h.check(`contrast ${n} found at some width`, found.has(n), found.has(n) ? "" : `no .*__${n}`);
     }
+
+    // ── Trending via the live polling path (synthetic, browser only) ──
+    // The /api/setlist answer is rewritten in this browser: the first
+    // three items get reaction counts (four digits on the first), and the
+    // first song a long title, translation and variant. Nothing is
+    // written to the DB; the numbers never leave the page. capturedAt is
+    // set to now so the client's revision rule accepts it as the newest
+    // copy of the same revision.
+    const LONG = {
+      ja: "未来へ続く夢の物語と終わらないステージの向こうへ届けたい歌",
+      ko: "미래로 이어지는 꿈의 이야기와 끝나지 않는 무대 너머로 전하고 싶은 노래",
+      en: "A story of dreams continuing into the future and beyond the endless stage we share",
+    };
+    const synthetic = (loc) => async ({ page }) => {
+      await page.route("**/api/setlist**", async (route) => {
+        const res = await route.fetch();
+        const body = await res.json();
+        const songItems = (body.items ?? []).filter((it) => it.songs?.length);
+        const counts = [
+          { waiting: 1248, best: 128, surprise: 12, moved: 4 },
+          { waiting: 22, best: 94, moved: 18 },
+          { best: 37, moved: 26 },
+        ];
+        body.reactionCounts = {};
+        songItems.slice(0, 3).forEach((it, i) => {
+          body.reactionCounts[String(it.id)] = counts[i];
+        });
+        const song = songItems[0]?.songs[0]?.song;
+        if (song) {
+          song.originalTitle = LONG.ja;
+          song.originalLanguage = "ja";
+          song.variantLabel = "SAKURA Ver. / Special Live Arrangement";
+          song.translations = loc === "ja" ? [] : [{ locale: loc, title: LONG[loc], variantLabel: "SAKURA Ver. / Special Live Arrangement" }];
+        }
+        body.capturedAt = new Date().toISOString();
+        await route.fulfill({ response: res, json: body });
+      });
+    };
+    const trendWidths = h.quick ? [390, 1440] : [320, 375, 390, 430, 768, 1023, 1024, 1440];
+    for (const loc of h.LOCALES) {
+      for (const width of trendWidths) {
+        await h.section(`trending polling ${loc} ${width}`, async () => {
+          const { page } = await h.open(`/${loc}/events/${LIVE}`, { width, beforeNavigate: synthetic(loc) });
+          if ((await heroStatus(page)) !== "ongoing") return h.skip(`trending polling ${loc} ${width}`, `record ${LIVE} not ongoing`);
+          const name = (x) => `trending polling ${loc} ${width}: ${x}`;
+          // The SSR seed shows the real (small) state first; the polled,
+          // rewritten answer must replace it without a reload.
+          const updated = await page
+            .waitForFunction(() => document.querySelectorAll('[data-testid="trending-songs"] ol > li').length === 3, null, { timeout: 90_000 })
+            .then(() => true)
+            .catch(() => false);
+          h.check(name("polled update reaches the card (3 songs)"), updated, "");
+          if (!updated) return;
+          const t = await page.evaluate(readTrending);
+          checkTrending(t, { width, name, check: h.check, loc });
+          const lab = (type, n) => `${msg(loc, `Reaction.${type}`)} ${n}`;
+          h.check(name("ranked by total, canonical reaction order, zeros omitted"), JSON.stringify(t.labels[0]) === JSON.stringify([lab("waiting", 1248), lab("best", 128), lab("surprise", 12), lab("moved", 4)]) && JSON.stringify(t.labels[2]) === JSON.stringify([lab("best", 37), lab("moved", 26)]), JSON.stringify(t.labels));
+          h.check(name("long title / translation / variant on their own lines"), t.texts[0].includes(LONG.ja) && (loc === "ja" || t.texts[0].includes(LONG[loc])) && t.texts[0].includes("(SAKURA Ver. / Special Live Arrangement)"), t.texts[0].slice(0, 80).replace(/\s+/g, " "));
+          const clipped = await h.clipped(page, '[data-testid="trending-songs"] li div');
+          h.check(name("long text wraps, never clipped"), clipped.length === 0, JSON.stringify(clipped.slice(0, 2)));
+          const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+          h.check(name("no page overflow"), overflow <= 0, String(overflow));
+          if (width === 390 || width === 1440 || width === 320) {
+            await page.locator('[data-testid="trending-songs"]').screenshot({ path: path.join(h.outDir, `${scenario.name}-${h.browserName}${h.quick ? "-quick" : ""}-trending-${loc}-${width}.png`) });
+          }
+        }, { ms: 150_000 });
+      }
+    }
+
+    await h.section("trending: none without actual items", async () => {
+      // 0 songs: the ongoing record with no actual items renders no card.
+      const { page } = await h.open(`/ko/events/${LIVE_EMPTY}`, { width: 1440 });
+      if ((await heroStatus(page)) !== "ongoing") return h.skip("trending none", `record ${LIVE_EMPTY} not ongoing`);
+      h.check("trending: no card on a live record with no songs", (await page.locator('[data-testid="trending-songs"]').count()) === 0 && (await page.locator('section[id^="setlist-card-"]').count()) === 1, "");
+    });
 
     // ── Participation ─────────────────────────────────────────────────
     const loc = "ko";
