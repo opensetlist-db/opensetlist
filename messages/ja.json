@@ -446,7 +446,8 @@
     "surprise": "サプライズ",
     "moved": "感動",
     "trending": "この公演の話題曲",
-    "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!"
+    "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!",
+    "trendingTop": "TOP 3"
   },
   "Setlist": {
     "tabActual": "実際のセットリスト",

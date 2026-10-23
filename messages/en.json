@@ -446,7 +446,8 @@
     "surprise": "Surprise",
     "moved": "Emotional",
     "trending": "Trending songs",
-    "trendingEmpty": "No reactions yet — try adding one from the setlist!"
+    "trendingEmpty": "No reactions yet — try adding one from the setlist!",
+    "trendingTop": "TOP 3"
   },
   "Setlist": {
     "tabActual": "Actual setlist",

@@ -95,15 +95,15 @@ describe("TrendingSongs", () => {
       "Second Song",
       "Third Song",
     ]);
-    expect(screen.getByText("TOP 3")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByText("trendingTop")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("drops the TOP 3 pill with the list on the empty fallback", () => {
     const { rerender } = render(<TrendingSongs songs={sample} />);
     // Positive control: the populated card shows the pill.
-    expect(screen.getByText("TOP 3")).toBeInTheDocument();
+    expect(screen.getByText("trendingTop")).toBeInTheDocument();
     rerender(<TrendingSongs songs={[]} />);
-    expect(screen.queryByText("TOP 3")).toBeNull();
+    expect(screen.queryByText("trendingTop")).toBeNull();
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.getByText("trendingEmpty")).toBeInTheDocument();
   });

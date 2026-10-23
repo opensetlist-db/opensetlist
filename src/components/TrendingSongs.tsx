@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useTranslations } from "next-intl";
 import { REACTION_TYPES } from "@/lib/reactions";
 import styles from "@/components/event/eventDetail.module.css";
@@ -66,6 +67,8 @@ interface Props {
  * bare heading.
  *
  * Accessibility: an <ol> carries the rank, so the medals are decorative
+ * (explicit role="list": Safari/VoiceOver drops list semantics from a
+ * list styled `list-style: none`, which would lose the rank entirely)
  * (aria-hidden) and so is the TOP 3 pill (the heading already names the
  * card). Each reaction count is one labelled image ("<type> <count>")
  * with the glyph and digits hidden, so assistive tech reads it once.
@@ -77,20 +80,21 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
   // medal rendering depends on `MEDALS[i]` resolving — a future caller
   // passing more than 3 would render `undefined` past index 2.
   const rankedSongs = songs.slice(0, MEDALS.length);
+  const titleId = useId();
 
   return (
     <section
-      aria-labelledby="trending-songs-title"
+      aria-labelledby={titleId}
       className={styles.trending}
       data-testid="trending-songs"
     >
       <div className={styles.trendingHead}>
-        <h2 id="trending-songs-title" className={styles.trendingTitle}>
+        <h2 id={titleId} className={styles.trendingTitle}>
           {t("trending")}
         </h2>
         {rankedSongs.length > 0 && (
           <span className={styles.trendingTop} aria-hidden="true">
-            TOP 3
+            {t("trendingTop")}
           </span>
         )}
       </div>
@@ -100,7 +104,7 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
           {emptyLabel ?? t("trendingEmpty")}
         </p>
       ) : (
-        <ol className={styles.trendingList}>
+        <ol role="list" className={styles.trendingList}>
           {rankedSongs.map((song, i) => (
             <li key={song.setlistItemId} className={styles.trendingItem}>
               <span className={styles.trendingMedal} aria-hidden="true">
