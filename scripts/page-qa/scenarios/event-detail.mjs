@@ -182,7 +182,12 @@ const scenario = {
         if (width === 390 || width === 1440) {
           for (const n of await h.contrast(page, CONTRAST_OPEN, name("contrast (open)"))) found.add(n);
         }
-        if (width === 390) await h.shot(page, `live-${loc}-${width}-credit-open`);
+        if (width === 390) {
+          // Let the chevron's 0.15s rotation finish so the capture shows
+          // the open state, not a frame mid-turn.
+          await page.waitForTimeout(300);
+          await h.shot(page, `live-${loc}-${width}-credit-open`);
+        }
         await page.keyboard.press("Space");
         check(name("Space closes it"), (await first.getAttribute("aria-expanded")) === "false" && (await page.evaluate((id) => document.getElementById(id).hidden, panelId)), "");
       },
