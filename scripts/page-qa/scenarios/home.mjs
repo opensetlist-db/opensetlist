@@ -186,7 +186,16 @@ const scenario = {
             h.check(`${loc}/${width} failed logo reserves same geometry`, JSON.stringify(geometry[0]) === JSON.stringify(geometry[1]), JSON.stringify(geometry));
             const clipped = await h.clipped(page, [`${LIVE_CARD} h3`, `${LIVE_CARD} time`]);
             h.check(`${loc}/${width} long names remain readable`, clipped.length === 0, JSON.stringify(clipped));
-            await h.contrast(page, LIVE_TEXT, `${loc}/${width} fixture contrast`);
+            const foundLiveText = new Set(await h.contrast(page, LIVE_TEXT, `${loc}/${width} fixture contrast`));
+            for (const key of LIVE_TEXT.filter((key) => key !== "venue")) {
+              const roots = key === "liveEyebrow" ? [page.locator(LIVE)] : [ok, broken];
+              const present = await Promise.all(roots.map((root) => root.locator(`[class*="__${key}"]`).evaluateAll(
+                (els, suffix) => els.some((el) => [...el.classList].some((cls) => cls.endsWith(`__${suffix}`))
+                  && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0
+                  && getComputedStyle(el).visibility !== "hidden"), key,
+              )));
+              h.check(`${loc}/${width} LIVE ${key} found`, foundLiveText.has(key) && present.every(Boolean));
+            }
             await h.shot(page, `fixture-live-${loc}-${width}`);
             await ctx.close();
           });
