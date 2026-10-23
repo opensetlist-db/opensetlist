@@ -30,8 +30,10 @@ a developer's machine. Write date tests against that zone, never by
 reading the host's. `tz-pin.test.ts` fails if the pin stops taking effect.
 
 `npm run lint` is ESLint plus `npm run lint:css` (stylelint over
-`src/**/*.module.css`, `stylelint.config.mjs`: hex colour literals
-warn). `npm run lint:dead` (knip, `knip.config.ts`) lists files nothing
+`src/**/*.module.css`, `stylelint.config.mjs`: hex colour literals fail
+in the 11 palette-only modules listed in its override; other modules
+warn, and `src/app/globals.css` remains exempt for palette definitions).
+`npm run lint:dead` (knip, `knip.config.ts`) lists files nothing
 imports and exports nothing uses; CI does not fail on it
 (`continue-on-error`).
 
