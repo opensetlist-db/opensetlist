@@ -66,6 +66,11 @@ delta; changing only comments outside it does not. Exported functions are
 outside the token definition inventory. Unsupported object members and parse
 errors produce diagnostics.
 
+Repeated diagnostics are grouped in the Markdown checklist, with counts and
+sample locations; JSON retains every location, including intentionally excluded
+generated-source imports. Literal object properties use checker-proven property
+declarations; only unproven paths fan out as unresolved candidates.
+
 Unchanged token expressions are not definition deltas even if a referenced
 upstream value changes, for example `live: BASE.red` when `BASE.red` changes
 in another module. Inspect those upstream dependencies manually. Relative

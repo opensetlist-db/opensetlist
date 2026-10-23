@@ -95,6 +95,19 @@ describe("shared token impact inventory", () => {
     ]));
   });
 
+  it("uses checker-proven literal properties without fanning out to unrelated tokens", () => {
+    const source = { ...after, "src/exact.tsx": "import { colors } from './styles/tokens'; const { live: tint } = colors; export const Exact = () => <i style={{ color: tint, background: colors['live'] }}/>;" };
+    const report = analyzeImpact(before, source);
+    const live = report.changes.find((row) => row.name === "colors.live")!;
+    expect(live.consumers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ side: "after", file: "src/exact.tsx", expression: "tint", property: "color" }),
+      expect.objectContaining({ side: "after", file: "src/exact.tsx", expression: "colors['live']", property: "background" }),
+    ]));
+    for (const name of ["colors.liveDot", "colors.unused"]) {
+      expect(report.changes.find((row) => row.name === name)!.consumers.some((row) => row.file === "src/exact.tsx" && ["tint", "colors['live']"].includes(row.expression))).toBe(false);
+    }
+  });
+
   it("reports CSS in TS strings, dynamic names and cyclic aliases without looping", () => {
     const source = { ...after, "src/runtime.tsx": "const name = 'live'; export const C = () => <i style={{color: 'var(--live)', background: `var(--${name})`}}/>;", "src/cycle.css": ":root { --a: var(--b); --b: var(--a); } .x { color: var(--a); }" };
     const report = analyzeImpact(before, source);

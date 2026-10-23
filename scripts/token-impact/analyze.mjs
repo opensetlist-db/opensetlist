@@ -55,7 +55,7 @@ function snapshot(input, tokenFiles) {
       : stem.endsWith(".jsx") ? [stem.slice(0, -4) + ".tsx"]
       : stem.endsWith(".mjs") ? [stem.slice(0, -4) + ".mts"]
       : stem.endsWith(".cjs") ? [stem.slice(0, -4) + ".cts"] : [];
-    for (const candidate of [...substituted, stem, ...[".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"].map((extension) => `${stem}${extension}`), `${stem}/index.ts`, `${stem}/index.tsx`, `${stem}/index.js`]) {
+    for (const candidate of [...substituted, stem, ...[".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"].map((extension) => `${stem}${extension}`), `${stem}/index.ts`, `${stem}/index.tsx`, `${stem}/index.js`]) {
       if (scripts.has(candidate)) return { resolvedFileName: candidate, extension: candidate.endsWith("tsx") ? ts.Extension.Tsx : ts.Extension.Ts };
     }
     return undefined;
@@ -106,6 +106,17 @@ function snapshot(input, tokenFiles) {
     }
   }
   const prefixOrigins = (prefix, reason) => [...definitions.values()].filter((row) => row.file === prefix.file && (!prefix.parts.length || row.name === prefix.parts.join(".") || row.name.startsWith(`${prefix.parts.join(".")}.`))).map((row) => ({ key: row.key, reason }));
+  const memberOrigins = (base, name, seen) => {
+    const property = checker.getTypeAtLocation(base).getProperty(name);
+    if (!property?.declarations?.length) return null;
+    const matches = [];
+    for (const declaration of property.declarations) {
+      if (tokenNodes.has(declaration)) matches.push({ key: tokenNodes.get(declaration), reason: null });
+      else if (prefixNodes.has(declaration)) matches.push(...prefixOrigins(prefixNodes.get(declaration), "Token collection member; candidate set only"));
+      else if (declaration.initializer) matches.push(...origins(declaration.initializer, seen));
+    }
+    return matches;
+  };
   const origins = (raw, seen = new Set()) => {
     const node = unwrap(raw);
     if (!node || seen.has(node)) return [];
@@ -121,6 +132,9 @@ function snapshot(input, tokenFiles) {
       if (ts.isBindingElement(declaration)) {
         const binding = declaration.parent.parent;
         if (ts.isVariableDeclaration(binding) && binding.initializer) {
+          const name = nameOf(declaration.propertyName ?? declaration.name);
+          const exact = !declaration.dotDotDotToken && name !== null ? memberOrigins(binding.initializer, name, seen) : null;
+          if (exact !== null) return exact.map((row) => ({ ...row, reason: "Destructured property; verify downstream use" }));
           const base = origins(binding.initializer, seen);
           // An intermediate object's field (color) need not have the token's
           // name (live). Token-name coincidences do not prove a field's origin.
@@ -129,6 +143,10 @@ function snapshot(input, tokenFiles) {
       }
     }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      const argument = ts.isElementAccessExpression(node) ? unwrap(node.argumentExpression) : null;
+      const literalName = ts.isPropertyAccessExpression(node) ? node.name.text : argument && (ts.isStringLiteralLike(argument) || ts.isNumericLiteral(argument)) ? argument.text : null;
+      const exact = literalName !== null ? memberOrigins(node.expression, literalName, seen) : null;
+      if (exact !== null) return exact;
       const base = origins(node.expression, seen);
       return base.map((row) => ({ ...row, reason: "Unproven member selection; candidate set only" }));
     }
@@ -234,6 +252,14 @@ export function renderImpact(report) {
     for (const row of change.consumers) lines.push(`| ${row.side} | ${escapeCell(row.file)}:${row.line} | ${escapeCell(row.component)} | ${escapeCell(row.property)} | ${escapeCell(row.role)} | ${escapeCell(row.reason ?? row.status)} |`);
     lines.push("", "- [ ] Each consumer: validated / excluded with evidence, reviewer and remaining uncertainty recorded in PR.", "");
   }
-  if (report.diagnostics.length) lines.push("## Diagnostics requiring manual review", "", ...report.diagnostics.map((row) => `- ${escapeCell(row.side)} ${escapeCell(row.file)}:${row.line}: ${escapeCell(row.reason)}`), "");
+  if (report.diagnostics.length) {
+    const groups = new Map();
+    for (const row of report.diagnostics) {
+      const key = `${row.side}: ${row.reason}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(`${row.file}:${row.line}`);
+    }
+    lines.push("## Diagnostics requiring manual review", "", "Repeated diagnostics are grouped here; impact.json retains every source location.", "", ...[...groups].map(([reason, locations]) => `- ${escapeCell(reason)} (${locations.length} locations): ${escapeCell(locations.slice(0, 3).join(", "))}${locations.length > 3 ? "; see full JSON for remaining locations" : ""}`), "");
+  }
   return lines.join("\n");
 }
