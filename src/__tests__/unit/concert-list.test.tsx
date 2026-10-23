@@ -215,13 +215,13 @@ describe("getEventsListGrouped — display fields", () => {
 });
 
 describe("<ConcertFilterNav />", () => {
-  const labels = { all: "All", ongoing: "Live", upcoming: "Upcoming", completed: "Completed" };
+  const labels = { all: "All", ongoing: "Live now", upcoming: "Upcoming", completed: "Completed" };
 
   it("links every filter to its own URL without pastPage and marks the current one", () => {
     render(
-      <ConcertFilterNav locale="en" active="upcoming" labels={labels} label="Filter concerts" />,
+      <ConcertFilterNav locale="en" active="upcoming" labels={labels} label="Filter events" />,
     );
-    const nav = screen.getByRole("navigation", { name: "Filter concerts" });
+    const nav = screen.getByRole("navigation", { name: "Filter events" });
     const links = within(nav).getAllByRole("link");
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "/en/events",
@@ -303,7 +303,7 @@ describe("<EventArt tint />", () => {
 });
 
 describe("<Pagination /> (past groups)", () => {
-  const labels = { nav: "Past concerts", prev: "Previous", next: "Next", status: "1 / 3" };
+  const labels = { nav: "Past events", prev: "Previous", next: "Next", status: "1 / 3" };
 
   it("omits Previous on the first page and keeps the filter on every link", () => {
     render(
@@ -315,7 +315,7 @@ describe("<Pagination /> (past groups)", () => {
         labels={labels}
       />,
     );
-    const nav = screen.getByRole("navigation", { name: "Past concerts" });
+    const nav = screen.getByRole("navigation", { name: "Past events" });
     expect(within(nav).queryByRole("link", { name: "Previous" })).toBeNull();
     expect(within(nav).getByRole("link", { name: "1" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "Next" })).toHaveAttribute(
@@ -329,7 +329,7 @@ describe("<Pagination /> (past groups)", () => {
     render(
       <Pagination currentPage={3} totalPages={3} pageParamKey="pastPage" labels={labels} />,
     );
-    const nav = screen.getByRole("navigation", { name: "Past concerts" });
+    const nav = screen.getByRole("navigation", { name: "Past events" });
     expect(within(nav).getByRole("link", { name: "Previous" })).toHaveAttribute(
       "href",
       "?pastPage=2",
