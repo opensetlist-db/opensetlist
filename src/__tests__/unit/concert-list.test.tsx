@@ -242,7 +242,7 @@ describe("<ConcertGroup />", () => {
     title: "Tour",
     artistTag: "Hasu",
     typeLabel: "Tour",
-    countLabel: "2 concerts",
+    countLabel: "2 events",
     liveLabel: "LIVE",
     collapseLabel: "Collapse Tour",
     expandLabel: "Expand Tour",
