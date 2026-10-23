@@ -21,11 +21,21 @@ const WEIGHTS = [400, 500, 600, 700];
 const ROLES = ["header .font-josefin", "footer .font-josefin", "main h1", "main h2", "main a"];
 const FONT_URL = /\.woff2?(?:\?|$)/;
 
-async function shot(page, file) {
+async function shot(page, file, cold = false) {
   // Viewport evidence is deliberate: page-specific layout and full-page
   // approval comparisons belong to each consumer, while this isolates the
   // shared roles and the mixed-script specimen at a readable scale.
-  await sharp(await page.screenshot({ animations: "disabled" })).webp({ quality: 90 }).toFile(file);
+  // The cold shot must not wait for the deliberately held responses.
+  // Restore the process flag even on an error so later scenarios keep
+  // Playwright's normal screenshot font-readiness guarantee.
+  const prior = process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY;
+  if (cold) process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = "1";
+  try {
+    await sharp(await page.screenshot({ animations: "disabled" })).webp({ quality: 90 }).toFile(file);
+  } finally {
+    if (prior === undefined) delete process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY;
+    else process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = prior;
+  }
 }
 
 async function roles(page) {
@@ -93,13 +103,19 @@ async function specimen(page) {
   }, WEIGHTS);
 }
 
+function realWeights(rows) {
+  const suffix = { 400: "Regular", 500: "Medium", 600: "SemiBold", 700: "Bold" };
+  return rows.length === 12 && rows.every((r) => {
+    const weight = r.selector.split("-").at(-1);
+    return r.fonts.length > 0 && r.fonts.every((f) =>
+      f.isCustomFont && f.glyphCount > 0 && f.postScriptName.endsWith(`-${suffix[weight]}`),
+    );
+  });
+}
+
 const scenario = {
   name: "shared-foundation",
   async run(h) {
-    // Playwright normally waits for fonts inside screenshot(). That would
-    // deadlock the deliberately held cold-font responses. Every normal and
-    // released cell explicitly awaits fonts.ready before taking evidence.
-    process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = "1";
     const entries = [];
     const file = path.join(h.outDir, `font-evidence-${h.browserName}${h.quick ? "-quick" : ""}.json`);
     const save = () => fs.writeFileSync(file, JSON.stringify({ base: h.base, at: new Date().toISOString(), entries }, null, 2));
@@ -117,12 +133,20 @@ const scenario = {
             const attempts = [];
             const responses = [];
             const bodies = [];
+            const exceptions = [];
+            const unexpectedFailures = [];
             let held = 0;
             const item = { key, locale, width, height: 1000, dpr: 1, timezone: "UTC", state, at: new Date().toISOString() };
             try {
               const { ctx, page, resp, errors } = await h.open(`/${locale}${p}`, {
                 width, height: 1000, waitUntil: "domcontentloaded", waitForFonts: state !== "cold",
                 beforeNavigate: async ({ ctx, page }) => {
+                  page.on("pageerror", (e) => exceptions.push(String(e)));
+                  page.on("requestfailed", (r) => {
+                    const telemetry = /google-analytics|googletagmanager|sentry\.io|speed-insights/.test(r.url());
+                    const fontFault = state !== "normal" && FONT_URL.test(r.url());
+                    if (!telemetry && !fontFault) unexpectedFailures.push(`${r.url()} ${r.failure()?.errorText}`);
+                  });
                   await page.addInitScript(() => {
                     if (PerformanceObserver.supportedEntryTypes?.includes("layout-shift")) {
                       window.__foundationCLS = 0;
@@ -157,40 +181,50 @@ const scenario = {
               }
               item.url = page.url();
               item.page = await roles(page);
+              if (state !== "normal") {
+                h.check(`${name} no custom faces loaded`, item.page.faces.length > 0 && !item.page.faces.some((f) => f.status === "loaded"), JSON.stringify(item.page.faces));
+                if (state === "failure") h.check(`${name} rejected faces observed`, item.page.faces.some((f) => f.status === "error"), `${item.page.faces.length} attempted faces`);
+              }
               h.check(`${name} readable roles`, item.page.roles.every((r) => r.text && r.width > 0 && r.height > 0), JSON.stringify(item.page.roles.map((r) => [r.selector, r.text])));
               h.check(`${name} overflow`, item.page.overflow <= 1, `${item.page.overflow}px`);
               h.check(`${name} language`, item.page.lang === locale, item.page.lang);
               const capture = `${key}-${locale}-${width}-${state}-${h.browserName}.webp`;
-              await shot(page, path.join(h.outDir, capture));
+              await shot(page, path.join(h.outDir, capture), state === "cold");
               item.capture = capture;
-              if (!h.webkit) item.platformFonts = await platformFonts(ctx, page, ROLES);
-              if (state === "normal") {
-                const logos = item.page.roles.filter((r) => r.selector.includes("josefin"));
-                h.check(`${name} logo metrics`, logos.length === 2 && logos.every((r) => r.weight === "400" && r.transform === "uppercase" && Math.abs(parseFloat(r.tracking) - parseFloat(r.size) * 0.02) < 0.01), JSON.stringify(logos));
-                await specimen(page);
-                await page.evaluate(() => document.fonts.ready.then(() => undefined));
-                const selectors = WEIGHTS.flatMap((w) => ["latin", "ja", "ko"].map((s) => `#foundation-${s}-${w}`));
-                item.specimen = `${key}-${locale}-${width}-specimen-${h.browserName}.webp`;
-                await shot(page, path.join(h.outDir, item.specimen));
-                if (!h.webkit) {
-                  item.specimenFonts = await platformFonts(ctx, page, selectors);
-                  h.check(`${name} actual custom glyphs`, item.specimenFonts.length === 12 && item.specimenFonts.every((r) => r.fonts.length > 0 && r.fonts.every((f) => f.isCustomFont && f.glyphCount > 0)), JSON.stringify(item.specimenFonts));
-                } else {
-                  h.skip(`${name} CDP glyph proof`, "WebKit has no CDP CSS platform fonts API; resource hashes + screenshots retained, actual iOS owner validation separate");
-                }
-                await page.locator("#foundation-font-specimen").evaluate((el) => el.remove());
+              if (!h.webkit) {
+                item.platformFonts = await platformFonts(ctx, page, ROLES);
+                if (state !== "normal") h.check(`${name} actual fallback glyphs`, item.platformFonts.length > 0 && item.platformFonts.every((r) => r.fonts.length > 0 && r.fonts.every((f) => !f.isCustomFont)), JSON.stringify(item.platformFonts));
               }
               if (state === "cold") {
                 release();
                 await page.evaluate(() => document.fonts.ready.then(() => undefined));
                 item.afterRelease = await roles(page);
                 if (!h.webkit) item.releasedFonts = await platformFonts(ctx, page, ROLES);
-                h.check(`${name} fonts delivered after release`, item.afterRelease.faces.some((f) => f.status === "loaded"), JSON.stringify(item.afterRelease.faces));
               }
-              // Failed/held fonts and blocked telemetry intentionally produce
-              // resource console errors. Runtime exceptions remain failures.
-              const runtime = errors.filter((e) => !/Failed to load resource|ERR_FAILED|Load failed|cancelled|canceled/i.test(e));
-              h.check(`${name} runtime`, runtime.length === 0, runtime.join("; "));
+              if (state !== "failure") {
+                const logos = item.page.roles.filter((r) => r.selector.includes("josefin"));
+                if (state === "normal") h.check(`${name} logo metrics`, logos.length === 2 && logos.every((r) => r.weight === "400" && r.transform === "uppercase" && Math.abs(parseFloat(r.tracking) - parseFloat(r.size) * 0.02) < 0.01), JSON.stringify(logos));
+                await specimen(page);
+                await page.evaluate(() => document.fonts.ready.then(() => undefined));
+                const selectors = WEIGHTS.flatMap((w) => ["latin", "ja", "ko"].map((s) => `#foundation-${s}-${w}`));
+                item.specimen = `${key}-${locale}-${width}-${state}-specimen-${h.browserName}.webp`;
+                await shot(page, path.join(h.outDir, item.specimen));
+                if (!h.webkit) {
+                  item.specimenFonts = await platformFonts(ctx, page, selectors);
+                  h.check(`${name} actual custom glyphs and weights`, realWeights(item.specimenFonts), JSON.stringify(item.specimenFonts));
+                } else {
+                  const faces = await page.evaluate(() => [...document.fonts].filter((f) => f.status === "loaded").map((f) => ({ family: f.family.replaceAll('"', ""), weight: f.weight })));
+                  h.check(`${name} loaded specimen weights`, ["DM Sans", "Noto Sans KR", "Noto Sans JP"].every((family) => WEIGHTS.every((w) => faces.some((f) => f.family === family && f.weight === String(w)))), JSON.stringify(faces));
+                  h.skip(`${name} CDP glyph proof`, "WebKit has no CDP CSS platform fonts API; resource hashes + screenshots retained, actual iOS owner validation separate");
+                }
+                await page.locator("#foundation-font-specimen").evaluate((el) => el.remove());
+              }
+              // Generic resource console lines omit their URL in Chromium.
+              // The requestfailed listener above admits only the exact font
+              // fault/telemetry resources; page exceptions are never filtered.
+              const runtime = errors.filter((e) => !/^Failed to load resource: (net::ERR_FAILED|Load failed|cancelled|canceled)/i.test(e));
+              const failures = [...runtime, ...exceptions, ...unexpectedFailures];
+              h.check(`${name} runtime`, failures.length === 0, failures.join("; "));
               await Promise.allSettled(bodies);
               item.attempts = attempts;
               item.fontResponses = responses;
