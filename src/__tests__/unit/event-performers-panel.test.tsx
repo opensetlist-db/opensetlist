@@ -107,17 +107,19 @@ describe("EventPerformersPanel", () => {
     expect(screen.getByText("名無し").closest("a")).toBeNull();
   });
 
-  it("shows six cards and folds the rest behind a 'more' disclosure", () => {
-    const many = Array.from({ length: 9 }, (_, i) => performer(i + 1));
+  it("lists the whole roster in one grid, in the derived order (no 'more' step)", () => {
+    const many = Array.from({ length: 22 }, (_, i) => performer(i + 1));
     const { container } = render(
       <EventPerformersPanel locale="ko" units={[]} performers={many} />,
     );
-    const details = container.querySelector("details")!;
-    expect(details).not.toBeNull();
-    expect(within(details).getAllByText(/^メンバー/)).toHaveLength(3);
-    expect(screen.getByText('performersMore:{"count":3}')).toBeInTheDocument();
-    // The heading count is the whole roster, not just the open cards.
-    expect(screen.getByText("9")).toBeInTheDocument();
+    expect(container.querySelector("details")).toBeNull();
+    const grids = container.querySelectorAll("ul");
+    expect(grids).toHaveLength(1);
+    const names = within(grids[0] as HTMLElement)
+      .getAllByText(/^メンバー/)
+      .map((el) => el.textContent);
+    expect(names).toEqual(many.map((p) => p.name));
+    expect(screen.getByText("22")).toBeInTheDocument();
   });
 
   it("uses the lineup headings before the show", () => {

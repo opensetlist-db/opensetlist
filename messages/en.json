@@ -363,7 +363,7 @@
     "sameSeriesTitle": "Same series",
     "viewSeries": "View series",
     "creditsToggle": "Credits",
-    "performersMore": "Show more ({count})",
+    "songPerformers": "Performers on this song",
     "liveNotice": "Updating live",
     "cancelledTitle": "Cancelled",
     "cancelledBody": "This event is cancelled. Song wishes and predictions cannot be saved or edited.",
@@ -446,7 +446,8 @@
     "surprise": "Surprise",
     "moved": "Emotional",
     "trending": "Trending songs",
-    "trendingEmpty": "No reactions yet — try adding one from the setlist!"
+    "trendingEmpty": "No reactions yet — try adding one from the setlist!",
+    "trendingTop": "TOP 3"
   },
   "Setlist": {
     "tabActual": "Actual setlist",

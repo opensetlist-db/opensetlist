@@ -2,6 +2,7 @@ import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
 import { EventArt } from "@/components/shared/EventArt";
 import { ConcertStatusPill } from "@/components/events/ConcertStatusPill";
+import { StatusBadge } from "@/components/StatusBadge";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import styles from "./eventDetail.module.css";
 
@@ -22,6 +23,15 @@ import styles from "./eventDetail.module.css";
  * The logo is 07's resolved event logo (override → inherited series
  * logo → typography). A missing or failed image falls back to the series
  * short name in the same reserved slot, so the Hero never changes height.
+ *
+ * LIVE (consistency-03-v3 §8): the hero gets a 3px coral rule and a faint
+ * warm wash (`data-status="ongoing"` in the CSS module), and the pill is
+ * the shared coral <StatusBadge> rather than the list pill's solid
+ * raspberry. The badge is chosen here, not by changing
+ * <ConcertStatusPill> — that pill belongs to the concert list, which
+ * moves its own LIVE variant on its own schedule; rendering the shared
+ * badge directly keeps this hero right whichever way the list pill
+ * looks. The other states keep the list pill (approved 18-v3 hero).
  */
 
 interface Props {
@@ -55,7 +65,7 @@ export function EventHero({
   venueLine,
 }: Props) {
   return (
-    <header className={styles.hero} data-testid="event-hero">
+    <header className={styles.hero} data-testid="event-hero" data-status={status}>
       <EventStatusTicker startTime={startTimeIso} />
       <EventArt
         variant="detail"
@@ -79,7 +89,11 @@ export function EventHero({
         )}
       </div>
       <div className={styles.stateLine}>
-        <ConcertStatusPill status={status} label={statusLabel} />
+        {status === "ongoing" ? (
+          <StatusBadge status={status} label={statusLabel} size="md" />
+        ) : (
+          <ConcertStatusPill status={status} label={statusLabel} />
+        )}
         {startLabel && <span>{startLabel}</span>}
       </div>
     </header>

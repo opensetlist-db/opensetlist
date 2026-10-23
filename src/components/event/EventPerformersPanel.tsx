@@ -22,13 +22,14 @@ import styles from "./eventDetail.module.css";
  * performer's unit colour arrive as `--artist` and are only mixed into
  * backgrounds and borders; every label stays ink.
  *
- * The first `VISIBLE_PERFORMERS` cards render open; the rest sit behind
- * a native <details> ("더 보기 (n)") so a festival roster of fifty-odd
- * names doesn't push the rest of the sidebar off screen. Guests keep
- * their order after the hosts and their "게스트" note.
+ * Every card renders open in one grid (consistency-03-v3 §7.4): the
+ * owner asked for the whole cast without a "더 보기" step, so the old
+ * six-card cut and its <details> are gone. The list is exactly what the
+ * derivation returned — no dedupe or re-sort happens here beyond the
+ * host-then-guest split below, so a duplicate or a missing name is a
+ * data question for the derivations, never something this panel hides.
+ * Guests keep their order after the hosts and their "게스트" note.
  */
-
-const VISIBLE_PERFORMERS = 6;
 
 interface Props {
   locale: string;
@@ -55,8 +56,6 @@ export function EventPerformersPanel({
     ...performers.filter((p) => !p.isGuest),
     ...performers.filter((p) => p.isGuest),
   ];
-  const visible = ordered.slice(0, VISIBLE_PERFORMERS);
-  const hidden = ordered.slice(VISIBLE_PERFORMERS);
   const guestLabel = t("guestLabel");
 
   const renderCard = (p: PerformersCardItem) => {
@@ -118,28 +117,9 @@ export function EventPerformersPanel({
           ))}
         </ul>
       )}
-      {visible.length > 0 && <ul className={styles.rosterGrid}>{visible.map(renderCard)}</ul>}
-      {hidden.length > 0 && (
-        <MorePerformers count={hidden.length}>
-          <ul className={styles.rosterGrid}>{hidden.map(renderCard)}</ul>
-        </MorePerformers>
+      {ordered.length > 0 && (
+        <ul className={styles.rosterGrid}>{ordered.map(renderCard)}</ul>
       )}
     </section>
-  );
-}
-
-function MorePerformers({
-  count,
-  children,
-}: {
-  count: number;
-  children: React.ReactNode;
-}) {
-  const t = useTranslations("EventDetail");
-  return (
-    <details className={styles.more}>
-      <summary>{t("performersMore", { count })}</summary>
-      {children}
-    </details>
   );
 }

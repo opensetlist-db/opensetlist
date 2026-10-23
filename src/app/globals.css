@@ -41,6 +41,20 @@
   --surface-live-card: #fff8f6;
   --border-live-card: #f0c4bc;
   --shadow-live-card: #17244506;
+  /* Concert detail (consistency-03-v3): the neutral "updating live"
+     notice and the per-song performer toggle's hover pair. */
+  --surface-notice-neutral: #f7f9fc;
+  --surface-credit-toggle-hover: #eeefff;
+  --text-credit-toggle-hover: #5156a6;
+  /* Trending songs card (trending-v1): faint amber wash, amber top
+     rule, item dividers and the TOP 3 pill. */
+  --surface-trending-start: #fffaf0;
+  --border-trending: #e4d6bd;
+  --accent-trending: #d8b77d;
+  --border-trending-divider: #eee5d6;
+  --text-trending-pill: #86530f;
+  --surface-trending-pill: #fff4de;
+  --border-trending-pill: #e6ce9f;
   /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
      so a palette change is one edit, not a grep across components.
      Consumed by `.row-hover-bg:hover` below; available as a Tailwind
@@ -169,7 +183,6 @@
   --surface-live-badge: #d12c74;
   --surface-live-banner-hover: #213b68;
   --surface-live-day: #494e73;
-  --surface-live-notice: #ffeaf4;
   --surface-locked-wish-panel: #fff0f7;
   --surface-metrics: #ffffffb3;
   --surface-more-hover: #f2f6ff;
@@ -205,7 +218,6 @@
   --text-kind-badge: #244f92;
   --text-live: #f0eefa;
   --text-live-banner-small: #e0eaff;
-  --text-live-notice: #a21956;
   --text-muted: #67758b;
   --text-my-choice: #8b1452;
   --text-notice-cancel: #394557;

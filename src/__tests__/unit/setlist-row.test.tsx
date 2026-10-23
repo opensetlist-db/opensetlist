@@ -835,6 +835,139 @@ describe("SetlistRow", () => {
   });
 });
 
+// consistency-03-v3 §7.3: the per-song performer list opens from a toggle
+// beside the credit chips instead of a separate <details> line.
+describe("SetlistRow — per-song performer toggle", () => {
+  const sayaka = {
+    stageIdentity: {
+      id: "si-sayaka",
+      originalName: "Sayaka",
+      originalShortName: null,
+      originalLanguage: "ja",
+      translations: [],
+      artistLinks: [],
+    },
+    realPerson: null,
+  };
+  const unitCredit = {
+    artist: {
+      id: 10,
+      slug: "cerise-bouquet",
+      type: "unit" as const,
+      originalName: "Cerise Bouquet",
+      originalShortName: null,
+      originalLanguage: "ja",
+      color: CERISE,
+      translations: [],
+    },
+  };
+
+  it("unit row: chevron button beside the chip opens the titled member list", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "songPerformers" });
+    // Same flex line as the chip — the toggle follows it, not a row below.
+    expect(toggle.parentElement).toBe(
+      screen.getByText("Cerise Bouquet").closest("a")!.parentElement!.parentElement,
+    );
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const panel = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    expect(panel).not.toBeVisible();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(panel).toBeVisible();
+    expect(panel).toHaveTextContent("songPerformers");
+    expect(panel).toHaveTextContent("Sayaka");
+    fireEvent.click(toggle);
+    expect(panel).not.toBeVisible();
+  });
+
+  it("chip-less full_group row keeps the 18-v3 disclosure and invents no chip", () => {
+    const { container, rerender } = render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    // Positive control: the same row with a chip has the chip and the toggle.
+    expect(container.querySelector('a[href*="/artists/"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "songPerformers" })).toBeInTheDocument();
+
+    rerender(
+      <SetlistRow
+        item={makeItem({ stageType: "full_group", artists: [], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
+    const details = container.querySelector("details")!;
+    expect(details.querySelector("summary")).toHaveTextContent("creditsToggle");
+    expect(details).toHaveTextContent("Sayaka");
+    // No headliner / stageType chip stands in for the missing credit.
+    expect(container.querySelector('a[href*="/artists/"]')).toBeNull();
+    expect(screen.queryByText("stageType.full_group")).toBeNull();
+  });
+
+  it("no performers → no toggle, even when the row has a chip", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    expect(screen.getByText("Cerise Bouquet")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
+  });
+
+  it("MC rows get no toggle even with performers attached", () => {
+    const { container, rerender } = render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    // Positive control: a song row with the same performers has the toggle.
+    expect(screen.getByRole("button", { name: "songPerformers" })).toBeInTheDocument();
+    rerender(
+      <SetlistRow
+        item={makeItem({
+          type: "mc",
+          songs: [],
+          stageType: "unit",
+          artists: [unitCredit],
+          performers: [sayaka],
+        })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    expect(screen.getByText("itemType.mc")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
+    expect(container.querySelector("details")).toBeNull();
+  });
+});
+
 describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
   it("default (no rowState passed): renders the position as a span (byte-equiv with pre-refactor)", () => {
     render(

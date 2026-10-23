@@ -363,7 +363,7 @@
     "sameSeriesTitle": "같은 시리즈",
     "viewSeries": "시리즈 보기",
     "creditsToggle": "출연 크레딧",
-    "performersMore": "더 보기 ({count})",
+    "songPerformers": "이 곡의 출연 멤버",
     "liveNotice": "실시간으로 업데이트 중",
     "cancelledTitle": "공연 취소",
     "cancelledBody": "취소된 공연입니다. 희망곡·예상곡을 새로 저장하거나 수정할 수 없어요.",
@@ -446,7 +446,8 @@
     "surprise": "깜짝",
     "moved": "감동",
     "trending": "이번 공연 화제의 곡",
-    "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!"
+    "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!",
+    "trendingTop": "TOP 3"
   },
   "Setlist": {
     "tabActual": "실제 세트리스트",

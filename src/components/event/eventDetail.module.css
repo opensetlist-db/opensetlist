@@ -64,12 +64,17 @@
 .seriesLink:hover {
   text-decoration: underline;
 }
+/*
+ * Identity title role (consistency-03-v3 §4): 32px down to 700px, 24px
+ * below, line-height 1.4, tracking -.03em. Replaces 18-v3's 29/26/24/20
+ * steps; the long-name wrap below stays.
+ */
 .title {
   margin: 9px 0 12px;
-  font-size: 29px;
+  font-size: 32px;
   font-weight: 700;
-  line-height: 1.45;
-  letter-spacing: -0.035em;
+  line-height: 1.4;
+  letter-spacing: -0.03em;
   color: var(--foreground);
   overflow-wrap: anywhere;
 }
@@ -83,6 +88,17 @@
   margin: 0;
   font-size: 14px;
   color: var(--text-secondary);
+}
+/*
+ * LIVE hero (consistency-03-v3 §8): a 3px coral rule on the left and a
+ * warm wash that fades out by 65% of the width, so the logo slot and the
+ * title read as "on now" without tinting the whole band. Colours are the
+ * shared LIVE roles from 04/05 (dot coral, live-card surface).
+ */
+.hero[data-status="ongoing"] {
+  border-left: 3px solid var(--status-live-dot);
+  padding-left: 13px;
+  background: linear-gradient(90deg, var(--surface-live-card), transparent 65%);
 }
 .stateLine {
   grid-column: 2;
@@ -206,12 +222,17 @@
   --bar: var(--accent-info-panel);
 }
 
+/*
+ * "Updating live" notice. Neutral since consistency-03-v3 §8: the LIVE
+ * colour belongs to the hero badge and rule, so the in-card notice is a
+ * plain grey-blue box with navy text instead of a second pink signal.
+ */
 .liveNotice {
   margin-bottom: 18px;
   padding: 14px 18px;
-  border: 1px solid var(--border-live-notice);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--surface-live-notice);
+  background: var(--surface-notice-neutral);
   font-size: 13px;
   color: var(--text-secondary);
 }
@@ -220,7 +241,7 @@
   margin-bottom: 3px;
   font-size: 14px;
   font-weight: 700;
-  color: var(--text-live-notice);
+  color: var(--foreground);
 }
 .emptyCopy {
   margin: 0;
@@ -363,19 +384,6 @@ a.groupChip:hover {
   font-weight: 700;
   color: var(--foreground);
 }
-.more {
-  margin-top: 12px;
-  font-size: 12px;
-}
-.more > summary {
-  min-height: 36px;
-  padding: 8px 0;
-  cursor: pointer;
-  color: var(--primary);
-}
-.more > .rosterGrid {
-  margin-top: 8px;
-}
 
 /* ── Bands ────────────────────────────────────────────────────── */
 
@@ -388,9 +396,6 @@ a.groupChip:hover {
 @media (max-width: 1099px) {
   .layout {
     grid-template-columns: minmax(0, 1fr) 260px;
-  }
-  .title {
-    font-size: 26px;
   }
   .rosterGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -408,9 +413,6 @@ a.groupChip:hover {
   .hero {
     grid-template-columns: 156px minmax(0, 1fr);
     column-gap: 22px;
-  }
-  .title {
-    font-size: 24px;
   }
 }
 
@@ -437,8 +439,7 @@ a.groupChip:hover {
   }
   .title {
     margin-top: 7px;
-    font-size: 20px;
-    line-height: 1.5;
+    font-size: 24px;
   }
   .seriesLink {
     font-size: 12px;
@@ -475,6 +476,150 @@ a.groupChip:hover {
   }
   .groupLine {
     gap: 6px;
+  }
+}
+
+/* ── Trending songs (trending-v1, consistency-03-v3 supplement) ─── */
+
+/*
+ * Top-3 reacted songs above the setlist card. Values are the approved
+ * trending-v1 contract (wiki handoffs/03/trending-v1: design-contract.md
+ * and trending.css). No outer margin: the main column's 24px gap spaces
+ * it, where the old `mb-6` doubled that to 48px under the card. The
+ * column switch is a viewport rule at 1024px, not the page's 1100px
+ * layout band, because the contract measures it there.
+ */
+.trending {
+  min-width: 0;
+  padding: 21px 24px 24px;
+  border: 1px solid var(--border-trending);
+  border-top: 3px solid var(--accent-trending);
+  border-radius: 16px;
+  background: linear-gradient(150deg, var(--surface-trending-start) 0%, var(--bg-card) 58%);
+  box-shadow: 0 1px 3px var(--shadow-rows);
+  color: var(--foreground);
+}
+.trendingHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.trendingTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+.trendingTop {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border-trending-pill);
+  border-radius: 999px;
+  background: var(--surface-trending-pill);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+  color: var(--text-trending-pill);
+}
+.trendingEmpty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.trendingList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.trendingItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.trendingItem + .trendingItem {
+  padding-left: 18px;
+  border-left: 1px solid var(--border-trending-divider);
+}
+.trendingMedal {
+  flex: none;
+  font-size: 22px;
+  line-height: 32px;
+}
+.trendingContent {
+  flex: 1;
+  min-width: 0;
+}
+.trendingOriginal {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.trendingSub {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.trendingReactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.trendingReactions > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1023px) {
+  .trendingList {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .trendingItem + .trendingItem {
+    padding-top: 14px;
+    padding-left: 0;
+    border-top: 1px solid var(--border-trending-divider);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 699px) {
+  .trending {
+    padding: 17px 18px 18px;
+  }
+  .trendingHead {
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .trendingTitle {
+    font-size: 18px;
+  }
+  .trendingTop {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+  .trendingOriginal {
+    font-size: 14px;
   }
 }
 
@@ -521,7 +666,18 @@ a.groupChip:hover {
   color: var(--foreground);
   overflow-wrap: anywhere;
 }
+/*
+ * Song-name links only (consistency-03-v3 §3, F14): at least 24px tall
+ * through 3px block padding, so a one-line title is a fair touch target.
+ * The reactions and the row itself keep their density — this is not the
+ * 44px control rule.
+ */
 .songTitle a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding-block: 3px;
+  line-height: 1.5;
   color: var(--foreground);
 }
 .songTitle a:hover {
@@ -542,25 +698,77 @@ a.groupChip:hover {
   font-style: italic;
   font-weight: 500;
 }
+/*
+ * Chip line + 28×28 performer toggle on one row (consistency-03-v3
+ * §7.3). The chips wrap inside their own flex box; the toggle stays at
+ * the end of the line instead of dropping to a row of its own.
+ */
+.creditHeading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 4px;
+}
 .creditLine {
   display: flex;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
+  min-width: 0;
 }
-.artistTag {
-  display: inline-block;
-  padding: 4px 8px;
+.creditToggle {
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--artist) 32%, white);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.creditToggle:hover,
+.creditToggle:focus-visible {
+  background: var(--surface-credit-toggle-hover);
+  color: var(--text-credit-toggle-hover);
+}
+.creditToggle svg {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s;
+}
+.creditToggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.creditBody {
+  margin-top: 5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--background);
   font-size: 12px;
-  line-height: 1.4;
-  color: var(--foreground);
+  line-height: 1.6;
+  color: var(--text-secondary);
 }
-a.artistTag:hover {
-  text-decoration: underline;
+.creditBody[hidden] {
+  display: none;
 }
+.creditBody strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.creditBody p {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+/* Chip-less rows keep the 18-v3 performer disclosure (see SetlistRow). */
 .creditDetails {
   margin-top: 8px;
   font-size: 12px;
@@ -575,6 +783,18 @@ a.artistTag:hover {
 .creditDetails > p {
   margin: 2px 0 0;
   overflow-wrap: anywhere;
+}
+.artistTag {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--artist) 32%, white);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+a.artistTag:hover {
+  text-decoration: underline;
 }
 .songReactions {
   margin-top: 8px;
