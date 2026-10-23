@@ -1,0 +1,75 @@
+name: Shared token impact
+
+on:
+  pull_request:
+    branches: [dev, feature/redesign]
+    paths:
+      - 'src/**'
+      - 'scripts/token-impact.mjs'
+      - 'scripts/token-impact/**'
+      - 'docs/token-impact.md'
+      - '.github/workflows/token-impact.yml'
+
+# This report never comments, pushes, deploys, uses secrets or writes to a PR.
+# Analyze text from the PR using the analyzer and dependencies from its base.
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    name: Consumer roles (report only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Fetch objects without checking out PR source or executing its config.
+      - name: Fetch PR source objects
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git fetch --no-tags origin "$HEAD_SHA"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Install base dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Generate role review inventory
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          mkdir -p token-impact-report
+          if [ ! -f scripts/token-impact.mjs ]; then
+            echo 'Bootstrap: analyzer is absent on the base branch. Merge the tooling PR before automatic reports are available. No analysis ran.' > token-impact-report/impact.md
+          else
+            if ! node scripts/token-impact.mjs --before "$BASE_SHA" --after "$HEAD_SHA" --out token-impact-report; then
+              echo 'Analyzer failed. No complete inventory was produced. Read the job log and review the token change manually.' > token-impact-report/impact.md
+              echo '{"schemaVersion":1,"complete":false,"status":"analyzer-failed"}' > token-impact-report/impact.json
+              failed=1
+            fi
+          fi
+          # GitHub summaries are bounded; the artifact retains the full report.
+          if [ "$(wc -c < token-impact-report/impact.md)" -le 900000 ]; then
+            cat token-impact-report/impact.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Full token consumer report exceeds summary size. Download the shared-token-impact artifact; analysis is static and incomplete.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'Reviewer guide: https://github.com/opensetlist-db/opensetlist/blob/dev/docs/token-impact.md' >> "$GITHUB_STEP_SUMMARY"
+          if [ "${failed:-0}" -eq 1 ]; then exit 1; fi
+
+      - name: Preserve full JSON and review list
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shared-token-impact
+          path: token-impact-report/
+          if-no-files-found: warn
+          retention-days: 14
