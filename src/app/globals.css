@@ -37,6 +37,10 @@
   --status-live-border: #f2b8ae;
   --status-live-dark-text: #ffd3c9;
   --status-live-dark-surface: #482c2b;
+  /* Bright LIVE cards (consistency-03-v3), distinct from the badge. */
+  --surface-live-card: #fff8f6;
+  --border-live-card: #f0c4bc;
+  --shadow-live-card: #17244506;
   /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
      so a palette change is one edit, not a grep across components.
      Consumed by `.row-hover-bg:hover` below; available as a Tailwind

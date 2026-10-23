@@ -77,7 +77,9 @@ export default async function HomePage({
           <section className={styles.section} aria-labelledby="ongoing-title">
             <div className={styles.sectionHead}>
               <div>
-                <p className={styles.eyebrow}>{t("liveEyebrow")}</p>
+                <p className={`${styles.eyebrow} ${styles.liveEyebrow}`}>
+                  {t("liveEyebrow")}
+                </p>
                 <h2
                   id="ongoing-title"
                   className={`${styles.sectionTitle} ${styles.liveTitle}`}
