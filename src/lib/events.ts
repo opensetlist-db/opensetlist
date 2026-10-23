@@ -269,7 +269,7 @@ export async function getEventsListGrouped(
         // art text read it too, independent of the resolver's needs.
         eventSeriesId: true,
       },
-      orderBy: { startTime: "asc" },
+      orderBy: [{ startTime: "asc" }, { id: "asc" }],
     }),
     prisma.eventSeries.findMany({
       where: { isDeleted: false },
@@ -459,7 +459,7 @@ export async function getEventsListGrouped(
       ev,
       ts: new Date(ev.startTime).getTime(),
     }));
-    dated.sort((a, b) => a.ts - b.ts);
+    dated.sort((a, b) => a.ts - b.ts || a.ev.id - b.ev.id);
     g.events = dated.map((d) => d.ev);
     g.earliestStart = dated[0]?.ts ?? 0;
     g.latestStart = dated[dated.length - 1]?.ts ?? 0;
@@ -486,8 +486,12 @@ export async function getEventsListGrouped(
     else pastGroups.push(g);
   }
 
-  activeGroups.sort((a, b) => a.earliestStart - b.earliestStart);
-  pastGroups.sort((a, b) => b.latestStart - a.latestStart);
+  // The earliest row's ID breaks group-time ties in both sections. It
+  // also makes the group order independent of Postgres's return order
+  // when two tours share the same boundary timestamp.
+  const firstId = (g: EventsListGroup) => g.events[0].id;
+  activeGroups.sort((a, b) => a.earliestStart - b.earliestStart || firstId(a) - firstId(b));
+  pastGroups.sort((a, b) => b.latestStart - a.latestStart || firstId(a) - firstId(b));
 
   return { activeGroups, pastGroups };
 }
