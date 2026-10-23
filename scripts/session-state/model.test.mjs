@@ -140,5 +140,6 @@ test("schema rejects unknown fields, false review passes and stale observations"
   assert.throws(() => f.apply({ type: "start-session", sessionId: "clock" }, "2026-10-22T05:00:00.000Z"), /backwards/);
   assert.equal(timestamp("2026-02-30T00:00:00Z"), false);
   assert.equal(timestamp("2026-02-28T00:00:00Z"), true);
+  assert.equal(timestamp("2026-02-28T00:00:00.123456Z"), true);
   assert.throws(() => createState({ ...task, requirements: { checks: [], reviews: [], evidence: [], attestations: [] } }), /nonempty/);
 });

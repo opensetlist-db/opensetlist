@@ -8,7 +8,7 @@ const array = (rule) => (value) => Array.isArray(value) && value.every(rule);
 const object = (fields) => (value) => value !== null && typeof value === "object"
   && !Array.isArray(value) && Object.keys(value).length === Object.keys(fields).length
   && Object.entries(fields).every(([key, rule]) => Object.hasOwn(value, key) && rule(value[key]));
-export const timestamp = (value) => string(value) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+export const timestamp = (value) => string(value) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value)
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 19) === value.slice(0, 19);
 export const hash = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 const head = (value) => typeof value === "string" && /^[a-f0-9]{40}$/.test(value);

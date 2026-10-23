@@ -79,6 +79,17 @@ create a separate state for a changed scope rather than weakening gates.
 Checks, reviews and evidence must each require at least one ID; only device
 attestations may be empty. Impossible calendar dates and backward host-clock
 updates are rejected. Reconcile host time before resuming after clock rollback.
+UTC fractions of up to nine digits are accepted (including Python microseconds);
+comparisons use JavaScript millisecond precision. This is the first unreleased
+schema: there are no migrated production state files or historical rewrites.
+If a bad forward host-clock write leaves `updatedAt` ahead of corrected time,
+prefer waiting until it catches up. For an operator repair, stop all writers,
+save an immutable copy of the complete original file and record the clock error
+in a separate recovery note. Correct only the known-invalid `updatedAt` using
+the now-verified UTC clock, validate with `show`, and resume at the existing
+revision. Preserve original evidence timestamps, receipts, retry budget and
+not-before; if their clocks are uncertain, retain that uncertainty in the note
+and obtain fresh observations. The CLI never repairs or backdates evidence.
 
 | Field | Meaning |
 | --- | --- |
