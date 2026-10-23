@@ -108,6 +108,15 @@ describe("shared token impact inventory", () => {
     }
   });
 
+  it("keeps candidates when typed property declarations do not prove a value origin", () => {
+    const source = { ...after, "src/typed.tsx": "import { colors } from './styles/tokens'; const cfg: { color: string } = { color: colors.live }; const { color: tint } = cfg; export const TypedDot = () => <i style={{background: tint}}/>;" };
+    const live = analyzeImpact(before, source).changes.find((row) => row.name === "colors.live")!;
+    expect(live.consumers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ side: "after", file: "src/typed.tsx", expression: "colors.live", property: "color" }),
+      expect.objectContaining({ side: "after", file: "src/typed.tsx", expression: "tint", property: "background", status: "unresolved" }),
+    ]));
+  });
+
   it("reports CSS in TS strings, dynamic names and cyclic aliases without looping", () => {
     const source = { ...after, "src/runtime.tsx": "const name = 'live'; export const C = () => <i style={{color: 'var(--live)', background: `var(--${name})`}}/>;", "src/cycle.css": ":root { --a: var(--b); --b: var(--a); } .x { color: var(--a); }" };
     const report = analyzeImpact(before, source);

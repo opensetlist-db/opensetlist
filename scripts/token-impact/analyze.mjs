@@ -114,6 +114,7 @@ function snapshot(input, tokenFiles) {
       if (tokenNodes.has(declaration)) matches.push({ key: tokenNodes.get(declaration), reason: null });
       else if (prefixNodes.has(declaration)) matches.push(...prefixOrigins(prefixNodes.get(declaration), "Token collection member; candidate set only"));
       else if (declaration.initializer) matches.push(...origins(declaration.initializer, seen));
+      else return null;
     }
     return matches;
   };
