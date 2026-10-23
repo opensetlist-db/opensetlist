@@ -133,7 +133,9 @@ node scripts/redesign-capture.mjs --base http://localhost:3181 --out <dir> --vis
 
 Default capture mode retains its historical fixed wait and performance metrics.
 Visual mode keeps the existing settle window and accepts `--ready-selector CSS`
-for a loaded-content marker. Design captures sweep before the menu/focus action,
+for a loaded-content marker. This global marker applies to every entry, so use
+it with a filter for a single page type; paired mode has per-case markers for
+mixed lists. It requires `--visual-ready`. Design captures sweep before the menu/focus action,
 then check resources without scrolling after it, preserving the selected state.
 Visual mode changes resource loading, scroll and byte/CLS observations, so do
 not compare those metrics against a default-mode baseline. Navigation TTFB is

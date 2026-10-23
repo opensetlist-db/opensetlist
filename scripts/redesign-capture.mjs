@@ -263,6 +263,11 @@ const { values: args } = parseArgs({
   },
 });
 
+if (args["ready-selector"] !== undefined && (!args["visual-ready"] || !args["ready-selector"].trim())) {
+  console.error("--ready-selector requires --visual-ready and a nonempty selector");
+  process.exit(1);
+}
+
 // Positive-number options; a typo fails here rather than as NaN timeouts.
 // `max` keeps the timeouts under setTimeout's 2^31−1 ms ceiling (~24.8
 // days): Node clamps a larger delay to 1 ms, which would fire the run guard
