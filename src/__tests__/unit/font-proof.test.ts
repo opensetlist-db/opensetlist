@@ -7,6 +7,8 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { realWeights, noLoadedFaces, rejectedFaces, fallbackGlyphs, classifyRequestFailure, runtimeFailures, observeFontResponses, responseErrors, loadFontManifest, verifyFontResponses } from "../../../scripts/page-qa/font-proof.mjs";
 import { runFontProof } from "../../../scripts/font-proof.mjs";
+import { createFoundationScenario } from "../../../scripts/page-qa/scenarios/shared-foundation.mjs";
+import sharp from "sharp";
 
 const specimen = () => [400, 500, 600, 700].flatMap((weight, i) => ["latin", "ja", "ko"].map((script) => ({
   selector: `#foundation-${script}-${weight}`,
@@ -16,6 +18,46 @@ const temps: string[] = [];
 afterEach(() => { for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true }); });
 
 describe("actual font proof", () => {
+  it("halts smoke on completed assertion failures and section exceptions/timeouts", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "font-proof-smoke-")); temps.push(dir);
+    const screenshot = await sharp({ create: { width: 1, height: 1, channels: 3, background: "white" } }).png().toBuffer();
+    const page = Object.assign(new EventEmitter(), {
+      addInitScript: async () => {}, waitForTimeout: async () => {},
+      evaluate: async () => ({ roles: [], faces: [], lang: "ko", overflow: 0 }),
+      screenshot: async () => screenshot,
+      url: () => "http://localhost/ko/privacy",
+      locator: () => ({ evaluate: async () => {} }),
+    });
+    const ctx = { route: async () => {}, newCDPSession: async () => ({
+      send: async (method: string) => method === "DOM.getDocument" ? { root: { nodeId: 1 } } : { nodeId: 0 }, detach: async () => {},
+    }) };
+    const failures: string[] = [];
+    const h = {
+      outDir: dir, browserName: "chromium", timeoutMs: 1000, quick: false, webkit: false, base: "http://localhost",
+      check: (name: string, ok: boolean) => { if (!ok) failures.push(name); },
+      section: vi.fn(async (_name, fn) => { await fn(); return true; }),
+      open: async (_url: string, options: { beforeNavigate: (value: unknown) => Promise<void> }) => {
+        page.removeAllListeners(); // Model the fresh page/context of each real cell.
+        await options.beforeNavigate({ ctx, page });
+        return { ctx, page, resp: { status: () => 200 }, errors: [] };
+      },
+    };
+    // The same failing page traverses all 39 quick cells without smoke, so
+    // one section below proves early termination rather than an inert mock.
+    await createFoundationScenario().run({ ...h, quick: true });
+    expect(h.section).toHaveBeenCalledTimes(39);
+    h.section.mockClear();
+    failures.length = 0;
+    await createFoundationScenario({ smoke: true }).run(h);
+    expect(failures).toContain("privacy/ko/390/normal actual custom glyphs and weights");
+    expect(h.section).toHaveBeenCalledTimes(1);
+    // A section that threw/timed out returns false instead of throwing to the
+    // scenario. It must also prevent the next state from being attempted.
+    h.section.mockReset().mockResolvedValue(false);
+    await createFoundationScenario({ smoke: true }).run(h);
+    expect(h.section).toHaveBeenCalledTimes(1);
+  });
+
   it("requires every unique specimen, real custom glyphs, face and exact weight", () => {
     const rows = specimen();
     expect(realWeights(rows)).toBe(true);

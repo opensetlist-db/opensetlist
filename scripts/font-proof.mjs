@@ -27,7 +27,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     } });
     const timeoutMs = Number(values.timeout) * 1000;
     const runMs = Number(values["timeout-min"]) * 60000;
-    if (!values.manifest || !values.out || !BROWSERS[values.browser] ||
+    if (!values.manifest || !values.out || !Object.hasOwn(BROWSERS, values.browser) ||
       !Number.isFinite(timeoutMs) || !Number.isFinite(runMs) || timeoutMs <= 0 || runMs <= 0 || timeoutMs > 86400000 || runMs > 86400000) {
       throw new Error("usage: node scripts/font-proof.mjs --manifest <approved-font-manifest.json> --out <dir> [--base URL] [--smoke] [--quick] [--browser chromium|webkit] [--timeout seconds] [--timeout-min minutes]");
     }

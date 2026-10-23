@@ -30,7 +30,7 @@ for (const family of ["dm-sans", "noto-sans-kr", "noto-sans-jp", "josefin-sans"]
     });
   }
 }
-const body = (mode) => `<!doctype html><html lang="ko"><head><style>${mode === "wrong-weight" ? css.replace(/font-weight: (500|600|700)/g, "font-weight: $1").replace(/-(500|600|700)-normal/g, "-400-normal") : css}
+const body = (mode) => `<!doctype html><html lang="ko"><head><style>${mode === "wrong-weight" ? css.replace(/-(500|600|700)-normal/g, "-400-normal") : css}
 :root{--font-body:"DM Sans","Noto Sans KR","Noto Sans JP",sans-serif}body{font-family:var(--font-body);margin:16px} .font-josefin{font-family:"Josefin Sans";font-size:20px;font-weight:400;letter-spacing:.4px;text-transform:uppercase}</style></head><body><header><span class="font-josefin">OpenSetlist</span></header><main><h1>공연 Live</h1><h2>음악 안내</h2><a href="/ko/privacy">Privacy</a></main><footer><span class="font-josefin">OpenSetlist</span></footer></body></html>`;
 let mode = "normal";
 const server = http.createServer((req, res) => {
@@ -58,7 +58,9 @@ try {
     });
   }
   assert.equal(results.normal.failed, 0, "normal/cold/failure fixtures must pass");
-  assert.ok(results["wrong-weight"].failed > 0, "a synthetic weight must fail");
+  assert.deepEqual(results["wrong-weight"].results.filter((check) => !check.ok).map((check) => check.name),
+    ["privacy/ko/390/normal actual custom glyphs and weights"],
+    "only the actual-weight detector may fail in the wrong-weight control");
   const wrong = JSON.parse(fs.readFileSync(path.join(out, "wrong-weight/font-evidence-chromium.json"), "utf8"));
   assert.equal(wrong.entries.length, 1, "preflight must stop after its first failed cell");
 
