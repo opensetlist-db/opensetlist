@@ -161,7 +161,12 @@ const scenario = {
                   });
                   page.on("response", (r) => {
                     if (!FONT_URL.test(r.url())) return;
-                    bodies.push(r.body().then((buf) => responses.push({ url: r.url(), bytes: buf.length, sha256: createHash("sha256").update(buf).digest("hex") })));
+                    // Attach the rejection handler immediately: body() can
+                    // reject before the later allSettled call is reached.
+                    bodies.push(r.body().then(
+                      (buf) => responses.push({ url: r.url(), bytes: buf.length, sha256: createHash("sha256").update(buf).digest("hex") }),
+                      (error) => responses.push({ url: r.url(), error: String(error) }),
+                    ));
                   });
                   await ctx.route("**/*", async (route) => {
                     const req = route.request();
@@ -230,6 +235,7 @@ const scenario = {
               const failures = [...runtime, ...exceptions, ...unexpectedFailures];
               h.check(`${name} runtime`, failures.length === 0, failures.join("; "));
               await Promise.allSettled(bodies);
+              h.check(`${name} response bodies recorded`, responses.every((r) => !r.error), responses.filter((r) => r.error).map((r) => `${r.url}: ${r.error}`).join("; "));
               item.attempts = attempts;
               item.fontResponses = responses;
             } finally {
