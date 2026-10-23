@@ -80,7 +80,7 @@ function readDisplay() {
   const hs = getComputedStyle(h1);
   const heroS = getComputedStyle(hero);
   const notice = main.querySelector('[data-testid="setlist-live-notice"]');
-  const card = main.querySelector('[id^="setlist-card-"]');
+  const card = main.querySelector('section[id^="setlist-card-"]');
   const links = card ? [...card.querySelectorAll('li a[href*="/songs/"]')] : [];
   const rows = card ? [...card.querySelectorAll("ol > li, ul > li")].filter((li) => li.className.includes("songRow")) : [];
   const toggles = card ? [...card.querySelectorAll('button[aria-controls][aria-expanded]')] : [];
@@ -169,8 +169,8 @@ const scenario = {
         }
 
         // Keyboard: Enter opens, Space closes, focus ring on the chevron.
-        const first = page.locator('[id^="setlist-card-"] button[aria-controls][aria-expanded]').first();
-        await h.focusRing(page, name("toggle focus ring"), '[id^="setlist-card-"] button[aria-controls][aria-expanded]', FOCUS);
+        const first = page.locator('section[id^="setlist-card-"] button[aria-controls][aria-expanded]').first();
+        await h.focusRing(page, name("toggle focus ring"), 'section[id^="setlist-card-"] button[aria-controls][aria-expanded]', FOCUS);
         await first.focus();
         await page.keyboard.press("Enter");
         const panelId = await first.getAttribute("aria-controls");
@@ -208,7 +208,7 @@ const scenario = {
         check(name(`title ${want}px`), d.title.size === want, String(d.title.size));
         check(name("no LIVE rule / notice"), !d.heroRule.includes(" 3px ") && d.notice === null, d.heroRule);
         check(name("chip-less rows keep the 18-v3 disclosure"), d.detailsRows > 0, String(d.detailsRows));
-        const summary = await page.locator('[id^="setlist-card-"] li details[class*="__creditDetails"] > summary').first().textContent();
+        const summary = await page.locator('section[id^="setlist-card-"] li details[class*="__creditDetails"] > summary').first().textContent();
         check(name("disclosure label"), summary?.trim() === msg(loc, "EventDetail.creditsToggle"), summary);
         check(name("roster: one grid"), !!d.roster && d.roster.more === 0 && d.roster.cards === d.roster.count, JSON.stringify(d.roster && { cards: d.roster.cards, count: d.roster.count }));
       },
@@ -253,7 +253,7 @@ const scenario = {
     const readPredicted = (page) =>
       page.evaluate(
         ({ tRemove, tAdd, tSearch, tShare, tSharePred }) => {
-          const card = document.querySelector('[id^="setlist-card-"]');
+          const card = document.querySelector('section[id^="setlist-card-"]');
           const buttons = [...card.querySelectorAll("button")].map((b) => b.textContent.trim());
           return {
             removeButtons: card.querySelectorAll(`[aria-label="${tRemove}"]`).length,
@@ -270,11 +270,11 @@ const scenario = {
       await h.section(`participation live + records ${width}`, async () => {
         const { page } = await h.open(`/${loc}/events/${LIVE}`, { width, beforeNavigate: seed(LIVE) });
         if ((await heroStatus(page)) !== "ongoing") return h.skip(`participation live ${width}`, `record ${LIVE} not ongoing`);
-        const tabs = page.locator('[id^="setlist-card-"] [role="tab"]');
+        const tabs = page.locator('section[id^="setlist-card-"] [role="tab"]');
         await tabs.first().waitFor();
         h.check(`live+records ${width}: actual/predicted tabs`, (await tabs.count()) === 2, String(await tabs.count()));
         await page.getByRole("tab", { name: tTabPred }).click();
-        await page.locator('[id^="setlist-card-"] [role="tabpanel"]').getByText("TOKIMEKI Runners").first().waitFor();
+        await page.locator('section[id^="setlist-card-"] [role="tabpanel"]').getByText("TOKIMEKI Runners").first().waitFor();
         const p = await readPredicted(page);
         h.check(`live+records ${width}: saved predictions shown`, SEED_SONGS.every((s) => p.text.includes(s.song.translations.find((t) => t.locale === loc)?.title ?? s.song.originalTitle) || p.text.includes(s.song.originalTitle)), "");
         h.check(`live+records ${width}: read-only (no add / remove / picker)`, p.removeButtons === 0 && !p.addButton && !p.search, JSON.stringify({ r: p.removeButtons, a: p.addButton, s: p.search }));
@@ -300,8 +300,8 @@ const scenario = {
       const { page } = await h.open(`/${loc}/events/${LIVE}`, { width: 1440 });
       if ((await heroStatus(page)) !== "ongoing") return h.skip("participation live, no records", `record ${LIVE} not ongoing`);
       // Positive control: the actual list rendered (rows with reactions).
-      const rows = await page.locator('[id^="setlist-card-"] li[class*="__songRow"]').count();
-      const tabs = await page.locator('[id^="setlist-card-"] [role="tab"]').count();
+      const rows = await page.locator('section[id^="setlist-card-"] li[class*="__songRow"]').count();
+      const tabs = await page.locator('section[id^="setlist-card-"] [role="tab"]').count();
       const p = await readPredicted(page);
       h.check("live, no records: actual only, no tabs, no share", rows > 0 && tabs === 0 && p.share === null, JSON.stringify({ rows, tabs, share: p.share }));
     });
@@ -309,7 +309,7 @@ const scenario = {
     await h.section("participation live, no actual + records", async () => {
       const { page } = await h.open(`/${loc}/events/${LIVE_EMPTY}`, { width: 1440, beforeNavigate: seed(LIVE_EMPTY) });
       if ((await heroStatus(page)) !== "ongoing") return h.skip("participation live, no actual", `record ${LIVE_EMPTY} not ongoing`);
-      await page.locator('[id^="setlist-card-"]').getByText("TOKIMEKI Runners").first().waitFor();
+      await page.locator('section[id^="setlist-card-"]').getByText("TOKIMEKI Runners").first().waitFor();
       const p = await readPredicted(page);
       h.check("live, no actual: predictions read-only", p.removeButtons === 0 && !p.addButton && !p.search, JSON.stringify(p).slice(0, 120));
       h.check("live, no actual: share = prediction", p.share === tSharePred, String(p.share));
@@ -320,7 +320,7 @@ const scenario = {
       const { page } = await h.open(`/${loc}/events/${DONE}`, { width: 390, beforeNavigate: seed(DONE) });
       if ((await heroStatus(page)) !== "completed") return h.skip("participation completed", `record ${DONE} not completed`);
       await page.getByRole("tab", { name: tTabPred }).click();
-      await page.locator('[id^="setlist-card-"] [role="tabpanel"]').getByText("TOKIMEKI Runners").first().waitFor();
+      await page.locator('section[id^="setlist-card-"] [role="tabpanel"]').getByText("TOKIMEKI Runners").first().waitFor();
       const p = await readPredicted(page);
       h.check("completed: predictions read-only", p.removeButtons === 0 && !p.addButton && !p.search, "");
       h.check("completed: share = final", p.share === tShare, String(p.share));
@@ -330,7 +330,7 @@ const scenario = {
     await h.section("participation open: edit, save, restore", async () => {
       const { page } = await h.open(`/${loc}/events/${OPEN}`, { width: 1440 });
       if ((await heroStatus(page)) !== "upcoming") return h.skip("participation open", `record ${OPEN} not upcoming`);
-      const card = page.locator('[id^="setlist-card-"]');
+      const card = page.locator('section[id^="setlist-card-"]');
       const search = card.locator(`input[aria-label="${tSearch}"]`);
       await search.waitFor();
       h.check("open: picker entry visible (desktop inline)", await search.isVisible(), "");
@@ -363,7 +363,7 @@ const scenario = {
           await a.page.clock.install({ time: new Date(start - 20_000) });
         },
       });
-      const card = page.locator('[id^="setlist-card-"]');
+      const card = page.locator('section[id^="setlist-card-"]');
       await card.locator(`[aria-label="${tRemove}"]`).first().waitFor();
       const editable = await readPredicted(page);
       h.check("lock: editable before start", editable.removeButtons === SEED_SONGS.length && editable.search, JSON.stringify({ r: editable.removeButtons, s: editable.search }));
@@ -385,7 +385,7 @@ const scenario = {
       await board.waitFor();
       await page.waitForTimeout(1500);
       const text = await board.innerText();
-      const search = await page.locator(`[id^="setlist-card-"] input[aria-label="${tSearch}"]`).count();
+      const search = await page.locator(`section[id^="setlist-card-"] input[aria-label="${tSearch}"]`).count();
       h.check("board failure: board says so, predictions stay editable", text.length > 0 && search > 0, text.slice(0, 120).replace(/\s+/g, " "));
       await h.shot(page, "participation-board-failure-1440");
     });
@@ -396,7 +396,7 @@ const scenario = {
         beforeNavigate: ({ page }) => page.route("**/api/setlist**", (r) => r.abort()),
       });
       if ((await heroStatus(page)) !== "ongoing") return h.skip("delayed", `record ${LIVE} not ongoing`);
-      const rows = page.locator('[id^="setlist-card-"] li[class*="__songRow"]');
+      const rows = page.locator('section[id^="setlist-card-"] li[class*="__songRow"]');
       const before = await rows.count();
       const delayed = await page
         .getByText(tDelayed)
@@ -424,10 +424,14 @@ const scenario = {
         if (status !== "cancelled") return h.skip("cancelled", `fixture ${id} is ${status}`);
         const notice = await page.locator('main [role="status"]').first().innerText();
         h.check("cancelled: notice first", notice.includes(msg(loc, "EventDetail.cancelledTitle")), notice.slice(0, 60));
-        const card = page.locator('[id^="setlist-card-"]');
+        const card = page.locator('section[id^="setlist-card-"]');
         const remove = await card.locator(`[aria-label="${msg(loc, "Predict.removeAria")}"]`).count();
         const search = await card.locator(`input[aria-label="${msg(loc, "Predict.picker.searchPlaceholder")}"]`).count();
         h.check("cancelled: no picker, no edits", remove === 0 && search === 0, JSON.stringify({ remove, search }));
+        // The saved list stays readable (positive control for the two
+        // absences above: the predicted surface did render).
+        const text = await card.innerText();
+        h.check("cancelled: saved predictions kept", SEED_SONGS.every((x) => text.includes(x.song.originalTitle) || x.song.translations.some((t) => text.includes(t.title))), `${text.length} chars`);
         await h.shot(page, "participation-cancelled-390");
       });
     },
