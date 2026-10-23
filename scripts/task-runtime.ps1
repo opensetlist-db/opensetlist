@@ -14,9 +14,9 @@ param(
     [switch]$Sweep
 )
 $ErrorActionPreference='Stop'
-[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
-$OutputEncoding=[Text.UTF8Encoding]::new($false)
 try {
+    [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+    $OutputEncoding=[Text.UTF8Encoding]::new($false)
     if ($env:OS -ne 'Windows_NT') { throw 'Use the .sh entry points on Linux/macOS' }
     if ($Task -eq 'worktree-rm') {
         if ($Runtime -or $Distro -or $Port -or $Stop -or $NoBuild) { throw 'worktree-rm always uses native PowerShell; runtime/serve options are not applicable' }
@@ -34,19 +34,24 @@ try {
         $bash = $null
         foreach ($git in @(Get-Command git.exe -CommandType Application -ErrorAction Stop)) {
             $installation = Split-Path $git.Source -Parent
+            $depth=0
             # PATH may contain cmd/git.exe, bin/git.exe, or mingw64/bin/git.exe.
             # Search their ancestors rather than assuming a user's install path.
-            while ($installation -and -not $bash) {
-                foreach ($relative in @('bin/bash.exe','usr/bin/bash.exe')) {
-                    $candidate=Join-Path $installation $relative
-                    if (Test-Path -LiteralPath $candidate -PathType Leaf) { $bash=$candidate; break }
+            while ($installation -and -not $bash -and $depth -lt 3) {
+                $isGitRoot=(Test-Path -LiteralPath (Join-Path $installation 'cmd/git.exe')) -and ((Test-Path -LiteralPath (Join-Path $installation 'mingw64/bin/git.exe')) -or (Test-Path -LiteralPath (Join-Path $installation 'mingw32/bin/git.exe')))
+                if ($isGitRoot) {
+                    foreach ($relative in @('bin/bash.exe','usr/bin/bash.exe')) {
+                        $candidate=Join-Path $installation $relative
+                        if (Test-Path -LiteralPath $candidate -PathType Leaf) { $bash=$candidate; break }
+                    }
                 }
                 $installation=Split-Path $installation -Parent
+                $depth++
             }
             if ($bash) { break }
         }
         if (-not $bash) { throw 'Cannot locate Git Bash next to git.exe; install Git for Windows with its Bash runtime on PATH' }
-        & $bash -c 'case "$OSTYPE" in msys*|cygwin*) exit 0;; *) exit 1;; esac'
+        & $bash -c 'case "$OSTYPE" in msys*) exit 0;; *) exit 1;; esac'
         if ($LASTEXITCODE -ne 0) { throw 'Resolved bash is not Git Bash' }
         & $bash $script @serveArgs
     } else {

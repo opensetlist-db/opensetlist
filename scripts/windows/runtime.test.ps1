@@ -35,7 +35,7 @@ function Run-Serve([int]$ServePort, [string[]]$Extra=@()) {
     try {
         $ErrorActionPreference='Continue'
         $output = & $shell -NoProfile -NonInteractive -File (Join-Path $repoScripts 'task-runtime.ps1') serve-build -Runtime GitBash -Port $ServePort @Extra 2>&1
-        return @{ code=$LASTEXITCODE; text=($output -join "`n") }
+        return @{ code=$LASTEXITCODE; text=(($output -join "`n") -replace '\s+',' ') }
     } finally { $ErrorActionPreference=$saved }
 }
 function Free-Port {
@@ -91,11 +91,22 @@ try {
     Assert ((Run-Remove $clean @('-ReleasedHead',$tip)).reason -match 'Dirty') 'untracked files refused even when Git status config hides them'
     Assert (Test-Path -LiteralPath (Join-Path $clean 'untracked')) 'dirty refusal preserves user file'
     [IO.File]::Delete((Join-Path $clean 'untracked'))
+    Git $clean @('update-index','--assume-unchanged','tracked.txt')
+    [IO.File]::WriteAllText((Join-Path $clean 'tracked.txt'),'hidden local change')
+    Assert (-not (Get-TaskGitText $clean @('status','--porcelain'))) 'assume-unchanged positive control actually hides a local edit'
+    Assert ((Run-Remove $clean @('-ReleasedHead',$tip)).reason -match 'Hidden index flags') 'hidden tracked modification blocks cleanup'
+    Assert ([IO.File]::ReadAllText((Join-Path $clean 'tracked.txt')) -eq 'hidden local change') 'hidden edit remains intact after refusal'
+    Git $clean @('update-index','--no-assume-unchanged','tracked.txt')
+    [IO.File]::WriteAllText((Join-Path $clean 'tracked.txt'),'tracked fixture')
     [IO.File]::WriteAllText((Join-Path $clean 'tracked.txt'), 'unmerged')
     Git $clean @('add','tracked.txt')
     Git $clean @('commit','-m','unmerged fixture')
     $unmerged = Get-TaskGitText $clean @('rev-parse','HEAD')
     Assert ((Run-Remove $clean @('-ReleasedHead',$unmerged)).reason -match 'Unmerged') 'unmerged HEAD refused'
+    Git $repo @('update-ref','refs/heads/origin/dev',$unmerged)
+    Assert ((Get-TaskGitText $repo @('rev-parse','refs/heads/origin/dev')) -eq $unmerged) 'local origin/dev shadow positive control points at unmerged HEAD'
+    Assert ((Run-Remove $clean @('-ReleasedHead',$unmerged)).reason -match 'Unmerged') 'local ref shadow cannot bypass remote merge guard'
+    Git $repo @('update-ref','-d','refs/heads/origin/dev')
     Assert ((Get-TaskGitText $repo @('rev-parse','task/clean')) -eq $unmerged) 'unmerged branch preserved'
 
     $linked = New-Tree 'linked'
@@ -133,6 +144,19 @@ try {
     [IO.Directory]::Delete($archiveAlias,$false)
     $archiveProof.files[0].archivePath=$copy
     Write-Receipt $archiveProof $manifest
+    $availableDrive=@(90..80 | ForEach-Object { ([char]$_).ToString()+':\' } | Where-Object { $_ -notin [IO.Directory]::GetLogicalDrives() } | Select-Object -First 1)
+    if ($availableDrive.Count) {
+        $drive=$availableDrive[0].TrimEnd('\')
+        & subst.exe $drive $linked
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create isolated subst fixture mapping' }
+        try {
+            $substFile=$drive+'\raw\evidence.txt'
+            Assert ((Get-FileHash -LiteralPath $substFile).Hash -eq $archiveProof.files[0].sha256) 'subst alias positive control matches raw source'
+            $archiveProof.files[0].archivePath=$substFile
+            Write-Receipt $archiveProof $manifest
+            Assert ((Run-Remove $linked @('-ReleasedHead',$tip,'-ArchiveManifest',$manifest)).reason -match 'physically outside') 'subst drive alias into deleted worktree refused'
+        } finally { & subst.exe $drive /d; $archiveProof.files[0].archivePath=$copy; Write-Receipt $archiveProof $manifest }
+    } else { Write-Output 'SKIP: no unused drive letter for isolated subst alias fixture' }
     $shortBuffer=[Text.StringBuilder]::new(32768)
     $shortLength=[OpenSetlistRuntime.NativePath]::GetShortPathNameW((Join-Path $linked 'raw/evidence.txt'),$shortBuffer,32768)
     if ($shortLength -gt 0 -and $shortBuffer.ToString() -ne (Join-Path $linked 'raw/evidence.txt')) {

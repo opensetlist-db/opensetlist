@@ -9,12 +9,26 @@ if (-not ('OpenSetlistRuntime.NativePath' -as [type])) {
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 namespace OpenSetlistRuntime {
   public static class NativePath {
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     public static extern uint GetLongPathNameW(string path, StringBuilder output, uint size);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     public static extern uint GetShortPathNameW(string path, StringBuilder output, uint size);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder output, uint size, uint flags);
+    public static string PhysicalPath(string path) {
+      using (var handle = CreateFileW(path, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
+        if (handle.IsInvalid) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        var output = new StringBuilder(32768);
+        uint size = GetFinalPathNameByHandleW(handle, output, 32768, 0);
+        if (size == 0 || size >= 32768) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        return output.ToString().TrimEnd('\\');
+      }
+    }
   }
 }
 '@
@@ -41,6 +55,13 @@ function Get-AbsoluteTaskPath([string]$Path) {
 
 function Test-SameTaskPath([string]$Left, [string]$Right) {
     return [string]::Equals($Left.TrimEnd('\').Replace('/', '\'), $Right.TrimEnd('\').Replace('/', '\'), [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-TaskArchiveOutside([string]$Archive, [string]$Target) {
+    Assert-NoTaskReparseAncestor $Archive
+    $physicalArchive=[OpenSetlistRuntime.NativePath]::PhysicalPath($Archive)
+    $physicalTarget=[OpenSetlistRuntime.NativePath]::PhysicalPath($Target)
+    if ((Test-SameTaskPath $physicalArchive $physicalTarget) -or $physicalArchive.StartsWith($physicalTarget+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Archive must resolve physically outside the deleted worktree' }
 }
 
 function Assert-NoTaskReparseAncestor([string]$Path) {

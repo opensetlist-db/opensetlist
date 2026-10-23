@@ -62,11 +62,15 @@ Neither the Windows CLI nor its Git Bash adapter accepts a force bypass.
 
 The helper requires an absolute local drive path directly inside the main
 checkout's `.claude/worktrees`. It rejects a junction/symlink at the target or
-any ancestor. Long paths are expanded before comparison, so 8.3 aliases cannot
+any ancestor. Archive boundaries also use resolved file-handle paths, so subst
+drive aliases cannot point the preserved copy back into the deleted worktree.
+Long paths are expanded before comparison, so 8.3 aliases cannot
 make an archive inside the target appear external. Git output is decoded as
 UTF-8, including non-ASCII checkout paths and evidence filenames. It refuses
 dirty/untracked, detached, Git-locked (including administrative lock files), active, and
-unmerged worktrees. Dependency junctions are removed first, followed by all
+unmerged worktrees. Hidden assume-unchanged/skip-worktree index flags are refused,
+and merge checks use fully qualified remote refs to avoid local ref shadows.
+Dependency junctions are removed first, followed by all
 nested reparse points, with native .NET nonrecursive unlinking and verification.
 Only junctions and symbolic links are eligible for unlinking; other reparse types
 (such as cloud placeholder files) are refused. Only then may Git remove the

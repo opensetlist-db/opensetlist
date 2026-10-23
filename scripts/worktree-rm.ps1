@@ -9,10 +9,10 @@ param(
 )
 Import-Module (Join-Path $PSScriptRoot 'windows/task-common.psm1') -Force -DisableNameChecking
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
-$OutputEncoding=[Text.UTF8Encoding]::new($false)
 if ($Sweep) {
     try {
+        [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+        $OutputEncoding=[Text.UTF8Encoding]::new($false)
         if ($Path -or $ReleasedHead -or $ArchiveManifest) { throw 'Sweep accepts only -DryRun; release registered worktrees individually' }
         $trees = @(Get-TaskWorktrees (Get-Location).Path)
         $parent = Join-Path $trees[0].Path '.claude/worktrees'
@@ -38,6 +38,8 @@ $sentinels = @{}
 $mutex = $null
 $ownsMutex = $false
 try {
+    [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+    $OutputEncoding=[Text.UTF8Encoding]::new($false)
     if ($env:OS -ne 'Windows_NT') { throw 'This helper requires native Windows PowerShell; use worktree-rm.sh on Linux/macOS' }
     $target = Get-AbsoluteTaskPath $Path
     $result.path = $target
@@ -72,8 +74,9 @@ try {
         Assert-TaskInactive $target (Get-TaskProcesses)
         $status = Get-TaskGitText $target @('status', '--porcelain', '--untracked-files=all')
         if ($status) { throw 'Dirty worktree: commit or preserve every tracked/untracked change first' }
+        if ((Get-TaskGitText $target @('ls-files','-v')) -match '(?m)^[a-zS] ') { throw 'Hidden index flags (assume-unchanged/skip-worktree) must be cleared before cleanup' }
         if ($MergeRef -notin @('origin/dev','origin/main','origin/feature/redesign')) { throw 'MergeRef must name a project remote integration branch: origin/dev, origin/main, origin/feature/redesign' }
-        $merged = Invoke-TaskGit $main @('merge-base', '--is-ancestor', $tree.Head, $MergeRef)
+        $merged = Invoke-TaskGit $main @('merge-base', '--is-ancestor', $tree.Head, "refs/remotes/$MergeRef")
         if ($merged.Code -ne 0) { throw "Unmerged HEAD (or invalid merge ref): $MergeRef" }
     } elseif (Test-Path -LiteralPath $target) {
         # A previous partial removal may leave a locked empty folder. No stale
@@ -97,6 +100,7 @@ try {
         if ($ArchiveManifest) {
             $manifestPath = Get-AbsoluteTaskPath $ArchiveManifest
             Assert-NoTaskReparseAncestor $manifestPath
+            Assert-TaskArchiveOutside $manifestPath $target
             if ((Test-SameTaskPath $manifestPath $target) -or $manifestPath.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Archive manifest must live outside the deleted worktree' }
             $proof = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
         }
@@ -112,6 +116,7 @@ try {
             if ($entry.Count -ne 1) { throw "Ignored evidence needs one verified archive entry: $relative" }
             $archive = Get-AbsoluteTaskPath $entry[0].archivePath
             Assert-NoTaskReparseAncestor $archive
+            Assert-TaskArchiveOutside $archive $target
             if ($archive.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Archive copy must live outside the deleted worktree' }
             $sourceHash = (Get-FileHash -LiteralPath (Join-Path $target $relative) -Algorithm SHA256).Hash
             if ($sourceHash -ne $entry[0].sha256 -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $sourceHash) { throw "Archive hash mismatch: $relative" }
@@ -131,6 +136,7 @@ try {
             if ((Get-TaskGitText $target @('rev-parse', 'HEAD')) -ne $ReleasedHead -or (Get-TaskGitText $target @('status', '--porcelain', '--untracked-files=all'))) { throw 'Worktree changed during validation' }
             Assert-TaskInactive $target (Get-TaskProcesses)
             Assert-TaskGitUnlocked $target $tree.Branch
+            if ((Get-TaskGitText $target @('ls-files','-v')) -match '(?m)^[a-zS] ') { throw 'Hidden index flags appeared during validation' }
             if (@(Get-TaskWorktrees $main | Where-Object { (Test-SameTaskPath $_.Path $target) -and $_.Locked }).Count) { throw 'Worktree became Git-locked' }
             # Unlink the dependency root first, then every nested build junction.
             $links = @($inventory | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } | Sort-Object @{Expression={ if (Test-SameTaskPath $_.FullName (Join-Path $target 'node_modules')) { 0 } else { 1 } }})
