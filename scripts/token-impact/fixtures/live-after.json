@@ -1,0 +1,5 @@
+{
+  "src/styles/tokens.ts": "export const colors = { live: '#b45309', liveDot: '#f59e0b', unused: '#fafafa' } as const;\n",
+  "src/Badge.tsx": "import { colors as palette } from '@/styles/tokens';\nimport * as tokens from './styles/tokens';\nconst CONFIG = { ongoing: { color: palette.live } };\nexport function Badge({status}: {status: keyof typeof CONFIG}) {\n const cfg = CONFIG[status];\n return <span style={{ color: cfg.color }}>LIVE<i style={{ background: cfg.color }} /><b style={{backgroundColor: tokens.colors.live}} /></span>;\n}\n",
+  "src/label.module.css": ":root { --live: #b45309; --derived: var(--live); }\n.label { color: var(--live, orange); }\n.dot { background: var(--derived); }\n"
+}
