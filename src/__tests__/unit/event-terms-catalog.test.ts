@@ -300,11 +300,6 @@ const DECIDED: Record<string, Record<Locale, string>> = {
     ja: "開催中止",
     ko: "공연 취소",
   },
-  "EventDetail.performersMore": {
-    en: "Show more ({count})",
-    ja: "もっと見る（{count}）",
-    ko: "더 보기 ({count})",
-  },
   "EventList.empty": {
     en: "No events match",
     ja: "該当する公演がありません",
@@ -341,7 +336,6 @@ const ALLOWED: { locale: Locale; key: string; value: string; reason: string }[] 
   },
 
   // The verb "show".
-  { locale: "en", key: "EventDetail.performersMore", value: "Show more ({count})", reason: VERB_SHOW },
   { locale: "en", key: "Artist.noArtists", value: "No artists to show", reason: VERB_SHOW },
   { locale: "en", key: "Artist.showOtherUnits", value: "Show other units ({count})", reason: VERB_SHOW },
   { locale: "en", key: "Album.noAlbums", value: "No albums to show", reason: VERB_SHOW },
