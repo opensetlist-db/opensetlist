@@ -85,6 +85,16 @@ describe("shared token impact inventory", () => {
     expect(renderImpact(malicious)).toContain("&lt;script&gt;&#124;x");
   });
 
+  it("does not narrow candidate origins just because an object field shares another token's name", () => {
+    const source = { ...after, "src/collision.tsx": "import { colors } from './styles/tokens'; const config = { live: colors.liveDot, foreground: colors.live }; const { live: tint } = config; export const Dot = () => <i style={{ background: tint, color: config[getKey()].live }} />;" };
+    const report = analyzeImpact(before, source);
+    const dot = report.changes.find((row) => row.name === "colors.liveDot")!;
+    expect(dot.consumers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ side: "after", file: "src/collision.tsx", expression: "tint", property: "background", status: "unresolved" }),
+      expect.objectContaining({ side: "after", file: "src/collision.tsx", expression: "config[getKey()].live", property: "color", status: "unresolved" }),
+    ]));
+  });
+
   it("reports CSS in TS strings, dynamic names and cyclic aliases without looping", () => {
     const source = { ...after, "src/runtime.tsx": "const name = 'live'; export const C = () => <i style={{color: 'var(--live)', background: `var(--${name})`}}/>;", "src/cycle.css": ":root { --a: var(--b); --b: var(--a); } .x { color: var(--a); }" };
     const report = analyzeImpact(before, source);

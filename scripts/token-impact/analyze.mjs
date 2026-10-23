@@ -108,21 +108,15 @@ function snapshot(input, tokenFiles) {
         const binding = declaration.parent.parent;
         if (ts.isVariableDeclaration(binding) && binding.initializer) {
           const base = origins(binding.initializer, seen);
-          const narrowed = base.filter((row) => row.key.endsWith(`.${nameOf(declaration.propertyName ?? declaration.name)}`));
           // An intermediate object's field (color) need not have the token's
-          // name (live). Preserve candidates when that field cannot be proven.
-          return (narrowed.length ? narrowed : base).map((row) => ({ ...row, reason: "Destructured binding; candidate set only, verify downstream use" }));
+          // name (live). Token-name coincidences do not prove a field's origin.
+          return base.map((row) => ({ ...row, reason: "Destructured binding; candidate set only, verify downstream use" }));
         }
       }
     }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       const base = origins(node.expression, seen);
-      const name = ts.isPropertyAccessExpression(node) ? node.name.text : nameOf(node.argumentExpression);
-      if (name !== null) {
-        const narrowed = base.filter((row) => row.key.split("#")[1].split(".").includes(name));
-        return (narrowed.length ? narrowed : base).map((row) => ({ ...row, reason: row.reason ?? "Indirect member reference; candidate set only" }));
-      }
-      return base.map((row) => ({ ...row, reason: "Dynamic member selection; candidate set only" }));
+      return base.map((row) => ({ ...row, reason: "Unproven member selection; candidate set only" }));
     }
     const indirect = [];
     // Object maps, templates, calls and conditional expressions are candidate
