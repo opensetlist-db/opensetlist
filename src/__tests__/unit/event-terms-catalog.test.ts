@@ -6,9 +6,10 @@ import ko from "../../../messages/ko.json";
 /**
  * Event terminology guard for the message catalogs.
  *
- * The redesign once shipped mockup copy verbatim and silently renamed the
- * Event entity (Events → Concerts, イベント → 公演, 이벤트 → 공연) and the
- * Japanese setlist spelling (セットリスト → セトリ). The owner-approved
+ * Design mockups carry illustrative copy; approving a screen does not
+ * approve its wording. Without a guard, mockup copy can rename the Event
+ * entity (Events → Concerts, イベント → 公演, 이벤트 → 공연) or the Japanese
+ * setlist spelling (セットリスト → セトリ) unnoticed. The owner-approved
  * rule set lives in the wiki spec `output/redesign-event-terms/spec.md`:
  *
  *   - en: the entity is "event(s)", never "concert(s)" / "show(s)";
@@ -490,13 +491,18 @@ describe("event terminology — forbidden terms", () => {
 
   it("no catalog value uses a forbidden term outside the allow-list", () => {
     const offenders: string[] = [];
+    let allowedHits = 0;
     for (const locale of LOCALES) {
       for (const [key, value] of Object.entries(FLAT[locale])) {
-        if (FORBIDDEN[locale].test(value) && !isAllowed(locale, key, value)) {
-          offenders.push(`${locale} ${key}: ${value}`);
-        }
+        if (!FORBIDDEN[locale].test(value)) continue;
+        if (isAllowed(locale, key, value)) allowedHits += 1;
+        else offenders.push(`${locale} ${key}: ${value}`);
       }
     }
+    // Positive control: the walk really reached the allow-listed values. If
+    // flattening ever yielded nothing (an import-shape change, say), the
+    // empty offender list below would otherwise pass without scanning.
+    expect(allowedHits).toBe(ALLOWED.length);
     expect(offenders).toEqual([]);
   });
 
