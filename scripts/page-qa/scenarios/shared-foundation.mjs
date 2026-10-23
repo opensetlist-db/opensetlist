@@ -4,8 +4,8 @@
 // already cached by the normal cell. This scenario never writes application data.
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { WEIGHTS, SPECIMEN, FONT_URL, realWeights, noLoadedFaces, rejectedFaces, fallbackGlyphs, classifyRequestFailure, runtimeFailures, observeFontResponses, responseErrors, verifyFontResponses } from "../font-proof.mjs";
 
 const PAGES = {
   home: "", events: "/events", artists: "/artists", albums: "/albums",
@@ -17,9 +17,7 @@ const PAGES = {
   series: "/series/8", privacy: "/privacy", terms: "/terms",
   search: "/search?q=Dream&type=all",
 };
-const WEIGHTS = [400, 500, 600, 700];
 const ROLES = ["header .font-josefin", "footer .font-josefin", "main h1", "main h2", "main a"];
-const FONT_URL = /\.woff2?(?:\?|$)/;
 
 async function shot(page, file, cold = false) {
   // Viewport evidence is deliberate: page-specific layout and full-page
@@ -81,7 +79,7 @@ async function platformFonts(ctx, page, selectors) {
 }
 
 async function specimen(page) {
-  await page.evaluate((weights) => {
+  await page.evaluate(({ weights, texts }) => {
     const panel = document.createElement("aside");
     panel.id = "foundation-font-specimen";
     panel.style.cssText = "position:fixed;inset:0;z-index:999999;background:white;color:#172445;padding:16px;overflow:auto;font-family:var(--font-body)";
@@ -91,7 +89,7 @@ async function specimen(page) {
     for (const w of weights) {
       const row = document.createElement("div");
       row.style.cssText = `font-size:20px;line-height:1.8;font-weight:${w};margin:12px 0;overflow-wrap:anywhere`;
-      for (const [script, text] of Object.entries({ latin: "OpenSetlist 0123 ", ja: "ライブ出演 音楽 ", ko: "공연곡명 한국어 " })) {
+      for (const [script, text] of Object.entries(texts)) {
         const span = document.createElement("span");
         span.id = `foundation-${script}-${w}`;
         span.textContent = text;
@@ -100,39 +98,34 @@ async function specimen(page) {
       panel.append(row);
     }
     document.body.append(panel);
-  }, WEIGHTS);
+  }, { weights: WEIGHTS, texts: SPECIMEN });
 }
 
-function realWeights(rows) {
-  const suffix = { 400: "Regular", 500: "Medium", 600: "SemiBold", 700: "Bold" };
-  return rows.length === 12 && rows.every((r) => {
-    const weight = r.selector.split("-").at(-1);
-    return r.fonts.length > 0 && r.fonts.every((f) =>
-      f.isCustomFont && f.glyphCount > 0 && f.postScriptName.endsWith(`-${suffix[weight]}`),
-    );
-  });
-}
-
-const scenario = {
+export function createFoundationScenario({ smoke = false, manifest = null } = {}) {
+return {
   name: "shared-foundation",
   async run(h) {
+    let failed = false;
+    const check = (name, ok, detail) => {
+      if (!ok) failed = true;
+      h.check(name, ok, detail);
+    };
     const entries = [];
     const file = path.join(h.outDir, `font-evidence-${h.browserName}${h.quick ? "-quick" : ""}.json`);
-    const save = () => fs.writeFileSync(file, JSON.stringify({ base: h.base, at: new Date().toISOString(), entries }, null, 2));
+    const save = () => fs.writeFileSync(file, JSON.stringify({ base: h.base, smoke, manifestSha256: manifest?.sha256 ?? null, at: new Date().toISOString(), entries }, null, 2));
     // The full browser/locale/width shell matrix is run by shell-qa. These
     // cells isolate the approved desktop/mobile font boundary and failure.
-    const locales = h.quick ? ["ko"] : ["ja", "ko", "en"];
-    const widths = h.quick ? [390] : [1440, 390];
-    for (const [key, p] of Object.entries(PAGES)) {
+    const locales = smoke || h.quick ? ["ko"] : ["ja", "ko", "en"];
+    const widths = smoke || h.quick ? [390] : [1440, 390];
+    for (const [key, p] of Object.entries(smoke ? { privacy: PAGES.privacy } : PAGES)) {
       for (const locale of locales) for (const width of widths) {
         for (const state of ["normal", "cold", "failure"]) {
           const name = `${key}/${locale}/${width}/${state}`;
-          await h.section(name, async () => {
+          const completed = await h.section(name, async () => {
             let release;
             const gate = new Promise((resolve) => { release = resolve; });
             const attempts = [];
-            const responses = [];
-            const bodies = [];
+            let observer;
             const exceptions = [];
             const unexpectedFailures = [];
             let held = 0;
@@ -143,13 +136,7 @@ const scenario = {
                 beforeNavigate: async ({ ctx, page }) => {
                   page.on("pageerror", (e) => exceptions.push(String(e)));
                   page.on("requestfailed", (r) => {
-                    const telemetry = /google-analytics|googletagmanager|sentry\.io|speed-insights/.test(r.url());
-                    const fontFault = state !== "normal" && FONT_URL.test(r.url());
-                    // The diagnostic overlay moves links out of view. Next
-                    // cancels their speculative prefetches; active navigation
-                    // and API requests never carry this prefetch header.
-                    const prefetchAbort = r.headers()["next-router-prefetch"] === "1" && /ERR_ABORTED|cancelled|canceled/i.test(r.failure()?.errorText ?? "");
-                    if (!telemetry && !fontFault && !prefetchAbort) unexpectedFailures.push(`${r.url()} ${r.failure()?.errorText}`);
+                    if (classifyRequestFailure(r, state) === "unexpected") unexpectedFailures.push(`${r.url()} ${r.failure()?.errorText}`);
                   });
                   await page.addInitScript(() => {
                     if (PerformanceObserver.supportedEntryTypes?.includes("layout-shift")) {
@@ -159,15 +146,7 @@ const scenario = {
                       }).observe({ type: "layout-shift", buffered: true });
                     }
                   });
-                  page.on("response", (r) => {
-                    if (!FONT_URL.test(r.url())) return;
-                    // Attach the rejection handler immediately: body() can
-                    // reject before the later allSettled call is reached.
-                    bodies.push(r.body().then(
-                      (buf) => responses.push({ url: r.url(), bytes: buf.length, sha256: createHash("sha256").update(buf).digest("hex") }),
-                      (error) => responses.push({ url: r.url(), error: String(error) }),
-                    ));
-                  });
+                  observer = observeFontResponses(page);
                   await ctx.route("**/*", async (route) => {
                     const req = route.request();
                     if (!["GET", "HEAD"].includes(req.method()) || /google-analytics|googletagmanager|sentry\.io|speed-insights/.test(req.url())) return route.abort();
@@ -180,29 +159,29 @@ const scenario = {
                   });
                 },
               });
-              h.check(`${name} HTTP`, resp?.status() === 200, `${resp?.status()} ${page.url()}`);
+              check(`${name} HTTP`, resp?.status() === 200, `${resp?.status()} ${page.url()}`);
               if (state === "cold") {
                 await page.waitForTimeout(700);
-                h.check(`${name} font gate active`, held > 0, `held ${held}`);
+                check(`${name} font gate active`, held > 0, `held ${held}`);
               } else {
                 await page.waitForTimeout(350);
-                h.check(`${name} font requests observed`, attempts.length > 0, `${attempts.length} font requests`);
+                check(`${name} font requests observed`, attempts.length > 0, `${attempts.length} font requests`);
               }
               item.url = page.url();
               item.page = await roles(page);
               if (state !== "normal") {
-                h.check(`${name} no custom faces loaded`, item.page.faces.length > 0 && !item.page.faces.some((f) => f.status === "loaded"), JSON.stringify(item.page.faces));
-                if (state === "failure") h.check(`${name} rejected faces observed`, item.page.faces.some((f) => f.status === "error"), `${item.page.faces.length} attempted faces`);
+                check(`${name} no custom faces loaded`, noLoadedFaces(item.page.faces), JSON.stringify(item.page.faces));
+                if (state === "failure") check(`${name} rejected faces observed`, rejectedFaces(item.page.faces), `${item.page.faces.length} attempted faces`);
               }
-              h.check(`${name} readable roles`, item.page.roles.every((r) => r.text && r.width > 0 && r.height > 0), JSON.stringify(item.page.roles.map((r) => [r.selector, r.text])));
-              h.check(`${name} overflow`, item.page.overflow <= 1, `${item.page.overflow}px`);
-              h.check(`${name} language`, item.page.lang === locale, item.page.lang);
+              check(`${name} readable roles`, item.page.roles.every((r) => r.text && r.width > 0 && r.height > 0), JSON.stringify(item.page.roles.map((r) => [r.selector, r.text])));
+              check(`${name} overflow`, item.page.overflow <= 1, `${item.page.overflow}px`);
+              check(`${name} language`, item.page.lang === locale, item.page.lang);
               const capture = `${key}-${locale}-${width}-${state}-${h.browserName}.webp`;
               await shot(page, path.join(h.outDir, capture), state === "cold");
               item.capture = capture;
               if (!h.webkit) {
                 item.platformFonts = await platformFonts(ctx, page, ROLES);
-                if (state !== "normal") h.check(`${name} actual fallback glyphs`, item.platformFonts.length > 0 && item.platformFonts.every((r) => r.fonts.length > 0 && r.fonts.every((f) => !f.isCustomFont)), JSON.stringify(item.platformFonts));
+                if (state !== "normal") check(`${name} actual fallback glyphs`, fallbackGlyphs(item.platformFonts), JSON.stringify(item.platformFonts));
               }
               if (state === "cold") {
                 release();
@@ -212,7 +191,7 @@ const scenario = {
               }
               if (state !== "failure") {
                 const logos = item.page.roles.filter((r) => r.selector.includes("josefin"));
-                if (state === "normal") h.check(`${name} logo metrics`, logos.length === 2 && logos.every((r) => r.weight === "400" && r.transform === "uppercase" && Math.abs(parseFloat(r.tracking) - parseFloat(r.size) * 0.02) < 0.01), JSON.stringify(logos));
+                if (state === "normal") check(`${name} logo metrics`, logos.length === 2 && logos.every((r) => r.weight === "400" && r.transform === "uppercase" && Math.abs(parseFloat(r.tracking) - parseFloat(r.size) * 0.02) < 0.01), JSON.stringify(logos));
                 await specimen(page);
                 await page.evaluate(() => document.fonts.ready.then(() => undefined));
                 const selectors = WEIGHTS.flatMap((w) => ["latin", "ja", "ko"].map((s) => `#foundation-${s}-${w}`));
@@ -220,10 +199,10 @@ const scenario = {
                 await shot(page, path.join(h.outDir, item.specimen));
                 if (!h.webkit) {
                   item.specimenFonts = await platformFonts(ctx, page, selectors);
-                  h.check(`${name} actual custom glyphs and weights`, realWeights(item.specimenFonts), JSON.stringify(item.specimenFonts));
+                  check(`${name} actual custom glyphs and weights`, realWeights(item.specimenFonts), JSON.stringify(item.specimenFonts));
                 } else {
                   const faces = await page.evaluate(() => [...document.fonts].filter((f) => f.status === "loaded").map((f) => ({ family: f.family.replaceAll('"', ""), weight: f.weight })));
-                  h.check(`${name} loaded specimen weights`, ["DM Sans", "Noto Sans KR", "Noto Sans JP"].every((family) => WEIGHTS.every((w) => faces.some((f) => f.family === family && f.weight === String(w)))), JSON.stringify(faces));
+                  check(`${name} loaded specimen weights`, ["DM Sans", "Noto Sans KR", "Noto Sans JP"].every((family) => WEIGHTS.every((w) => faces.some((f) => f.family === family && f.weight === String(w)))), JSON.stringify(faces));
                   h.skip(`${name} CDP glyph proof`, "WebKit has no CDP CSS platform fonts API; resource hashes + screenshots retained, actual iOS owner validation separate");
                 }
                 await page.locator("#foundation-font-specimen").evaluate((el) => el.remove());
@@ -231,23 +210,32 @@ const scenario = {
               // Generic resource console lines omit their URL in Chromium.
               // The requestfailed listener above admits only the exact font
               // fault/telemetry resources; page exceptions are never filtered.
-              const runtime = errors.filter((e) => !/^Failed to load resource: (net::ERR_FAILED|Load failed|cancelled|canceled)/i.test(e));
-              const failures = [...runtime, ...exceptions, ...unexpectedFailures];
-              h.check(`${name} runtime`, failures.length === 0, failures.join("; "));
-              await Promise.allSettled(bodies);
-              h.check(`${name} response bodies recorded`, responses.every((r) => !r.error), responses.filter((r) => r.error).map((r) => `${r.url}: ${r.error}`).join("; "));
+              const failures = runtimeFailures({ errors, exceptions, requests: unexpectedFailures });
+              check(`${name} runtime`, failures.length === 0, failures.join("; "));
+              const responses = await observer.finish();
+              check(`${name} response bodies recorded`, responseErrors(responses).length === 0, JSON.stringify(responseErrors(responses)));
+              if (manifest) {
+                const mismatches = verifyFontResponses(responses, manifest, { requireResponses: state !== "failure" });
+                check(`${name} approved font response SHA`, mismatches.length === 0, mismatches.join("; "));
+              }
               item.attempts = attempts;
               item.fontResponses = responses;
             } finally {
               release();
+              // Even a navigation/screenshot throw must retain the response
+              // errors already consumed by the listener.
+              if (observer) item.fontResponses = await observer.finish();
+              item.attempts = attempts;
               entries.push(item);
               save();
             }
           }, { ms: h.timeoutMs * 4 });
+          if (smoke && (!completed || failed)) return;
         }
       }
     }
     save();
   },
 };
-export default scenario;
+}
+export default createFoundationScenario();
