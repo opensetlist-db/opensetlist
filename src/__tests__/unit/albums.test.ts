@@ -146,13 +146,21 @@ describe("getAlbumsPage", () => {
     expect((await getAlbumsPage("en", undefined, 24)).totalPages).toBe(24);
   });
 
-  it("keeps the optimistic offset bounded for an absurd page number", async () => {
+  it("skips the row query for an absurd page past the end", async () => {
     db.count.mockResolvedValue(474);
     db.findMany.mockResolvedValue([]);
-    await getAlbumsPage("ko", undefined, Number.MAX_SAFE_INTEGER);
-    const { skip } = db.findMany.mock.calls[0][0];
-    expect(Number.isSafeInteger(skip)).toBe(true);
-    expect(skip).toBeLessThanOrEqual(100_000 * ALBUMS_PER_PAGE);
+    const result = await getAlbumsPage("ko", undefined, Number.MAX_SAFE_INTEGER);
+    expect(db.count).toHaveBeenCalledTimes(1);
+    expect(db.findMany).not.toHaveBeenCalled();
+    expect(result).toEqual({ albums: [], total: 474, totalPages: 24 });
+  });
+
+  it("fetches the exact rows of an existing page above the optimistic bound", async () => {
+    // A catalog big enough for page 100,001 to exist.
+    db.count.mockResolvedValue(100_001 * ALBUMS_PER_PAGE);
+    db.findMany.mockResolvedValue([]);
+    await getAlbumsPage("ko", undefined, 100_001);
+    expect(db.findMany.mock.calls[0][0].skip).toBe(100_000 * ALBUMS_PER_PAGE);
   });
 });
 

@@ -64,13 +64,13 @@ function albumsListInclude(locale: string) {
 export const ALBUMS_PER_PAGE = 20;
 
 /*
- * Upper bound on the page number used to compute the optimistic `skip`
- * (see getAlbumsPage). A hand-typed `?page=99999999999` is out of range
- * for any real catalog and the page redirects to the last page anyway;
- * the clamp only keeps the discarded query's OFFSET a sane integer
- * instead of handing Postgres a 13-digit offset.
+ * Highest page fetched optimistically, in parallel with the count (see
+ * getAlbumsPage). A hand-typed `?page=99999999999` is out of range for
+ * any real catalog, and fetching it would hand Postgres a 13-digit
+ * OFFSET for rows that are discarded anyway; above this bound the rows
+ * wait for the count and are fetched only when the page exists.
  */
-const MAX_QUERY_PAGE = 100_000;
+const MAX_OPTIMISTIC_PAGE = 100_000;
 
 /*
  * The one filter both the page query and the count use, so the total,
@@ -124,7 +124,7 @@ async function findAlbumsListRows(
   const albums = await prisma.album.findMany({
     where,
     orderBy: ALBUMS_LIST_ORDER,
-    skip: (Math.min(page, MAX_QUERY_PAGE) - 1) * ALBUMS_PER_PAGE,
+    skip: (page - 1) * ALBUMS_PER_PAGE,
     take: ALBUMS_PER_PAGE,
     include: albumsListInclude(locale),
   });
@@ -160,7 +160,8 @@ export type AlbumsPage = {
  *
  * The pool is two connections (src/lib/prisma.ts), so the two queries
  * really do overlap; the artist-chip query runs before this because the
- * filter has to be validated against it.
+ * filter has to be validated against it. Pages above
+ * MAX_OPTIMISTIC_PAGE count first and fetch only an existing page.
  */
 export async function getAlbumsPage(
   locale: string,
@@ -168,10 +169,20 @@ export async function getAlbumsPage(
   page: number,
 ): Promise<AlbumsPage> {
   const where = albumsListWhere(artistId);
-  const [total, albums] = await Promise.all([
-    prisma.album.count({ where }),
-    findAlbumsListRows(locale, where, page),
-  ]);
+  let total: number;
+  let albums: AlbumsListItem[];
+  if (page <= MAX_OPTIMISTIC_PAGE) {
+    [total, albums] = await Promise.all([
+      prisma.album.count({ where }),
+      findAlbumsListRows(locale, where, page),
+    ]);
+  } else {
+    total = await prisma.album.count({ where });
+    albums =
+      page <= Math.ceil(total / ALBUMS_PER_PAGE)
+        ? await findAlbumsListRows(locale, where, page)
+        : [];
+  }
   return {
     albums,
     total,
