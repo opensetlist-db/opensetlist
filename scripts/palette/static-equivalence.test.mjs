@@ -96,3 +96,18 @@ test("new-variable audit ignores strings and opaque URLs", () => {
   const source = '.other { content: "var(--new, red)"; background: url("/var(--new)"); }';
   assert.equal(compareCss(source, source, { variables, addedVariables: ["--new"] }).equal, true);
 });
+
+test("comments in var arguments and escaped identifiers cannot hide prior references", () => {
+  const options = { variables: { "--new": "#fff" }, addedVariables: ["--new"] };
+  const normal = ".other { color: var(/* keep */--existing, red) }";
+  assert.equal(compareCss(normal, normal, options).equal, true);
+  const commented = ".other { color: var(/* fallback */--new, red) }";
+  assert.equal(compareCss(commented, commented, options).equal, false);
+  for (const escaped of [String.raw`.x {color:var(--\6e ew, red)}`,
+    String.raw`.x {--\6e ew: black}`]) {
+    const result = compareCss(escaped, escaped, options);
+    assert.equal(result.equal, false);
+    assert.ok(result.differences.some((row) => row.kind === "unsupported-identifier-escape"));
+  }
+  assert.throws(() => compareCss(String.raw`@\70roperty --new {inherits: true}`, "", options));
+});

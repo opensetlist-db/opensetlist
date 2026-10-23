@@ -67,7 +67,8 @@ fallback or alias elsewhere and silently change another element's color.
 This is intentionally conservative: supported literals are valid hex
 (3/4/6/8 digits) and color functions understood by the installed Culori parser.
 Named colors, token aliases, new fallbacks, conditional token definitions, and
-other transformations require a different proof. Whitespace within values is
+escaped identifiers in values/declarations require a different proof. Other
+transformations require a different proof too. Whitespace within values is
 preserved; comments and surrounding formatting are excluded from semantic
 structure comparison. Review those in the source diff. External stylesheets,
 inline styles and runtime JS token overrides are outside the source inventory;

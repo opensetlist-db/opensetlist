@@ -56,7 +56,7 @@ function addedReferences(tree, addedVariables) {
       for (const child of children) {
         if (child.type !== "function" || child.value.toLowerCase() === "url") continue;
         if (child.value.toLowerCase() === "var") {
-          const first = child.nodes.filter((part) => part.type !== "space")[0];
+          const first = child.nodes.filter((part) => part.type !== "space" && part.type !== "comment")[0];
           if (first?.type === "word" && names.has(first.value)) {
             references.push({ kind: "preexisting-added-variable-reference", name: first.value,
               field, line: node.source?.start?.line });
@@ -70,6 +70,29 @@ function addedReferences(tree, addedVariables) {
   tree.walkDecls((node) => inspect(node.value, node, "value"));
   tree.walkAtRules((node) => inspect(node.params, node, "at-rule-params"));
   return references;
+}
+
+// PostCSS preserves CSS escapes in identifiers. Until this proof decodes
+// them, reject such contexts instead of missing an escaped token override
+// or reference. Quoted strings and URLs remain opaque data.
+function unsupportedEscapes(tree) {
+  const differences = [];
+  const add = (node, field) => differences.push({ kind: "unsupported-identifier-escape", field, line: node.source?.start?.line });
+  function inspect(value, node, field) {
+    valueParser(value).walk((part) => {
+      if (part.type === "function" && part.value.toLowerCase() === "url") return false;
+      if ((part.type === "word" || part.type === "function") && part.value.includes("\\")) add(node, field);
+    });
+  }
+  tree.walkDecls((node) => {
+    if (node.prop.includes("\\")) add(node, "property");
+    inspect(node.value, node, "value");
+  });
+  tree.walkAtRules((node) => {
+    if (node.name.includes("\\")) add(node, "at-rule-name");
+    inspect(node.params, node, "at-rule-params");
+  });
+  return differences;
 }
 
 function compareValues(before, after, colors, at, differences, substitutions) {
@@ -146,12 +169,13 @@ export function compareCss(beforeSource, afterSource, { variables = {}, addedVar
   const result = compareTree(before, after, colors);
   result.differences.push(...addedReferences(before, addedVariables));
   for (const [side, tree] of [["before", before], ["after", after]]) {
+    result.differences.push(...unsupportedEscapes(tree).map((row) => ({ ...row, side })));
     tree.walkDecls((node) => {
       if (colors.has(node.prop)) result.differences.push({ kind: "scoped-approved-variable", side,
         name: node.prop, line: node.source?.start?.line });
     });
-    tree.walkAtRules("property", (node) => {
-      if (colors.has(node.params.trim())) result.differences.push({ kind: "registered-approved-variable", side,
+    tree.walkAtRules((node) => {
+      if (node.name.toLowerCase() === "property" && colors.has(node.params.trim())) result.differences.push({ kind: "registered-approved-variable", side,
         name: node.params.trim(), line: node.source?.start?.line });
     });
   }
@@ -173,12 +197,13 @@ export function compareGlobals(beforeSource, afterSource, { variables = {}, adde
   const oldDecls = liveNodes(oldRoots[0].nodes).filter((node) => node.type === "decl");
   const newDecls = liveNodes(newRoots[0].nodes).filter((node) => node.type === "decl");
   for (const [side, tree, valid] of [["before", before, oldDecls], ["after", after, newDecls]]) {
+    differences.push(...unsupportedEscapes(tree).map((row) => ({ ...row, side })));
     tree.walkDecls((node) => {
       if (colors.has(node.prop) && !valid.includes(node)) differences.push({ kind: "scoped-approved-variable",
         side, name: node.prop, line: node.source?.start?.line });
     });
-    tree.walkAtRules("property", (node) => {
-      if (colors.has(node.params.trim())) differences.push({ kind: "registered-approved-variable",
+    tree.walkAtRules((node) => {
+      if (node.name.toLowerCase() === "property" && colors.has(node.params.trim())) differences.push({ kind: "registered-approved-variable",
         side, name: node.params.trim(), line: node.source?.start?.line });
     });
   }
