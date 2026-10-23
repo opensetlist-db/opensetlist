@@ -17,39 +17,59 @@ vi.mock("next-intl/server", () => ({
 vi.mock("next-intl", () => ({
   useTranslations: (ns?: string) => echo(ns),
 }));
+type Href = { pathname: string; query?: Record<string, string>; hash?: string };
+const serialise = (href: Href) => {
+  const q =
+    href.query && Object.keys(href.query).length
+      ? `?${new URLSearchParams(href.query)}`
+      : "";
+  return `${href.pathname}${q}${href.hash ? `#${href.hash}` : ""}`;
+};
 // Locale-aware Link → plain anchor with the query serialised, enough to
-// assert the filter hrefs.
+// assert the filter and pager hrefs. `redirect` throws like the real one
+// (it never returns), carrying the target for assertions.
+const nav = vi.hoisted(() => ({
+  RedirectError: class RedirectError extends Error {
+    constructor(
+      readonly target: string,
+      readonly locale: string,
+    ) {
+      super(`redirect ${target}`);
+    }
+  },
+}));
 vi.mock("@/i18n/navigation", () => ({
   Link: ({
     href,
     children,
     ...rest
   }: {
-    href: { pathname: string; query?: Record<string, string> };
+    href: Href;
     children: ReactNode;
-  }) => {
-    const q = href.query ? `?${new URLSearchParams(href.query)}` : "";
-    return (
-      <a href={`${href.pathname}${q}`} {...rest}>
-        {children}
-      </a>
-    );
+  }) => (
+    <a href={serialise(href)} {...rest}>
+      {children}
+    </a>
+  ),
+  redirect: ({ href, locale }: { href: Href; locale: string }) => {
+    throw new nav.RedirectError(serialise(href), locale);
   },
 }));
 
 const lib = vi.hoisted(() => ({
-  getAlbums: vi.fn(),
+  getAlbumsPage: vi.fn(),
   getAlbumArtistFilters: vi.fn(),
 }));
 vi.mock("@/lib/albums", async (orig) => ({
   ...(await orig<typeof import("@/lib/albums")>()),
-  getAlbums: lib.getAlbums,
+  getAlbumsPage: lib.getAlbumsPage,
   getAlbumArtistFilters: lib.getAlbumArtistFilters,
 }));
 
 import { AlbumListRow } from "@/components/albums/AlbumListRow";
 import { AlbumListCover } from "@/components/albums/AlbumListCover";
 import { AlbumArtistFilter } from "@/components/albums/AlbumArtistFilter";
+import { AlbumPagination } from "@/components/albums/AlbumPagination";
 
 type Any = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -194,38 +214,134 @@ describe("AlbumArtistFilter", () => {
   });
 });
 
-describe("AlbumsPage", () => {
-  it("shows the empty panel when the catalog has no albums", async () => {
-    lib.getAlbumArtistFilters.mockResolvedValue([]);
-    lib.getAlbums.mockResolvedValue([]);
-    const { default: AlbumsPage } = await import("@/app/[locale]/albums/page");
-    const el = await AlbumsPage({
-      params: Promise.resolve({ locale: "ko" }),
-      searchParams: Promise.resolve({}),
-    });
-    // The filter is an async server component; the page tree is checked
-    // structurally instead of rendered.
-    const json = JSON.stringify(el, (_k, v) =>
-      typeof v === "function" ? v.name : v,
-    );
-    expect(json).toContain("Album.noAlbums");
-    expect(lib.getAlbums).toHaveBeenCalledWith("ko", undefined);
+describe("AlbumPagination", () => {
+  async function renderPager(page: number, totalPages: number, artist: string | null = null) {
+    const el = await AlbumPagination({ page, totalPages, artist });
+    return el ? render(el as ReactElement) : null;
+  }
+  const items = (container: HTMLElement) =>
+    [...container.querySelector("nav")!.children].map((e) => ({
+      tag: e.tagName,
+      text: e.textContent,
+      href: e.getAttribute("href"),
+      current: e.getAttribute("aria-current"),
+      disabled: e.getAttribute("aria-disabled"),
+    }));
+
+  it("renders nothing for a single page", async () => {
+    expect(await renderPager(1, 1)).toBeNull();
+    // Positive control: two pages do render a pager.
+    expect(await renderPager(1, 2)).not.toBeNull();
   });
 
-  it("renders year sections of rows, not the empty panel, for a catalog", async () => {
-    lib.getAlbumArtistFilters.mockResolvedValue([]);
-    lib.getAlbums.mockResolvedValue([album(), album({ id: 136, slug: "x", releaseDate: null })]);
-    const { default: AlbumsPage } = await import("@/app/[locale]/albums/page");
-    const el = await AlbumsPage({
-      params: Promise.resolve({ locale: "ko" }),
-      searchParams: Promise.resolve({}),
-    });
-    const json = JSON.stringify(el, (_k, v) =>
-      typeof v === "function" ? v.name : v,
+  it("disables Previous on page 1 and links canonical page URLs", async () => {
+    const { container } = (await renderPager(1, 24))!;
+    expect(container.querySelector("nav")?.getAttribute("aria-label")).toBe(
+      "Album.pagination.aria",
     );
+    const prev = { href: null, current: null };
+    expect(items(container)).toEqual([
+      { tag: "SPAN", text: "Album.pagination.prev", ...prev, disabled: "true" },
+      { tag: "SPAN", text: "1", href: null, current: "page", disabled: null },
+      { tag: "A", text: "2", href: "/albums?page=2#album-results", current: null, disabled: null },
+      { tag: "SPAN", text: "…", href: null, current: null, disabled: null },
+      { tag: "A", text: "24", href: "/albums?page=24#album-results", current: null, disabled: null },
+      {
+        tag: "A",
+        text: "Album.pagination.next",
+        href: "/albums?page=2#album-results",
+        current: null,
+        disabled: null,
+      },
+    ]);
+  });
+
+  it("keeps the artist filter, drops ?page= for page 1, disables Next at the end", async () => {
+    const { container } = (await renderPager(4, 4, "1"))!;
+    const list = items(container);
+    expect(list[0].href).toBe("/albums?artist=1&page=3#album-results");
+    expect(list[1]).toMatchObject({ text: "1", href: "/albums?artist=1#album-results" });
+    expect(list.at(-2)).toMatchObject({ text: "4", current: "page" });
+    expect(list.at(-1)).toMatchObject({ tag: "SPAN", disabled: "true" });
+  });
+
+  it("gives page numbers an accessible page name and hides the ellipsis", async () => {
+    const { container } = (await renderPager(10, 24))!;
+    const current = container.querySelector('[aria-current="page"]')!;
+    expect(current.getAttribute("aria-label")).toBe(
+      'Album.pagination.pageLabel:{"page":10}',
+    );
+    const gaps = [...container.querySelectorAll("nav > span")].filter(
+      (e) => e.textContent === "…",
+    );
+    expect(gaps).toHaveLength(2);
+    for (const gap of gaps) expect(gap.getAttribute("aria-hidden")).toBe("true");
+  });
+});
+
+describe("AlbumsPage", () => {
+  type Sp = { artist?: string | string[]; page?: string | string[] };
+  async function runPage(sp: Sp) {
+    const { default: AlbumsPage } = await import("@/app/[locale]/albums/page");
+    return AlbumsPage({
+      params: Promise.resolve({ locale: "ko" }),
+      searchParams: Promise.resolve(sp),
+    });
+  }
+  async function redirectOf(sp: Sp) {
+    try {
+      await runPage(sp);
+    } catch (e) {
+      if (e instanceof nav.RedirectError) return `${e.locale}:${e.target}`;
+      throw e;
+    }
+    return null;
+  }
+  // The filter is an async server component; the page tree is checked
+  // structurally instead of rendered. The page's own props are read back
+  // from the JSON tree.
+  const tree = (el: unknown) =>
+    JSON.stringify(el, (_k, v) => (typeof v === "function" ? v.name : v));
+  const pageResult = (albums: unknown[], total: number) => ({
+    albums,
+    total,
+    totalPages: Math.ceil(total / 20),
+  });
+
+  it("shows the empty panel, without summary or pager, for no albums", async () => {
+    lib.getAlbumArtistFilters.mockResolvedValue([]);
+    lib.getAlbumsPage.mockResolvedValue(pageResult([], 0));
+    const json = tree(await runPage({}));
+    expect(json).toContain("Album.noAlbums");
+    expect(json).not.toContain("album-results");
+    expect(json).not.toContain("AlbumPagination");
+    expect(lib.getAlbumsPage).toHaveBeenCalledWith("ko", undefined, 1);
+  });
+
+  it("renders this page's year sections, summary and pager", async () => {
+    lib.getAlbumArtistFilters.mockResolvedValue([]);
+    lib.getAlbumsPage.mockResolvedValue(
+      pageResult([album(), album({ id: 136, slug: "x", releaseDate: null })], 42),
+    );
+    const json = tree(await runPage({ page: "3" }));
+    expect(lib.getAlbumsPage).toHaveBeenLastCalledWith("ko", undefined, 3);
     expect(json).toContain("AlbumListRow");
     expect(json).toContain("album-year-2024");
     expect(json).toContain("album-year-undated");
+    expect(json).toContain(`Album.yearPageCount:${JSON.stringify(JSON.stringify({ count: 1 })).slice(1, -1)}`);
+    // Rows 41–42 of 42: the range ends at the last row actually shown.
+    const summary = JSON.stringify({
+      total: 42,
+      start: 41,
+      end: 42,
+      perPage: 20,
+      page: 3,
+      totalPages: 3,
+    });
+    expect(json).toContain(
+      `Album.pagination.summary:${JSON.stringify(summary).slice(1, -1)}`,
+    );
+    expect(json).toContain("AlbumPagination");
     expect(json).not.toContain("Album.noAlbums");
   });
 
@@ -234,17 +350,56 @@ describe("AlbumsPage", () => {
       { id: "1", name: "A" },
       { id: "109", name: "B" },
     ]);
-    lib.getAlbums.mockResolvedValue([]);
-    const { default: AlbumsPage } = await import("@/app/[locale]/albums/page");
-    await AlbumsPage({
-      params: Promise.resolve({ locale: "ko" }),
-      searchParams: Promise.resolve({ artist: "999" }),
-    });
-    expect(lib.getAlbums).toHaveBeenLastCalledWith("ko", undefined);
-    await AlbumsPage({
-      params: Promise.resolve({ locale: "ko" }),
-      searchParams: Promise.resolve({ artist: ["109", "1"] }),
-    });
-    expect(lib.getAlbums).toHaveBeenLastCalledWith("ko", BigInt(109));
+    lib.getAlbumsPage.mockResolvedValue(pageResult([album()], 1));
+    await runPage({ artist: "109" });
+    expect(lib.getAlbumsPage).toHaveBeenLastCalledWith("ko", BigInt(109), 1);
+    // An unknown artist is "all" (existing rule); the URL keeps it unless
+    // the page itself has to be redirected.
+    await runPage({ artist: "999" });
+    expect(lib.getAlbumsPage).toHaveBeenLastCalledWith("ko", undefined, 1);
+    await runPage({ artist: ["109", "1"] });
+    expect(lib.getAlbumsPage).toHaveBeenLastCalledWith("ko", BigInt(109), 1);
+  });
+
+  it.each([
+    [{ page: "1" }, "ko:/albums"],
+    [{ page: "abc" }, "ko:/albums"],
+    [{ page: "0" }, "ko:/albums"],
+    [{ page: "-3" }, "ko:/albums"],
+    [{ page: "" }, "ko:/albums"],
+    [{ page: "02" }, "ko:/albums?page=2"],
+    [{ page: ["2", "3"] }, "ko:/albums?page=2"],
+    [{ page: "25" }, "ko:/albums?page=24"],
+    [{ page: "99999999999999999999" }, "ko:/albums?page=24"],
+    [{ artist: "1", page: "x" }, "ko:/albums?artist=1"],
+    [{ artist: "1", page: "30" }, "ko:/albums?artist=1&page=24"],
+    [{ artist: "999", page: "1" }, "ko:/albums"],
+  ] as const)("redirects %j to %s", async (sp, target) => {
+    lib.getAlbumArtistFilters.mockResolvedValue([
+      { id: "1", name: "A" },
+      { id: "109", name: "B" },
+    ]);
+    lib.getAlbumsPage.mockResolvedValue(pageResult([], 474));
+    expect(await redirectOf(sp as Sp)).toBe(target);
+  });
+
+  it("does not redirect canonical URLs", async () => {
+    lib.getAlbumArtistFilters.mockResolvedValue([
+      { id: "1", name: "A" },
+      { id: "2", name: "B" },
+    ]);
+    lib.getAlbumsPage.mockResolvedValue(pageResult([album()], 474));
+    expect(await redirectOf({})).toBeNull();
+    expect(await redirectOf({ page: "2" })).toBeNull();
+    expect(await redirectOf({ page: "24" })).toBeNull();
+    expect(await redirectOf({ artist: "1", page: "3" })).toBeNull();
+  });
+
+  it("sends any page of an empty result to the bare list", async () => {
+    lib.getAlbumArtistFilters.mockResolvedValue([]);
+    lib.getAlbumsPage.mockResolvedValue(pageResult([], 0));
+    expect(await redirectOf({ page: "3" })).toBe("ko:/albums");
+    // Positive control: the bare list itself renders (empty panel).
+    expect(await redirectOf({})).toBeNull();
   });
 });

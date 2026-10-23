@@ -170,7 +170,14 @@
     "noAlbums": "표시할 앨범이 없습니다",
     "filterAll": "전체",
     "artistFilterAria": "아티스트 필터",
-    "yearAlbumCount": "{count}개",
+    "yearPageCount": "이 페이지 {count}개",
+    "pagination": {
+      "aria": "앨범 페이지",
+      "prev": "이전",
+      "next": "다음",
+      "pageLabel": "페이지 {page}",
+      "summary": "전체 {total}개 중 {start}–{end}개 · 페이지당 {perPage}개 · {page} / {totalPages}"
+    },
     "undatedYear": "발매일 미정",
     "albumActiveBonuses": "매장특전 {count}건",
     "albumActiveBonusesBadge": "특전 {count}",

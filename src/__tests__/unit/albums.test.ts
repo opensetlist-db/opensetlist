@@ -1,5 +1,25 @@
-import { describe, it, expect } from "vitest";
-import { groupAlbumsByYear, type AlbumsListItem } from "@/lib/albums";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// getAlbumsPage is the only DB reader under test here; the spies capture
+// the two Prisma calls so the shared filter/ordering contract can be
+// asserted without a database.
+const db = vi.hoisted(() => ({
+  count: vi.fn(),
+  findMany: vi.fn(),
+}));
+vi.mock("@/lib/prisma", () => ({
+  prisma: { album: { count: db.count, findMany: db.findMany } },
+}));
+
+import {
+  groupAlbumsByYear,
+  getAlbumsPage,
+  parseAlbumPageParam,
+  albumPageParamValue,
+  albumPageItems,
+  ALBUMS_PER_PAGE,
+  type AlbumsListItem,
+} from "@/lib/albums";
 
 // groupAlbumsByYear only reads `id` (for assertions here) + `releaseDate`.
 // Build minimal fixtures and cast — the full Prisma payload shape is
@@ -70,5 +90,117 @@ describe("groupAlbumsByYear", () => {
   it("treats an unparseable releaseDate as undated", () => {
     const groups = groupAlbumsByYear([mk(1, "not-a-date")]);
     expect(groups[0].year).toBeNull();
+  });
+});
+
+describe("getAlbumsPage", () => {
+  beforeEach(() => {
+    db.count.mockReset();
+    db.findMany.mockReset();
+  });
+
+  it("fetches one bounded page and counts with the very same filter", async () => {
+    db.count.mockResolvedValue(69);
+    db.findMany.mockResolvedValue([]);
+    const result = await getAlbumsPage("ko", BigInt(1), 3);
+
+    const countArgs = db.count.mock.calls[0][0];
+    const findArgs = db.findMany.mock.calls[0][0];
+    // Same where object for both (deleted sub-units excluded, artist
+    // OR its direct sub-units) — the total can't drift from the rows.
+    expect(findArgs.where).toEqual(countArgs.where);
+    expect(countArgs.where).toEqual({
+      artists: {
+        some: {
+          artist: {
+            isDeleted: false,
+            OR: [{ id: BigInt(1) }, { parentArtistId: BigInt(1) }],
+          },
+        },
+      },
+    });
+    expect(findArgs.orderBy).toEqual([
+      { releaseDate: { sort: "desc", nulls: "last" } },
+      { id: "desc" },
+    ]);
+    expect(findArgs.take).toBe(ALBUMS_PER_PAGE);
+    expect(findArgs.skip).toBe(40);
+    expect(result).toEqual({ albums: [], total: 69, totalPages: 4 });
+  });
+
+  it("has no filter for the unfiltered list and 0 pages when empty", async () => {
+    db.count.mockResolvedValue(0);
+    db.findMany.mockResolvedValue([]);
+    const result = await getAlbumsPage("ja", undefined, 1);
+    expect(db.count.mock.calls[0][0].where).toBeUndefined();
+    expect(db.findMany.mock.calls[0][0].where).toBeUndefined();
+    expect(db.findMany.mock.calls[0][0].skip).toBe(0);
+    expect(result.totalPages).toBe(0);
+  });
+
+  it("rounds a partial last page up (474 → 24 pages)", async () => {
+    db.count.mockResolvedValue(474);
+    db.findMany.mockResolvedValue([]);
+    expect((await getAlbumsPage("en", undefined, 24)).totalPages).toBe(24);
+    db.count.mockResolvedValue(480);
+    expect((await getAlbumsPage("en", undefined, 24)).totalPages).toBe(24);
+  });
+
+  it("keeps the optimistic offset bounded for an absurd page number", async () => {
+    db.count.mockResolvedValue(474);
+    db.findMany.mockResolvedValue([]);
+    await getAlbumsPage("ko", undefined, Number.MAX_SAFE_INTEGER);
+    const { skip } = db.findMany.mock.calls[0][0];
+    expect(Number.isSafeInteger(skip)).toBe(true);
+    expect(skip).toBeLessThanOrEqual(100_000 * ALBUMS_PER_PAGE);
+  });
+});
+
+describe("parseAlbumPageParam", () => {
+  it.each([
+    [undefined, 1],
+    ["1", 1],
+    ["2", 2],
+    ["024", 24],
+    [["3", "5"], 3],
+    ["99999999999999999999", Number.MAX_SAFE_INTEGER],
+  ] as const)("reads %j as page %i", (raw, page) => {
+    expect(parseAlbumPageParam(raw as string | string[] | undefined)).toBe(page);
+  });
+
+  it.each(["", "0", "-2", "1.5", "abc", "2abc", " 2", "1e3", "000"])(
+    "maps malformed %j to page 1",
+    (raw) => {
+      expect(parseAlbumPageParam(raw)).toBe(1);
+    },
+  );
+});
+
+describe("albumPageParamValue", () => {
+  it("omits the parameter for page 1 and spells later pages plainly", () => {
+    expect(albumPageParamValue(1)).toBeUndefined();
+    expect(albumPageParamValue(2)).toBe("2");
+    expect(albumPageParamValue(24)).toBe("24");
+  });
+});
+
+describe("albumPageItems", () => {
+  // Expected windows are the approved v3 packet's (474 albums, 24 pages).
+  it.each([
+    [1, [1, 2, "ellipsis", 24]],
+    [2, [1, 2, 3, "ellipsis", 24]],
+    [3, [1, 2, 3, 4, "ellipsis", 24]],
+    [4, [1, "ellipsis", 3, 4, 5, "ellipsis", 24]],
+    [10, [1, "ellipsis", 9, 10, 11, "ellipsis", 24]],
+    [22, [1, "ellipsis", 21, 22, 23, 24]],
+    [24, [1, "ellipsis", 23, 24]],
+  ] as const)("page %i of 24", (page, expected) => {
+    expect(albumPageItems(page, 24)).toEqual(expected);
+  });
+
+  it("lists every page without gaps when they all fit", () => {
+    expect(albumPageItems(2, 4)).toEqual([1, 2, 3, 4]);
+    expect(albumPageItems(1, 2)).toEqual([1, 2]);
+    expect(albumPageItems(1, 1)).toEqual([1]);
   });
 });
