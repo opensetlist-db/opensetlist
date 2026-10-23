@@ -76,6 +76,9 @@ hyphens, heads/merge commits are full lowercase 40-character Git SHAs, hashes
 are full SHA-256, and times are UTC ISO strings ending in `Z`. Nullable values
 must be supplied explicitly. `task` and its requirements are fixed at init;
 create a separate state for a changed scope rather than weakening gates.
+Checks, reviews and evidence must each require at least one ID; only device
+attestations may be empty. Impossible calendar dates and backward host-clock
+updates are rejected. Reconcile host time before resuming after clock rollback.
 
 | Field | Meaning |
 | --- | --- |
@@ -162,6 +165,12 @@ local workflow, especially refs containing private paths.
 Each file replacement uses a sibling temporary file, fsync, and atomic rename,
 guarded by exclusive `.lock` creation, expected revision and whole-file hash
 checks. State changes and destination changes detected before rename abort.
+Initialization publishes a fully written file with atomic create-if-absent via
+a hard link and removes the temporary name, so a competing creator is never
+overwritten. Use a local filesystem supporting hard links. Existing destination
+symlinks/non-files are rejected. POSIX replacements preserve mode and owner/group
+(or abort if that is not permitted). Extended ACLs and Windows per-file ACLs
+are not copied; use operator-owned files inheriting appropriate parent ACLs.
 All writers must use this CLI to serialize the critical section: an unrelated
 editor writing in the final hash-check/rename gap cannot be made transactional.
 Use local filesystems with atomic same-directory rename support. Multi-file
@@ -194,6 +203,9 @@ Tests cover initial/resumed sessions, unchanged and changed/missing documents,
 exact read receipts, one retry/not-before, merge/closed/head priority, skipped
 reviews, missing completion evidence, device time uncertainty, stale revisions,
 two real concurrent writers, interrupted writes, dry-run and preserved manual
-history. They use isolated synthetic files and no network/database. Package
+history, non-clobber initialization, invalid dates/clock rollback and empty gate
+rejection. The POSIX mode/ownership assertion is skipped explicitly on Windows;
+its behavior requires a POSIX run for execution evidence. Tests use isolated
+synthetic files and no network/database. Package
 scripts, shared CI and unrelated QA tools are unchanged; run this suite
 explicitly in addition to repository checks.

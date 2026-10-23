@@ -50,6 +50,27 @@ test("failed write leaves original bytes intact and cleans temporary files", (t)
   assert.equal(readState(f.file).state.revision, 1);
 });
 
+test("atomic initialization never overwrites a competing creator", (t) => {
+  const f = fixture(t);
+  const newFile = path.join(f.root, "new.json");
+  assert.throws(() => atomicWrite(newFile, "candidate", () => fs.writeFileSync(newFile, "other creator"), { createOnly: true }), /EEXIST/);
+  assert.equal(fs.readFileSync(newFile, "utf8"), "other creator");
+  fs.unlinkSync(newFile);
+  atomicWrite(newFile, "candidate", undefined, { createOnly: true });
+  assert.equal(fs.readFileSync(newFile, "utf8"), "candidate");
+});
+
+test("atomic replacement preserves POSIX mode and ownership", { skip: process.platform === "win32" }, (t) => {
+  const f = fixture(t);
+  fs.chmodSync(f.file, 0o644);
+  const before = fs.statSync(f.file);
+  atomicWrite(f.file, fs.readFileSync(f.file));
+  const after = fs.statSync(f.file);
+  assert.equal(after.mode, before.mode);
+  assert.equal(after.uid, before.uid);
+  assert.equal(after.gid, before.gid);
+});
+
 test("managed handoff and board use the same revision, preserving approval history and other tasks", (t) => {
   const f = fixture(t);
   const handoff = path.join(f.root, "handoff.md");

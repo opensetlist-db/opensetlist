@@ -51,6 +51,9 @@ test("CLI restart resumes only its session, and unchanged heartbeats are read-on
   assert.equal(f.run("apply", "--revision", "0", "--event", f.event({ type: "start-session", sessionId: "two" })).status, 1);
   assert.equal(f.run("show", "--event", "ignored.json").status, 1);
   assert.equal(f.run("show", "--unknown").status, 1);
+  const beforeApplyHeartbeat = fs.readFileSync(f.file);
+  assert.equal(f.run("apply", "--revision", "3", "--event", f.event({ type: "heartbeat", sessionId: "session-one" })).status, 1);
+  assert.deepEqual(fs.readFileSync(f.file), beforeApplyHeartbeat);
 });
 
 test("CLI dry-run renders without writing and refuses stale destination edits", (t) => {

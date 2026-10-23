@@ -23,16 +23,25 @@ export function withLock(file, action) {
   }
 }
 
-export function atomicWrite(file, bytes, beforeRename = () => {}) {
+export function atomicWrite(file, bytes, beforeRename = () => {}, { createOnly = false } = {}) {
+  const existing = fs.existsSync(file) ? fs.lstatSync(file) : null;
+  if (existing && !existing.isFile()) throw new Error("State and summary destinations must be regular files, not symlinks");
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.tmp`);
   try {
     const descriptor = fs.openSync(temporary, "wx", 0o600);
     try {
       fs.writeFileSync(descriptor, bytes);
+      if (existing && process.platform !== "win32") {
+        fs.fchownSync(descriptor, existing.uid, existing.gid);
+        fs.fchmodSync(descriptor, existing.mode);
+      }
       fs.fsyncSync(descriptor);
     } finally { fs.closeSync(descriptor); }
     beforeRename();
-    fs.renameSync(temporary, file);
+    // A hard link publishes the fully written new inode only if the name
+    // is absent. Unlike rename, init cannot clobber a non-cooperating creator.
+    if (createOnly) fs.linkSync(temporary, file);
+    else fs.renameSync(temporary, file);
   } finally {
     if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
   }
@@ -46,7 +55,7 @@ export function initialize(file, state, dryRun = false) {
     if (fs.existsSync(file)) throw new Error("State file already exists");
     atomicWrite(file, encode(state), () => {
       if (fs.existsSync(file)) throw new Error("Concurrent state creation");
-    });
+    }, { createOnly: true });
     return state;
   });
 }

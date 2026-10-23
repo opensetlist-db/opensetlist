@@ -52,6 +52,7 @@ try {
     case "read": result = documentSnapshot(readState(file).state, required("document"), root); break;
     case "apply": {
       const event = JSON.parse(fs.readFileSync(required("event"), "utf8"));
+      if (event.type === "heartbeat") throw new Error("Use the heartbeat command to receive its delta before checkpointing");
       result = update(file, revision(), (state) => transition(state, event, { root }), { dryRun });
       break;
     }

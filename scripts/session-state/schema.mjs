@@ -8,8 +8,8 @@ const array = (rule) => (value) => Array.isArray(value) && value.every(rule);
 const object = (fields) => (value) => value !== null && typeof value === "object"
   && !Array.isArray(value) && Object.keys(value).length === Object.keys(fields).length
   && Object.entries(fields).every(([key, rule]) => Object.hasOwn(value, key) && rule(value[key]));
-export const timestamp = (value) => string(value) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)
-  && Number.isFinite(Date.parse(value));
+export const timestamp = (value) => string(value) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+  && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 19) === value.slice(0, 19);
 export const hash = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 const head = (value) => typeof value === "string" && /^[a-f0-9]{40}$/.test(value);
 const id = (value) => typeof value === "string" && /^[a-z0-9][a-z0-9-]*$/.test(value);
@@ -38,8 +38,9 @@ const shape = object({ schemaVersion: (value) => value === 1, revision: integer,
 
 export function validateTask(value) {
   if (!task(value) || value.documents.length === 0 || !unique(value.documents, "id")
-      || !unique(value.documents, "path") || Object.values(value.requirements).some((ids) => new Set(ids).size !== ids.length)) {
-    throw new Error("Invalid task schema (documents and gate IDs must be unique)");
+      || !unique(value.documents, "path") || Object.values(value.requirements).some((ids) => new Set(ids).size !== ids.length)
+      || ["checks", "reviews", "evidence"].some((kind) => value.requirements[kind].length === 0)) {
+    throw new Error("Invalid task schema (unique documents/gates and nonempty checks/reviews/evidence required)");
   }
   return value;
 }

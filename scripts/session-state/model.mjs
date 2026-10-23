@@ -83,6 +83,7 @@ function upsert(items, value, key = "id") {
 export function transition(input, event, { root, now = new Date().toISOString() } = {}) {
   validateState(input);
   if (!timestamp(now)) throw new Error("Expected a UTC timestamp");
+  if (Date.parse(now) < Date.parse(input.updatedAt)) throw new Error("Clock moved backwards; reconcile host time before updating state");
   const state = structuredClone(input);
   if (state.progress === "done") throw new Error("Completed state is immutable; create a separate task for new work");
   switch (event.type) {

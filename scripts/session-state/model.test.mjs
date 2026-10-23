@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { createState, documentSnapshot, heartbeat, retryActions, transition } from "./model.mjs";
-import { validateState } from "./schema.mjs";
+import { timestamp, validateState } from "./schema.mjs";
 
 const now = "2026-10-23T05:00:00.000Z";
 const later = "2026-10-23T05:10:00.000Z";
@@ -16,7 +16,7 @@ function fixture(t) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.writeFileSync(path.join(root, "instructions.md"), "Required instructions\nManual approval: keep me.\n");
   let state = createState(task, now);
-  const apply = (event, time = now) => (state = transition(state, event, { root, now: time }));
+  const apply = (event, time = state.updatedAt) => (state = transition(state, event, { root, now: time }));
   const start = (id = "session-one") => apply({ type: "start-session", sessionId: id });
   const ack = (id = "session-one") => apply({ type: "ack-read", sessionId: id, documentId: "instructions", sha256: documentSnapshot(state, "instructions", root).sha256 });
   const pr = (status = "open", sha = head) => apply({ type: "observe-pr", pr: {
@@ -117,6 +117,9 @@ test("done needs merge and every explicit current-head gate; green skipped revie
   f.apply({ type: "record-attestation", entry });
   assert.throws(complete, /reviews:claude/);
   f.review("pass", "claude");
+  f.apply({ type: "record-attestation", entry: { ...entry, result: "fail" } });
+  assert.throws(complete, /attestations:ios/);
+  f.apply({ type: "record-attestation", entry });
   assert.throws(() => f.apply({ type: "record-attestation", entry: { ...entry, performedAtNote: null } }), /uncertainty/);
   assert.throws(() => f.apply({ type: "record-attestation", entry: { ...entry, performedAt: later } }), /after receipt/);
   complete();
@@ -134,4 +137,8 @@ test("schema rejects unknown fields, false review passes and stale observations"
   assert.throws(() => f.apply({ type: "record-review", entry: { id: "claude", head, status: "pass", unresolved: 1, ref: "report", observedAt: now } }), /unresolved/);
   assert.throws(() => f.apply({ type: "observe-pr", pr: { ...f.state.pr, observedAt: "2026-10-22T05:00:00Z" } }), /stale/);
   assert.throws(() => f.apply({ type: "observe-pr", pr: { ...f.state.pr, number: 998 } }), /identity/);
+  assert.throws(() => f.apply({ type: "start-session", sessionId: "clock" }, "2026-10-22T05:00:00.000Z"), /backwards/);
+  assert.equal(timestamp("2026-02-30T00:00:00Z"), false);
+  assert.equal(timestamp("2026-02-28T00:00:00Z"), true);
+  assert.throws(() => createState({ ...task, requirements: { checks: [], reviews: [], evidence: [], attestations: [] } }), /nonempty/);
 });
