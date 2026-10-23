@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -289,6 +290,10 @@ export function SetlistRow({
     (namedBadges.length > 0 ||
       badgeArtists.length > 0 ||
       item.stageType !== "full_group");
+  // The per-song performer names live behind a toggle (below). A row
+  // with nobody credited gets no toggle at all — an empty disclosure
+  // would promise content that isn't there.
+  const hasPerformerCredits = !isNonSong && performers.length > 0;
   return (
     // 18-v3 `.song-row`: each row is its own small card — number chip,
     // then the body (title, unit credit chips, the performer credits
@@ -328,59 +333,65 @@ export function SetlistRow({
           unknownSongLabel={setlistT("unknownSong")}
         />
         {hasCreditLine && (
-          <div className={styles.creditLine}>
-            {shownBadges.map(({ artist, label }) => (
-              <UnitBadge
-                key={artist.id}
-                artistColor={artist.color}
-                locale={locale}
-                artistId={artist.id}
-                artistSlug={artist.slug}
-                label={label}
-              />
-            ))}
-            {hiddenBadges.length > 0 && (
-              <span
-                className={styles.artistTag}
-                style={{ "--artist": colors.border } as React.CSSProperties}
-                title={hiddenBadges.map((b) => b.label).join(", ")}
-              >
-                +{hiddenBadges.length}
-              </span>
-            )}
-            {/* Backed unit credited but no resolvable name (rare —
-                Artist with empty translations + null originalName).
-                Falls back to the i18n stageType label so the row still
-                reads as "this is a unit-stage performance". */}
-            {badgeArtists.length > 0 && namedBadges.length === 0 && (
-              <FallbackUnitBadge
-                label={t(
-                  `stageType.${item.stageType}` as Parameters<typeof t>[0],
-                )}
-              />
-            )}
-            {/* No backed unit at all (ad-hoc one-time unit OR operator
-                hasn't filled the credit yet). Per Phase 1A decision D4b,
-                the operator-typed `item.unitName` is intentionally
-                suppressed on public surfaces — the field has no
-                translations and rendering one locale's text to viewers
-                in another locale was the original gap. Show the generic
-                stageType label instead. */}
-            {badgeArtists.length === 0 && item.stageType !== "full_group" && (
-              <FallbackUnitBadge
-                label={t(
-                  `stageType.${item.stageType}` as Parameters<typeof t>[0],
-                )}
-              />
-            )}
-          </div>
+          <CreditHeading
+            performers={hasPerformerCredits ? performers : null}
+            panelTitle={creditsT("songPerformers")}
+          >
+            <div className={styles.creditLine}>
+              {shownBadges.map(({ artist, label }) => (
+                <UnitBadge
+                  key={artist.id}
+                  artistColor={artist.color}
+                  locale={locale}
+                  artistId={artist.id}
+                  artistSlug={artist.slug}
+                  label={label}
+                />
+              ))}
+              {hiddenBadges.length > 0 && (
+                <span
+                  className={styles.artistTag}
+                  style={{ "--artist": colors.border } as React.CSSProperties}
+                  title={hiddenBadges.map((b) => b.label).join(", ")}
+                >
+                  +{hiddenBadges.length}
+                </span>
+              )}
+              {/* Backed unit credited but no resolvable name (rare —
+                  Artist with empty translations + null originalName).
+                  Falls back to the i18n stageType label so the row still
+                  reads as "this is a unit-stage performance". */}
+              {badgeArtists.length > 0 && namedBadges.length === 0 && (
+                <FallbackUnitBadge
+                  label={t(
+                    `stageType.${item.stageType}` as Parameters<typeof t>[0],
+                  )}
+                />
+              )}
+              {/* No backed unit at all (ad-hoc one-time unit OR operator
+                  hasn't filled the credit yet). Per Phase 1A decision D4b,
+                  the operator-typed `item.unitName` is intentionally
+                  suppressed on public surfaces — the field has no
+                  translations and rendering one locale's text to viewers
+                  in another locale was the original gap. Show the generic
+                  stageType label instead. */}
+              {badgeArtists.length === 0 && item.stageType !== "full_group" && (
+                <FallbackUnitBadge
+                  label={t(
+                    `stageType.${item.stageType}` as Parameters<typeof t>[0],
+                  )}
+                />
+              )}
+            </div>
+          </CreditHeading>
         )}
 
-        {/* Performer credits (18-v3 `.credit-details`). The old desktop
-            table had a performers column; the card row folds the same
-            short-name list into a native disclosure so long festival
-            lineups don't stretch every row. */}
-        {!isNonSong && performers.length > 0 && (
+        {/* Chip-less rows (a `full_group` row on a single-artist event,
+            where the chip is deliberately suppressed) have no chip line
+            for the toggle to sit beside, so they keep the 18-v3
+            "출연 크레딧" disclosure — exactly what the approved v3 browser
+            mockup left on those rows. */}
+        {!hasCreditLine && hasPerformerCredits && (
           <details className={styles.creditDetails}>
             <summary>{creditsT("creditsToggle")}</summary>
             <p>{performers.join(", ")}</p>
@@ -417,6 +428,73 @@ export function SetlistRow({
         {reactions && <div className={styles.songReactions}>{reactions}</div>}
       </div>
     </li>
+  );
+}
+
+/*
+ * Credit line + per-song performer toggle (consistency-03-v3 §7.3).
+ *
+ * The 18-v3 row had a separate "출연 크레딧" <details> line under the
+ * unit chips; v3 folds it into the chip line: a 28×28 chevron button
+ * sits right after the existing performance-artist / unit chips and
+ * opens a small panel titled "이 곡의 출연 멤버" with the row's
+ * StageIdentity short names — the same list the old disclosure held.
+ * Nothing new is inferred: no original singer, no real-person name, no
+ * event headliner standing in for a missing chip.
+ *
+ * Only rows with a chip line get it; chip-less rows keep their 18-v3
+ * <details> (see the call site). Rows with chips but no performers get
+ * the chips alone.
+ *
+ * A real <button> with aria-expanded / aria-controls instead of
+ * <details>: the chevron lives inside a flex line with the chips, and
+ * the panel opens below the whole line, which a <summary> (the first
+ * child of its own box) cannot do without moving the chips into it.
+ */
+function CreditHeading({
+  performers,
+  panelTitle,
+  children,
+}: {
+  performers: string[] | null;
+  panelTitle: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <>
+      <div className={styles.creditHeading}>
+        {children}
+        {performers && (
+          <button
+            type="button"
+            className={styles.creditToggle}
+            aria-label={panelTitle}
+            title={panelTitle}
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {performers && (
+        <div id={panelId} className={styles.creditBody} hidden={!open}>
+          <strong>{panelTitle}</strong>
+          <p>{performers.join(", ")}</p>
+        </div>
+      )}
+    </>
   );
 }
 

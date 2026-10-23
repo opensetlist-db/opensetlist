@@ -103,7 +103,7 @@ describe("home queries", () => {
       status: "scheduled",
       startTime: { gt: NOW },
     });
-    expect(call.orderBy).toEqual({ startTime: "asc" });
+    expect(call.orderBy).toEqual([{ startTime: "asc" }, { id: "asc" }]);
     expect(call.take).toBe(HOME_TAKE);
   });
 

@@ -377,12 +377,9 @@ export function LiveSetlist({
               is at least one ranked song; otherwise hide entirely
               rather than rendering the empty-state nudge.
 
-          Reverses the earlier "always render with empty nudge"
-          rationale documented in `<TrendingSongs>` ("Card always
-          renders when mounted — the empty state nudges the user to
-          engage rather than disappearing the surface entirely").
-          The component contract itself is unchanged; the visibility
-          decision moves up to this single consumer. */}
+          The visibility decision lives here, in this single consumer;
+          `<TrendingSongs>` keeps its own empty-array nudge only as a
+          defensive fallback for a caller that mounts it with no songs. */}
       {status !== "upcoming" && trendingSongs.length > 0 && (
         <TrendingSongs songs={trendingSongs} />
       )}

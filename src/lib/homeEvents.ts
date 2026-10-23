@@ -124,7 +124,7 @@ function findOngoing(now: Date) {
       ],
     },
     select: HOME_EVENT_SELECT,
-    orderBy: { startTime: "asc" },
+    orderBy: [{ startTime: "asc" }, { id: "asc" }],
   });
 }
 
@@ -136,7 +136,7 @@ function findUpcoming(now: Date) {
       startTime: { gt: now },
     },
     select: HOME_EVENT_SELECT,
-    orderBy: { startTime: "asc" },
+    orderBy: [{ startTime: "asc" }, { id: "asc" }],
     take: HOME_TAKE,
   });
 }

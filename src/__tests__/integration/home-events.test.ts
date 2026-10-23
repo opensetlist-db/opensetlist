@@ -121,13 +121,15 @@ beforeAll(async () => {
   // Older than the window: only the archive may show it.
   await item(await event("old", "2099-03-01T09:00:00Z", { status: "completed" }), 1);
 
-  // Upcoming: six scheduled, one beyond 30 days; cancelled/deleted extras.
-  for (const [i, day] of ["06-05", "06-12", "06-19", "06-26", "08-01", "09-01"].entries()) {
+  // Upcoming: six scheduled, two tied beyond 30 days at the take(5)
+  // cutoff; cancelled/deleted extras never qualify.
+  for (const [i, day] of ["06-05", "06-12", "06-19", "06-26", "08-01", "08-01"].entries()) {
     await event(`up-${i}`, `2099-${day}T09:00:00Z`);
   }
   await event("up-cancelled", "2099-06-03T09:00:00Z", { status: "cancelled" });
   await event("up-deleted", "2099-06-04T09:00:00Z", { isDeleted: true });
   await event("manual-ongoing", "2099-04-01T09:00:00Z", { status: "ongoing" });
+  await event("manual-ongoing-tie", "2099-04-01T09:00:00Z", { status: "ongoing" });
 });
 
 afterAll(async () => {
@@ -173,9 +175,14 @@ describe("home eligibility on the dev database", () => {
 
   it("ongoing: manual ongoing and the 12h buffer, not counted as past", async () => {
     const data = await loadHomeData(NOW, graph);
-    expect(idsOf(data.ongoing)).toEqual(
-      expect.arrayContaining([ids["manual-ongoing"], ids["buffer-ongoing"]]),
-    );
+    // Other manually ongoing dev records may be returned too. Only our
+    // fixture rows have a controlled time, so assert their relative order.
+    const fixtureRows = idsOf(data.ongoing).filter((id) => created.events.includes(id));
+    expect(fixtureRows).toEqual([
+      ids["manual-ongoing"],
+      ids["manual-ongoing-tie"],
+      ids["buffer-ongoing"],
+    ]);
     expect(idsOf(data.past)).not.toContain(ids["buffer-ongoing"]);
   });
 
