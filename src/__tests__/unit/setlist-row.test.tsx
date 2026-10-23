@@ -889,8 +889,21 @@ describe("SetlistRow — per-song performer toggle", () => {
     expect(panel).not.toBeVisible();
   });
 
-  it("chip-less full_group row keeps a labelled toggle and invents no chip", () => {
-    const { container } = render(
+  it("chip-less full_group row keeps the 18-v3 disclosure and invents no chip", () => {
+    const { container, rerender } = render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    // Positive control: the same row with a chip has the chip and the toggle.
+    expect(container.querySelector('a[href*="/artists/"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "songPerformers" })).toBeInTheDocument();
+
+    rerender(
       <SetlistRow
         item={makeItem({ stageType: "full_group", artists: [], performers: [sayaka] })}
         index={0}
@@ -899,8 +912,10 @@ describe("SetlistRow — per-song performer toggle", () => {
         eventId="1"
       />,
     );
-    const toggle = screen.getByRole("button", { name: "creditsToggle" });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
+    const details = container.querySelector("details")!;
+    expect(details.querySelector("summary")).toHaveTextContent("creditsToggle");
+    expect(details).toHaveTextContent("Sayaka");
     // No headliner / stageType chip stands in for the missing credit.
     expect(container.querySelector('a[href*="/artists/"]')).toBeNull();
     expect(screen.queryByText("stageType.full_group")).toBeNull();
@@ -921,16 +936,35 @@ describe("SetlistRow — per-song performer toggle", () => {
   });
 
   it("MC rows get no toggle even with performers attached", () => {
-    render(
+    const { container, rerender } = render(
       <SetlistRow
-        item={makeItem({ type: "mc", songs: [], performers: [sayaka] })}
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
         index={0}
         reactionCounts={{}}
         locale="ko"
         eventId="1"
       />,
     );
-    expect(screen.queryByRole("button", { name: /songPerformers|creditsToggle/ })).toBeNull();
+    // Positive control: a song row with the same performers has the toggle.
+    expect(screen.getByRole("button", { name: "songPerformers" })).toBeInTheDocument();
+    rerender(
+      <SetlistRow
+        item={makeItem({
+          type: "mc",
+          songs: [],
+          stageType: "unit",
+          artists: [unitCredit],
+          performers: [sayaka],
+        })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    expect(screen.getByText("itemType.mc")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
+    expect(container.querySelector("details")).toBeNull();
   });
 });
 

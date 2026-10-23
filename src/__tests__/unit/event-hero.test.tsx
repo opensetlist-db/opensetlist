@@ -47,6 +47,10 @@ describe("EventHero", () => {
   });
 
   it("keeps the list pill for the other states (no LIVE dot)", () => {
+    const { unmount } = renderHero("ongoing", "LIVE");
+    // Positive control: the LIVE badge does carry the dot.
+    expect(screen.getByText("LIVE").querySelector('[aria-hidden="true"]')).not.toBeNull();
+    unmount();
     renderHero("completed", "終了");
     expect(screen.getByTestId("event-hero")).toHaveAttribute("data-status", "completed");
     expect(screen.getByText("終了").querySelector('[aria-hidden="true"]')).toBeNull();

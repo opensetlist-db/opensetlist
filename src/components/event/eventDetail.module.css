@@ -588,7 +588,8 @@ a.groupChip:hover {
   color: var(--text-secondary);
   cursor: pointer;
 }
-.creditToggle:hover {
+.creditToggle:hover,
+.creditToggle:focus-visible {
   background: var(--surface-credit-toggle-hover);
   color: var(--text-credit-toggle-hover);
 }
@@ -600,16 +601,6 @@ a.groupChip:hover {
 }
 .creditToggle[aria-expanded="true"] svg {
   transform: rotate(180deg);
-}
-/* Chip-less rows: the toggle carries its visible label, so it sizes to
-   the text instead of the 28px square. */
-.creditToggleText {
-  flex: 0 1 auto;
-  width: auto;
-  gap: 2px;
-  padding: 0 4px;
-  font-size: 12px;
-  color: var(--primary);
 }
 .creditBody {
   margin-top: 5px;
@@ -631,6 +622,22 @@ a.groupChip:hover {
 }
 .creditBody p {
   margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+/* Chip-less rows keep the 18-v3 performer disclosure (see SetlistRow). */
+.creditDetails {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.creditDetails > summary {
+  min-height: 30px;
+  padding: 3px 0;
+  cursor: pointer;
+  color: var(--primary);
+}
+.creditDetails > p {
+  margin: 2px 0 0;
   overflow-wrap: anywhere;
 }
 .artistTag {

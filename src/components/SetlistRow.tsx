@@ -332,62 +332,70 @@ export function SetlistRow({
           t={t}
           unknownSongLabel={setlistT("unknownSong")}
         />
-        {(hasCreditLine || hasPerformerCredits) && (
+        {hasCreditLine && (
           <CreditHeading
-            hasBadges={hasCreditLine}
             performers={hasPerformerCredits ? performers : null}
             panelTitle={creditsT("songPerformers")}
-            textLabel={creditsT("creditsToggle")}
           >
-            {hasCreditLine && (
-              <div className={styles.creditLine}>
-                {shownBadges.map(({ artist, label }) => (
-                  <UnitBadge
-                    key={artist.id}
-                    artistColor={artist.color}
-                    locale={locale}
-                    artistId={artist.id}
-                    artistSlug={artist.slug}
-                    label={label}
-                  />
-                ))}
-                {hiddenBadges.length > 0 && (
-                  <span
-                    className={styles.artistTag}
-                    style={{ "--artist": colors.border } as React.CSSProperties}
-                    title={hiddenBadges.map((b) => b.label).join(", ")}
-                  >
-                    +{hiddenBadges.length}
-                  </span>
-                )}
-                {/* Backed unit credited but no resolvable name (rare —
-                    Artist with empty translations + null originalName).
-                    Falls back to the i18n stageType label so the row still
-                    reads as "this is a unit-stage performance". */}
-                {badgeArtists.length > 0 && namedBadges.length === 0 && (
-                  <FallbackUnitBadge
-                    label={t(
-                      `stageType.${item.stageType}` as Parameters<typeof t>[0],
-                    )}
-                  />
-                )}
-                {/* No backed unit at all (ad-hoc one-time unit OR operator
-                    hasn't filled the credit yet). Per Phase 1A decision D4b,
-                    the operator-typed `item.unitName` is intentionally
-                    suppressed on public surfaces — the field has no
-                    translations and rendering one locale's text to viewers
-                    in another locale was the original gap. Show the generic
-                    stageType label instead. */}
-                {badgeArtists.length === 0 && item.stageType !== "full_group" && (
-                  <FallbackUnitBadge
-                    label={t(
-                      `stageType.${item.stageType}` as Parameters<typeof t>[0],
-                    )}
-                  />
-                )}
-              </div>
-            )}
+            <div className={styles.creditLine}>
+              {shownBadges.map(({ artist, label }) => (
+                <UnitBadge
+                  key={artist.id}
+                  artistColor={artist.color}
+                  locale={locale}
+                  artistId={artist.id}
+                  artistSlug={artist.slug}
+                  label={label}
+                />
+              ))}
+              {hiddenBadges.length > 0 && (
+                <span
+                  className={styles.artistTag}
+                  style={{ "--artist": colors.border } as React.CSSProperties}
+                  title={hiddenBadges.map((b) => b.label).join(", ")}
+                >
+                  +{hiddenBadges.length}
+                </span>
+              )}
+              {/* Backed unit credited but no resolvable name (rare —
+                  Artist with empty translations + null originalName).
+                  Falls back to the i18n stageType label so the row still
+                  reads as "this is a unit-stage performance". */}
+              {badgeArtists.length > 0 && namedBadges.length === 0 && (
+                <FallbackUnitBadge
+                  label={t(
+                    `stageType.${item.stageType}` as Parameters<typeof t>[0],
+                  )}
+                />
+              )}
+              {/* No backed unit at all (ad-hoc one-time unit OR operator
+                  hasn't filled the credit yet). Per Phase 1A decision D4b,
+                  the operator-typed `item.unitName` is intentionally
+                  suppressed on public surfaces — the field has no
+                  translations and rendering one locale's text to viewers
+                  in another locale was the original gap. Show the generic
+                  stageType label instead. */}
+              {badgeArtists.length === 0 && item.stageType !== "full_group" && (
+                <FallbackUnitBadge
+                  label={t(
+                    `stageType.${item.stageType}` as Parameters<typeof t>[0],
+                  )}
+                />
+              )}
+            </div>
           </CreditHeading>
+        )}
+
+        {/* Chip-less rows (a `full_group` row on a single-artist event,
+            where the chip is deliberately suppressed) have no chip line
+            for the toggle to sit beside, so they keep the 18-v3
+            "출연 크레딧" disclosure — exactly what the approved v3 browser
+            mockup left on those rows. */}
+        {!hasCreditLine && hasPerformerCredits && (
+          <details className={styles.creditDetails}>
+            <summary>{creditsT("creditsToggle")}</summary>
+            <p>{performers.join(", ")}</p>
+          </details>
         )}
 
         {/* Affordance slot — per-row action area. Holds up to two
@@ -434,12 +442,8 @@ export function SetlistRow({
  * Nothing new is inferred: no original singer, no real-person name, no
  * event headliner standing in for a missing chip.
  *
- * A row with performers but no chip at all (a `full_group` row on a
- * single-artist event, where the chip is deliberately suppressed) has
- * no chip line to sit beside, and a bare chevron under the title would
- * not say what it opens. There the button keeps the old visible label
- * ("출연 크레딧") next to the chevron, which is what the v3 browser mockup
- * left in place for those rows. Rows with chips but no performers get
+ * Only rows with a chip line get it; chip-less rows keep their 18-v3
+ * <details> (see the call site). Rows with chips but no performers get
  * the chips alone.
  *
  * A real <button> with aria-expanded / aria-controls instead of
@@ -448,60 +452,41 @@ export function SetlistRow({
  * child of its own box) cannot do without moving the chips into it.
  */
 function CreditHeading({
-  hasBadges,
   performers,
   panelTitle,
-  textLabel,
   children,
 }: {
-  hasBadges: boolean;
   performers: string[] | null;
   panelTitle: string;
-  textLabel: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
-  const chevron = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
   return (
     <>
       <div className={styles.creditHeading}>
         {children}
-        {performers &&
-          (hasBadges ? (
-            <button
-              type="button"
-              className={styles.creditToggle}
-              aria-label={panelTitle}
-              title={panelTitle}
-              aria-expanded={open}
-              aria-controls={panelId}
-              onClick={() => setOpen((v) => !v)}
+        {performers && (
+          <button
+            type="button"
+            className={styles.creditToggle}
+            aria-label={panelTitle}
+            title={panelTitle}
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
             >
-              {chevron}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`${styles.creditToggle} ${styles.creditToggleText}`}
-              aria-expanded={open}
-              aria-controls={panelId}
-              onClick={() => setOpen((v) => !v)}
-            >
-              <span>{textLabel}</span>
-              {chevron}
-            </button>
-          ))}
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        )}
       </div>
       {performers && (
         <div id={panelId} className={styles.creditBody} hidden={!open}>
