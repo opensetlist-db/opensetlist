@@ -149,13 +149,16 @@ const scenario = {
     await h.section("no LIVE layout simulation", async () => {
       const { page, ctx } = await h.open("/ko", { width: 390 });
       const hadLive = await page.locator(LIVE).count();
-      h.check("no-LIVE simulation positive control", hadLive === 1, `${hadLive} live section before removal`);
       if (hadLive) {
+        h.check("no-LIVE simulation positive control", hadLive === 1, `${hadLive} live section before removal`);
         await page.locator(LIVE).evaluate((el) => el.remove());
-        const headings = await page.locator("main h2").evaluateAll((els) => els.map((el) => el.id));
-        h.check("no-LIVE simulation discovery order", headings[0] === "upcoming-title" && headings[1] === "past-title", headings.join(">"));
-        await h.shot(page, "simulated-no-live-ko-390");
+      } else {
+        h.skip("no-LIVE removal simulation", "catalog already has no live show; checking the actual state");
       }
+      const headings = await page.locator("main h2").evaluateAll((els) => els.map((el) => el.id));
+      const state = hadLive ? "simulated-no-live" : "actual-no-live";
+      h.check(`${state} discovery order`, headings[0] === "upcoming-title" && headings[1] === "past-title", headings.join(">"));
+      await h.shot(page, `${state}-ko-390`);
       await ctx.close();
     });
   },
