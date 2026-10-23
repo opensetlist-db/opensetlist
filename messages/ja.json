@@ -170,7 +170,14 @@
     "noAlbums": "表示できるアルバムはありません",
     "filterAll": "すべて",
     "artistFilterAria": "アーティストフィルター",
-    "yearAlbumCount": "{count}枚",
+    "yearPageCount": "このページ {count}件",
+    "pagination": {
+      "aria": "アルバムのページ",
+      "prev": "前へ",
+      "next": "次へ",
+      "pageLabel": "ページ {page}",
+      "summary": "全{total}件中 {start}–{end}件 · 1ページ{perPage}件 · {page} / {totalPages}"
+    },
     "undatedYear": "発売日未定",
     "albumActiveBonuses": "店舗特典 {count}件",
     "albumActiveBonusesBadge": "特典 {count}",

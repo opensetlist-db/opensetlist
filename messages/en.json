@@ -170,7 +170,14 @@
     "noAlbums": "No albums to show",
     "filterAll": "All",
     "artistFilterAria": "Artist filter",
-    "yearAlbumCount": "{count, plural, one {# album} other {# albums}}",
+    "yearPageCount": "{count} on this page",
+    "pagination": {
+      "aria": "Album pages",
+      "prev": "Previous",
+      "next": "Next",
+      "pageLabel": "Page {page}",
+      "summary": "{start}–{end} of {total, plural, one {# album} other {# albums}} · {perPage} per page · {page} / {totalPages}"
+    },
     "undatedYear": "Release date TBA",
     "albumActiveBonuses": "{count, plural, one {# store bonus} other {# store bonuses}}",
     "albumActiveBonusesBadge": "Bonus {count}",

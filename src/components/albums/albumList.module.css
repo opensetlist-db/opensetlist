@@ -2,13 +2,19 @@
  * Album list page — layout from the approved redesign packet 26-v1
  * (wiki `output/redesign/handoffs/26/v1/style.css` + design-contract.md).
  *
+ * Consistency v3 (§4, §7.5) replaces three properties of 26-v1: the
+ * inner width (1100 → 1200px, so 1264px with the 32px gutters), the list
+ * title (32px from 700px up, 26px below, line-height 1.4, tracking
+ * -.03em — the shared list-title rule) and the pager + results summary
+ * below. Everything else is the 26-v1 layout.
+ *
  * One column at every width. The packet steps at 1100 / 768 / 700 / 360:
- *   - ≥1100  page gutter 32px, heading 34px.
- *   - <1100  gutter 24px, heading 30px.
+ *   - ≥1100  page gutter 32px.
+ *   - <1100  gutter 24px.
  *   - <768   the release year moves from the row's right edge into the
  *            secondary line under the title (`.mobileYear`), and the row
  *            top-aligns its cover with the text.
- *   - <700   gutter 16px, 64px cover, 14px title.
+ *   - <700   gutter 16px, heading 26px, 64px cover, 14px title.
  *   - <360   56px cover, 13px title, chevron hidden.
  *
  * The packet's stylesheet was written over browser defaults; Tailwind's
@@ -23,7 +29,7 @@
 
 .page {
   width: 100%;
-  max-width: 1164px;
+  max-width: 1264px;
   margin: 0 auto;
   padding: 32px 32px 64px;
   min-height: 60vh;
@@ -42,10 +48,10 @@
 }
 .title {
   margin: 0;
-  font-size: 34px;
+  font-size: 32px;
   font-weight: 700;
-  line-height: 1.35;
-  letter-spacing: -0.035em;
+  line-height: 1.4;
+  letter-spacing: -0.03em;
   overflow-wrap: anywhere;
 }
 
@@ -265,6 +271,68 @@
   color: var(--primary);
 }
 
+/* ── Results summary + pager (v3 §7.5) ───────────────────────── */
+
+.summary {
+  /* Packet value; the top margin collapses into the filter bar's 30px. */
+  margin: 16px 0 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+/* The summary is a fragment target with tabIndex -1 (pager links end in
+   `#album-results`); it is not a control, so no focus ring when the
+   browser moves focus to it. */
+.summary:focus {
+  outline: none;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 28px 0;
+}
+/* 44px-tall targets, 40px minimum width (packet). Previous/Next stay
+   in place, disabled, on the first/last page. */
+.pageItem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+/* Packet hover border #b9c9e7; --border-unit-link (#b8cbe7) is the
+   nearest existing palette alias, used instead of a page-only literal. */
+a.pageItem:hover {
+  border-color: var(--border-unit-link);
+  background: var(--primary-bg);
+}
+.pageItem[aria-current] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--bg-card);
+}
+.pageItem[aria-disabled] {
+  opacity: 0.5;
+}
+.pageEllipsis {
+  padding: 0 3px;
+  color: var(--text-muted);
+}
+
 /* ── Empty ───────────────────────────────────────────────────── */
 
 .empty {
@@ -289,9 +357,6 @@
 @media (max-width: 1099px) {
   .page {
     padding: 24px 24px 56px;
-  }
-  .title {
-    font-size: 30px;
   }
 }
 
@@ -323,7 +388,7 @@
     border-radius: 16px;
   }
   .title {
-    font-size: 28px;
+    font-size: 26px;
   }
   .filters {
     margin-bottom: 24px;
@@ -399,7 +464,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .filter,
-  .row {
+  .row,
+  .pageItem {
     transition: none;
   }
 }
