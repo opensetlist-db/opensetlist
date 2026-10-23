@@ -30,7 +30,7 @@ test.describe("home", () => {
     await expect(main.getByRole("heading", { level: 1 })).toHaveText(
       "The live story we keep together",
     );
-    await expect(main.getByRole("link", { name: "Explore concerts" }).first()).toHaveAttribute(
+    await expect(main.getByRole("link", { name: "Explore events" }).first()).toHaveAttribute(
       "href",
       "/en/events",
     );
@@ -38,13 +38,13 @@ test.describe("home", () => {
       "href",
       "/en/events?filter=completed",
     );
-    await expect(main.getByText("Fictional concert artwork")).toBeVisible();
+    await expect(main.getByText("Fictional live music scene")).toBeVisible();
 
     // Hero → (ongoing) → upcoming → past, by document order of h2s.
     const h2 = await main.getByRole("heading", { level: 2 }).allTextContents();
-    const upcoming = h2.indexOf("Upcoming concerts");
+    const upcoming = h2.indexOf("Upcoming events");
     const past = h2.findIndex((t) =>
-      ["Recent setlists", "From the setlist archive"].includes(t),
+      ["Recent events", "From the setlist archive"].includes(t),
     );
     expect(upcoming).toBeGreaterThanOrEqual(0);
     expect(past).toBeGreaterThan(upcoming);
