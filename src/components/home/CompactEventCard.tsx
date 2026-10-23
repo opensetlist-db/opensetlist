@@ -12,7 +12,7 @@ import styles from "./home.module.css";
  * 14-v1.3): compact art slot, date + day label, full title, place, and
  * the setlist line.
  *
- * `live` switches to the ongoing treatment — lavender card, raspberry
+ * `live` switches to the ongoing treatment — warm white card, coral
  * LIVE capsule whose small dot pulses (reduced motion: solid), and a
  * "view setlist" button instead of the inline link. An ongoing show
  * with no songs yet says it is waiting for updates rather than "0

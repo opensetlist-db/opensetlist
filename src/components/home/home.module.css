@@ -3,15 +3,15 @@
  * browser mockup is the comparison baseline, so this module mirrors its
  * geometry rule for rule: three bands (≥1100 desktop, 700–1099 tablet,
  * <700 mobile, plus the shell's ≤1300 side gutters), hover/pressed
- * pairs, the ongoing palette and the dot-only LIVE pulse. Tailwind
+ * pairs and the dot-only LIVE pulse. The LIVE surface follows the
+ * consistency-03-v3 amendment. Tailwind
  * utilities would need arbitrary values for nearly every declaration
  * here, so the page keeps one readable module instead (same pattern as
  * `search.module.css`).
  *
  * The approved colours, including home-specific ones such as the
- * lavender ongoing card, raspberry LIVE capsule and Hero gradient,
- * come from `:root` CSS aliases in globals.css. Their values remain
- * those of the 14 contract; `--primary` mirrors `colors.primary`.
+ * Hero gradient, come from `:root` CSS aliases in globals.css.
+ * `--primary` mirrors `colors.primary`.
  */
 
 .page {
@@ -257,7 +257,10 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--surface-live-badge);
+  background: var(--status-live-dot);
+}
+.liveEyebrow {
+  color: var(--status-live-text);
 }
 
 .textLink {
@@ -490,21 +493,20 @@
   text-decoration: underline;
 }
 
-/* Ongoing: lavender card, raspberry LIVE capsule, white text. Only the
+/* Ongoing: warm white card with a coral status line. Only the
    small dot pulses (existing `live-pulse`, 1.2s); reduced motion leaves
    it solid. Text and backgrounds never animate. */
 .live {
   gap: 20px;
   padding: 24px;
-  border-color: var(--gradient-live-card-start);
-  background: linear-gradient(115deg, var(--gradient-live-card-start), var(--gradient-live-card-end));
-  box-shadow: 0 6px 18px var(--shadow-live-hover);
-  color: var(--bg-card);
+  border-color: var(--border-live-card);
+  background: var(--surface-live-card);
+  box-shadow: inset 3px 0 var(--status-live-dot), 0 4px 16px var(--shadow-live-card);
+  color: var(--foreground);
 }
 .live:hover {
-  border-color: var(--gradient-live-card-start);
-  background: linear-gradient(115deg, var(--gradient-live-card-hover-start), var(--gradient-live-card-hover-end));
-  box-shadow: 0 6px 18px var(--shadow-live-hover);
+  border-color: var(--border-live-card);
+  box-shadow: inset 3px 0 var(--status-live-dot), 0 4px 16px var(--shadow-live-card);
 }
 .live:focus-visible {
   outline: 3px solid var(--focus-ring);
@@ -513,16 +515,15 @@
 .live .cardTitle {
   font-size: 18px;
   line-height: 1.6;
-  color: var(--bg-card);
+  color: var(--foreground);
 }
 :global(html:lang(ko)) .live .cardTitle {
   word-break: keep-all;
 }
 .live .dateLine,
 .live .venue,
-.live .meta,
-.live > svg {
-  color: var(--text-live);
+.live .meta {
+  color: var(--text-secondary);
 }
 .live .day {
   border-color: var(--border-live-day);
@@ -531,10 +532,6 @@
 }
 .live [data-testid="event-art"] {
   border: 1px solid var(--border-live-day);
-  background: var(--surface-live-day) !important;
-}
-.live [data-testid="event-art"] strong {
-  color: var(--bg-card) !important;
 }
 .live .meta {
   display: flex;
@@ -550,8 +547,8 @@
   min-height: 44px;
   padding: 9px 14px;
   border-radius: 8px;
-  background: var(--accent-lavender);
-  color: var(--foreground);
+  background: var(--primary-bg);
+  color: var(--primary);
   font-size: 13px;
   font-weight: 700;
 }
@@ -561,19 +558,20 @@
   gap: 6px;
   margin-bottom: 12px;
   padding: 5px 10px;
-  border: 1px solid var(--border-live-badge);
+  border: 1px solid var(--status-live-border);
   border-radius: 999px;
-  background: var(--surface-live-badge);
-  color: var(--bg-card);
+  background: var(--status-live-surface);
+  color: var(--status-live-text);
   font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0.04em;
   line-height: 1.5;
 }
 .liveDot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--bg-card);
+  background: var(--status-live-dot);
   /* The pulse itself is `motion.livePulse` set inline: CSS Modules would
      rename a keyframe referenced here, and the global `live-pulse` is
      the one StatusBadge already uses. */
