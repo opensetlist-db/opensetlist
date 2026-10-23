@@ -7,6 +7,11 @@ const require = createRequire(import.meta.url);
 const cssRequire = createRequire(require.resolve("stylelint/package.json"));
 const postcss = cssRequire("postcss");
 const valueParser = cssRequire("postcss-value-parser");
+// Reuse the OG stack's established encoder rather than maintaining a partial
+// HTML encoder in report code. Resolve from its owner for nested installs.
+const ogRequire = createRequire(require.resolve("@vercel/og"));
+const satoriRequire = createRequire(ogRequire.resolve("satori"));
+const escapeHtml = satoriRequire("escape-html");
 const scriptFile = /\.[cm]?[jt]sx?$/;
 const normalize = (file) => path.posix.normalize(file.replaceAll("\\", "/")).replace(/^\.\//, "");
 const unwrap = (node) => {
@@ -246,7 +251,7 @@ export function analyzeImpact(before, after, { tokenFiles = ["src/styles/tokens.
     limitations: ["Static inventory, not a complete impact analysis or a visual/contrast verdict.", "JS/TS named exports in configured token modules and CSS custom properties are compared by source expression; functions are never executed. Unchanged expressions whose upstream values change are not definition deltas: inspect upstream dependencies manually.", "@/ maps to src/; relative imports/re-exports and local bindings are traced. Other aliases, runtime mutation, arbitrary function returns, external/generated consumers, Tailwind utilities and constructed variable names require manual search.", "CSS scope, cascade, inheritance and runtime element semantics are not proven. Background use is reported for role review, never banned.", "Review before AND after references, unresolved candidate sets, parser diagnostics and consumers outside this source tree. Use docs/token-impact.md for reviewer sign-off."] };
 }
 
-const escapeCell = (text) => String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("|", "&#124;").replaceAll("`", "&#96;").replaceAll("\n", " ").replaceAll("\r", " ");
+const escapeCell = (text) => escapeHtml(String(text)).replaceAll("|", "&#124;").replaceAll("`", "&#96;").replaceAll("\n", " ").replaceAll("\r", " ");
 export function renderImpact(report) {
   const lines = ["# Shared token impact review", "", "Static inventory only; complete: **false**. [Reviewer instructions](https://github.com/opensetlist-db/opensetlist/blob/dev/docs/token-impact.md).", "", ...report.limitations.map((text) => `- ${escapeCell(text)}`), "", `Changed tokens: ${report.changes.length}. Parse/coverage diagnostics: ${report.diagnostics.length}.`, ""];
   for (const change of report.changes) {
