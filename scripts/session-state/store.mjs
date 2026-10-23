@@ -4,7 +4,21 @@ import { randomUUID } from "node:crypto";
 import { completionGaps, digest, encode } from "./model.mjs";
 import { validateState } from "./schema.mjs";
 
+function regularFileStat(file) {
+  let stat;
+  try { stat = fs.lstatSync(file); }
+  catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  // existsSync follows links and reports a dangling link as absent.
+  // Inspect the directory entry itself before deciding it can be created.
+  if (!stat.isFile()) throw new Error("State and summary destinations must be regular files, not symlinks");
+  return stat;
+}
+
 export function readState(file) {
+  regularFileStat(file);
   const bytes = fs.readFileSync(file);
   const state = validateState(JSON.parse(bytes.toString("utf8")));
   if (state.progress === "done" && completionGaps(state).length) throw new Error("Invalid completed state: evidence incomplete");
@@ -24,8 +38,7 @@ export function withLock(file, action) {
 }
 
 export function atomicWrite(file, bytes, beforeRename = () => {}, { createOnly = false } = {}) {
-  const existing = fs.existsSync(file) ? fs.lstatSync(file) : null;
-  if (existing && !existing.isFile()) throw new Error("State and summary destinations must be regular files, not symlinks");
+  const existing = regularFileStat(file);
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.tmp`);
   try {
     const descriptor = fs.openSync(temporary, "wx", 0o600);
@@ -49,12 +62,12 @@ export function atomicWrite(file, bytes, beforeRename = () => {}, { createOnly =
 
 export function initialize(file, state, dryRun = false) {
   validateState(state);
-  if (fs.existsSync(file)) throw new Error("State file already exists");
+  if (regularFileStat(file)) throw new Error("State file already exists");
   if (dryRun) return state;
   return withLock(file, () => {
-    if (fs.existsSync(file)) throw new Error("State file already exists");
+    if (regularFileStat(file)) throw new Error("State file already exists");
     atomicWrite(file, encode(state), () => {
-      if (fs.existsSync(file)) throw new Error("Concurrent state creation");
+      if (regularFileStat(file)) throw new Error("Concurrent state creation");
     }, { createOnly: true });
     return state;
   });
@@ -103,7 +116,7 @@ export function managedSection(text, taskId, body) {
   return text.slice(0, text.indexOf(start)) + section + text.slice(text.indexOf(end) + end.length);
 }
 
-const fileHash = (file) => fs.existsSync(file) ? digest(fs.readFileSync(file)) : "missing";
+const fileHash = (file) => regularFileStat(file) ? digest(fs.readFileSync(file)) : "missing";
 export function render(file, revision, destination, expectedHash, kind, dryRun = false) {
   if (path.resolve(file) === path.resolve(destination)) throw new Error("Summary cannot overwrite state");
   const run = () => {

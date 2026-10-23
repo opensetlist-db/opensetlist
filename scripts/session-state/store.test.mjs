@@ -71,6 +71,29 @@ test("atomic replacement preserves POSIX mode and ownership", { skip: process.pl
   assert.equal(after.gid, before.gid);
 });
 
+test("existing and dangling link destinations are both rejected", (t) => {
+  const f = fixture(t);
+  const alias = path.join(f.root, "alias.md");
+  const linkType = process.platform === "win32" ? "junction" : "file";
+  const target = process.platform === "win32" ? path.join(f.root, "linked-directory") : f.file;
+  if (process.platform === "win32") fs.mkdirSync(target);
+  try { fs.symlinkSync(target, alias, linkType); }
+  catch (error) {
+    if (process.platform === "win32" && error.code === "EPERM") { t.skip("Windows file-symlink privilege unavailable"); return; }
+    throw error;
+  }
+  assert.throws(() => atomicWrite(alias, "summary"), /regular files/);
+  assert.equal(fs.lstatSync(alias).isSymbolicLink(), true);
+  fs.unlinkSync(alias);
+  fs.symlinkSync(path.join(f.root, "missing.md"), alias, linkType);
+  assert.equal(fs.existsSync(alias), false);
+  assert.equal(fs.lstatSync(alias).isSymbolicLink(), true);
+  assert.throws(() => render(f.file, 0, alias, "missing", "handoff"), /regular files/);
+  assert.throws(() => atomicWrite(alias, "summary"), /regular files/);
+  assert.throws(() => initialize(alias, createState(task)), /regular files/);
+  assert.equal(fs.lstatSync(alias).isSymbolicLink(), true);
+});
+
 test("managed handoff and board use the same revision, preserving approval history and other tasks", (t) => {
   const f = fixture(t);
   const handoff = path.join(f.root, "handoff.md");

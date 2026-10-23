@@ -206,6 +206,9 @@ two real concurrent writers, interrupted writes, dry-run and preserved manual
 history, non-clobber initialization, invalid dates/clock rollback and empty gate
 rejection. The POSIX mode/ownership assertion is skipped explicitly on Windows;
 its behavior requires a POSIX run for execution evidence. Tests use isolated
-synthetic files and no network/database. Package
-scripts, shared CI and unrelated QA tools are unchanged; run this suite
+synthetic files and no network/database.
+Link rejection uses directory junctions on Windows (no file-symlink privilege
+needed) and file symlinks on POSIX; unavailable Windows link privilege is an
+explicit skip rather than a pass.
+Package scripts, shared CI and unrelated QA tools are unchanged; run this suite
 explicitly in addition to repository checks.
