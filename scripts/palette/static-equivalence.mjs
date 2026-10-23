@@ -47,6 +47,31 @@ function variableName(node) {
     ? args[0].value : null;
 }
 
+function addedReferences(tree, addedVariables) {
+  const names = new Set(addedVariables);
+  const references = [];
+  if (!names.size) return references;
+  function inspect(value, node, field) {
+    function visit(children) {
+      for (const child of children) {
+        if (child.type !== "function" || child.value.toLowerCase() === "url") continue;
+        if (child.value.toLowerCase() === "var") {
+          const first = child.nodes.filter((part) => part.type !== "space")[0];
+          if (first?.type === "word" && names.has(first.value)) {
+            references.push({ kind: "preexisting-added-variable-reference", name: first.value,
+              field, line: node.source?.start?.line });
+          }
+        }
+        visit(child.nodes);
+      }
+    }
+    visit(valueParser(value).nodes);
+  }
+  tree.walkDecls((node) => inspect(node.value, node, "value"));
+  tree.walkAtRules((node) => inspect(node.params, node, "at-rule-params"));
+  return references;
+}
+
 function compareValues(before, after, colors, at, differences, substitutions) {
   const left = valueParser(before).nodes;
   const right = valueParser(after).nodes;
@@ -115,10 +140,11 @@ function compareTree(before, after, colors) {
   return { equal: differences.length === 0, substitutions, differences };
 }
 
-export function compareCss(beforeSource, afterSource, { variables = {} } = {}) {
+export function compareCss(beforeSource, afterSource, { variables = {}, addedVariables = [] } = {}) {
   const colors = approved(variables);
   const before = postcss.parse(beforeSource), after = postcss.parse(afterSource);
   const result = compareTree(before, after, colors);
+  result.differences.push(...addedReferences(before, addedVariables));
   for (const [side, tree] of [["before", before], ["after", after]]) {
     tree.walkDecls((node) => {
       if (colors.has(node.prop)) result.differences.push({ kind: "scoped-approved-variable", side,
@@ -139,6 +165,7 @@ export function compareGlobals(beforeSource, afterSource, { variables = {}, adde
   const differences = [];
   const rootRules = (tree) => liveNodes(tree.nodes).filter((node) => node.type === "rule" && node.selector === ":root");
   const oldRoots = rootRules(before), newRoots = rootRules(after);
+  differences.push(...addedReferences(before, addedVariables));
   if (oldRoots.length !== 1 || newRoots.length !== 1) {
     differences.push({ kind: "root-count", before: oldRoots.length, after: newRoots.length });
     return { equal: false, added: [], differences };

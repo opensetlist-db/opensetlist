@@ -67,7 +67,7 @@ try {
     for (const [side, dir] of [["before", beforeDir], ["after", afterDir]]) {
       for (const file of inventory.filter((file) => file !== config.globals && fs.existsSync(path.join(dir, file)))) {
         const source = fs.readFileSync(path.join(dir, file), "utf8");
-        const audit = compareCss(source, source, config);
+        const audit = compareCss(source, source, { ...config, addedVariables: side === "before" ? config.addedVariables : [] });
         if (!audit.equal) scopeConflicts.push({ side, file, differences: audit.differences });
       }
     }

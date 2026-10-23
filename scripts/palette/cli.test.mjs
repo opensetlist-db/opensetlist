@@ -36,6 +36,13 @@ test("static CLI audits the inventory, scoped overrides and replacement count", 
     assert.equal(report().scopeConflicts.length, 2);
     for (const side of ["before", "after"]) write(`${side}/src/other.css`, ".other {color:black}");
     assert.equal(run().status, 0);
+    // Defining a token can activate an unchanged fallback elsewhere. The
+    // source inventory must reject that context, even with no declaration.
+    for (const side of ["before", "after"]) write(`${side}/src/other.css`, ".other {color:var(--ink, red)}");
+    assert.equal(run().status, 1);
+    assert.equal(report().scopeConflicts.length, 1);
+    for (const side of ["before", "after"]) write(`${side}/src/other.css`, ".other {color:black}");
+    assert.equal(run().status, 0);
     config.expectedSubstitutions = 2;
     assert.equal(run().status, 1);
     assert.equal(report().expectedSubstitutions, 2);

@@ -60,7 +60,9 @@ and existing `var()` fallback branches, preserving their structure. Strings and
 URLs are opaque. It checks every approved token's actual global value and rejects
 unapproved additions, scoped overrides and `@property` registrations for approved
 tokens. It also checks changed CSS outside the explicit list and approved-token
-shadowing across both trees' `src/**/*.css` inventory.
+shadowing across both trees' `src/**/*.css` inventory. Existing references to a
+newly added variable are rejected: defining it could activate an unchanged
+fallback or alias elsewhere and silently change another element's color.
 
 This is intentionally conservative: supported literals are valid hex
 (3/4/6/8 digits) and color functions understood by the installed Culori parser.

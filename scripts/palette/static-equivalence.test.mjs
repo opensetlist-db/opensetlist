@@ -59,6 +59,8 @@ test("approved tokens reject scoped overrides and @property registrations", () =
   const old = ":root { --red: #ff000080; --blue: #0066ff; }";
   const next = ":root { --red: #ff000080; --blue: #0066ff; --new: #fff; }";
   const options = { variables, addedVariables: ["--new"] };
+  assert.equal(compareCss(".x { color: #0066ff; }", ".x { color: var(--blue); }", { variables }).equal, true);
+  assert.equal(compareGlobals(old, next, options).equal, true);
   assert.equal(compareCss(".x { --blue: black; color: #0066ff; }",
     ".x { --blue: black; color: var(--blue); }", { variables }).equal, false);
   assert.equal(compareGlobals(`${old} @media (min-width: 1px) { :root { --blue: black; } }`,
@@ -70,5 +72,27 @@ test("approved tokens reject scoped overrides and @property registrations", () =
 test("a very small alpha difference is still a color difference", () => {
   const source = ".x { color: rgb(0 0 0 / 0.0000000001); }";
   const changed = ".x { color: var(--black); }";
+  assert.equal(compareCss(source, changed, { variables: { "--black": "rgb(0 0 0 / 0.0000000001)" } }).equal, true);
   assert.equal(compareCss(source, changed, { variables: { "--black": "rgb(0 0 0 / 0)" } }).equal, false);
+});
+
+test("new global variable must not activate preexisting fallbacks or aliases", () => {
+  const unaffected = ".other { color: var(--existing, red); }";
+  assert.equal(compareCss(unaffected, unaffected, { variables, addedVariables: ["--new"] }).equal, true);
+  const before = ".other { color: var(--new, red); }";
+  assert.equal(compareCss(before, before, { variables, addedVariables: ["--new"] }).equal, false);
+  assert.equal(compareCss(".other { background: linear-gradient(red, var(--old, var(--new, blue))); }",
+    ".other { background: linear-gradient(red, var(--old, var(--new, blue))); }",
+    { variables, addedVariables: ["--new"] }).equal, false);
+  assert.equal(compareCss('@supports (color: var(--new, red)) { .x { color: red; } }',
+    '@supports (color: var(--new, red)) { .x { color: red; } }',
+    { variables, addedVariables: ["--new"] }).equal, false);
+  const oldGlobal = ":root { --alias: var(--new, red); --blue: #0066ff; --red: #ff000080; }";
+  const nextGlobal = ":root { --alias: var(--new, red); --new: #fff; --blue: #0066ff; --red: #ff000080; }";
+  assert.equal(compareGlobals(oldGlobal, nextGlobal, { variables, addedVariables: ["--new"] }).equal, false);
+});
+
+test("new-variable audit ignores strings and opaque URLs", () => {
+  const source = '.other { content: "var(--new, red)"; background: url("/var(--new)"); }';
+  assert.equal(compareCss(source, source, { variables, addedVariables: ["--new"] }).equal, true);
 });
