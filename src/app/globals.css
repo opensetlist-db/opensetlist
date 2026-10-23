@@ -46,6 +46,15 @@
   --surface-notice-neutral: #f7f9fc;
   --surface-credit-toggle-hover: #eeefff;
   --text-credit-toggle-hover: #5156a6;
+  /* Trending songs card (trending-v1): faint amber wash, amber top
+     rule, item dividers and the TOP 3 pill. */
+  --surface-trending-start: #fffaf0;
+  --border-trending: #e4d6bd;
+  --accent-trending: #d8b77d;
+  --border-trending-divider: #eee5d6;
+  --text-trending-pill: #86530f;
+  --surface-trending-pill: #fff4de;
+  --border-trending-pill: #e6ce9f;
   /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
      so a palette change is one edit, not a grep across components.
      Consumed by `.row-hover-bg:hover` below; available as a Tailwind

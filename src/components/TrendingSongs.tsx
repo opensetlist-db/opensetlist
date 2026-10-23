@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { REACTION_TYPES } from "@/lib/reactions";
-import { colors, radius } from "@/styles/tokens";
+import styles from "@/components/event/eventDetail.module.css";
 
 export interface TrendingSong {
   setlistItemId: string;
@@ -32,20 +32,6 @@ export interface TrendingSong {
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
-// Mockup `event-page-desktop-mockup-v2.jsx:621` — amber-tinted glow
-// shadow specific to the trending card. Inlined here (not promoted
-// to a shared token) because no other surface uses an amber drop
-// shadow; the trending card is the single consumer.
-const TRENDING_SHADOW =
-  "0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(251,191,36,0.10)";
-
-// Top-reaction count uses amber-800 (`#92400e`) per mockup `:639`
-// — slightly darker than `colors.trendingText` (`#b45309`,
-// amber-700) used for the card title. Distinct enough to read as
-// "this is the count, not the section header" without inventing a
-// new global token.
-const TOP_COUNT_COLOR = "#92400e";
-
 interface Props {
   songs: TrendingSong[];
   /**
@@ -57,153 +43,88 @@ interface Props {
   emptyLabel?: string;
 }
 
-// Trending TOP3 card per shared-components-handoff §3-4 + the
-// desktop mockup `event-page-desktop-mockup-v2.jsx:617-646`. Card
-// always renders when mounted — the empty state nudges the user to
-// engage rather than disappearing the surface entirely.
+/*
+ * "이번 공연 화제의 곡" — top-3 reacted songs, above the setlist card.
+ *
+ * Look: the owner-approved trending-v1 supplement to consistency-03-v3
+ * (wiki `handoffs/03/trending-v1`), which replaced the pre-redesign amber
+ * strip the redesign packets had left out: a white-led card with a faint
+ * amber wash, 3px amber top rule, navy 20/18px heading, a small
+ * non-interactive "TOP 3" pill, three columns from a 1024px viewport and
+ * one column below, the original title with the translation and the
+ * variant each on their own line. Styles live in eventDetail.module.css
+ * (`.trending*`) next to the other concert-detail panels.
+ *
+ * Behaviour is unchanged: the caller (<LiveSetlist>) decides visibility
+ * (`status !== "upcoming" && songs.length > 0`) and the ranking / ties
+ * come from `deriveTrendingSongs` or the SSR query. This component only
+ * renders what it is handed, in that order.
+ *
+ * The empty branch is the component's own defensive fallback for a
+ * caller that mounts it with no songs; the event page never does today,
+ * but the contract stays so a future caller gets the nudge instead of a
+ * bare heading.
+ *
+ * Accessibility: an <ol> carries the rank, so the medals are decorative
+ * (aria-hidden) and so is the TOP 3 pill (the heading already names the
+ * card). Each reaction count is one labelled image ("<type> <count>")
+ * with the glyph and digits hidden, so assistive tech reads it once.
+ * Nothing here is focusable — it is a display-only card.
+ */
 export function TrendingSongs({ songs, emptyLabel }: Props) {
   const t = useTranslations("Reaction");
   // Defensive slice: deriveTrendingSongs() already takes top 3, but the
-  // medal-strip rendering depends on `MEDALS[i]` resolving — a future
-  // caller passing more than 3 would render `undefined` past index 2.
+  // medal rendering depends on `MEDALS[i]` resolving — a future caller
+  // passing more than 3 would render `undefined` past index 2.
   const rankedSongs = songs.slice(0, MEDALS.length);
 
   return (
     <section
-      className="mb-6"
-      style={{
-        background: colors.trendingBg,
-        border: `1px solid ${colors.trendingBorder}`,
-        borderRadius: radius.card,
-        // Mockup `:620` — `padding: "18px 24px"`.
-        padding: "18px 24px",
-        boxShadow: TRENDING_SHADOW,
-      }}
+      aria-labelledby="trending-songs-title"
+      className={styles.trending}
+      data-testid="trending-songs"
     >
-      <h3
-        // Mockup `:623` — `fontSize: 13, fontWeight: 700`.
-        style={{
-          color: colors.trendingText,
-          fontSize: 13,
-          fontWeight: 700,
-          margin: 0,
-          marginBottom: 14,
-        }}
-      >
-        {t("trending")}
-      </h3>
+      <div className={styles.trendingHead}>
+        <h2 id="trending-songs-title" className={styles.trendingTitle}>
+          {t("trending")}
+        </h2>
+        {rankedSongs.length > 0 && (
+          <span className={styles.trendingTop} aria-hidden="true">
+            TOP 3
+          </span>
+        )}
+      </div>
 
       {rankedSongs.length === 0 ? (
-        // Mockup `:626-629` — keep the card visible with a subtle
-        // empty nudge. Operator-driven — disappearing the card on
-        // events with zero reactions hides the surface that
-        // explains how reactions work.
-        <div
-          style={{
-            fontSize: 13,
-            color: TOP_COUNT_COLOR,
-            opacity: 0.45,
-          }}
-        >
+        <p className={styles.trendingEmpty}>
           {emptyLabel ?? t("trendingEmpty")}
-        </div>
+        </p>
       ) : (
-        <ul
-          // Mobile (default): column flex with `9px` row gap. Desktop
-          // (≥ lg): row flex with 32px column gap (mockup `:631` —
-          // `gap: 32` ≅ `lg:gap-8`).
-          className="flex flex-col gap-y-[9px] lg:flex-row lg:gap-y-0 lg:gap-x-8"
-          style={{ margin: 0, padding: 0, listStyle: "none" }}
-        >
+        <ol className={styles.trendingList}>
           {rankedSongs.map((song, i) => (
-            <li
-              key={song.setlistItemId}
-              className="lg:flex-1 lg:min-w-0"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              {/* Medal — mockup `:634` `fontSize: 20`. */}
-              <span
-                aria-hidden="true"
-                style={{ fontSize: 20, flexShrink: 0 }}
-              >
+            <li key={song.setlistItemId} className={styles.trendingItem}>
+              <span className={styles.trendingMedal} aria-hidden="true">
                 {MEDALS[i]}
               </span>
-              {/* Two-line block: title on top, top-reaction count
-                  below. Per mockup `:635-642`. */}
-              <div style={{ minWidth: 0, flex: 1 }}>
-                {/* Original-primary title block — same shape as
-                    <SetlistRow>'s SongTitleBlock so the trending card
-                    reads consistently with every other song listing
-                    (event detail setlist, song detail header, member
-                    /series detail history). main = originalTitle,
-                    sub = localized title (muted, smaller weight),
-                    variantLabel in parens. Truncate runs at the row
-                    level so a long original + localized + variant
-                    triple clips with ellipsis instead of wrapping. */}
-                <div
-                  className="truncate"
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: colors.textPrimary,
-                  }}
-                >
-                  {song.mainTitle}
-                  {song.subTitle && (
-                    <span
-                      className="ml-1"
-                      style={{
-                        fontWeight: 400,
-                        color: colors.textMuted,
-                      }}
-                    >
-                      {song.subTitle}
-                    </span>
-                  )}
-                  {song.variantLabel && (
-                    <span
-                      className="ml-1"
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 400,
-                        color: colors.textMuted,
-                      }}
-                    >
-                      ({song.variantLabel})
-                    </span>
-                  )}
-                </div>
-                {/* Reaction-type counts in REACTION_TYPES canonical
-                    order (waiting / best / surprise / moved), filtered
-                    to only the types this song actually has — the
-                    trending card stays compact and unused types don't
-                    take visible space. Upstream `deriveTrendingSongs`
-                    already filters `total > 0`, so every song reaching
-                    here renders at least one emoji+count pair.
-
-                    Each per-type wrapper carries `role="img"` plus an
-                    `aria-label` of "<localized type> <count>" so screen
-                    readers announce the strip as type-aware data points
-                    instead of bare digits. The emoji glyph and count
-                    digit inside are `aria-hidden` — without that the
-                    AT would announce both the aria-label AND the inner
-                    content (double-read). The label reuses `t(type)`
-                    (the same Reaction-namespace key the per-row
-                    buttons use as their accessible name in
-                    `ReactionButton:405`), so labels stay translated in
-                    lockstep with the per-row UI. */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginTop: 2,
-                  }}
-                >
+              <div className={styles.trendingContent}>
+                {/* Original title first; the localized title and the
+                    variant each get their own muted line (trending-v1)
+                    instead of the old single truncated line. The values
+                    are the SSR / deriveTrendingSongs ones, built with the
+                    same cascade as <SetlistRow>'s title block. */}
+                <div className={styles.trendingOriginal}>{song.mainTitle}</div>
+                {song.subTitle && (
+                  <div className={styles.trendingSub}>{song.subTitle}</div>
+                )}
+                {song.variantLabel && (
+                  <div className={styles.trendingSub}>
+                    ({song.variantLabel})
+                  </div>
+                )}
+                {/* REACTION_TYPES canonical order (waiting / best /
+                    surprise / moved), positive counts only — upstream
+                    already drops songs with no reactions at all. */}
+                <div className={styles.trendingReactions}>
                   {REACTION_TYPES.filter(
                     ({ type }) => (song.reactionCounts[type] ?? 0) > 0,
                   ).map(({ type, emoji }) => {
@@ -213,29 +134,9 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                         key={type}
                         role="img"
                         aria-label={`${t(type)} ${count}`}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 3,
-                        }}
                       >
-                        <span
-                          style={{ fontSize: 14 }}
-                          aria-hidden="true"
-                        >
-                          {emoji}
-                        </span>
-                        <span
-                          className="tabular-nums"
-                          aria-hidden="true"
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: TOP_COUNT_COLOR,
-                          }}
-                        >
-                          {count}
-                        </span>
+                        <span aria-hidden="true">{emoji}</span>
+                        <span aria-hidden="true">{count}</span>
                       </span>
                     );
                   })}
@@ -243,7 +144,7 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
               </div>
             </li>
           ))}
-        </ul>
+        </ol>
       )}
     </section>
   );
