@@ -150,6 +150,9 @@ const eslintConfig = defineConfig([
     // already excludes them; eslint needs its own ignore.
     "test-results/**",
     "playwright-report/**",
+    // Local scratch scripts and generated QA evidence are disposable;
+    // .gitignore does not exclude them from ESLint's flat config.
+    ".claude/tmp/**",
   ]),
 ]);
 
