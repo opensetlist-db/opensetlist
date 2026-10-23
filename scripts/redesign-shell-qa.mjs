@@ -495,24 +495,53 @@ function pageInvariants() {
   // nowrap) or vertically (line clamp).
   const withDescendants = (h) => [h, ...h.querySelectorAll("*")];
   const horizontallyCut = (el) => {
-    if (!el.clientWidth || el.scrollWidth <= el.clientWidth + 1) return false;
     // CJK punctuation may hang visibly outside the text box. It is cut
-    // only if an ancestor clips that overflow; viewport overflow is
-    // checked separately. Include <main> and layout wrappers here.
+    // only at a clipping boundary; viewport overflow is checked separately.
+    // Include <main> and layout wrappers in the ancestor clip intersection.
     const r = el.getBoundingClientRect();
-    const right = r.left + el.scrollWidth;
     let clipLeft = -Infinity;
     let clipRight = Infinity;
+    let visibleLeft = -Infinity;
+    let visibleRight = Infinity;
+    let reachableByScroll = false;
     for (let a = el.parentElement; a; a = a.parentElement) {
-      if (getComputedStyle(a).overflowX === "visible") continue;
+      const s = getComputedStyle(a);
+      // Overflow does not clip a non-replaced inline's text box.
+      if (s.overflowX === "visible" || (s.display === "inline" && !a.clientWidth)) continue;
       const left = a.getBoundingClientRect().left + a.clientLeft;
-      clipLeft = Math.max(clipLeft, left);
-      clipRight = Math.min(clipRight, left + a.clientWidth);
+      visibleLeft = Math.max(visibleLeft, left);
+      visibleRight = Math.min(visibleRight, left + a.clientWidth);
+      // A partially visible card in a scrollable rail can be revealed.
+      // Clipping inside its content remains a defect; the rail viewport
+      // and its outer wrappers must not count as title truncation.
+      if (/^(auto|scroll)$/.test(s.overflowX) && a.scrollWidth > a.clientWidth + 1) reachableByScroll = true;
+      if (!reachableByScroll) {
+        clipLeft = Math.max(clipLeft, left);
+        clipRight = Math.min(clipRight, left + a.clientWidth);
+      }
     }
     // A fully off-canvas/scroll-hidden heading does not paint. Its own
     // overflow must not turn a closed drawer into a truncation failure.
-    if (Math.min(r.right, clipRight) <= Math.max(r.left, clipLeft)) return false;
-    return getComputedStyle(el).overflowX !== "visible" || right > clipRight + 1;
+    if (Math.min(r.right, visibleRight) <= Math.max(r.left, visibleLeft)) return false;
+    const clipsSelf = el.clientWidth > 0 && getComputedStyle(el).overflowX !== "visible";
+    if (clipsSelf && el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1) return true;
+    if (clipsSelf) {
+      clipLeft = Math.max(clipLeft, r.left + el.clientLeft);
+      clipRight = Math.min(clipRight, r.left + el.clientLeft + el.clientWidth);
+    }
+    // Text can fit its own 200px heading yet be cut by a 100px parent.
+    // Conversely, that oversized heading's empty box is not lost text.
+    // Measure each direct text node's line fragments; withDescendants
+    // handles nested inline nodes without comparing their empty box area.
+    for (const node of el.childNodes) {
+      if (node.nodeType !== Node.TEXT_NODE || !node.textContent.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const text of range.getClientRects()) {
+        if (text.width > 0 && (text.left < clipLeft - 1 || text.right > clipRight + 1)) return true;
+      }
+    }
+    return false;
   };
   const isCut = (h) =>
     withDescendants(h).some(
