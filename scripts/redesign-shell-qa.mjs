@@ -494,10 +494,30 @@ function pageInvariants() {
   // counts the ones whose text is cut right now, horizontally (ellipsis,
   // nowrap) or vertically (line clamp).
   const withDescendants = (h) => [h, ...h.querySelectorAll("*")];
+  const horizontallyCut = (el) => {
+    if (!el.clientWidth || el.scrollWidth <= el.clientWidth + 1) return false;
+    // CJK punctuation may hang visibly outside the text box. It is cut
+    // only if an ancestor clips that overflow; viewport overflow is
+    // checked separately. Include <main> and layout wrappers here.
+    const r = el.getBoundingClientRect();
+    const right = r.left + el.scrollWidth;
+    let clipLeft = -Infinity;
+    let clipRight = Infinity;
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      if (getComputedStyle(a).overflowX === "visible") continue;
+      const left = a.getBoundingClientRect().left + a.clientLeft;
+      clipLeft = Math.max(clipLeft, left);
+      clipRight = Math.min(clipRight, left + a.clientWidth);
+    }
+    // A fully off-canvas/scroll-hidden heading does not paint. Its own
+    // overflow must not turn a closed drawer into a truncation failure.
+    if (Math.min(r.right, clipRight) <= Math.max(r.left, clipLeft)) return false;
+    return getComputedStyle(el).overflowX !== "visible" || right > clipRight + 1;
+  };
   const isCut = (h) =>
     withDescendants(h).some(
       (el) =>
-        (el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1) ||
+        horizontallyCut(el) ||
         (el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 1 && getComputedStyle(el).overflowY !== "visible"),
     );
   const clamped = headings.filter(

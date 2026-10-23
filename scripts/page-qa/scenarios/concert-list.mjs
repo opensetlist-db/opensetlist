@@ -100,9 +100,9 @@ const scenario = {
         const lastPage = Math.max(1, ...pageNumbers);
         let priorRows = firstRows;
         let priorSearch = new URL(page.url()).search;
-        const next = page.locator('main nav a[href*="pastPage=2"]').last();
+        const next = page.locator('main nav a[href$="pastPage=2"]').last();
         if (await next.count()) {
-          await h.afterNav(page, { url: /pastPage=2/, ready: 'nav a[aria-current="page"][href*="pastPage=2"]', action: () => next.click() });
+          await h.afterNav(page, { url: (u) => u.searchParams.get("pastPage") === "2", ready: 'nav a[aria-current="page"][href$="pastPage=2"]', action: () => next.click() });
           const hrefs = await page.locator('main nav:has(a[href*="pastPage="]) a').evaluateAll((as) => as.map((a) => a.getAttribute("href")));
           h.check(`${loc} pagination preserves filter`, hrefs.length > 0 && hrefs.every((x) => x.includes("filter=completed")), hrefs.join(" "));
           priorRows = await rowState(page);
@@ -177,7 +177,17 @@ const scenario = {
           h.check(`${loc}/${width} future cancelled in All`, await find(fx.cancel).getAttribute("data-status") === "cancelled", "");
           await page.locator(`a[href*="/events/${fx.broken}/"] [data-testid="event-art"][data-state="fallback"]`).waitFor();
           h.check(`${loc}/${width} failed selected logo falls back`, failedRequests.some((url) => url.includes("consistency06-broken")) && await find(fx.broken).locator("img").count() === 0, failedRequests.join(" "));
-          h.check(`${loc}/${width} inherited selected logo loads (browser stub)`, await live.locator('[data-testid="event-art"][data-state="logo"] img').evaluate((img) => img.complete && img.naturalWidth === 400 && img.alt === ""), "actual resolver, controlled browser image response");
+          // Hydration can replace the SSR image after the load event,
+          // especially on WebKit. Await this selected image, not a sleep.
+          await page.waitForFunction((id) => {
+            const img = document.querySelector(`main a[href*="/events/${id}/"] [data-testid="event-art"] img`);
+            return img?.complete && img.naturalWidth > 0;
+          }, fx.live);
+          const loadedLogo = await live.locator('[data-testid="event-art"][data-state="logo"] img').evaluate((img) => ({ complete: img.complete, width: img.naturalWidth, height: img.naturalHeight, alt: img.alt, src: img.currentSrc }));
+          // WebKit reports this SVG's natural size at its rendered scale
+          // (44×22 or 64×32), while Chromium reports 400×200. Both must
+          // decode the selected URL and retain its 2:1 aspect ratio.
+          h.check(`${loc}/${width} inherited selected logo loads (browser stub)`, loadedLogo.complete && loadedLogo.width > 0 && loadedLogo.width === loadedLogo.height * 2 && loadedLogo.src.includes("consistency06-inherited") && loadedLogo.alt === "", JSON.stringify(loadedLogo));
           h.check(`${loc}/${width} explicit typography reserves slot`, await find(fx.plain).locator('[data-testid="event-art"][data-state="fallback"]').count() === 1, "");
           const cut = await h.clipped(page, ["main h4", "main h3"]);
           h.check(`${loc}/${width} fixture long names wrap`, cut.length === 0, JSON.stringify(cut));
