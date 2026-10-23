@@ -111,7 +111,7 @@ function snapshot(input, tokenFiles) {
     if (!property?.declarations?.length) return null;
     const matches = [];
     for (const declaration of property.declarations) {
-      if (tokenNodes.has(declaration)) matches.push({ key: tokenNodes.get(declaration), reason: null });
+      if (tokenNodes.has(declaration)) matches.push({ key: tokenNodes.get(declaration), reason: null }, ...origins(declaration.initializer, seen).map((row) => ({ ...row, reason: "Indirect token definition; verify derived consumers" })));
       else if (prefixNodes.has(declaration)) matches.push(...prefixOrigins(prefixNodes.get(declaration), "Token collection member; candidate set only"));
       else if (declaration.initializer) matches.push(...origins(declaration.initializer, seen).map((row) => ({ ...row, reason: row.reason ?? "Indirect object property; verify downstream use" })));
       else return null;

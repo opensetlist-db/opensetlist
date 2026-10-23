@@ -127,6 +127,16 @@ describe("shared token impact inventory", () => {
     }
   });
 
+  it("preserves downstream consumers through unchanged derived token properties", () => {
+    const first = { "src/styles/tokens.ts": "export const colors = { live: '#111' }; export const derived = { dot: colors.live };", "src/derived.tsx": "import { derived } from './styles/tokens'; export const DerivedDot = () => <i style={{background: derived.dot}}/>;" };
+    const next = { ...first, "src/styles/tokens.ts": first["src/styles/tokens.ts"].replace("'#111'", "'#222'") };
+    const report = analyzeImpact(first, next);
+    expect(report.changes.map((row) => row.name)).toEqual(["colors.live"]);
+    expect(report.changes[0].consumers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ side: "after", file: "src/derived.tsx", property: "background", expression: "derived.dot", status: "unresolved" }),
+    ]));
+  });
+
   it("reports CSS in TS strings, dynamic names and cyclic aliases without looping", () => {
     const source = { ...after, "src/runtime.tsx": "const name = 'live'; export const C = () => <i style={{color: 'var(--live)', background: `var(--${name})`}}/>;", "src/cycle.css": ":root { --a: var(--b); --b: var(--a); } .x { color: var(--a); }" };
     const report = analyzeImpact(before, source);
