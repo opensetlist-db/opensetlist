@@ -102,6 +102,43 @@ describe("shared token impact inventory", () => {
     expect(report.diagnostics.some((row) => row.reason.includes("Interpolated"))).toBe(true);
     expect(report.changes.find((row) => row.name === "--a")!.consumers.length).toBeGreaterThan(0);
   });
+
+  it("normalizes source-tree iteration order while preserving per-file CSS declaration changes", () => {
+    const first = { "src/a.css": ":root { --live: red; }", "src/b.css": ".dark { --live: blue; }" };
+    const reordered = { "src/b.css": first["src/b.css"], "src/a.css": first["src/a.css"] };
+    expect(analyzeImpact(first, { ...reordered, "src/a.css": ":root { --live: orange; }" }).changes).toHaveLength(1);
+    expect(analyzeImpact(first, reordered).changes).toHaveLength(0);
+  });
+
+  it("keeps minified CSS alias consumers with different properties and selectors", () => {
+    const first = { "src/test.css": ":root{--live:red;--alias:var(--live)}.label{color:var(--alias);background:var(--alias)}.dot{background:var(--alias)}" };
+    const next = { "src/test.css": first["src/test.css"].replace("--live:red", "--live:orange") };
+    const live = analyzeImpact(first, next).changes.find((row) => row.name === "--live")!;
+    expect(live.consumers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ side: "after", component: ".label", property: "color", status: "unresolved" }),
+      expect.objectContaining({ side: "after", component: ".label", property: "background", status: "unresolved" }),
+      expect.objectContaining({ side: "after", component: ".dot", property: "background", status: "unresolved" }),
+    ]));
+  });
+
+  it("resolves ESM extension substitutions and attributes inner bindings to the component", () => {
+    const source = { ...after, "src/nested.tsx": "import { colors } from './styles/tokens.js'; export const Dot = () => { const config = { color: colors.live }; return <i style={{ background: config.color }}/> };", "src/unresolved.ts": "export { colors } from './missing.js';" };
+    const report = analyzeImpact(before, source);
+    expect(report.changes.find((row) => row.name === "colors.live")!.consumers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ side: "after", file: "src/nested.tsx", component: "Dot", expression: "colors.live" }),
+      expect.objectContaining({ side: "after", file: "src/nested.tsx", component: "Dot", property: "background", expression: "config.color" }),
+    ]));
+    expect(report.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ side: "after", file: "src/unresolved.ts", reason: expect.stringContaining("Unresolved source import") })]));
+  });
+
+  it("propagates a larger CSS alias inventory without dropping terminal roles", () => {
+    const aliases = Array.from({ length: 100 }, (_, index) => `--alias-${index}:var(--live);`).join("");
+    const uses = Array.from({ length: 1000 }, (_, index) => `.use-${index}{color:var(--alias-${index % 100})}`).join("");
+    const first = { "src/scale.css": `:root{--live:red;${aliases}}${uses}` };
+    const next = { "src/scale.css": first["src/scale.css"].replace("--live:red", "--live:orange") };
+    const live = analyzeImpact(first, next).changes.find((row) => row.name === "--live")!;
+    expect(live.consumers.filter((row) => row.side === "after" && row.property === "color")).toHaveLength(1000);
+  });
 });
 
 describe("token impact input and CLI", () => {
@@ -126,8 +163,16 @@ describe("token impact input and CLI", () => {
       const runGit = (...args: string[]) => execFileSync("git", ["-C", right, ...args], { env: { ...process.env, GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_SYSTEM: emptyConfig, GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.test", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.test" } });
       runGit("init", "--quiet"); runGit("add", "src"); runGit("-c", "core.hooksPath=" + path.join(root, "no-hooks"), "commit", "--quiet", "-m", "fixture");
       expect(readRef(right, "HEAD").files).toEqual(readTree(right));
+      fs.writeFileSync(path.join(right, "src/styles/tokens.ts"), before["src/styles/tokens.ts"]);
+      runGit("add", "src"); runGit("-c", "core.hooksPath=" + path.join(root, "no-hooks"), "commit", "--quiet", "-m", "changed token fixture");
+      main(["--repo", right, "--before", "HEAD~1", "--after", "HEAD", "--out", output]);
+      const refReport = JSON.parse(fs.readFileSync(path.join(output, "impact.json"), "utf8"));
+      expect(refReport.comparison.before).not.toBe(refReport.comparison.after);
+      expect(refReport.changes.some((row: { name: string }) => row.name === "colors.live")).toBe(true);
       expect(() => main(["--before", "HEAD", "--out", output])).toThrow("complete before/after");
       expect(() => main(["--unknown", "x"])).toThrow("Invalid option");
+      expect(() => main(["--out", "a", "--out", "b"])).toThrow("Repeated option");
+      expect(() => main(["--out"])).toThrow("Invalid option");
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 });

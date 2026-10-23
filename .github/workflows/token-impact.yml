@@ -50,7 +50,11 @@ jobs:
           if [ ! -f scripts/token-impact.mjs ]; then
             echo 'Bootstrap: analyzer is absent on the base branch. Merge the tooling PR before automatic reports are available. No analysis ran.' > token-impact-report/impact.md
           else
-            node scripts/token-impact.mjs --before "$BASE_SHA" --after "$HEAD_SHA" --out token-impact-report
+            if ! node scripts/token-impact.mjs --before "$BASE_SHA" --after "$HEAD_SHA" --out token-impact-report; then
+              echo 'Analyzer failed. No complete inventory was produced. Read the job log and review the token change manually.' > token-impact-report/impact.md
+              echo '{"schemaVersion":1,"complete":false,"status":"analyzer-failed"}' > token-impact-report/impact.json
+              failed=1
+            fi
           fi
           # GitHub summaries are bounded; the artifact retains the full report.
           if [ "$(wc -c < token-impact-report/impact.md)" -le 900000 ]; then
@@ -59,6 +63,7 @@ jobs:
             echo 'Full token consumer report exceeds summary size. Download the shared-token-impact artifact; analysis is static and incomplete.' >> "$GITHUB_STEP_SUMMARY"
           fi
           echo 'Reviewer guide: https://github.com/opensetlist-db/opensetlist/blob/dev/docs/token-impact.md' >> "$GITHUB_STEP_SUMMARY"
+          if [ "${failed:-0}" -eq 1 ]; then exit 1; fi
 
       - name: Preserve full JSON and review list
         if: always()

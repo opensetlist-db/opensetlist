@@ -66,6 +66,13 @@ delta; changing only comments outside it does not. Exported functions are
 outside the token definition inventory. Unsupported object members and parse
 errors produce diagnostics.
 
+Unchanged token expressions are not definition deltas even if a referenced
+upstream value changes, for example `live: BASE.red` when `BASE.red` changes
+in another module. Inspect those upstream dependencies manually. Relative
+imports include TypeScript `.js`-to-`.ts` extension substitution; unresolved
+relative or `@/` source imports produce diagnostics. Cross-file CSS definition
+ordering is normalized by path; declaration order within each file is preserved.
+
 Candidate propagation through object maps, dynamic selections, templates and
 calls is marked **unresolved**. It can over-report, and does not prove call
 return values, control flow, runtime mutation or element semantics. Arbitrary

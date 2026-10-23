@@ -13,7 +13,7 @@ const git = (repo, args, options = {}) => execFileSync("git", ["-C", repo, ...ar
 export function readRef(repo, ref) {
   const sha = git(repo, ["rev-parse", "--verify", `${ref}^{commit}`], { encoding: "utf8" }).trim();
   const entries = git(repo, ["ls-tree", "-rz", "--full-tree", sha], { encoding: "utf8" }).split("\0").filter(Boolean).map((line) => {
-    const [meta, file] = line.split("\t");
+    const separator = line.indexOf("\t"), meta = line.slice(0, separator), file = line.slice(separator + 1);
     return { mode: meta.split(" ")[0], oid: meta.split(" ")[2], file };
   }).filter((row) => included(row.file) && row.mode.startsWith("100"));
   const buffer = git(repo, ["cat-file", "--batch"], { input: entries.map((row) => row.oid).join("\n") + "\n" });

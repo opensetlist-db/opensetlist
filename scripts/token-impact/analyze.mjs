@@ -19,12 +19,16 @@ const roleOf = (property) => /^(color|fill|stroke|.*TextFillColor)$/i.test(prope
   : /border|outline|shadow/i.test(property) ? "edge / effect" : "unknown — manual trace required";
 
 function context(node, source) {
-  let property = "unknown", component = "module";
+  let property = "unknown", component = "module", binding = "module";
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (property === "unknown" && (ts.isPropertyAssignment(parent) || ts.isJsxAttribute(parent))) property = nameOf(parent.name) ?? parent.name.getText(source);
-    if (component === "module" && (ts.isFunctionDeclaration(parent) || ts.isVariableDeclaration(parent)) && parent.name && ts.isIdentifier(parent.name)) component = parent.name.text;
+    if (binding === "module" && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) binding = parent.name.text;
+    if (component === "module" && ts.isFunctionLike(parent)) {
+      const name = parent.name ?? (ts.isVariableDeclaration(parent.parent) ? parent.parent.name : null);
+      if (name) component = nameOf(name) ?? name.getText(source);
+    }
   }
-  return { component, property, role: roleOf(property) };
+  return { component: component === "module" ? binding : component, property, role: roleOf(property) };
 }
 
 function cssReferences(value) {
@@ -40,14 +44,18 @@ function cssReferences(value) {
 }
 
 function snapshot(input, tokenFiles) {
-  const files = new Map(Object.entries(input).map(([file, value]) => [normalize(file), value]));
+  const files = new Map(Object.entries(input).map(([file, value]) => [normalize(file), value]).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
   const definitions = new Map(), references = [], diagnostics = [];
   const tokenNodes = new Map(), prefixNodes = new Map();
   const scripts = new Map([...files].filter(([file]) => scriptFile.test(file)).map(([file, text]) => [file, ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true)]));
   const resolveModule = (specifier, from) => {
     const stem = specifier.startsWith("@/") ? `src/${specifier.slice(2)}` : specifier.startsWith(".") ? path.posix.join(path.posix.dirname(from), specifier) : null;
     if (!stem) return undefined;
-    for (const candidate of [stem, `${stem}.ts`, `${stem}.tsx`, `${stem}.js`, `${stem}.jsx`, `${stem}/index.ts`, `${stem}/index.tsx`]) {
+    const substituted = stem.endsWith(".js") ? [stem.slice(0, -3) + ".ts", stem.slice(0, -3) + ".tsx"]
+      : stem.endsWith(".jsx") ? [stem.slice(0, -4) + ".tsx"]
+      : stem.endsWith(".mjs") ? [stem.slice(0, -4) + ".mts"]
+      : stem.endsWith(".cjs") ? [stem.slice(0, -4) + ".cts"] : [];
+    for (const candidate of [...substituted, stem, ...[".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"].map((extension) => `${stem}${extension}`), `${stem}/index.ts`, `${stem}/index.tsx`, `${stem}/index.js`]) {
       if (scripts.has(candidate)) return { resolvedFileName: candidate, extension: candidate.endsWith("tsx") ? ts.Extension.Tsx : ts.Extension.Ts };
     }
     return undefined;
@@ -65,6 +73,12 @@ function snapshot(input, tokenFiles) {
   const checker = program.getTypeChecker();
   for (const [file, source] of scripts) {
     for (const error of source.parseDiagnostics) diagnostics.push({ file, line: source.getLineAndCharacterOfPosition(error.start ?? 0).line + 1, reason: ts.flattenDiagnosticMessageText(error.messageText, " ") });
+    for (const statement of source.statements) {
+      const specifier = (ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) && statement.moduleSpecifier;
+      if (!specifier || !ts.isStringLiteralLike(specifier) || !(specifier.text.startsWith(".") || specifier.text.startsWith("@/"))) continue;
+      const stem = specifier.text.startsWith("@/") ? `src/${specifier.text.slice(2)}` : path.posix.join(path.posix.dirname(file), specifier.text);
+      if (!resolveModule(specifier.text, file) && !files.has(stem)) diagnostics.push({ file, line: source.getLineAndCharacterOfPosition(statement.getStart()).line + 1, reason: `Unresolved source import: ${specifier.text}; manual trace required` });
+    }
     if (!tokenFiles.includes(file)) continue;
     const flatten = (node, parts, declaration) => {
       node = unwrap(node);
@@ -155,7 +169,7 @@ function snapshot(input, tokenFiles) {
     if (!file.endsWith(".css")) continue;
     let tree;
     try { tree = postcss.parse(text, { from: file }); }
-    catch (error) { diagnostics.push({ file, line: error.line, reason: error.reason }); continue; }
+    catch (error) { diagnostics.push({ file, line: error.line ?? 1, reason: error.reason ?? error.message ?? String(error) }); continue; }
     tree.walkDecls((decl) => {
       const selector = [];
       for (let parent = decl.parent; parent && parent.type !== "root"; parent = parent.parent) selector.unshift(parent.type === "rule" ? parent.selector : `@${parent.name} ${parent.params}`);
@@ -170,18 +184,26 @@ function snapshot(input, tokenFiles) {
     });
   }
   // Expose CSS indirection downstream without pretending to resolve cascade.
-  for (let count = 0; count < definitions.size; count++) {
-    let added = false;
-    for (const ref of [...references]) {
-      if (!ref.property.startsWith("--")) continue;
-      for (const consumer of [...references]) {
-        if (consumer.key !== `css#${ref.property}` || consumer.key === ref.key) continue;
-        if (references.some((row) => row.key === ref.key && row.file === consumer.file && row.line === consumer.line && row.expression === consumer.expression)) continue;
-        references.push({ ...consumer, key: ref.key, reason: `Indirect via ${ref.property}; scope/cascade requires review` });
-        added = true;
-      }
+  const aliasSources = new Map();
+  for (const ref of references) {
+    if (!ref.property.startsWith("--")) continue;
+    const target = `css#${ref.property}`;
+    if (!aliasSources.has(target)) aliasSources.set(target, new Set());
+    aliasSources.get(target).add(ref.key);
+  }
+  const signature = (row) => JSON.stringify([row.key, row.file, row.line, row.component, row.property, row.expression]);
+  const visited = new Set(references.map(signature));
+  // Queue each new origin/location pair once. Include property and selector:
+  // minified CSS can put foreground and background declarations on one line.
+  for (let index = 0; index < references.length; index++) {
+    const consumer = references[index];
+    for (const key of aliasSources.get(consumer.key) ?? []) {
+      const row = { ...consumer, key, reason: `Indirect via ${consumer.key.slice(4)}; scope/cascade requires review` };
+      const identity = signature(row);
+      if (visited.has(identity)) continue;
+      visited.add(identity);
+      references.push(row);
     }
-    if (!added) break;
   }
   return { definitions, references, diagnostics };
 }
@@ -201,7 +223,7 @@ export function analyzeImpact(before, after, { tokenFiles = ["src/styles/tokens.
   }
   return { schemaVersion: 1, complete: false, scope: { tokenFiles, beforeFiles: Object.keys(before).length, afterFiles: Object.keys(after).length }, changes,
     diagnostics: [...left.diagnostics.map((row) => ({ side: "before", ...row })), ...right.diagnostics.map((row) => ({ side: "after", ...row }))],
-    limitations: ["Static inventory, not a complete impact analysis or a visual/contrast verdict.", "JS/TS named exports in configured token modules and CSS custom properties are compared by source expression; functions are never executed.", "@/ maps to src/; relative imports/re-exports and local bindings are traced. Other aliases, runtime mutation, arbitrary function returns, external/generated consumers, Tailwind utilities and constructed variable names require manual search.", "CSS scope, cascade, inheritance and runtime element semantics are not proven. Background use is reported for role review, never banned.", "Review before AND after references, unresolved candidate sets, parser diagnostics and consumers outside this source tree. Use docs/token-impact.md for reviewer sign-off."] };
+    limitations: ["Static inventory, not a complete impact analysis or a visual/contrast verdict.", "JS/TS named exports in configured token modules and CSS custom properties are compared by source expression; functions are never executed. Unchanged expressions whose upstream values change are not definition deltas: inspect upstream dependencies manually.", "@/ maps to src/; relative imports/re-exports and local bindings are traced. Other aliases, runtime mutation, arbitrary function returns, external/generated consumers, Tailwind utilities and constructed variable names require manual search.", "CSS scope, cascade, inheritance and runtime element semantics are not proven. Background use is reported for role review, never banned.", "Review before AND after references, unresolved candidate sets, parser diagnostics and consumers outside this source tree. Use docs/token-impact.md for reviewer sign-off."] };
 }
 
 const escapeCell = (text) => String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("|", "&#124;").replaceAll("`", "&#96;").replaceAll("\n", " ").replaceAll("\r", " ");
