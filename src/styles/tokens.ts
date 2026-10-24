@@ -78,8 +78,8 @@ export const colors = {
   accentLavender: "#F0EDFF",
   accentBlue: "#EAF2FF",
 
-  // Neutral midtone preserves light and dark details in transparent logos.
-  logoSurface: "#64748b",
+  // White canvas keeps transparent and opaque logo backgrounds consistent.
+  logoSurface: "#ffffff",
 
   // EventArt typography-fallback surface (03 contract card art): neutral
   // blue → lavender → pink wash plus its three text tones (eyebrow,
