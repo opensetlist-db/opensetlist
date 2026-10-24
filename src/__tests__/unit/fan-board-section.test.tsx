@@ -20,7 +20,7 @@ vi.mock("@/components/TrendingSongs", () => ({
 }));
 
 import { FanBoardSection } from "@/components/board/FanBoardSection";
-import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
+import { BOARD_REFRESH_MS, BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { LiveSetlist } from "@/components/LiveSetlist";
 import { trackEvent } from "@/lib/analytics";
 import { absoluteUrl } from "@/lib/seo/entityUrl";
@@ -86,8 +86,123 @@ beforeEach(() => {
   window.location.hash = "";
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+describe("<FanBoardSection> aggregate freshness", () => {
+  async function advance(ms: number) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  }
+  function start() {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-10-24T00:00:00Z");
+    return renderBlock();
+  }
+  const changed = {
+    ...READY,
+    groups: [group("1", "hasunosora", "Updated group")],
+  };
+
+  it("continues after a stale revalidation response and receives the next snapshot", async () => {
+    respond(READY);
+    start();
+    await advance(0);
+    expect(screen.getByRole("tab", { name: "蓮ノ空" })).toBeTruthy();
+    await advance(BOARD_REFRESH_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("tab", { name: "蓮ノ空" })).toBeTruthy();
+    respond(changed);
+    await advance(BOARD_REFRESH_MS);
+    expect(screen.getByRole("tab", { name: "Updated group" })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("pauses reads while hidden and catches up on return", async () => {
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    respond(READY);
+    start();
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    hidden.mockReturnValue(true);
+    fireEvent(document, new Event("visibilitychange"));
+    await advance(BOARD_REFRESH_MS * 3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    respond(changed);
+    hidden.mockReturnValue(false);
+    fireEvent(document, new Event("visibilitychange"));
+    await advance(0);
+    expect(screen.getByRole("tab", { name: "Updated group" })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the board after a refresh error and clears the warning after recovery", async () => {
+    respond(READY);
+    start();
+    await advance(0);
+    expect(screen.getByText("aggregateDelay")).toBeTruthy();
+    respond({}, 500);
+    await advance(BOARD_REFRESH_MS);
+    expect(screen.getByText("refreshError")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "蓮ノ空" })).toBeTruthy();
+    respond(changed);
+    await advance(BOARD_REFRESH_MS);
+    expect(screen.getByRole("tab", { name: "Updated group" })).toBeTruthy();
+    expect(screen.queryByText("refreshError")).toBeNull();
+    expect(screen.getByText("aggregateDelay")).toBeTruthy();
+  });
+
+  it("does not overlap requests and retries a timed-out refresh", async () => {
+    respond(READY);
+    start();
+    await advance(0);
+    fetchMock.mockImplementation((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      }),
+    );
+    await advance(BOARD_REFRESH_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fireEvent(document, new Event("visibilitychange"));
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await advance(BOARD_TIMEOUT_MS);
+    expect(screen.getByText("refreshError")).toBeTruthy();
+    respond(changed);
+    await advance(BOARD_REFRESH_MS);
+    expect(screen.getByRole("tab", { name: "Updated group" })).toBeTruthy();
+  });
+
+  it("stops after a kill-switch response", async () => {
+    respond(READY);
+    const view = start();
+    await advance(0);
+    expect(screen.getByRole("tab", { name: "蓮ノ空" })).toBeTruthy();
+    respond({ enabled: false });
+    await advance(BOARD_REFRESH_MS);
+    expect(view.container).toBeEmptyDOMElement();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await advance(BOARD_REFRESH_MS * 2);
+    fireEvent(document, new Event("visibilitychange"));
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops reading when the show starts and cancels scheduled reads on unmount", async () => {
+    respond(READY);
+    const view = start();
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(LOCK);
+    await advance(BOARD_REFRESH_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    view.unmount();
+    await advance(BOARD_REFRESH_MS * 2);
+    fireEvent(document, new Event("visibilitychange"));
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 function renderBlock() {

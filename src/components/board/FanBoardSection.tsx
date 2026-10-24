@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 import { absoluteUrl, entityPath } from "@/lib/seo/entityUrl";
-import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
+import { BOARD_REFRESH_MS, BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { boardFragment, groupIdFromFragment } from "@/lib/board/fragment";
 import { buildBoardCopyText } from "@/lib/board/copyText";
 import {
@@ -77,6 +77,7 @@ type State =
   | {
       kind: "ready";
       locked: boolean;
+      refreshFailed: boolean;
       groups: BoardGroupView[];
       /** The post-show tally; null before the show. */
       tally: BoardTally | null;
@@ -201,41 +202,79 @@ export function FanBoardSection({
     [catalog, isFestivalCatalog],
   );
 
-  // Load the aggregate once per mount.
+  // The server uses stale-while-revalidate: an expired read can still
+  // return the previous counts while warming the next snapshot. Keep
+  // reading while visible so an open page eventually receives it, even
+  // without another ballot write. Never adjust crowd counts locally.
   useEffect(() => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), BOARD_TIMEOUT_MS);
-    (async () => {
+    let disposed = false;
+    let stopped = false;
+    let attempted = false;
+    let controller: AbortController | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      if (disposed || stopped || controller || document.hidden) return;
+      // An initially completed page still gets its tally, but a page
+      // left open across the start must not poll during the show.
+      if (attempted && Date.now() >= new Date(seed.lockAt).getTime()) return;
+      attempted = true;
+      clearTimeout(refreshTimer);
+      controller = new AbortController();
+      const request = controller;
+      deadline = setTimeout(() => request.abort(), BOARD_TIMEOUT_MS);
       try {
         const params = new URLSearchParams({ locale });
         const res = await fetch(`/api/events/${eventId}/board?${params}`, {
-          signal: controller.signal,
+          signal: request.signal,
           cache: "no-store",
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as BoardReadResponse;
+        if (disposed || request.signal.aborted) return;
         if (!body.enabled || !("groups" in body)) {
+          stopped = true;
           setState({ kind: "hidden" });
           return;
         }
+        stopped = body.locked || body.status === "completed";
         setState({
           kind: "ready",
           locked: body.locked,
+          refreshFailed: false,
           groups: body.groups,
           tally: body.status === "completed" ? body.tally : null,
         });
       } catch {
-        // Unmount aborts too; setting state then is a harmless no-op.
-        setState({ kind: "error" });
+        if (!disposed) {
+          // A transient refresh failure must not discard my ballot or
+          // close an open picker. Keep the last snapshot and retry.
+          setState((previous) => previous.kind === "ready"
+            ? { ...previous, refreshFailed: true }
+            : { kind: "error" });
+        }
       } finally {
-        clearTimeout(timer);
+        clearTimeout(deadline);
+        controller = null;
+        if (!disposed && !stopped && !document.hidden) {
+          refreshTimer = setTimeout(() => void refresh(), BOARD_REFRESH_MS);
+        }
       }
-    })();
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
     };
-  }, [eventId, locale]);
+    const onVisibility = () => {
+      clearTimeout(refreshTimer);
+      if (!document.hidden) void refresh();
+    };
+    void refresh();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      disposed = true;
+      clearTimeout(refreshTimer);
+      clearTimeout(deadline);
+      controller?.abort();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [eventId, locale, seed.lockAt]);
 
   const groups: readonly { groupId: string; slug: string }[] =
     state.kind === "ready" ? state.groups : seed.chips;
@@ -502,6 +541,11 @@ export function FanBoardSection({
           </p>
         )}
         <p className={styles.boardLead}>{t("explainer")}</p>
+        {state.kind === "ready" && !locked && (
+          <p role="status" className={styles.ballotNote}>
+            {t(state.refreshFailed ? "refreshError" : "aggregateDelay")}
+          </p>
+        )}
       </div>
 
       <div

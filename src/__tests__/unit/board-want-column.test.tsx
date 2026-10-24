@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 // The "want" column of the fan board (n15), through the whole block
 // with a mocked board read and mocked wish routes: two columns per
@@ -148,6 +148,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function renderBlock() {
@@ -177,6 +178,48 @@ function legacyEntry(dbId: string, songId: number, title: string) {
 }
 
 describe("<FanBoardSection> want column", () => {
+  it.each(["add", "remove"])("eventually refreshes the crowd count after a wish %s without reloading", async (action) => {
+    let count = action === "remove" ? 1 : 0;
+    if (count) {
+      window.localStorage.setItem("wish-107", JSON.stringify({
+        wishes: [{ ...legacyEntry("w1", 10, "残陽"), groupId: "1" }],
+      }));
+    }
+    handler = (url, init) => {
+      if (url.startsWith("/api/events/107/board?")) {
+        return { status: 200, body: readBoard({ wishes: {
+          top: count ? [{ songId: "10", title: "残陽", count, available: true }] : [],
+          submissions: count, participants: count, label: count ? "early" : "operator",
+        } }) };
+      }
+      if (url === "/api/events/107/wishes" && init?.method === "POST") {
+        count = 1;
+        return { status: 201, body: { id: "w1", groupId: "1", songId: "10", createdAt: "2026-10-24T00:00:00.000Z" } };
+      }
+      if (url === "/api/events/107/wishes/w1" && init?.method === "DELETE") {
+        count = 0;
+        return { status: 200, body: { id: "w1" } };
+      }
+      return { status: 500, body: {} };
+    };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    renderBlock();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    if (action === "add") {
+      fireEvent.click(screen.getByText("addWish(蓮ノ空)"));
+      fireEvent.click(within(screen.getByTestId("picker")).getByText("pick-10"));
+    } else {
+      fireEvent.click(wantCol().getByLabelText("removeAria(残陽)"));
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(stored()).toHaveLength(count);
+    // A successful write changes my ballot immediately, while public
+    // counts must still come from a later server aggregate response.
+    expect(wantCol().queryAllByTestId("board-top-entry")).toHaveLength(1 - count);
+    await act(async () => { await vi.advanceTimersByTimeAsync(240_000); });
+    expect(wantCol().queryAllByTestId("board-top-entry")).toHaveLength(count);
+  });
+
   it("renders want and expect side by side, want first, with the explainer", async () => {
     renderBlock();
     const want = await screen.findByTestId("board-col-want");

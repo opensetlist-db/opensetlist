@@ -649,6 +649,8 @@
     "empty": "No picks yet — be the first.",
     "loading": "Loading the board…",
     "loadError": "Couldn't load the board",
+    "aggregateDelay": "Your choices are saved immediately. Crowd totals refresh automatically; additions and removals may take a few minutes to appear.",
+    "refreshError": "Couldn't refresh the totals, so the previous results are shown. We'll retry automatically shortly.",
     "mine": "My predictions",
     "counter": "{count}/{max}",
     "add": "+ Add a prediction for {group}",
