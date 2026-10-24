@@ -12,12 +12,12 @@ function familyName(value: string): string {
   return value.trim().replace(/^["']|["']$/g, "");
 }
 
-function covers(range: string, point: number): boolean {
-  return range.split(",").some((part) => {
+function parseRanges(range: string): [number, number][] {
+  return range.split(",").map((part) => {
     const bounds = part.trim().replace(/^U\+/i, "").split("-");
     const lower = parseInt(bounds[0].replace(/\?/g, "0"), 16);
     const upper = parseInt((bounds[1] ?? bounds[0]).replace(/\?/g, "F"), 16);
-    return point >= lower && point <= upper;
+    return [lower, upper];
   });
 }
 
@@ -82,7 +82,19 @@ export async function prepareShareCardFonts(card: HTMLElement): Promise<void> {
   const doc = card.ownerDocument;
   const view = doc.defaultView;
   if (!doc.fonts || !view) throw new Error("Share font loading unavailable");
-  const faces = Array.from(doc.fonts);
+  // A locale stylesheet contains hundreds of subset faces. Index descriptors
+  // and parse coverage once, rather than repeating string/regex work for every
+  // character in every row (and again in html2canvas's cloned document).
+  const faces = new Map<string, { face: FontFace; ranges: [number, number][] }[]>();
+  for (const face of Array.from(doc.fonts)) {
+    const family = familyName(face.family);
+    if (!SHARE_FAMILIES.has(family)) continue;
+    const key = `${family}:${face.weight}:${face.style}`;
+    const entries = faces.get(key) ?? [];
+    entries.push({ face, ranges: parseRanges(face.unicodeRange) });
+    faces.set(key, entries);
+  }
+  const characters = new Map<string, Map<number, FontFace>>();
   const required = new Set<FontFace>();
   const walker = doc.createTreeWalker(card, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -92,17 +104,18 @@ export async function prepareShareCardFonts(card: HTMLElement): Promise<void> {
     const style = view.getComputedStyle(node.parentElement);
     const families = style.fontFamily.split(",").map(familyName)
       .filter((family) => SHARE_FAMILIES.has(family));
+    const candidates = families.flatMap((family) =>
+      faces.get(`${family}:${style.fontWeight}:${style.fontStyle}`) ?? []);
+    const key = `${style.fontFamily}:${style.fontWeight}:${style.fontStyle}`;
+    const matches = characters.get(key) ?? new Map<number, FontFace>();
+    characters.set(key, matches);
     for (const char of new Set(text)) {
       if (/\s/u.test(char)) continue;
       const point = char.codePointAt(0)!;
-      let match: FontFace | undefined;
-      for (const family of families) {
-        match = faces.find((face) => familyName(face.family) === family &&
-          face.weight === style.fontWeight && face.style === style.fontStyle &&
-          covers(face.unicodeRange, point));
-        if (match) break;
-      }
+      const match = matches.get(point) ?? candidates.find(({ ranges }) =>
+        ranges.some(([lower, upper]) => point >= lower && point <= upper))?.face;
       if (!match) throw new Error("Share font glyph or weight unavailable");
+      matches.set(point, match);
       required.add(match);
     }
   }

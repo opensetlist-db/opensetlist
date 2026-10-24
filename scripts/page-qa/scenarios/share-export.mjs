@@ -63,6 +63,10 @@ async function save(page, loc, file) {
   const download = page.waitForEvent("download", { timeout: 25000 });
   await page.getByRole("button", { name: messages[loc].ShareCard.downloadImage, exact: true }).click();
   const result = await download;
+  return archiveDownload(result, file);
+}
+
+async function archiveDownload(result, file) {
   await result.saveAs(file);
   const bytes = fs.readFileSync(file);
   const size = await sharp(bytes).metadata();
@@ -328,7 +332,32 @@ const scenario = {
         const failedFaces = await page.evaluate(() => [...document.fonts].filter((face) => face.status === "error")
           .map((face) => ({ family: face.family, weight: face.weight, status: face.status })));
         blocked = false;
-        const recovered = await save(page, "ko", path.join(exports, `font-retry-${label}.png`));
+        let recovered;
+        for (let attempt = 1; attempt <= 2 && !recovered; attempt++) {
+          const errorToast = page.getByRole("status").getByText(messages.ko.ShareCard.imageErrorToast, { exact: true });
+          await errorToast.waitFor({ state: "hidden", timeout: 10000 });
+          // An automatic retry may have started while the route was still
+          // offline. Its bounded failure must remain visible/retryable; a
+          // subsequent click must create a fresh request, without a reload.
+          let downloadedFile;
+          const nextDownload = new Promise((resolve) => { downloadedFile = resolve; });
+          page.on("download", downloadedFile);
+          try {
+            await page.getByRole("button", { name: messages.ko.ShareCard.downloadImage, exact: true }).click();
+            const result = await Promise.race([
+              nextDownload,
+              errorToast.waitFor({ timeout: 20000 }).then(() => null),
+            ]);
+            if (result) recovered = await archiveDownload(result, path.join(exports, `font-retry-${label}.png`));
+            else {
+              const action = page.getByRole("button", { name: messages.ko.ShareCard.downloadImage, exact: true });
+              await page.waitForFunction((el) => !el.disabled, await action.elementHandle(), { timeout: 20000 });
+              h.check(`${label}: overlapping offline retry fails safely`, downloaded === 0 && await action.isEnabled(),
+                `attempt ${attempt}; downloads=${downloaded}; retry enabled after error cleanup`);
+            }
+          } finally { page.off("download", downloadedFile); }
+        }
+        if (!recovered) throw new Error(`${label}: no PNG after two recovery attempts`);
         h.check(`${label}: retry creates actual PNG`, recovered.width === 1200 && downloaded > 0, recovered.sha256);
         evidence.push({ fault: label, faults, failedFaces, recovered }); write();
       }
@@ -354,8 +383,12 @@ const scenario = {
       const { dialog } = await enter(page, "ko");
       const share = page.getByRole("button", { name: messages.ko.ShareCard.shareImage, exact: true });
       await page.waitForTimeout(2000);
+      // Preview's afterInteractive Google Analytics replaces the init-script
+      // spy. Observe the actual export handler after that script has mounted.
+      await page.evaluate(() => { window.gtag = (...args) => window.__c18Events.push(args); });
       await share.click();
       await page.waitForFunction(() => window.__c18Calls.length === 1);
+      await page.waitForFunction(() => window.__c18Events.some((event) => event[1] === "share_card_save"));
       h.check("supported native label and actual File payload", await page.evaluate(() =>
         window.__c18Calls[0].bytes > 10000 && window.__c18Calls[0].activation), "API simulation; real iOS tested separately");
       const before = await page.evaluate(() => window.__c18Events.filter((event) => event[1] === "share_card_save").length);

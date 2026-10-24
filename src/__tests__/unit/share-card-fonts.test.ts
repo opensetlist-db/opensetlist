@@ -56,6 +56,20 @@ describe("share image font delivery", () => {
     await expect(prepareShareCardFonts(card("곡"))).rejects.toThrow("glyph");
   });
 
+  it("keeps family priority, wildcard coverage and exact weights across mixed text", async () => {
+    const latin = face("DM Sans", "400", "U+0000-00FF");
+    const bold = face("DM Sans", "700", "U+0000-00FF");
+    const korean = face("Noto Sans KR", "400", "U+AC??");
+    const fallback = face("Noto Sans KR", "400", "U+0000-00FF", true);
+    provideFonts([fallback, korean, bold, latin]);
+    const target = card("O각");
+    target.append(card("O", "700"));
+    await prepareShareCardFonts(target);
+    expect([latin.status, korean.status, bold.status]).toEqual(["loaded", "loaded", "loaded"]);
+    // The declared Latin family above supplies O; the available Korean Latin
+    // subset must not replace it just because it precedes it in FontFaceSet.
+  });
+
   it("does not pass a failed font load as a successful fallback image", async () => {
     const broken = face("DM Sans", "400", "U+0000-00FF", true);
     provideFonts([broken]);
