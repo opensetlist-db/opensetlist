@@ -873,7 +873,13 @@ await section(
       await toggle.click();
       const openedForResize = (await expanded()) === "true";
       await page.setViewportSize({ width: NAV_BREAKPOINT + 100, height: 844 });
-      await page.waitForTimeout(200);
+      // WebKit may deliver matchMedia after setViewportSize resolves.
+      // Observe the wide-state close before shrinking back, otherwise
+      // both resize notifications can arrive at the final narrow width.
+      await page.waitForFunction(
+        (sel) => document.querySelector(sel)?.getAttribute("aria-expanded") === "false",
+        TOGGLE,
+      );
       await page.setViewportSize({ width: 390, height: 844 });
       await page.waitForTimeout(200);
       check(
