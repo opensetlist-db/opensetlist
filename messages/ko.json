@@ -700,7 +700,13 @@
     "tallyNotPlayed": "미등장",
     "minePlayed": "등장",
     "pickerTitle": "{group} 예상곡 추가",
-    "pickerTitleWish": "{group} 희망곡 추가"
+    "pickerTitleWish": "{group} 희망곡 추가",
+    "nadoWish": "나도 듣고 싶어",
+    "nadoExpect": "나도 나올 듯",
+    "nadoWishAria": "{title}: 나도 듣고 싶어",
+    "nadoExpectAria": "{title}: 나도 나올 듯",
+    "rowCapNote": "{max}곡 중 하나를 빼야 바꿀 수 있어요",
+    "pickedElsewhere": "{group}에서 선택됨"
   },
   "Wishlist": {
     "refreshError": "선택은 저장됐지만 집계를 갱신하지 못했어요.",

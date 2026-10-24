@@ -51,6 +51,11 @@ import type {
 
 export type BallotKind = "pick" | "wish";
 
+/** Where an add/remove was made, for analytics (n17): the one-tap
+ *  「나도」 button on a crowd/starter row, or the "my picks" area (the
+ *  picker and the ✕ on a chosen chip). */
+export type BallotSource = "row" | "picker";
+
 export type { PickFailure };
 
 export type PickOutcome =
@@ -289,6 +294,7 @@ export function useBoardBallot({
       groupId: string,
       songId: string,
       title: string,
+      source: BallotSource,
     ): Promise<PickOutcome> => {
       const anonId = getAnonId();
       // No storage → no stable id → the server would refuse anyway, and
@@ -320,6 +326,7 @@ export function useBoardBallot({
             event_id: eventId,
             group_id: groupId,
             song_id: songId,
+            source,
           });
           return { ok: true, kind: "added", groupId };
         }
@@ -332,7 +339,11 @@ export function useBoardBallot({
   );
 
   const remove = useCallback(
-    async (kind: BallotKind, entry: BallotEntry): Promise<PickOutcome> => {
+    async (
+      kind: BallotKind,
+      entry: BallotEntry,
+      source: BallotSource,
+    ): Promise<PickOutcome> => {
       const anonId = getAnonId();
       if (!anonId) return { ok: false, reason: "invalid_anon_id" };
       const cfg = KIND[kind];
@@ -357,6 +368,7 @@ export function useBoardBallot({
               event_id: eventId,
               group_id: entry.groupId,
               song_id: entry.songId,
+              source,
             });
           }
           return { ok: true, kind: "removed", groupId: entry.groupId };
