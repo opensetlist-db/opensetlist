@@ -1,6 +1,8 @@
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
+import { createElement as h } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { CARD_LOCALES, CARD_MODES, cardContent, type CardEvent, type CardLocale } from "./content";
 import { CardLayoutError, loadCardResources, renderCard, sha256, TEMPLATE } from "./render";
 
@@ -120,13 +122,31 @@ export async function preparePreview({ root, events, output, legacy, displayTitl
   await mkdir(output, { recursive: false });
   for (const [file, bytes] of pending) await writeFile(path.join(output, file), bytes, { flag: "wx" });
   await writeFile(path.join(output, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", { flag: "wx" });
-  const escape = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
-  const sections = events.map((event) => `<section><h2>${escape(event.id + " · " + event.originalName)}</h2>${CARD_LOCALES.map((locale) =>
-    `<h3>${locale} · prediction / live / setlist</h3><img width="1080" height="189" src="${event.id}-${locale}-modes.png" alt="모드 비교">` +
-    (legacy?.[`${event.id}-${locale}`] ? `<p>기존 OG / 새 prediction</p><img width="1200" height="315" src="${event.id}-${locale}-old-new.png" alt="기존 OG와 새 카드">` : "") +
-    CARD_MODES.map((mode) => `<details><summary>${mode} · 원본 / 600 / 모바일</summary>${["", "-600", "-mobile"].map((suffix) => `<p><a href="${event.id}-${locale}-${mode}${suffix}.png"><img src="${event.id}-${locale}-${mode}${suffix}.png" alt="${locale} ${mode}${suffix}"></a></p>`).join("")}</details>`).join("")
-  ).join("")}</section>`).join("");
-  await writeFile(path.join(output, "index.html"), `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>공연 공유 카드 검토</title><style>body{margin:32px;background:#f5f7fb;color:#172542;font:16px sans-serif}img{display:block;max-width:100%;height:auto}section{margin:40px 0}summary{cursor:pointer;margin:12px 0}</style><h1>공연 공유 카드 · 시각 승인 대기</h1><p>로컬 미리보기 · 공개 발행 없음 · ${manifest.previewId}</p><a href="manifest.json">Manifest</a>${sections}</html>`, { flag: "wx" });
+  const sections = events.map((event) => h("section", { key: event.id },
+    h("h2", null, `${event.id} · ${event.originalName}`),
+    ...CARD_LOCALES.map((locale) => h("div", { key: locale },
+      h("h3", null, `${locale} · prediction / live / setlist`),
+      h("img", { width: 1080, height: 189, src: `${event.id}-${locale}-modes.png`, alt: "모드 비교" }),
+      legacy?.[`${event.id}-${locale}`] ? h("div", null, h("p", null, "기존 OG / 새 prediction"),
+        h("img", { width: 1200, height: 315, src: `${event.id}-${locale}-old-new.png`, alt: "기존 OG와 새 카드" })) : null,
+      ...CARD_MODES.map((mode) => h("details", { key: mode },
+        h("summary", null, `${mode} · 원본 / 600 / 모바일`),
+        ...["", "-600", "-mobile"].map((suffix) => {
+          const file = `${event.id}-${locale}-${mode}${suffix}.png`;
+          return h("p", { key: suffix }, h("a", { href: file }, h("img", { src: file, alt: `${locale} ${mode}${suffix}` })));
+        }),
+      )),
+    )),
+  ));
+  // Let React escape database-sourced text in its actual HTML context rather
+  // than maintaining a separate, incomplete HTML-sanitization convention.
+  const gallery = h("html", { lang: "ko" }, h("head", null,
+    h("meta", { charSet: "utf-8" }), h("meta", { name: "viewport", content: "width=device-width" }),
+    h("title", null, "공연 공유 카드 검토"),
+    h("style", null, "body{margin:32px;background:#f5f7fb;color:#172542;font:16px sans-serif}img{display:block;max-width:100%;height:auto}section{margin:40px 0}summary{cursor:pointer;margin:12px 0}")),
+  h("body", null, h("h1", null, "공연 공유 카드 · 시각 승인 대기"),
+    h("p", null, `로컬 미리보기 · 공개 발행 없음 · ${manifest.previewId}`), h("a", { href: "manifest.json" }, "Manifest"), ...sections));
+  await writeFile(path.join(output, "index.html"), "<!doctype html>" + renderToStaticMarkup(gallery), { flag: "wx" });
   return manifest;
 }
 
