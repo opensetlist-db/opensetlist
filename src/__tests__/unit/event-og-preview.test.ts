@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm, writeFile, access } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -79,12 +79,18 @@ describe("local event-card preview service", () => {
     const resources = await loadCardResources(root);
     const content = cardContent(event, "ja");
     await expect(renderCard(content, "live", "セットリスト速報", resources)).resolves.toHaveProperty("png");
+    const contextual = await renderCard({ ...content, title: "蓮".repeat(30), context: "Artist context" }, "live", "セットリスト速報", resources);
+    expect(contextual.layout.title.height).toBeLessThanOrEqual(203);
+    expect(contextual.layout.title.fontSize).toBeGreaterThanOrEqual(40);
     await expect(renderCard({ ...content, title: "𓀀" }, "live", "セットリスト速報", resources)).rejects.toThrow(/グリフ|글리프/);
     await expect(renderCard({ ...content, title: "蓮".repeat(300) }, "live", "セットリスト速報", resources)).rejects.toThrow(/읽기 가능한 배치 실패/);
     await expect(renderCard({ ...content, venue: "会場".repeat(80) }, "live", "セットリスト速報", resources)).rejects.toThrow(/읽기 가능한 배치 실패/);
     const failedOutput = path.join(folder, "no-font-output");
+    await expect(access(path.join(folder, "packet/manifest.json"))).resolves.toBeUndefined();
+    await mkdir(path.join(folder, "public"));
     await expect(preparePreview({ root: folder, events: [event], output: failedOutput })).rejects.toThrow(/ENOENT/);
     await expect(access(failedOutput)).rejects.toThrow();
+    await expect(preparePreview({ root, events: [event], output: path.join(root, "public/preview-test") })).rejects.toThrow(/public/);
   }, 120_000);
 
   it("requires full-title failure and content-bound review evidence for a display title", async () => {

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { CARD_LOCALES, CARD_MODES, cardContent, type CardEvent, type CardLocale } from "./content";
@@ -26,6 +26,11 @@ type PreviewOptions = {
  * consume a reviewed manifest through this boundary in a later operation. */
 export async function preparePreview({ root, events, output, legacy, displayTitles = [], expectedPreviewId }: PreviewOptions) {
   if (!events.length || new Set(events.map((e) => e.id)).size !== events.length) throw new Error("중복 없는 공연을 선택하세요.");
+  output = path.resolve(output);
+  const parent = await realpath(path.dirname(output));
+  const publicRoot = await realpath(path.join(root, "public"));
+  const relative = path.relative(publicRoot, path.join(parent, path.basename(output)));
+  if (!relative || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))) throw new Error("public 경로에는 미리보기를 출력할 수 없습니다.");
   const resources = await loadCardResources(root);
   const reviewKeys = new Set<string>();
   for (const review of displayTitles) {
@@ -104,6 +109,7 @@ export async function preparePreview({ root, events, output, legacy, displayTitl
     fonts: resources.fontIdentity,
     sourceEvents: events,
     sourceSha256: sha256(JSON.stringify(events)),
+    legacyComparison: Object.keys(legacy ?? {}).length ? { route: "/api/og/event/{id}?lang={locale}&s=completed", status: "pinned-completed" } : null,
     renditions, files,
     approval: { status: "pending-owner-visual-review" },
   };

@@ -68,7 +68,7 @@ async function fit(text: string, area: { min: number; max: number; lines: number
 export async function renderCard(content: CardContent, mode: CardMode, label: string, resources: CardResources) {
   const { fonts } = resources;
   const layout = {
-    title: await fit(content.title, TEMPLATE.title, fonts),
+    title: await fit(content.title, { ...TEMPLATE.title, height: content.context ? 203 : TEMPLATE.title.height }, fonts),
     performance: await fit(content.performance, TEMPLATE.performance, fonts),
     context: await fit(content.context, TEMPLATE.context, fonts),
     venue: await fit(content.venue, TEMPLATE.venue, fonts),

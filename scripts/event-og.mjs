@@ -51,7 +51,18 @@ async function main() {
   }
   // Reuse the repository's dev-only, extended-protocol READ ONLY transaction.
   // IDs are digits only; there is no writable Prisma/storage client here.
-  const sql = `SELECT e.id::text, e.slug, e."originalName", e."originalLanguage", e.date, e."originalVenue", COALESCE((SELECT json_agg(t) FROM "EventTranslation" t WHERE t."eventId"=e.id), '[]') AS translations, CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('originalName',s."originalName",'originalLanguage',s."originalLanguage",'translations',COALESCE((SELECT json_agg(st) FROM "EventSeriesTranslation" st WHERE st."eventSeriesId"=s.id),'[]')) END AS "eventSeries", CASE WHEN a.id IS NULL THEN NULL ELSE json_build_object('originalName',a."originalName",'originalLanguage',a."originalLanguage",'translations',COALESCE((SELECT json_agg(at) FROM "ArtistTranslation" at WHERE at."artistId"=a.id),'[]')) END AS artist FROM "Event" e LEFT JOIN "EventSeries" s ON s.id=e."eventSeriesId" AND NOT s."isDeleted" LEFT JOIN "Artist" a ON a.id=e."artistId" AND NOT a."isDeleted" WHERE NOT e."isDeleted" AND e.id IN (${ids.join(",")}) ORDER BY e.id`;
+  const sql = `SELECT e.id::text, e.slug, e."originalName", e."originalLanguage", e.date, e."originalVenue",
+    COALESCE((SELECT json_agg(json_build_object('locale',t.locale,'name',t.name,'venue',t.venue))
+      FROM "EventTranslation" t WHERE t."eventId"=e.id), '[]') AS translations,
+    CASE WHEN s.id IS NULL THEN NULL ELSE json_build_object('originalName',s."originalName",'originalLanguage',s."originalLanguage",
+      'translations',COALESCE((SELECT json_agg(json_build_object('locale',st.locale,'name',st.name))
+        FROM "EventSeriesTranslation" st WHERE st."eventSeriesId"=s.id),'[]')) END AS "eventSeries",
+    CASE WHEN a.id IS NULL THEN NULL ELSE json_build_object('originalName',a."originalName",'originalLanguage',a."originalLanguage",
+      'translations',COALESCE((SELECT json_agg(json_build_object('locale',at.locale,'name',at.name))
+        FROM "ArtistTranslation" at WHERE at."artistId"=a.id),'[]')) END AS artist
+    FROM "Event" e LEFT JOIN "EventSeries" s ON s.id=e."eventSeriesId" AND NOT s."isDeleted"
+    LEFT JOIN "Artist" a ON a.id=e."artistId" AND NOT a."isDeleted"
+    WHERE NOT e."isDeleted" AND e.id IN (${ids.join(",")}) ORDER BY e.id`;
   const result = JSON.parse(execFileSync(process.execPath, [path.join(root, "scripts/db-ro.mjs"), "--json", sql], { cwd: root, encoding: "utf8", timeout: 90_000, maxBuffer: 4 * 1024 * 1024, stdio: ["ignore", "pipe", "inherit"] }));
   const events = result[0].rows;
   if (events.length !== ids.length) throw new Error("선택한 공연이 없거나 삭제됐습니다.");
