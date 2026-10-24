@@ -730,7 +730,10 @@ await section("toggle selector fixture", async () => {
   const ctx = await newContext({ viewport: { width: 390, height: 844 } });
   try {
     const page = await ctx.newPage();
-    await open(page, `${BASE}/ja/events`);
+    // Hydration can replace these injected siblings. Wait for the shell
+    // before setting up the selector's positive control, as the keyboard
+    // section below already does before interacting with the menu.
+    await openHydrated(page, `${BASE}/ja/events`);
     const injected = await page.evaluate(() => {
       const toggle = (i) =>
         `<header><h2>fixture ${i}</h2><button aria-controls="qa-fixture-${i}">toggle</button></header>` +

@@ -292,7 +292,6 @@ export function SongPickerContent({
             placeholder={t("picker.searchPlaceholder")}
             aria-label={t("picker.searchPlaceholder")}
             autoFocus={autoFocus}
-            className={styles.searchInput}
             style={{
               flex: 1,
               border: "none",
@@ -363,7 +362,7 @@ export function SongPickerContent({
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
-          padding: "6px 16px",
+          padding: "7px 16px",
           fontSize: 12,
           color: colors.textMuted,
           flexShrink: 0,
@@ -525,7 +524,6 @@ function SongRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "10px 16px",
         borderBottom: `1px solid ${colors.bgSubtle}`,
         cursor: "pointer",
         background: selected ? "var(--primary-bg)" : "transparent",

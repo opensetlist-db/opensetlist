@@ -16,10 +16,6 @@
   color: var(--text-muted);
 }
 
-.searchInput:focus-visible {
-  outline-offset: 1px;
-}
-
 .clearButton {
   min-width: 32px;
   min-height: 32px;
@@ -59,11 +55,16 @@
 
 .songRow {
   min-height: 44px;
+  padding: 10px 16px;
+  scroll-margin-block: 7px;
   overflow-wrap: anywhere;
 }
 
 .picker .songRow:focus-visible {
-  outline-offset: -3px;
+  /* Reserve the approved outer ring inside the scroll region without
+     moving the text or changing the row's hit area height. */
+  margin-inline: 7px;
+  padding-inline: 9px;
 }
 
 .confirmButton {

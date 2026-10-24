@@ -141,6 +141,8 @@ export function BoardMyPicks({
       className={styles.myChoices}
       data-testid={kind === "pick" ? "board-my-picks" : "board-my-wishes"}
       tabIndex={-1}
+      role="group"
+      aria-label={t(copy.mine)}
     >
       <div className={styles.myChoicesHead}>
         <h4 className={styles.myChoicesTitle}>{t(copy.mine)}</h4>
