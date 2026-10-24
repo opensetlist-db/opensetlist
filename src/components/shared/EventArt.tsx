@@ -19,10 +19,9 @@ import { useImageFallback } from "./useImageFallback";
  *             row up to 320×140 on phones. Wide marks remain readable
  *             beside the title on desktop and above it on phones.
  *
- * Logo rendering: `object-fit: contain` with an 8px safe inset in the
- * detail slot (16px in cards). A neutral midtone supports both pale and
- * dark details in transparent artwork. Approved logos are never cropped,
- * stretched or replaced by posters.
+ * Logo rendering: `object-fit: contain` fills the white canvas at the
+ * largest size allowed by the original aspect ratio, with no added inset.
+ * Approved logos are never cropped, stretched or replaced by posters.
  *
  * Fallback: when `logoUrl` is empty OR the image fails to load, the same
  * region shows typography (eyebrow / short title / caption) on the
@@ -101,8 +100,7 @@ function EventArtInner({
       data-testid="event-art"
       data-state={showLogo ? "logo" : "fallback"}
       className={`relative flex shrink-0 items-center justify-center overflow-hidden text-center ${REGION[variant]} ${className}`}
-      // Tint belongs to the typography fallback; artwork keeps a neutral
-      // background so pale lettering does not disappear into the wash.
+      // Tint belongs to the typography fallback; artwork uses a white canvas.
       style={{
         background: showLogo
           ? colors.logoSurface
@@ -135,10 +133,7 @@ function EventArtInner({
           alt={alt}
           referrerPolicy="no-referrer"
           {...imgProps}
-          className={`absolute object-contain ${detail
-            ? "inset-2 h-[calc(100%-16px)] w-[calc(100%-16px)]"
-            : "inset-4 h-[calc(100%-32px)] w-[calc(100%-32px)]"
-          }`}
+          className="absolute inset-0 h-full w-full object-contain"
         />
       ) : (
         <div aria-hidden={alt ? undefined : true} className="relative w-full">
