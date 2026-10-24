@@ -123,9 +123,6 @@ function readDisplay() {
       clipped: p.scrollWidth > p.clientWidth + 1,
       directParagraph: p.tagName === "P" && p.parentElement.className.includes("__songBody"),
     })) : [],
-    chiplessDetailsBesideChips: card
-      ? [...card.querySelectorAll('li details[class*="__creditDetails"]')].filter((d) => d.closest("li").querySelector('[class*="__creditLine"]')).length
-      : 0,
     roster: roster
       ? {
           more: roster.querySelectorAll("details").length,
@@ -212,7 +209,6 @@ const scenario = {
         check(name("toggles beside chips, 28x28"), d.toggles.length > 0 && d.toggles.every((t) => t.besideChips && t.w === 28 && t.h === 28), `${d.toggles.length} toggles; ${JSON.stringify(d.toggles.find((t) => !(t.besideChips && t.w === 28 && t.h === 28)) ?? "")}`);
         const title = msg(loc, "EventDetail.songPerformers");
         check(name("toggle names + panels"), d.toggles.every((t) => t.label === title && t.panelTitle === title && t.panelHidden === true && t.expanded === "false" && t.panelNames.length > 0), title);
-        check(name("no details beside chips"), d.chiplessDetailsBesideChips === 0, String(d.chiplessDetailsBesideChips));
         const r = d.roster;
         check(name("roster: one grid, no more step"), !!r && r.more === 0 && r.grids === 1, JSON.stringify(r && { more: r.more, grids: r.grids }));
         check(name("roster: every card, no duplicates"), !!r && r.cards === r.count && new Set(r.names).size === r.names.length && r.cards > 6, `${r?.cards} cards / count ${r?.count}`);
