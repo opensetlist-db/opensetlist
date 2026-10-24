@@ -126,6 +126,7 @@ describe("local event-card preview service", () => {
     expect(failed.status).toBe(1);
     expect(failed.stdout).not.toContain("previewId");
     const { previewId: _id, ...overflowPayload } = packet;
+    expect(_id).toMatch(/^[a-f0-9]{64}$/);
     overflowPayload.sourceEvents = [{ ...event, eventSeries: { ...event.eventSeries!, originalName: "蓮".repeat(300) } }];
     const overflowManifest = path.join(folder, "packet/overflow.json");
     await writeFile(overflowManifest, JSON.stringify({ ...overflowPayload, previewId: sha256(JSON.stringify(overflowPayload)) }));
@@ -135,7 +136,7 @@ describe("local event-card preview service", () => {
     expect(overflow.stdout).not.toContain("previewId");
     const success = run(["replay", "--manifest", path.join(folder, "packet/manifest.json"), "--out", path.join(folder, "replayed")]);
     expect(success.error).toBeUndefined();
-    expect(success.status).toBe(0);
+    expect(success.status, success.stderr).toBe(0);
     const report = JSON.parse(success.stdout);
     expect(report.previewId).toBe(packet.previewId);
     expect(report.originals).toBe(9);
