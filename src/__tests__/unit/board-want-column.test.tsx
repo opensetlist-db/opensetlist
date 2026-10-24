@@ -202,7 +202,8 @@ describe("<FanBoardSection> want column", () => {
       }
       return { status: 500, body: {} };
     };
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-10-24T00:00:00Z");
     renderBlock();
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     if (action === "add") {

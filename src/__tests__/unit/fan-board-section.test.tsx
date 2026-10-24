@@ -154,6 +154,25 @@ describe("<FanBoardSection> aggregate freshness", () => {
     expect(screen.getByText("aggregateDelay")).toBeTruthy();
   });
 
+  it("keeps the normal interval across brief tab switches", async () => {
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    respond(READY);
+    start();
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await advance(1000);
+    for (let i = 0; i < 3; i++) {
+      hidden.mockReturnValue(true);
+      fireEvent(document, new Event("visibilitychange"));
+      hidden.mockReturnValue(false);
+      fireEvent(document, new Event("visibilitychange"));
+      await advance(0);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await advance(BOARD_REFRESH_MS - 1000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("does not overlap requests and retries a timed-out refresh", async () => {
     respond(READY);
     start();

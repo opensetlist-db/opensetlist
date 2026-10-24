@@ -211,6 +211,7 @@ export function FanBoardSection({
     let disposed = false;
     let stopped = false;
     let attempted = false;
+    let nextRefreshAt = 0;
     let controller: AbortController | null = null;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -257,6 +258,7 @@ export function FanBoardSection({
       } finally {
         clearTimeout(deadline);
         controller = null;
+        nextRefreshAt = Date.now() + BOARD_REFRESH_MS;
         if (!disposed && !stopped && !document.hidden) {
           refreshTimer = setTimeout(() => void refresh(), BOARD_REFRESH_MS);
         }
@@ -264,7 +266,15 @@ export function FanBoardSection({
     };
     const onVisibility = () => {
       clearTimeout(refreshTimer);
-      if (!document.hidden) void refresh();
+      if (document.hidden || stopped) return;
+      // Brief tab switches should not turn cached reads into a burst.
+      // Catch up immediately only after the normal interval elapsed.
+      const remaining = nextRefreshAt - Date.now();
+      if (remaining > 0) {
+        refreshTimer = setTimeout(() => void refresh(), remaining);
+      } else {
+        void refresh();
+      }
     };
     void refresh();
     document.addEventListener("visibilitychange", onVisibility);
