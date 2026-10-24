@@ -240,8 +240,16 @@ Public pages (artist detail, album detail, …) use `scripts/page-qa.mjs
 width layout matrix (overflow, `<html lang>`, raw i18n keys, runtime
 errors), reduced motion with a positive control and canonical/404 checks
 through the request API, with a per-action `--timeout` and a whole-run
-`--timeout-min`, and writes a `.log` and `.json` per run. It never writes
-to the DB; fixture rows come in through `--fixture <json>`. A page ticket
+`--timeout-min`, and writes a `.log` and `.json` per run. Default scenarios
+do not write to the DB; fixture rows normally come in through
+`--fixture <json>`. The `song-picker` scenario has an explicit opt-in
+write fixture (`eventId: "109"`, unique `runPrefix: "c10qa-<timestamp>"`):
+`--only-fixture` exercises real board saves/restores through the app on
+localhost with guarded dev URLs. Claim the shared dev DB slot first. It
+creates only isolated guest choices, removes them in `finally` (reconciling
+lost POST responses through that guest's `/board/mine`), and verifies zero
+rows remain. Preserve the run prefix and check it with `db-ro` after the
+run, especially if interrupted. A page ticket
 adds a scenario under `scripts/page-qa/scenarios/` (copy `artist-detail`)
 instead of its own QA script: chromium in full, `--browser webkit --quick`
 for Safari. `layoutMatrix({ basics, capture })` adds one h1, 24px

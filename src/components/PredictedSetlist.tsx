@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   DndContext,
@@ -250,6 +250,7 @@ export function PredictedSetlist({
 
   // ─── Picker sheet state (mobile pre-show only) ──────────────
   const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerTrigger = useRef<HTMLButtonElement>(null);
 
   // ─── Copy-from-past sheet state (pre-show only) ─────────────
   const [copyOpen, setCopyOpen] = useState(false);
@@ -684,6 +685,7 @@ export function PredictedSetlist({
         <div className={styles.predictActions}>
           {showPicker && !isDesktopPicker && (
             <button
+              ref={pickerTrigger}
               type="button"
               onClick={() => setPickerOpen(true)}
               className={styles.secondaryButton}
@@ -725,6 +727,7 @@ export function PredictedSetlist({
           selectedIds={selectedIds}
           unitFilters={unitFilters}
           open={pickerOpen}
+          triggerRef={pickerTrigger}
           onOpenChange={setPickerOpen}
           onToggle={handleToggle}
         />

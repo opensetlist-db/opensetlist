@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { entityPath } from "@/lib/seo/entityUrl";
@@ -94,6 +94,7 @@ export function BoardMyPicks({
   const t = useTranslations("Board");
   const tPredict = useTranslations("Predict");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerTrigger = useRef<HTMLButtonElement>(null);
   const copy = COPY[kind];
   const unitFilters = useMemo(() => {
     const groupArtistId = Number(groupId);
@@ -139,6 +140,9 @@ export function BoardMyPicks({
     <div
       className={styles.myChoices}
       data-testid={kind === "pick" ? "board-my-picks" : "board-my-wishes"}
+      tabIndex={-1}
+      role="group"
+      aria-label={t(copy.mine)}
     >
       <div className={styles.myChoicesHead}>
         <h4 className={styles.myChoicesTitle}>{t(copy.mine)}</h4>
@@ -209,6 +213,7 @@ export function BoardMyPicks({
       {canAdd && (
         <>
           <button
+            ref={pickerTrigger}
             type="button"
             onClick={() => setPickerOpen(true)}
             disabled={atCap}
@@ -231,6 +236,7 @@ export function BoardMyPicks({
             open={pickerOpen}
             onOpenChange={setPickerOpen}
             onToggle={handleToggle}
+            triggerRef={pickerTrigger}
           />
         </>
       )}

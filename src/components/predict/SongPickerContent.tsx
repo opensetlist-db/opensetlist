@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type CSSProperties } from "react";
 import { useTranslations } from "next-intl";
-import { PrimaryButton } from "@/components/ui/Button";
+import styles from "./songPicker.module.css";
 import { displayOriginalTitle } from "@/lib/display";
 import { sortPickerSongs, type PickerSort } from "@/lib/predict/sortSongs";
 import { colors } from "@/styles/tokens";
@@ -18,15 +18,10 @@ interface Props {
   unitFilters: UnitFilter[];
   onToggle: (songId: number) => void;
   locale: string;
-  /** Mobile-only confirm bar. Omit on desktop (always-visible panel
-   *  has no concept of "done"). */
+  /** Sheet confirm bar. Omit for the desktop inline panel. */
   onClose?: () => void;
-  /** Focus the search input on mount. Mobile sheet sets this `true`
-   *  (sheet open is the user's "I want to search" signal). Desktop
-   *  side panel passes `false` — auto-focusing on every page load
-   *  would steal keyboard flow + announce the placeholder before
-   *  the page's primary content. Default `false` so omission on
-   *  the desktop mount is safe. */
+  /** Opt-in only. Current inline and sheet consumers both leave this
+   *  off so opening the picker does not summon a mobile keyboard. */
   autoFocus?: boolean;
 }
 
@@ -264,7 +259,7 @@ export function SongPickerContent({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className={styles.picker} data-testid="song-picker">
       {/* Search input + filter row — flex-shrink:0 so the
           scrollable song list below takes the remaining height. */}
       <div
@@ -286,20 +281,16 @@ export function SongPickerContent({
             marginBottom: 8,
           }}
         >
-          <span style={{ fontSize: 13, color: colors.textMuted }} aria-hidden>
-            🔍
-          </span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className={styles.searchIcon}>
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d="m16 16 5 5" />
+          </svg>
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("picker.searchPlaceholder")}
             aria-label={t("picker.searchPlaceholder")}
-            // Mobile sheet opt-in only. Desktop panel passes
-            // `false` (default) — the picker is always visible,
-            // so unconditional autofocus would steal keyboard
-            // flow on every page load and announce the
-            // placeholder before any other content.
             autoFocus={autoFocus}
             style={{
               flex: 1,
@@ -314,7 +305,6 @@ export function SongPickerContent({
               // 11-13px since they're non-interactive.
               fontSize: 16,
               color: colors.textPrimary,
-              outline: "none",
               fontFamily: "inherit",
               minWidth: 0,
             }}
@@ -324,6 +314,7 @@ export function SongPickerContent({
               type="button"
               onClick={() => setQuery("")}
               aria-label={t("picker.searchClearAria")}
+              className={styles.clearButton}
               style={{
                 background: "none",
                 border: "none",
@@ -344,30 +335,14 @@ export function SongPickerContent({
           {unitFilters.map((f) => {
             const active = f.key === activeFilterKey;
             const accent = f.color ?? colors.primary;
-            const style: CSSProperties = {
-              padding: "3px 10px",
-              borderRadius: 20,
-              fontSize: 11,
-              fontWeight: 600,
-              border: active
-                ? `1.5px solid ${accent}`
-                : `1.5px solid ${colors.border}`,
-              background: active ? `${accent}15` : "white",
-              color: active ? accent : colors.textSecondary,
-              cursor: "pointer",
-              flexShrink: 0,
-              fontFamily: "inherit",
-              whiteSpace: "nowrap",
-            };
+            const style = { "--picker-accent": accent } as CSSProperties;
             return (
               <button
                 key={f.key}
                 type="button"
                 onClick={() => setActiveFilterKey(f.key)}
-                // aria-pressed surfaces the active-filter state to
-                // screen readers. The visual cue (border + 12%-alpha
-                // bg tint) is invisible to assistive tech otherwise.
                 aria-pressed={active}
+                className={styles.filter}
                 style={style}
               >
                 {f.label}
@@ -387,10 +362,11 @@ export function SongPickerContent({
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
-          padding: "6px 16px",
-          fontSize: 10,
+          padding: "7px 16px",
+          fontSize: 12,
           color: colors.textMuted,
           flexShrink: 0,
+          flexWrap: "wrap",
           borderBottom: `1px solid ${colors.bgSubtle}`,
         }}
       >
@@ -413,14 +389,15 @@ export function SongPickerContent({
                 type="button"
                 onClick={() => setSort(mode)}
                 aria-pressed={active}
+                className={styles.sortButton}
                 style={{
                   padding: "1px 8px",
                   borderRadius: 10,
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: 600,
-                  border: `1px solid ${active ? colors.primary : colors.border}`,
-                  background: active ? colors.primaryBg : "transparent",
-                  color: active ? colors.primary : colors.textSecondary,
+                  border: `1px solid var(${active ? "--primary" : "--border"})`,
+                  background: active ? "var(--primary-bg)" : "transparent",
+                  color: `var(${active ? "--primary" : "--text-secondary"})`,
                   cursor: "pointer",
                   fontFamily: "inherit",
                   whiteSpace: "nowrap",
@@ -434,7 +411,7 @@ export function SongPickerContent({
       </div>
 
       {/* Song list */}
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+      <div className={styles.songList} data-testid="song-picker-list">
         {filtered.length === 0 ? (
           <div
             style={{
@@ -492,9 +469,9 @@ export function SongPickerContent({
             flexShrink: 0,
           }}
         >
-          <PrimaryButton onClick={onClose} fullWidth>
+          <button type="button" onClick={onClose} className={styles.confirmButton} data-testid="song-picker-confirm">
             {t("picker.confirmButton", { count: selectedSet.size })}
-          </PrimaryButton>
+          </button>
         </div>
       )}
     </div>
@@ -533,6 +510,9 @@ function SongRow({
       // readers. Without it the checkbox / row-bg-tint cues are
       // invisible to assistive tech.
       aria-pressed={selected}
+      className={styles.songRow}
+      data-testid="song-picker-row"
+      data-song-id={song.songId}
       onClick={() => onToggle(song.songId)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -544,10 +524,9 @@ function SongRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "10px 16px",
         borderBottom: `1px solid ${colors.bgSubtle}`,
         cursor: "pointer",
-        background: selected ? colors.primaryHoverBg : "transparent",
+        background: selected ? "var(--primary-bg)" : "transparent",
         transition: "background 0.08s",
       }}
     >
@@ -562,7 +541,7 @@ function SongRow({
           borderRadius: 5,
           flexShrink: 0,
           border: selected ? "none" : `1.5px solid ${colors.border}`,
-          background: selected ? colors.primary : "white",
+          background: selected ? "var(--primary)" : "white",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -591,7 +570,7 @@ function SongRow({
             style={{
               fontSize: 13,
               fontWeight: 700,
-              color: selected ? colors.primary : colors.textPrimary,
+              color: selected ? "var(--primary)" : colors.textPrimary,
             }}
           >
             {title.main}
@@ -635,7 +614,7 @@ function SongRow({
         aria-hidden
         style={{
           fontSize: 14,
-          color: selected ? colors.primary : colors.textMuted,
+          color: selected ? "var(--primary)" : colors.textMuted,
           fontWeight: 700,
           flexShrink: 0,
         }}
