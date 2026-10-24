@@ -1,0 +1,884 @@
+/*
+ * Series detail page — layout from the approved redesign packet 32-v1
+ * (wiki `output/redesign/handoffs/32/v1/style.css` + shell.css +
+ * design-contract.md).
+ *
+ * A CSS module for the same reason as the album (23) and artist (21)
+ * pages: the approved layout changes geometry at 1100 / 768 / 700 /
+ * 360px and several blocks switch display mode, order, padding and
+ * type size together. One rule block per band keeps each band
+ * reviewable against the mockup line by line.
+ *
+ * The packet's style.css was written over browser defaults; Tailwind's
+ * preflight removes heading weight, list markers and margins, so every
+ * heading here states `font-weight` and lists state `list-style`.
+ *
+ * Colours mirror `src/styles/tokens.ts` (03 contract) through the CSS
+ * aliases in globals.css. The event-status pill tones retain the values
+ * 32-v1 fixed with measured contrast (packet contrast.json); the LIVE
+ * pill uses the solid tone from style.css.
+ */
+
+.page {
+  width: 100%;
+  max-width: 1264px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+.breadcrumb > nav {
+  margin-bottom: 22px;
+}
+
+/* ── Identity panel ───────────────────────────────────────────── */
+
+/*
+ * Full-width title panel. `--accent` is the 07 resolver's source
+ * colour (the series' representative artist) or `--border-identity`;
+ * it only paints the 3px top edge — primary text never uses an
+ * untested artist colour (contract "Proposed hierarchy").
+ */
+.identity {
+  display: block;
+  padding: 32px 36px;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent, var(--border-identity));
+  border-radius: 20px;
+  background: linear-gradient(112deg, var(--bg-card) 30%, var(--gradient-identity-pink) 75%, var(--accent-lavender));
+  box-shadow: 0 5px 18px var(--shadow-surface);
+}
+
+/* Approved managed logo: reserved 240×100 box, never stretched. */
+.logoSlot {
+  display: grid;
+  place-items: center;
+  width: 240px;
+  height: 100px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  border-radius: 10px;
+}
+.logoSlot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.titleBlock {
+  min-width: 0;
+  max-width: 1000px;
+}
+
+.badge {
+  display: inline-block;
+  margin-bottom: 14px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: var(--primary-bg);
+  color: var(--text-kind-badge);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.h1 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.42;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+/* Korean wraps at word boundaries; a Japanese original title inside a
+   Korean page keeps normal CJK breaking. */
+:global(html:lang(ko)) .h1 {
+  word-break: keep-all;
+}
+:global(html:lang(ko)) .h1[lang="ja"] {
+  word-break: normal;
+}
+
+.subtitle {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.metaRow {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 20px;
+  font-size: 14px;
+}
+.metaLabel {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.metaRow a {
+  /* 24px target height without moving the baseline-aligned row. */
+  display: inline-block;
+  min-height: 24px;
+  color: var(--primary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.metaRow a:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+.metaRow a:focus-visible {
+  outline-offset: 3px;
+}
+.metaValue {
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.description {
+  max-width: 900px;
+  margin: 18px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 26px 0 0;
+  padding: 20px 0 0;
+  border-top: 1px solid var(--border);
+}
+.metrics > div {
+  display: flex;
+  flex-direction: column;
+  padding-left: 20px;
+  border-right: 1px solid var(--border);
+}
+.metrics > div:first-child {
+  padding-left: 0;
+}
+.metrics > div:last-child {
+  border-right: 0;
+}
+/* Value above its label visually; the DOM keeps dt → dd. */
+.metrics dt {
+  order: 2;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.metrics dd {
+  order: 1;
+  margin: 0 0 2px;
+  color: var(--foreground);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 12px;
+  margin: 24px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  min-height: 52px;
+  padding: 10px 24px;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.tab:hover {
+  background: var(--primary-bg);
+}
+.tab[aria-current="page"] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ── Main + aside grid ────────────────────────────────────────── */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+.main,
+.aside {
+  min-width: 0;
+}
+
+.panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-surface);
+}
+
+.asidePanel {
+  margin-bottom: 18px;
+  padding: 22px;
+}
+.asidePanel h2 {
+  margin: 0 0 16px;
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 700;
+}
+.progressValue {
+  float: right;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-progress);
+  appearance: none;
+}
+.progress::-webkit-progress-bar {
+  background: var(--surface-progress);
+}
+.progress::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--gradient-tour-progress-start), var(--gradient-tour-progress-end));
+}
+.progress::-moz-progress-bar {
+  background: var(--gradient-tour-progress-start);
+}
+.progressLabels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.ongoingNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.unitTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.unitTags li {
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--accent-lavender);
+  color: var(--text-unit-tags);
+  font-size: 12px;
+}
+
+/* ── Event status pill ────────────────────────────────────────── */
+
+.status {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--surface-event-status);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.status[data-status="ongoing"] {
+  background: var(--status-ongoing-solid-surface);
+  color: var(--bg-card);
+}
+.status[data-status="upcoming"] {
+  background: var(--status-upcoming-surface);
+  color: var(--status-upcoming-text);
+}
+.status[data-status="cancelled"] {
+  background: var(--status-cancelled-surface);
+  color: var(--status-cancelled-text);
+}
+
+/* ── Schedule: LIVE banner, child series, BD ──────────────────── */
+
+.liveBanner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 20px;
+  border: 1px solid var(--border-live-banner);
+  border-radius: 14px;
+  background: linear-gradient(110deg, var(--border-live-banner), var(--gradient-live-banner-end));
+  color: var(--bg-card);
+  text-decoration: none;
+}
+.liveBanner:hover {
+  background: var(--surface-live-banner-hover);
+  color: var(--bg-card);
+}
+.liveBanner strong {
+  display: block;
+  font-weight: 700;
+}
+.liveBanner small {
+  color: var(--text-live-banner-small);
+  font-size: 12px;
+}
+
+.children {
+  margin-bottom: 18px;
+  padding: 20px 22px;
+}
+.children h2,
+.bdSection h2 {
+  margin: 0 0 10px;
+  color: var(--foreground);
+  font-size: 17px;
+  font-weight: 700;
+}
+.children ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.children a {
+  display: block;
+  padding: 8px 0;
+  color: var(--primary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.children a:hover {
+  text-decoration: underline;
+}
+
+.bdSection {
+  margin-bottom: 18px;
+  padding: 22px;
+}
+.bdSection h2 {
+  margin-bottom: 16px;
+}
+.bdList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bdCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.bdCard:hover .bdTitle {
+  color: var(--primary);
+}
+/* CoverImage sizes itself inline (72px); the mobile band shrinks it to
+   the approved 60px, which needs !important over the inline size. */
+.bdArt {
+  flex-shrink: 0;
+}
+.bdCopy {
+  flex: 1;
+  min-width: 0;
+}
+.bdTitle {
+  display: block;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.bdCopy small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.bonusLabel {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--accent-pink);
+  color: var(--text-bonus-label);
+  font-size: 10px;
+}
+
+.arrow {
+  flex-shrink: 0;
+  color: var(--primary);
+  font-size: 20px;
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  padding: 28px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* ── City groups ──────────────────────────────────────────────── */
+
+.leg {
+  margin-bottom: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+  box-shadow: 0 4px 16px var(--shadow-section-faint);
+}
+.leg summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 76px;
+  padding: 20px 22px;
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.15s;
+}
+.leg summary::-webkit-details-marker {
+  display: none;
+}
+/* Inset ring: the card clips overflow, so a default outside ring would
+   be cut off by the group's own rounded border. */
+.leg summary:focus-visible {
+  outline-offset: -5px;
+}
+.pin {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-size: 20px;
+}
+.legHeading {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: inherit;
+  font-weight: 400;
+}
+.legTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.legCity {
+  color: var(--foreground);
+  font-size: 17px;
+  font-weight: 700;
+}
+.legSub {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.legCount {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.chevron {
+  display: block;
+  font-size: 19px;
+  text-align: right;
+  transition: transform 0.15s;
+}
+.leg[open] .chevron {
+  transform: rotate(90deg);
+}
+
+.legEvents {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eventRow {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr) 12px;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 22px;
+  border-top: 1px solid var(--border-group-event-row);
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.eventRow:hover,
+.songRow:hover {
+  background: var(--surface-interactive-row-hover);
+}
+.eventRow:focus-visible,
+.songRow:focus-visible {
+  outline-offset: -5px;
+}
+.eventDate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 12px;
+}
+/* shell.css `.event-row time`: muted 13px. */
+.eventDate time {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.eventName {
+  display: block;
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* ── Songs tab ────────────────────────────────────────────────── */
+
+.songPanel {
+  padding-top: 18px;
+}
+.songPanel h2 {
+  margin: 0;
+  padding: 0 22px 18px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+}
+.songList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.songRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 12px;
+  align-items: center;
+  gap: 18px;
+  min-height: 70px;
+  padding: 16px 22px;
+  border-top: 1px solid var(--border-group-event-row);
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.songTitle {
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.variant {
+  margin-left: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+.songSub {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.songUnit {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--accent-lavender);
+  color: var(--text-unit-tags);
+  font-size: 11px;
+}
+.songCount {
+  color: var(--foreground);
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.songCount small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 400;
+}
+.songFooter {
+  margin: 0;
+  padding: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ── ≤1099px ──────────────────────────────────────────────────── */
+
+@media (max-width: 1099px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 18px;
+  }
+  .identity {
+    padding: 28px;
+  }
+  .h1 {
+    font-size: 29px;
+  }
+  .asidePanel {
+    padding: 18px;
+  }
+  .eventRow {
+    grid-template-columns: 120px minmax(0, 1fr) 10px;
+    gap: 12px;
+  }
+}
+
+/* ── ≤767px: one column, progress/units first ─────────────────── */
+
+@media (max-width: 767px) {
+  .page {
+    padding: 20px 24px 48px;
+  }
+  .layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .aside {
+    order: -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    width: 100%;
+  }
+  /* A series with progress but no units (an upcoming tour) has one
+     panel: it takes the full row instead of half of it. */
+  .aside > :only-child {
+    grid-column: 1 / -1;
+  }
+  .main {
+    width: 100%;
+  }
+  .identity {
+    padding: 24px;
+  }
+  .h1 {
+    font-size: 26px;
+  }
+  .metrics {
+    gap: 10px;
+  }
+  .metrics > div {
+    padding-left: 8px;
+  }
+  .metrics dd {
+    font-size: 21px;
+  }
+  .leg summary {
+    padding: 18px;
+  }
+  .legSub {
+    line-height: 1.5;
+  }
+  .eventRow {
+    grid-template-columns: minmax(0, 1fr) 12px;
+    gap: 8px 12px;
+    padding: 16px 18px;
+  }
+  /* Date and status share one line above the name; the pill sits at
+     the row's right edge (32-v1 mobile capture). */
+  .eventDate {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .songRow {
+    padding: 16px 18px;
+  }
+}
+
+/* ── ≤699px ───────────────────────────────────────────────────── */
+
+@media (max-width: 699px) {
+  .page {
+    padding: 16px 16px 40px;
+  }
+  .breadcrumb > nav {
+    margin-bottom: 16px;
+  }
+  .identity {
+    padding: 22px 20px;
+    border-radius: 16px;
+  }
+  .h1 {
+    font-size: 25px;
+    line-height: 1.4;
+  }
+  .subtitle {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .metaRow {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-top: 16px;
+    font-size: 13px;
+  }
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 18px;
+  }
+  .metrics > div,
+  .metrics > div:first-child,
+  .metrics > div:last-child {
+    padding: 10px 12px;
+    border: 1px solid var(--border-row-divider);
+    border-radius: 10px;
+    background: var(--surface-metrics);
+  }
+  .metrics dd {
+    font-size: 22px;
+  }
+  .metrics dt {
+    font-size: 11px;
+  }
+  .logoSlot {
+    width: 100%;
+    max-width: 240px;
+  }
+  .tabs {
+    gap: 0;
+    margin: 20px 0 18px;
+  }
+  .tab {
+    flex: 0 1 auto;
+    min-height: 50px;
+    padding: 10px 18px;
+    font-size: 13px;
+  }
+  .aside {
+    display: block;
+  }
+  .asidePanel {
+    padding: 18px;
+  }
+  .legCity {
+    font-size: 16px;
+  }
+  .legCount {
+    font-size: 11px;
+  }
+  .leg summary {
+    gap: 10px;
+  }
+  .pin {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+  .eventName {
+    font-size: 14px;
+  }
+  .songRow {
+    gap: 12px;
+  }
+  .songTitle {
+    font-size: 14px;
+  }
+  .songCount {
+    font-size: 18px;
+  }
+  .songPanel h2 {
+    padding-inline: 18px;
+  }
+  .bdSection {
+    padding: 18px;
+  }
+  .bdArt {
+    width: 60px !important;
+    height: 60px !important;
+  }
+}
+
+/* ── ≤359px ───────────────────────────────────────────────────── */
+
+@media (max-width: 359px) {
+  .identity {
+    padding: 18px 16px;
+  }
+  .h1 {
+    font-size: 23px;
+  }
+  .leg summary {
+    padding: 16px;
+  }
+  .legCount {
+    max-width: 48px;
+  }
+  .tab {
+    min-width: 0;
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+  .songCount {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .leg summary,
+  .eventRow,
+  .songRow,
+  .chevron {
+    transition: none;
+  }
+}

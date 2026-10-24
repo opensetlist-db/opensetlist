@@ -2,21 +2,30 @@
   "Home": {
     "title": "OpenSetlist",
     "description": "Open setlist database for live events (JP/EN/KR)",
-    "ongoingTitle": "🔴 Live Now",
-    "ongoingSubtitle": "Setlist updating in real time",
-    "upcomingTitle": "Upcoming Events",
-    "recentTitle": "Recent Events",
-    "viewAllSchedule": "View full schedule ›",
-    "viewAllEvents": "View all events ›",
-    "songCountOngoing": "{count, plural, one {🎵 # song so far} other {🎵 # songs so far}}",
-    "songCount": "{count, plural, one {🎵 # song} other {🎵 # songs}}",
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, one {# hour left} other {# hours left}}",
     "minutesLeft": "{minutes, plural, one {# min left} other {# mins left}}",
-    "wishOpen": "Setlist Prediction Available",
-    "noEvents": "Event listings coming soon.",
-    "noUpcoming": "No upcoming events in the next 30 days.",
-    "noRecent": "No recent events in the last 30 days."
+    "wishOpen": "Setlist prediction available",
+    "liveEyebrow": "LIVE NOW",
+    "liveTitle": "Live now",
+    "upcomingEyebrow": "LIVE DISCOVERY",
+    "upcomingTitle": "Upcoming events",
+    "allConcerts": "All events",
+    "railHint": "Scroll sideways to explore upcoming events →",
+    "pastEyebrow": "SETLIST ARCHIVE",
+    "recentTitle": "Recent events",
+    "archiveTitle": "From the setlist archive",
+    "recentNote": "Events held in the last 30 days with songs in their setlists.",
+    "archiveNote": "No qualifying setlists in the last 30 days. Explore earlier events.",
+    "emptyUpcoming": "There are no upcoming events listed yet.",
+    "emptyPast": "No setlists with songs have been registered yet.",
+    "browse": "Explore events",
+    "liveBadge": "Live now",
+    "scheduled": "Upcoming · {label}",
+    "setlistSongs": "{count, plural, other {#-song setlist}}",
+    "setlistWaiting": "Waiting for setlist updates",
+    "viewSetlist": "View setlist",
+    "pastLink": "Past setlists"
   },
   "Common": {
     "notFound": "Page not found.",
@@ -98,7 +107,14 @@
     "ungroupedNoCategorySection": "Uncategorized",
     "showOtherUnits": "Show other units ({count})",
     "hideOtherUnits": "Hide other units",
-    "songCount": "🎵 {count}"
+    "songCount": "🎵 {count}",
+    "tabsAriaLabel": "Artist information",
+    "viewAllAlbums": "View all albums",
+    "viewAllHistory": "View all event history",
+    "historyColumns": {
+      "dateStatus": "Date · status",
+      "event": "Event"
+    }
   },
   "Song": {
     "title": "Songs",
@@ -121,6 +137,8 @@
     "baseVariant": "Base",
     "recentPerformances": "Performance history",
     "performanceCount": "{count, plural, one {# performance} other {# performances}}",
+    "kindBadge": "Song",
+    "statsPerformances": "performances",
     "statsTours": "tours",
     "releaseYearLabel": "Released",
     "albumLabel": "On",
@@ -152,7 +170,14 @@
     "noAlbums": "No albums to show",
     "filterAll": "All",
     "artistFilterAria": "Artist filter",
-    "yearAlbumCount": "{count, plural, one {# album} other {# albums}}",
+    "yearPageCount": "{count} on this page",
+    "pagination": {
+      "aria": "Album pages",
+      "prev": "Previous",
+      "next": "Next",
+      "pageLabel": "Page {page}",
+      "summary": "{start}–{end} of {total, plural, one {# album} other {# albums}} · {perPage} per page · {page} / {totalPages}"
+    },
     "undatedYear": "Release date TBA",
     "albumActiveBonuses": "{count, plural, one {# store bonus} other {# store bonuses}}",
     "albumActiveBonusesBadge": "Bonus {count}",
@@ -167,16 +192,12 @@
     "tab": {
       "bonus": "Buy",
       "tracks": "Tracks",
-      "events": "Related events",
-      "withCount": "{label} ({count})"
+      "events": "Related events"
     },
     "stats": {
       "trackCount": "{count, plural, one {# track} other {# tracks}}",
       "bonusCount": "{count, plural, one {# bonus} other {# bonuses}}",
-      "endedBonusCount": "{count, plural, one {# ended} other {# ended}}",
       "listingCount": "{count, plural, one {# store} other {# stores}}",
-      "totalBonusCount": "{count, plural, one {1 total} other {# total}}",
-      "activeBonusCount": "{count, plural, one {1 active} other {# active}}",
       "bonusSectionLabel": "Store Bonuses"
     },
     "breadcrumb": {
@@ -207,6 +228,11 @@
       },
       "buy": "Buy",
       "showEnded": "{count, plural, one {Show # ended store} other {Show # ended stores}}",
+      "summary": {
+        "total": "Total {count}",
+        "current": "Current {count}",
+        "ended": "Ended {count}"
+      },
       "empty": "No store info registered yet."
     },
     "tracks": {
@@ -241,6 +267,9 @@
     "performanceHistory": "Performance History",
     "noPerformances": "No performance records.",
     "unknown": "Untitled Member",
+    "eyebrow": "Member",
+    "viewAllSongs": "View all songs",
+    "viewAllHistory": "View all event history",
     "tabOverview": "Overview",
     "tabSongs": "Songs ({count})",
     "tabHistory": "History ({count})",
@@ -261,8 +290,6 @@
   },
   "Event": {
     "title": "Events",
-    "allEvents": "All Events",
-    "subtitle": "Check setlists and reactions for each event",
     "ongoing": "Live Now",
     "upcoming": "Upcoming Events",
     "past": "Past Events",
@@ -276,14 +303,12 @@
       "upcoming": "Upcoming",
       "completed": "Completed"
     },
-    "emptyFilterState": "No events match",
     "eventCount": "{count, plural, one {# event} other {# events}}",
     "songCount": "{count, plural, other {🎵 #}}",
     "tableHeader": {
       "date": "Date",
       "status": "Status",
       "name": "Event",
-      "venue": "Venue",
       "songs": "Songs"
     },
     "setlist": "Setlist",
@@ -305,11 +330,6 @@
     "iconLabelReactions": "Reactions",
     "songsValue": "{count, plural, one {# song} other {# songs}}",
     "itemsLabel": "{count, plural, one {# item} other {# items}}",
-    "tapToAddReaction": "Tap to add reaction",
-    "colPosition": "#",
-    "colSong": "Song",
-    "colPerformers": "Performers",
-    "colReactions": "Reactions",
     "unitsLabel": "Units",
     "performersLabel": "Performers",
     "guestLabel": "Guest",
@@ -342,6 +362,47 @@
       "detailsCta": "View album details →"
     }
   },
+  "EventDetail": {
+    "jumpLabel": "On this page",
+    "infoTitle": "Event info",
+    "factDate": "Date",
+    "factStart": "Start",
+    "sameSeriesTitle": "Same series",
+    "viewSeries": "View series",
+    "creditsToggle": "Credits",
+    "songPerformers": "Performers on this song",
+    "liveNotice": "Updating live",
+    "cancelledTitle": "Cancelled",
+    "cancelledBody": "This event is cancelled. Song wishes and predictions cannot be saved or edited.",
+    "opensTitle": "Participation opens",
+    "opensBody": "Song wishes and setlist predictions open at the time below."
+  },
+  "EventList": {
+    "eyebrow": "EVENTS & SETLISTS",
+    "title": "Events",
+    "subtitle": "Find an event. Explore the live archive.",
+    "filterLabel": "Filter events",
+    "activeHeading": "Live & upcoming events",
+    "pastHeading": "Past events",
+    "seriesType": {
+      "concert_tour": "Tour",
+      "festival": "Festival"
+    },
+    "eventCount": "{count, plural, one {# event} other {# events}}",
+    "songCount": "{count, plural, one {# song} other {# songs}}",
+    "status": {
+      "upcoming": "Upcoming",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "collapseGroup": "Collapse {title}",
+    "expandGroup": "Expand {title}",
+    "empty": "No events match",
+    "viewAll": "View all events",
+    "prev": "Previous",
+    "next": "Next",
+    "pageStatus": "{current} / {total}"
+  },
   "EventDateTime": {
     "localTime": "local time"
   },
@@ -355,6 +416,7 @@
       "standalone": "Standalone"
     },
     "organizer": "Organizer",
+    "artistLabel": "Artist",
     "events": "Events",
     "noEvents": "No events registered.",
     "unknownSeries": "Untitled Series",
@@ -391,7 +453,8 @@
     "surprise": "Surprise",
     "moved": "Emotional",
     "trending": "Trending songs",
-    "trendingEmpty": "No reactions yet — try adding one from the setlist!"
+    "trendingEmpty": "No reactions yet — try adding one from the setlist!",
+    "trendingTop": "TOP 3"
   },
   "Setlist": {
     "tabActual": "Actual setlist",
@@ -481,13 +544,26 @@
     "shareTextLive": "Show in progress — {matched} of {total} songs hit so far ({percentage}%)",
     "shareTextPrediction": "My predicted setlist — {count, plural, one {# song} other {# songs}}",
     "close": "Close",
-    "scoreLabel": "Prediction hit rate",
-    "scoreMatchedOf": "{matched} of {total} songs hit",
-    "scorePredicted": "{count} predicted",
-    "predictionLabel": "Predicted setlist",
-    "predictionCount": "{count, plural, one {# song} other {# songs}}",
-    "liveBadge": "LIVE",
-    "encore": "Encore"
+    "encore": "Encore",
+    "eyebrow": "MY SETLIST / {index}",
+    "pillPrediction": "PREDICTION",
+    "pillLive": "LIVE",
+    "pillFinal": "FINAL",
+    "titlePrediction": "My predicted setlist",
+    "titleLive": "My hits so far",
+    "titleFinal": "My final result",
+    "predictedUnit": "songs predicted",
+    "basisLive": "Of {count, plural, one {# song} other {# songs}} recorded so far",
+    "basisFinal": "Of {count, plural, one {# song} other {# songs}} in the final setlist",
+    "notePrediction": "My picks for this event.",
+    "noteLive": "As of {time} · Saved snapshot",
+    "noteFinal": "Song matches, regardless of order · Corrections may change this result",
+    "orderPrediction": "My predicted order",
+    "orderActual": "Actual song order",
+    "tracks": "{count, plural, one {# TRACK} other {# TRACKS}}",
+    "legendHit": "Predicted hit",
+    "legendMiss": "Not predicted",
+    "noResult": "No songs recorded yet. Results are not available."
   },
   "Confirm": {
     "confirmAria": "Mark as correct",
@@ -674,17 +750,81 @@
     "albums": "Albums",
     "signIn": "Sign in",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "mainNav": "Main menu",
+    "search": "Search",
+    "searchPlaceholder": "Search events, artists, songs, albums",
+    "skipToContent": "Skip to content"
+  },
+  "Search": {
+    "title": "Search",
+    "subtitle": "Search events, artists, albums and songs",
+    "metaTitle": "Search results for “{q}”",
+    "inputLabel": "Search the site",
+    "placeholder": "Search events, artists, songs, albums",
+    "submit": "Search",
+    "clear": "Clear search",
+    "formLabel": "Content search",
+    "typesLabel": "Result types",
+    "all": "All",
+    "events": "Events",
+    "artists": "Artists",
+    "songs": "Songs",
+    "albums": "Albums",
+    "results": "Search results · “{q}”",
+    "more": "{type} · See more",
+    "noGroup": "No matching results.",
+    "emptyTitle": "What are you looking for?",
+    "emptyBody": "Enter an event, artist, song or album name to get started.",
+    "noneTitle": "No matching results found",
+    "noneBody": "Try part of the name, or a name registered in another language.",
+    "errorTitle": "We couldn’t load the results",
+    "errorBody": "Your search is still here. Please try again in a moment.",
+    "retry": "Try again",
+    "longTitle": "Your search is too long",
+    "longBody": "Shorten your search to {max} characters or fewer.",
+    "edit": "Edit search",
+    "rangeTitle": "There are no results on this page",
+    "rangeBody": "Return to the first page to explore the results.",
+    "first": "Go to first page",
+    "prev": "Previous",
+    "next": "Next",
+    "page": "Page {page}",
+    "pagination": "Search result pagination",
+    "matched": "Matched name",
+    "base": "Base version",
+    "variant": "Alternate version",
+    "artistType": {
+      "solo": "Solo",
+      "group": "Group",
+      "unit": "Unit"
+    },
+    "albumType": {
+      "single": "Single",
+      "album": "Album",
+      "ep": "EP",
+      "live_album": "Live album",
+      "soundtrack": "Soundtrack"
+    }
   },
   "Hero": {
+    "eyebrow": "OPENSETLIST",
     "heading": "The live story we keep together",
-    "searchPlaceholder": "Search artists, events, songs..."
+    "lead": "Find an event. Revisit a setlist. Keep the memories together.",
+    "browse": "Explore events",
+    "pastSetlists": "Past setlists",
+    "caption": "Fictional live music scene"
   },
   "Footer": {
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
     "contact": "Contact",
-    "copyright": "© {year} OpenSetlist"
+    "copyright": "© {year} OpenSetlist",
+    "unofficial": "An unofficial fan site. Not affiliated with performers, organizers or rights holders.",
+    "navLabel": "Site information"
+  },
+  "SharedImage": {
+    "noImage": "No image"
   },
   "legal": {
     "privacyTitle": "Privacy Policy",

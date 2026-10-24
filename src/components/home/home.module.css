@@ -1,0 +1,782 @@
+/*
+ * Home page (approved 14-v1.3, on the 03-v1.1 shell). The approved
+ * browser mockup is the comparison baseline, so this module mirrors its
+ * geometry rule for rule: three bands (≥1100 desktop, 700–1099 tablet,
+ * <700 mobile, plus the shell's ≤1300 side gutters), hover/pressed
+ * pairs and the dot-only LIVE pulse. The LIVE surface follows the
+ * consistency-03-v3 amendment. Tailwind
+ * utilities would need arbitrary values for nearly every declaration
+ * here, so the page keeps one readable module instead (same pattern as
+ * `search.module.css`).
+ *
+ * The approved colours, including home-specific ones such as the
+ * Hero gradient, come from `:root` CSS aliases in globals.css.
+ * `--primary` mirrors `colors.primary`.
+ */
+
+.page {
+  flex: 1 1 auto;
+  width: 100%;
+  background: var(--background);
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+
+.hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 1280px;
+  min-height: 420px;
+  margin: 28px auto 0;
+  overflow: hidden;
+  border-radius: 24px;
+  color: var(--bg-card);
+  background: var(--surface-hero);
+}
+
+.heroPicture,
+.heroPicture img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.heroPicture img {
+  object-fit: cover;
+  object-position: 50% 57%;
+}
+
+/* Left-to-right navy fade keeps the heading and actions legible while
+   the lightsticks and stage lights stay visible on the right. */
+.hero::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(9, 17, 53, 0.89),
+    rgba(14, 19, 61, 0.55) 52%,
+    rgba(18, 20, 62, 0.13)
+  );
+}
+
+.heroContent {
+  position: relative;
+  z-index: 2;
+  max-width: 740px;
+  padding: 40px 48px 54px;
+}
+
+.heroEyebrow {
+  margin: 0 0 10px;
+  color: var(--text-hero-eyebrow);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+
+.heroTitle {
+  max-width: 620px;
+  margin: 0 0 12px;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: -0.035em;
+}
+:global(html:lang(ko)) .heroTitle {
+  word-break: keep-all;
+}
+
+.heroLead {
+  margin: 0;
+  color: var(--text-hero-lead);
+  font-size: 14px;
+}
+
+.heroSearch {
+  position: relative;
+  display: flex;
+  max-width: 540px;
+  margin-top: 24px;
+}
+.heroInput {
+  width: 100%;
+  min-width: 0;
+  height: 50px;
+  padding: 0 48px 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--foreground);
+  font-size: 14px;
+}
+.heroInput::placeholder {
+  color: var(--text-secondary);
+}
+.heroInput::-webkit-search-cancel-button {
+  display: none;
+}
+.heroSubmit {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 48px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+}
+.heroSubmit:hover {
+  background: var(--primary-hover-bg);
+}
+.heroSubmit:active {
+  background: var(--primary-pressed-bg);
+}
+.heroSubmit svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* Hero controls sit on the dark image: white ring + navy halo instead of
+   the global blue focus ring (03 contract). */
+.heroInput:focus-visible,
+.heroSubmit:focus-visible,
+.button:focus-visible {
+  outline: 3px solid var(--bg-card);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px var(--foreground);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 11px 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.buttonPrimary {
+  background: var(--primary);
+  color: var(--bg-card);
+}
+.buttonPrimary:hover {
+  background: var(--primary-hover);
+}
+.buttonPrimary:active {
+  background: var(--primary-pressed);
+}
+.buttonGlass {
+  background: var(--surface-button-glass);
+  color: var(--foreground);
+}
+.buttonGlass:hover {
+  background: var(--bg-card);
+}
+.buttonGlass:active {
+  background: var(--primary-pressed-bg);
+}
+
+/* Fictional-artwork notice — never implies a listed concert. */
+.heroCaption {
+  position: absolute;
+  z-index: 2;
+  right: 18px;
+  bottom: 12px;
+  max-width: calc(100% - 28px);
+  padding: 5px 9px;
+  border-radius: 4px;
+  background: var(--surface-hero-caption);
+  color: var(--text-hero-caption);
+  font-size: 12px;
+}
+
+/* ── Sections ─────────────────────────────────────────────────────── */
+
+.content {
+  width: 100%;
+  max-width: 1200px;
+  margin: auto;
+  padding: 40px 0 56px;
+}
+.section + .section {
+  margin-top: 44px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+.sectionTitle {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: -0.025em;
+}
+.liveTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.liveTitle::before {
+  content: "";
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--status-live-dot);
+}
+.liveEyebrow {
+  color: var(--status-live-text);
+}
+
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 0;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+.textLink:hover {
+  text-decoration: underline;
+}
+.textLink:active {
+  color: var(--primary-pressed);
+  text-decoration: underline;
+}
+
+.sectionIntro {
+  margin: -10px 0 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.railHint {
+  display: none;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+.empty p {
+  margin: 0 0 8px;
+}
+
+/* ── Upcoming rail / grid ─────────────────────────────────────────── */
+
+.rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin: -7px;
+  padding: 7px;
+}
+.rail:focus-visible {
+  outline-offset: 1px;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-card);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.card:hover {
+  border-color: var(--border-card-hover);
+  box-shadow: 0 8px 24px var(--shadow-card-hover);
+}
+/* Outline itself comes from the global base-layer `:focus-visible`
+   (3px var(--focus-ring)); the card only tightens the offset. */
+.card:focus-visible {
+  outline-offset: 3px;
+}
+/* Korean art titles break between words, not inside them (mockup
+   `html:lang(ko) .art-copy{word-break:keep-all}`); EventArt's
+   `overflow-wrap:anywhere` still rescues a single over-long word. */
+:global(html:lang(ko)) .page [data-testid="event-art"] strong {
+  word-break: keep-all;
+}
+
+/* EventArt fixes 24px at ≥700; the approved rail uses 22px. These
+   size overrides reach into EventArt's markup (`data-testid` + inner
+   `strong`) because EventArt has no title-size seam yet and is being
+   edited by the concert-list ticket; if it gains one, switch to it. */
+.card [data-testid="event-art"] {
+  padding: 16px;
+}
+.card [data-testid="event-art"] strong {
+  font-size: 22px;
+}
+
+.cardBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+.dateLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+.day {
+  padding: 3px 7px;
+  border: 1px solid var(--primary-border);
+  border-radius: 6px;
+  background: var(--day-chip-bg);
+  color: var(--day-chip-ink);
+  font-size: 12px;
+}
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.7;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.venue {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.venue svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 18px;
+}
+.icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cardBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.cardBottom > svg,
+.compact > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--primary);
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--primary-bg);
+  color: var(--day-chip-ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.badgeWish {
+  border: 1px solid var(--border-badge-wish);
+  background: var(--accent-pink);
+  color: var(--text-badge-wish);
+}
+
+/* ── Past / ongoing compact cards ─────────────────────────────────── */
+
+.compactGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.compact {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: 0 5px 18px var(--shadow-card);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.compact:hover {
+  border-color: var(--border-card-hover);
+  box-shadow: 0 8px 24px var(--shadow-card-hover);
+}
+.compact .dateLine {
+  font-size: 13px;
+}
+.compact .cardTitle {
+  margin: 9px 0;
+  font-size: 14px;
+}
+.meta {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.metaLink {
+  color: var(--primary);
+  font-weight: 700;
+}
+.compact:hover .metaLink {
+  text-decoration: underline;
+}
+
+/* Ongoing: warm white card with a coral status line. Only the
+   small dot pulses (existing `live-pulse`, 1.2s); reduced motion leaves
+   it solid. Text and backgrounds never animate. */
+.live {
+  gap: 20px;
+  padding: 24px;
+  border-color: var(--border-live-card);
+  background: var(--surface-live-card);
+  box-shadow: inset 3px 0 var(--status-live-dot), 0 4px 16px var(--shadow-live-card);
+  color: var(--foreground);
+}
+.live:hover {
+  border-color: var(--border-live-card);
+  box-shadow: inset 3px 0 var(--status-live-dot), 0 4px 16px var(--shadow-live-card);
+}
+.live:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+.live .cardTitle {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--foreground);
+}
+:global(html:lang(ko)) .live .cardTitle {
+  word-break: keep-all;
+}
+.live .dateLine,
+.live .venue,
+.live .meta {
+  color: var(--text-secondary);
+}
+.live .day {
+  border-color: var(--border-live-day);
+  background: var(--surface-live-day);
+  color: var(--text-live);
+}
+.live [data-testid="event-art"] {
+  border: 1px solid var(--border-live-day);
+}
+.live .meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+}
+.liveCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+.liveBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  border: 1px solid var(--status-live-border);
+  border-radius: 999px;
+  background: var(--status-live-surface);
+  color: var(--status-live-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-live-dot);
+  /* The pulse itself is `motion.livePulse` set inline: CSS Modules would
+     rename a keyframe referenced here, and the global `live-pulse` is
+     the one StatusBadge already uses. */
+}
+@media (prefers-reduced-motion: reduce) {
+  .liveDot {
+    animation: none !important;
+    opacity: 1;
+  }
+}
+
+/* ── ≥700: compact art fills its 96px column at 110px tall (mockup
+   `.past-grid .compact-card .art`), instead of EventArt's 96×96 /
+   76×120 compact defaults. Phones keep EventArt's 76×120. ─────────── */
+
+@media (min-width: 700px) {
+  .compact [data-testid="event-art"] {
+    width: 96px;
+    height: 110px;
+  }
+  .compact [data-testid="event-art"] strong {
+    font-size: 14px;
+  }
+}
+
+/* ── ≤1300: shell side gutters ────────────────────────────────────── */
+
+@media (max-width: 1300px) {
+  .hero {
+    margin: 24px 24px 0;
+  }
+  .content {
+    padding: 36px 32px 48px;
+  }
+}
+
+/* ── ≥1100: five upcoming cards share one row ─────────────────────── */
+
+@media (min-width: 1100px) {
+  .rail[data-count="5"] {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .rail[data-count="5"] [data-testid="event-art"] strong {
+    font-size: 19px;
+  }
+  .rail[data-count="5"] .cardBody {
+    padding: 15px;
+  }
+}
+
+/* ── 700–1099: tablet ─────────────────────────────────────────────── */
+
+@media (min-width: 700px) and (max-width: 1099px) {
+  .hero {
+    min-height: 410px;
+  }
+  .rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .compactGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── <700: mobile ─────────────────────────────────────────────────── */
+
+@media (max-width: 699px) {
+  .hero {
+    margin: 16px 16px 0;
+    border-radius: 18px;
+  }
+  .heroPicture img {
+    object-position: 55% center;
+  }
+  .hero::before {
+    background: linear-gradient(
+      90deg,
+      rgba(9, 17, 53, 0.87),
+      rgba(14, 19, 61, 0.58)
+    );
+  }
+  .heroContent {
+    width: 100%;
+    max-width: 100%;
+    padding: 28px 22px 56px;
+  }
+  .heroEyebrow {
+    margin-bottom: 6px;
+    font-size: 10px;
+  }
+  .heroTitle {
+    font-size: 24px;
+    line-height: 1.6;
+    letter-spacing: -0.045em;
+  }
+  .heroTitleLine {
+    display: block;
+  }
+  .heroLead {
+    font-size: 13px;
+  }
+  .heroSearch {
+    margin-top: 20px;
+  }
+  .heroInput {
+    height: 48px;
+    padding-left: 12px;
+    font-size: 12px;
+  }
+  .heroSubmit {
+    height: 46px;
+  }
+  .heroActions {
+    gap: 8px;
+  }
+  .heroActions .button {
+    flex-grow: 1;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  .heroCaption {
+    right: 10px;
+    bottom: 9px;
+  }
+
+  .content {
+    padding: 30px 16px 36px;
+  }
+  .section + .section {
+    margin-top: 32px;
+  }
+  .sectionHead {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    margin-bottom: 16px;
+  }
+  .eyebrow {
+    margin-bottom: 6px;
+    font-size: 9px;
+  }
+  .sectionTitle {
+    font-size: 21px;
+  }
+  .sectionHead > .textLink {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .sectionIntro {
+    margin: 0 0 16px;
+    font-size: 12px;
+  }
+  .railHint {
+    display: block;
+    margin: -6px 0 14px;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .empty {
+    padding: 18px;
+  }
+
+  /* The only horizontally scrolling region on the page. */
+  .rail {
+    display: flex;
+    gap: 14px;
+    margin: -7px;
+    padding: 7px 7px 18px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding: 7px;
+  }
+  .rail .card {
+    flex: 0 0 min(82vw, 310px);
+    scroll-snap-align: start;
+  }
+
+  .compactGrid {
+    grid-template-columns: 1fr;
+  }
+  .compact {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+  }
+  .compact > svg {
+    display: none;
+  }
+  .compact .dateLine {
+    font-size: 12px;
+  }
+  .compact .cardTitle {
+    font-size: 13px;
+  }
+  .live {
+    gap: 14px;
+    padding: 18px;
+  }
+  .live .cardTitle {
+    font-size: 16px;
+  }
+  .liveCta {
+    width: 100%;
+    padding: 9px 10px;
+  }
+}

@@ -8,19 +8,13 @@ import {
 } from "@/lib/artists";
 import FilterBar from "@/components/artists/FilterBar";
 import GroupSection from "@/components/artists/GroupSection";
-import { colors } from "@/styles/tokens";
+import styles from "@/components/artists/artistList.module.css";
 
 // Repeated query params arrive as `string[]` in App Router (e.g.
 // `?category=kpop&category=jpop` → `category: ["kpop", "jpop"]`).
 // Type for both shapes; pick the first value when an array, then run
 // it through the type-guard. Defends against both intentional repeats
 // and accidental URL manipulation by treating malformed input as "all".
-// Reading-comfort cap for the multi-column desktop table per mockup.
-// Mobile uses full width; the page only narrows when the desktop
-// breakpoint kicks in (1024px) and the 5-col grid would otherwise
-// stretch awkwardly wide on ultra-wide monitors.
-const PAGE_MAX_WIDTH = 960;
-
 type SearchParams = Promise<{ category?: string | string[] }>;
 
 function resolveCategory(
@@ -53,53 +47,29 @@ export default async function ArtistsPage({
     getAvailableArtistFilters(),
   ]);
 
+  // Body is a flex column: `<main>` takes the remaining height
+  // (`flex-1`) and `.page` pins `width: 100%` next to its max-width so
+  // the column tracks the viewport, not its content. The page
+  // background comes from the 06 shell's body colour.
   return (
-    <main className="flex-1" style={{ background: colors.bgPage }}>
-      {/* The light-blue `bgPage` token is the project-wide page-frame
-          color (home, events, etc. all use the same pattern). The
-          inner div carries the max-width + padding so the bg extends
-          full viewport width while content stays in a reading-comfort
-          column. */}
-      <div
-        className="mx-auto"
-        style={{
-          maxWidth: PAGE_MAX_WIDTH,
-          padding: "24px 0 48px",
-        }}
-      >
-      <header style={{ padding: "0 16px 16px" }}>
-        <h1
-          style={{
-            fontSize: 24,
-            fontWeight: 700,
-            color: colors.textPrimary,
-            margin: 0,
-          }}
-        >
-          {t("title")}
-        </h1>
-      </header>
+    <main className="flex-1">
+      <div className={styles.page}>
+        <h1 className={styles.title}>{t("title")}</h1>
 
-      <FilterBar active={category} available={availableFilters} />
+        <FilterBar active={category} available={availableFilters} />
 
-      {groups.length === 0 ? (
-        <p
-          style={{
-            textAlign: "center",
-            padding: "48px 16px",
-            fontSize: 14,
-            color: colors.textMuted,
-          }}
-        >
-          {t("empty")}
-        </p>
-      ) : (
-        <div style={{ padding: "0 12px" }}>
-          {groups.map((group) => (
+        {groups.length === 0 ? (
+          <div className={styles.empty}>
+            <span className={styles.emptySymbol} aria-hidden="true">
+              ♫
+            </span>
+            <p className={styles.emptyText}>{t("empty")}</p>
+          </div>
+        ) : (
+          groups.map((group) => (
             <GroupSection key={group.id} group={group} locale={locale} />
-          ))}
-        </div>
-      )}
+          ))
+        )}
       </div>
     </main>
   );

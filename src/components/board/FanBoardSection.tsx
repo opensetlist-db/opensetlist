@@ -29,6 +29,7 @@ import type { AvailableSong } from "@/lib/types/predict";
 import type { WishEntry } from "@/lib/wishStorage";
 import { displayOriginalTitle } from "@/lib/display";
 import { colors } from "@/styles/tokens";
+import styles from "@/components/event/eventDetail.module.css";
 import { BoardMyPicks } from "@/components/board/BoardMyPicks";
 import { pickTitle } from "@/lib/board/pickTitle";
 import {
@@ -274,16 +275,27 @@ export function FanBoardSection({
     trackEvent("board_view", { event_id: eventId, group_id: active.groupId });
   }, [active, eventId]);
 
+  // Hidden (the board answered "off" or "already started") removes the
+  // block entirely. The error state below keeps `anchorId` so the page's
+  // jump link still lands on the board's place.
   if (state.kind === "hidden") return null;
   if (state.kind === "error") {
+    // 18-v3 board-failure: the board's own panel says it could not
+    // load; the rest of the page (info, setlist, impressions) is
+    // unaffected — the aggregate is a client fetch after mount.
     return (
-      <p
-        role="status"
-        className="mb-2.5 px-1 text-[12px]"
-        style={{ color: colors.textMuted }}
+      <section
+        id={anchorId}
+        aria-labelledby={`board-title-${eventId}`}
+        className={`${styles.panel} ${styles.participatePanel}`}
       >
-        {t("loadError")}
-      </p>
+        <h2 id={`board-title-${eventId}`} className={styles.panelTitle}>
+          {t("title")}
+        </h2>
+        <p role="status" className={styles.boardLead}>
+          {t("loadError")}
+        </p>
+      </section>
     );
   }
 
@@ -458,26 +470,20 @@ export function FanBoardSection({
   };
 
   return (
+    // 18-v3 `#participate`: the page's lead panel pre-show. Pink lead
+    // bar on the heading, then one wrapping row of group chips (tinted
+    // with each group's colour, the open one outlined in ink and
+    // underlined so selection never rests on colour alone), then the
+    // pink want / blue expect ballots side by side (stacked < 700px).
     <section
       ref={sectionRef}
       id={anchorId}
       aria-labelledby={`board-title-${eventId}`}
-      className="mb-2.5 overflow-hidden rounded-[14px]"
-      style={{
-        background: colors.bgCard,
-        border: `0.5px solid ${colors.border}`,
-      }}
+      className={`${styles.panel} ${styles.participatePanel}`}
     >
-      <div
-        className="px-3.5 pt-2.5 pb-2"
-        style={{ borderBottom: `0.5px solid ${colors.border}` }}
-      >
-        <h2
-          id={`board-title-${eventId}`}
-          className="text-[13px] font-medium"
-          style={{ color: colors.textPrimary }}
-        >
-          🎪 {t("title")}
+      <div>
+        <h2 id={`board-title-${eventId}`} className={styles.panelTitle}>
+          {t("title")}
         </h2>
         {state.kind === "ready" && (
           // One short status line: open until the show starts, or
@@ -486,32 +492,25 @@ export function FanBoardSection({
           // next to a zoned show time read as noise on a phone header.
           // The response still carries `asOf` (cache evidence); the
           // UI just doesn't print it.
-          <p className="mt-0.5 text-[11px]" style={{ color: colors.textSubtle }}>
+          <p className={styles.boardStatus}>
             {locked ? t("closed") : t("openUntil")}
           </p>
         )}
         {tally && tally.size > 0 && (
-          <p
-            data-testid="board-tally-overall"
-            className="mt-1 text-[12px] font-medium"
-            style={{ color: colors.textPrimary }}
-          >
+          <p data-testid="board-tally-overall" className={styles.boardTally}>
             {t("tallyOverall", { played: tally.played, size: tally.size })}
           </p>
         )}
-        <p className="mt-1 text-[11px]" style={{ color: colors.textMuted }}>
-          {t("explainer")}
-        </p>
+        <p className={styles.boardLead}>{t("explainer")}</p>
       </div>
 
       <div
         role="tablist"
         aria-label={t("groupsAria")}
-        className="flex gap-1.5 overflow-x-auto whitespace-nowrap px-3.5 py-2"
+        className={styles.groupTabs}
       >
         {chips.map((c) => {
           const selected = c.groupId === activeChipId;
-          const tint = c.color ?? colors.primary;
           return (
             <button
               key={c.groupId}
@@ -519,12 +518,12 @@ export function FanBoardSection({
               role="tab"
               aria-selected={selected}
               onClick={() => setActiveId(c.groupId)}
-              className="flex-shrink-0 rounded-full px-3 py-1 text-[12px]"
-              style={{
-                border: `1px solid ${tint}`,
-                background: selected ? tint : "transparent",
-                color: selected ? "#fff" : colors.textPrimary,
-              }}
+              className={styles.groupTab}
+              // No group colour → the neutral border tone, mixed toward
+              // white like every other chip; never an arbitrary hue.
+              style={
+                { "--artist": c.color ?? colors.borderStrong } as React.CSSProperties
+              }
             >
               {c.label}
             </button>
@@ -532,23 +531,25 @@ export function FanBoardSection({
         })}
       </div>
 
-      <div className="px-3.5 pb-3" role="tabpanel">
+      <div role="tabpanel">
         {state.kind === "loading" && (
-          <p className="text-[12px]" style={{ color: colors.textMuted }}>
-            {t("loading")}
-          </p>
+          <p className={styles.ballotNote}>{t("loading")}</p>
         )}
         {state.kind === "ready" && active && (
           <>
-            {/* Two columns side by side; stacked (want above expect) on
-                narrow phones, where two pickers would not fit. */}
-            <div className="grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 min-[400px]:gap-3">
+            {/* Two ballots side by side; stacked (want above expect)
+                under 700px, where two pickers would not fit. */}
+            <div className={styles.boardColumns}>
               {(["wish", "pick"] as const).map((kind) => {
                 const mine = listOf(kind).filter(
                   (p) => p.groupId === active.groupId,
                 );
                 return (
-                  <div key={kind} data-testid={`board-col-${COLUMN[kind].name}`}>
+                  <div
+                    key={kind}
+                    data-testid={`board-col-${COLUMN[kind].name}`}
+                    className={`${styles.ballot} ${kind === "pick" ? styles.ballotExpect : ""}`}
+                  >
                     <ColumnPanel
                       eventId={eventId}
                       group={active}
@@ -578,22 +579,6 @@ export function FanBoardSection({
                 );
               })}
             </div>
-            {/* "Explore this group" — the private alternative to a public
-                "skipped" stat: a fan who doesn't know the group gets a way
-                in, and nobody else learns they skipped it. */}
-            <Link
-              href={entityPath("artists", locale, active.groupId, active.slug)}
-              onClick={() =>
-                trackEvent("board_explore_click", {
-                  event_id: eventId,
-                  group_id: active.groupId,
-                })
-              }
-              className="mt-3 block text-[11px] underline"
-              style={{ color: colors.textSecondary }}
-            >
-              {t("explore", { group: active.name })}
-            </Link>
             {ballot.legacyWishes.length > 0 && (
               <LegacyWishes
                 entries={ballot.legacyWishes}
@@ -604,38 +589,49 @@ export function FanBoardSection({
                 onRemove={(entry) => void handleRemoveLegacy(entry)}
               />
             )}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {/* Disabled, not hidden, at zero picks: the button is how a
-                  fan learns the post exists. */}
-              <button
-                type="button"
-                onClick={() => void handleCopy()}
-                disabled={!copy}
-                className="rounded-full px-3 py-1 text-[12px] disabled:opacity-50"
-                style={{
-                  border: `1px solid ${colors.border}`,
-                  color: colors.textPrimary,
-                }}
+            {/* 18-v3 `.bridge-strip`: the way on from the board. */}
+            <div className={styles.bridgeStrip}>
+              {/* "Explore this group" — the private alternative to a
+                  public "skipped" stat: a fan who doesn't know the group
+                  gets a way in, and nobody else learns they skipped it. */}
+              <Link
+                href={entityPath("artists", locale, active.groupId, active.slug)}
+                onClick={() =>
+                  trackEvent("board_explore_click", {
+                    event_id: eventId,
+                    group_id: active.groupId,
+                  })
+                }
+                className={styles.bridgeLink}
               >
-                {t("copy")}
-              </button>
-              {/* Enabled at zero picks too: it is also the plain mode
-                  switch into the builder. Hidden once the board locks —
-                  the builder locks at the same instant. Expected songs
-                  only: wishes (the other column) never enter the draft. */}
-              {onOpenFullSetlist && !locked && (
+                {t("explore", { group: active.name })}
+              </Link>
+              <div className={styles.bridgeActions}>
+                {/* Disabled, not hidden, at zero picks: the button is how
+                    a fan learns the post exists. */}
                 <button
                   type="button"
-                  onClick={handleOpenFullSetlist}
-                  className="rounded-full px-3 py-1 text-[12px]"
-                  style={{
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textPrimary,
-                  }}
+                  onClick={() => void handleCopy()}
+                  disabled={!copy}
+                  className={styles.secondaryButton}
                 >
-                  {t("toFullSetlist")}
+                  {t("copy")}
                 </button>
-              )}
+                {/* Enabled at zero picks too: it is also the plain mode
+                    switch into the builder. Hidden once the board locks —
+                    the builder locks at the same instant. Expected songs
+                    only: wishes (the other column) never enter the
+                    draft. */}
+                {onOpenFullSetlist && !locked && (
+                  <button
+                    type="button"
+                    onClick={handleOpenFullSetlist}
+                    className={styles.secondaryButton}
+                  >
+                    {t("toFullSetlist")}
+                  </button>
+                )}
+              </div>
             </div>
           </>
         )}
@@ -646,7 +642,7 @@ export function FanBoardSection({
           role="status"
           aria-live="polite"
           data-testid="board-toast"
-          className="mt-2 min-h-[1em] text-[11px]"
+          className="mt-2 min-h-[1em] text-[12px]"
           style={{ color: toast?.error ? colors.error : colors.textSecondary }}
         >
           {toast?.text ?? ""}
@@ -687,6 +683,7 @@ function ColumnPanel({
     !graded && label === "operator" && group.starters.length > 0;
   const entries: readonly (BoardTopEntry & Partial<BoardShortlistEntry>)[] =
     graded ? graded.shortlist : column.top;
+  // My own entries stand out wherever they appear in the crowd list.
   const mineStyle = (songId: string) =>
     mySongIds.has(songId)
       ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
@@ -705,50 +702,45 @@ function ColumnPanel({
     });
   return (
     <div>
-      <h3
-        className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium"
-        style={{ color: colors.textSecondary }}
-      >
+      <h3 className={styles.ballotTitle}>
+        {/* ♡ want / ✦ expect glyphs (18-v3), decorative: the heading
+            text carries the meaning. */}
+        <span aria-hidden="true">{kind === "wish" ? "♡" : "✦"}</span>
         {t(meta.heading)}
         {/* Few participants: a 2-vs-1 must not read like a landslide.
             Plain counts and this label — never shares or bars. */}
         {label === "early" && (
-          <span
-            data-testid="board-early"
-            className="rounded px-1.5 text-[10px] font-normal"
-            style={{ background: colors.bgSubtle, color: colors.textSubtle }}
-          >
+          <span data-testid="board-early" className={styles.earlyTag}>
             {t("earlySample")}
           </span>
         )}
       </h3>
       {graded && (
-        <p
-          data-testid="board-tally-group"
-          className="mb-1 text-[11px]"
-          style={{ color: colors.textSecondary }}
-        >
+        <p data-testid="board-tally-group" className={styles.ballotNote}>
           {t("tallyGroup", { played: graded.played, size: graded.size })}
         </p>
       )}
       {(graded || label !== "operator") && (
-        <ol className="space-y-1">
-          {entries.map((e) => (
+        <ol className={styles.crowdList}>
+          {entries.map((e, i) => (
             <li
               key={e.songId}
               data-testid="board-top-entry"
               data-mine={mySongIds.has(e.songId) || undefined}
               data-played={e.played === undefined ? undefined : String(e.played)}
-              className="flex items-center gap-2 rounded-md border border-transparent px-2 py-1 text-[13px]"
+              className={styles.crowdItem}
               style={mineStyle(e.songId)}
             >
+              {/* Rank badge (gold / silver / bronze by position). The
+                  list order is the rank; the badge makes it visible. */}
+              <span className={styles.rank}>{i + 1}</span>
               {/* Factual result, so neutral marks (not 👍/👎); the
                   label carries the meaning for screen readers. */}
               {e.played !== undefined && (
                 <span
                   role="img"
                   aria-label={t(e.played ? "tallyPlayed" : "tallyNotPlayed")}
-                  className="w-3 flex-shrink-0 text-center text-[12px]"
+                  className="w-3 flex-shrink-0 text-center text-[13px] font-bold"
                   style={{ color: e.played ? colors.primary : colors.textMuted }}
                 >
                   {e.played ? "✓" : "✕"}
@@ -760,8 +752,7 @@ function ColumnPanel({
                 <Link
                   href={entityPath("songs", locale, e.songId, "")}
                   onClick={() => trackSong(e.songId, "crowd")}
-                  className="min-w-0 flex-1 truncate"
-                  style={{ color: colors.textPrimary }}
+                  className={styles.crowdTitle}
                 >
                   {e.title}
                 </Link>
@@ -769,10 +760,7 @@ function ColumnPanel({
                 // Soft-deleted after it was picked: the vote and the rank
                 // stay, the song page is gone. The aggregate takes titles
                 // from the live catalog only, so the title may be empty.
-                <span
-                  className="min-w-0 flex-1 truncate"
-                  style={{ color: colors.textMuted }}
-                >
+                <span className={styles.crowdMuted}>
                   {e.title ? (
                     <>
                       {e.title} <span className="text-[10px]">({t("unavailable")})</span>
@@ -783,17 +771,9 @@ function ColumnPanel({
                 </span>
               )}
               {mySongIds.has(e.songId) && (
-                <span
-                  className="flex-shrink-0 rounded px-1.5 text-[10px]"
-                  style={{ color: colors.primary }}
-                >
-                  {mineBadge}
-                </span>
+                <span className={styles.crowdMine}>{mineBadge}</span>
               )}
-              <span
-                className="flex-shrink-0 text-[11px] tabular-nums"
-                style={{ color: colors.textSubtle }}
-              >
+              <span className={styles.crowdCount}>
                 {t("submissions", { count: e.count })}
               </span>
             </li>
@@ -804,48 +784,36 @@ function ColumnPanel({
         label === "operator" &&
         (showStarters ? (
           <>
-            <ol className="space-y-1">
+            {/* Operator starters: dashed rows with no rank or count —
+                they are a suggestion, not crowd votes. */}
+            <ol className={styles.crowdList}>
               {group.starters.map((s) => (
                 <li
                   key={s.songId}
                   data-testid="board-starter"
                   data-mine={mySongIds.has(s.songId) || undefined}
-                  className="flex items-center gap-2 rounded-md px-2 py-1 text-[13px]"
-                  style={{
-                    border: `1px dashed ${colors.border}`,
-                    ...(mySongIds.has(s.songId)
+                  className={`${styles.crowdItem} ${styles.crowdItemStarter}`}
+                  style={
+                    mySongIds.has(s.songId)
                       ? { background: colors.primaryBg }
-                      : null),
-                  }}
+                      : undefined
+                  }
                 >
                   <Link
                     href={entityPath("songs", locale, s.songId, "")}
                     onClick={() => trackSong(s.songId, "operator")}
-                    className="min-w-0 flex-1 truncate"
-                    style={{ color: colors.textPrimary }}
+                    className={styles.crowdTitle}
                   >
                     {s.title}
                   </Link>
-                  <span
-                    className="flex-shrink-0 rounded px-1.5 text-[10px]"
-                    style={{
-                      background: colors.bgSubtle,
-                      color: colors.textSubtle,
-                    }}
-                  >
-                    {t("operatorPick")}
-                  </span>
+                  <span className={styles.crowdTag}>{t("operatorPick")}</span>
                 </li>
               ))}
             </ol>
-            <p className="mt-1.5 text-[11px]" style={{ color: colors.textMuted }}>
-              {t("operatorNote")}
-            </p>
+            <p className={styles.ballotNote}>{t("operatorNote")}</p>
           </>
         ) : (
-          <p className="text-[12px]" style={{ color: colors.textMuted }}>
-            {t("empty")}
-          </p>
+          <p className={styles.ballotNote}>{t("empty")}</p>
         ))}
     </div>
   );
@@ -873,13 +841,9 @@ function LegacyWishes({
   onRemove: (entry: WishEntry) => void;
 }) {
   return (
-    <div className="mt-3" data-testid="board-legacy-wishes">
-      <h4 className="text-[12px] font-medium" style={{ color: colors.textSecondary }}>
-        {t("legacyWishesTitle")}
-      </h4>
-      <p className="mb-1 text-[11px]" style={{ color: colors.textMuted }}>
-        {t("legacyWishesNote")}
-      </p>
+    <div className={styles.legacyBlock} data-testid="board-legacy-wishes">
+      <h4 className={styles.legacyTitle}>{t("legacyWishesTitle")}</h4>
+      <p className={styles.ballotNote}>{t("legacyWishesNote")}</p>
       <ul className="space-y-1">
         {entries.map((w) => {
           const title = displayOriginalTitle(w.song, w.song.translations, locale).main;

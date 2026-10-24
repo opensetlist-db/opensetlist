@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -24,10 +25,7 @@ import {
   MAX_ROW_BADGES,
   pickRowArtistBadges,
 } from "@/lib/setlistRowBadge";
-import {
-  SETLIST_DESKTOP_GRID_COLS,
-  SETLIST_DESKTOP_GRID_GAP,
-} from "@/components/setlistLayout";
+import styles from "@/components/event/eventDetail.module.css";
 import { entityPath } from "@/lib/seo/entityUrl";
 
 // Stable reference for items with no reactions yet — without this, every
@@ -286,74 +284,35 @@ export function SetlistRow({
   // visually indistinguishable. Stage B foundation; full lifecycle
   // (localStorage read + write + tap handler) ships in Stage C.
   const isUnverified = rowState !== "confirmed";
+  const creditsT = useTranslations("EventDetail");
+  const hasCreditLine =
+    !isNonSong &&
+    (namedBadges.length > 0 ||
+      badgeArtists.length > 0 ||
+      item.stageType !== "full_group");
+  // The per-song performer names live behind a toggle (below). A row
+  // with nobody credited gets no toggle at all — an empty disclosure
+  // would promise content that isn't there.
+  const hasPerformerCredits = !isNonSong && performers.length > 0;
   return (
+    // 18-v3 `.song-row`: each row is its own small card — number chip,
+    // then the body (title, unit credit chips, the performer credits
+    // disclosure, reactions). From 1100px the body becomes a two-column
+    // grid and the reactions sit at the right of the title; below that
+    // they wrap under the credits. The reactions render ONCE and CSS
+    // moves them: a second copy would double-mount the stateful
+    // <ReactionButtons> and let their optimistic counts diverge.
+    //
+    // Rumoured rows keep the gray background (inline, so the unverified
+    // state reads at a glance on top of the white card) and their
+    // vertical ✓/✕ pair in the number column.
     <li
-      style={
-        {
-          borderBottom: `1px solid ${colors.borderLight}`,
-          background: isUnverified ? colors.bgSubtle : undefined,
-          // CSS var carries the desktop grid template into the
-          // Tailwind arbitrary-value class below — single source of
-          // truth shared with `<SetlistColumnHeader>` (see
-          // `setlistLayout.ts`).
-          "--setlist-cols": SETLIST_DESKTOP_GRID_COLS,
-          "--setlist-gap": `${SETLIST_DESKTOP_GRID_GAP}px`,
-          "--row-hover-bg": colors.bgSubtle,
-        } as React.CSSProperties
-      }
-      // Single responsive grid for both viewports — render the
-      // reactions ONCE and let CSS relocate them via `grid-column`
-      // overrides. Two-render approach (mobile copy + desktop copy)
-      // would double-mount the stateful `<ReactionButtons>` and let
-      // their optimistic-counts state diverge.
-      //
-      // Mobile (default): 2-col grid `[28px_1fr]`. Title spans col 2
-      // row 1; reactions span col 2 row 2.
-      //
-      // Width history & coupling to <NumberSlot>:
-      //   - pre-v0.11.2: 64px (~12px of dead slack)
-      //   - v0.11.2:     52px — matches the horizontal ✓+✕ dual-button
-      //                  footprint exactly (22+8+22), but on iPhone the
-      //                  reactions row still wrapped the 4th button
-      //                  because per-button iOS render is ~70–74px
-      //                  (4 × ~74 + 3 × 6 ≅ 314px > the ~294px col-2
-      //                  budget on a 390px viewport).
-      //   - now:         28px — paired with <NumberSlot> stacking the
-      //                  ✓/✕ buttons VERTICALLY on mobile (22px wide
-      //                  column instead of 52px wide row). Frees ~24px
-      //                  for the reactions row → 4 buttons fit cleanly
-      //                  through iPhone SE 3 (375px). <NumberSlot>
-      //                  also `row-span-2`s on mobile so the button
-      //                  stack spans (title row 1) + (reactions row 2)
-      //                  and self-centers within that combined cell;
-      //                  this keeps rumoured rows the same total
-      //                  height as confirmed rows (no more ~26px gap
-      //                  between title and reactions on rumoured
-      //                  rows from the first deploy).
-      //
-      // ⚠️ The 28px mobile column width and <NumberSlot>'s
-      // `flex-col lg:flex-row` direction switch must stay in lockstep
-      // — widening the column without also flipping <NumberSlot> back
-      // to horizontal leaves dead space; narrowing <NumberSlot>'s
-      // buttons without shrinking the column wastes the savings.
-      //
-      // Desktop (≥ lg): pulls the column template from the shared
-      // CSS var so `<SetlistColumnHeader>` and `<SetlistRow>` can't
-      // drift. Position col 1, title col 2, performers col 3,
-      // reactions col 4 — single row. The desktop position column
-      // is 52px in `setlistLayout.ts` (horizontal ✓+✕ dual-button
-      // layout — desktop has the room).
-      className="grid grid-cols-[28px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[var(--setlist-cols)] lg:gap-x-[var(--setlist-gap)] lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
+      className={styles.songRow}
+      style={isUnverified ? { background: colors.bgSubtle } : undefined}
     >
-      {/* Position slot — col 1, row 1. NumberSlot renders the right
-          glyph for the row state: plain number for confirmed,
-          side-by-side ✓/✕ vote buttons for rumoured. v0.10.1
-          replaces the v0.10.0 single-button [?]/[✓] shape with the
-          dual-button vote pair (see plan: "Replace <FlagButton>
-          with thumb-up / thumb-down"). The mailto-based FlagButton
-          that lived below the title is gone — the ✕ button covers
-          the "wrong row" signal with one tap instead of opening a
-          mail picker. */}
+      {/* Position slot: plain number chip for confirmed rows, the ✓/✕
+          vote pair for rumoured ones (v0.10.1 dual-button cell; the
+          mailto FlagButton it replaced is gone). */}
       <NumberSlot
         state={isUnknownSong ? "confirmed" : rowState}
         position={index + 1}
@@ -364,8 +323,7 @@ export function SetlistRow({
         disagreeAriaLabel={confirmT("disagreeAria")}
       />
 
-      {/* Title block — col 2, row 1 on both viewports. */}
-      <div className="min-w-0">
+      <div className={styles.songBody}>
         <SongTitleBlock
           songNames={songNames}
           itemType={item.type}
@@ -374,79 +332,82 @@ export function SetlistRow({
           t={t}
           unknownSongLabel={setlistT("unknownSong")}
         />
-        {!isNonSong &&
-          shownBadges.map(({ artist, label }, i) => (
-            <UnitBadge
-              key={artist.id}
-              artistColor={artist.color}
-              locale={locale}
-              artistId={artist.id}
-              artistSlug={artist.slug}
-              label={label}
-              spaced={i > 0}
-            />
-          ))}
-        {!isNonSong && hiddenBadges.length > 0 && (
-          <span
-            className="ml-1 mt-1 inline-block rounded px-1.5 py-0.5 text-xs"
-            style={{ background: colors.border, color: colors.textSecondary }}
-            title={hiddenBadges.map((b) => b.label).join(", ")}
+        {hasCreditLine && (
+          <CreditHeading
+            performers={hasPerformerCredits ? performers : null}
+            panelTitle={creditsT("songPerformers")}
           >
-            +{hiddenBadges.length}
-          </span>
+            <div className={styles.creditLine}>
+              {shownBadges.map(({ artist, label }) => (
+                <UnitBadge
+                  key={artist.id}
+                  artistColor={artist.color}
+                  locale={locale}
+                  artistId={artist.id}
+                  artistSlug={artist.slug}
+                  label={label}
+                />
+              ))}
+              {hiddenBadges.length > 0 && (
+                <span
+                  className={styles.artistTag}
+                  style={{ "--artist": colors.border } as React.CSSProperties}
+                  title={hiddenBadges.map((b) => b.label).join(", ")}
+                >
+                  +{hiddenBadges.length}
+                </span>
+              )}
+              {/* Backed unit credited but no resolvable name (rare —
+                  Artist with empty translations + null originalName).
+                  Falls back to the i18n stageType label so the row still
+                  reads as "this is a unit-stage performance". */}
+              {badgeArtists.length > 0 && namedBadges.length === 0 && (
+                <FallbackUnitBadge
+                  label={t(
+                    `stageType.${item.stageType}` as Parameters<typeof t>[0],
+                  )}
+                />
+              )}
+              {/* No backed unit at all (ad-hoc one-time unit OR operator
+                  hasn't filled the credit yet). Per Phase 1A decision D4b,
+                  the operator-typed `item.unitName` is intentionally
+                  suppressed on public surfaces — the field has no
+                  translations and rendering one locale's text to viewers
+                  in another locale was the original gap. Show the generic
+                  stageType label instead. */}
+              {badgeArtists.length === 0 && item.stageType !== "full_group" && (
+                <FallbackUnitBadge
+                  label={t(
+                    `stageType.${item.stageType}` as Parameters<typeof t>[0],
+                  )}
+                />
+              )}
+            </div>
+          </CreditHeading>
         )}
-        {/* Backed unit credited but no resolvable name (rare — Artist
-            with empty translations + null originalName). Falls back
-            to the i18n stageType label so the row still reads as
-            "this is a unit-stage performance". */}
-        {!isNonSong && badgeArtists.length > 0 && namedBadges.length === 0 && (
-          <FallbackUnitBadge
-            label={t(
-              `stageType.${item.stageType}` as Parameters<typeof t>[0],
-            )}
-          />
+
+        {/* Chip-less rows (a `full_group` row on a single-artist event,
+            where the chip is deliberately suppressed) have no chip line
+            for the toggle to sit beside, so they keep the 18-v3
+            "출연 크레딧" disclosure — exactly what the approved v3 browser
+            mockup left on those rows. */}
+        {!hasCreditLine && hasPerformerCredits && (
+          <details className={styles.creditDetails}>
+            <summary>{creditsT("creditsToggle")}</summary>
+            <p>{performers.join(", ")}</p>
+          </details>
         )}
-        {/* No backed unit at all (ad-hoc one-time unit OR operator
-            hasn't filled the credit yet). Per Phase 1A decision D4b,
-            the operator-typed `item.unitName` is intentionally
-            suppressed on public surfaces — the field has no
-            translations and rendering one locale's text to viewers
-            in another locale was the original gap. Show the generic
-            stageType label instead so the row still indicates
-            "this is a unit-stage performance" without leaking
-            unlocalized operator text. Replaces the previously
-            unreachable `?? stageType.{x}` fallback that lived inside
-            the badge-required branch above. */}
-        {!isNonSong && badgeArtists.length === 0 && item.stageType !== "full_group" && (
-          <FallbackUnitBadge
-            label={t(
-              `stageType.${item.stageType}` as Parameters<typeof t>[0],
-            )}
-          />
-        )}
-        {/* FlagButton (mailto:help@opensetlist.com) was removed in
-            v0.10.1 — the dual-button ✓/✕ cell at the row's
-            position slot now covers both confirmation AND
-            disagreement signals with one tap each. Email reports
-            were too high-friction at Phase 1B/1C scale; the ✕
-            button is the lightweight successor. Aggregation
-            behavior (N disagrees → row hidden / disputed) ships in
-            Week 3 alongside `<AddItemBottomSheet>`. */}
 
         {/* Affordance slot — per-row action area. Holds up to two
             buttons today:
-              1. `<RowContestButton>` (conflict-handling PR): shows
-                 only on rumoured rows in a conflict group. Opens
-                 AddItemBottomSheet pre-targeted at this position
-                 so the user can add a real-time sibling.
-              2. `<IssueReportButton>` (ContestReport PR): shows on
-                 EVERY row when `canReport && onIssueReport` are
-                 set. Opens ContestReportSheet, which files a
-                 queued report for operator triage (slower path,
-                 broader issue types: missing performer / wrong
-                 variant / other).
-            The two affordances have distinct intents and can
-            co-exist on a rumoured-in-conflict row.  */}
+              1. `<RowContestButton>` (conflict handling): only on
+                 rumoured rows in a conflict group. Opens
+                 AddItemBottomSheet pre-targeted at this position.
+              2. `<IssueReportButton>`: on EVERY row when
+                 `canReport && onIssueReport` are set. Opens
+                 ContestReportSheet (queued operator triage).
+            Distinct intents; both can show on a rumoured-in-conflict
+            row. */}
         {(showContest || showIssueReport) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-2">
             {showContest && (
@@ -463,27 +424,77 @@ export function SetlistRow({
             )}
           </div>
         )}
-      </div>
 
-      {/* Performers — desktop col 3 only. `hidden` on mobile so the
-          mobile grid keeps just 2 cols. */}
-      <div
-        className="hidden text-sm lg:block lg:pt-0.5"
-        style={{ color: colors.textSecondary }}
-      >
-        {performers.length > 0 ? performers.join(", ") : null}
+        {reactions && <div className={styles.songReactions}>{reactions}</div>}
       </div>
+    </li>
+  );
+}
 
-      {/* Reactions — mobile spans col 2 row 2 (under the title) so the
-          emoji chips sit in their own row below per
-          `event-page-mockup.jsx:200`. Desktop pins to col 4 (the
-          fixed 260px reactions column). */}
-      {reactions && (
-        <div className="col-start-2 mt-2 lg:col-start-4 lg:mt-0 lg:pt-0.5">
-          {reactions}
+/*
+ * Credit line + per-song performer toggle (consistency-03-v3 §7.3).
+ *
+ * The 18-v3 row had a separate "출연 크레딧" <details> line under the
+ * unit chips; v3 folds it into the chip line: a 28×28 chevron button
+ * sits right after the existing performance-artist / unit chips and
+ * opens a small panel titled "이 곡의 출연 멤버" with the row's
+ * StageIdentity short names — the same list the old disclosure held.
+ * Nothing new is inferred: no original singer, no real-person name, no
+ * event headliner standing in for a missing chip.
+ *
+ * Only rows with a chip line get it; chip-less rows keep their 18-v3
+ * <details> (see the call site). Rows with chips but no performers get
+ * the chips alone.
+ *
+ * A real <button> with aria-expanded / aria-controls instead of
+ * <details>: the chevron lives inside a flex line with the chips, and
+ * the panel opens below the whole line, which a <summary> (the first
+ * child of its own box) cannot do without moving the chips into it.
+ */
+function CreditHeading({
+  performers,
+  panelTitle,
+  children,
+}: {
+  performers: string[] | null;
+  panelTitle: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <>
+      <div className={styles.creditHeading}>
+        {children}
+        {performers && (
+          <button
+            type="button"
+            className={styles.creditToggle}
+            aria-label={panelTitle}
+            title={panelTitle}
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {performers && (
+        <div id={panelId} className={styles.creditBody} hidden={!open}>
+          <strong>{panelTitle}</strong>
+          <p>{performers.join(", ")}</p>
         </div>
       )}
-    </li>
+    </>
   );
 }
 
@@ -510,28 +521,23 @@ function SongTitleBlock({
 }) {
   if (songNames.length === 0) {
     return (
-      <div className="flex flex-wrap items-center gap-1">
-        {itemType !== "song" ? (
-          <span
-            className="font-medium italic"
-            style={{ color: colors.textMuted }}
-          >
-            {t(`itemType.${itemType}` as Parameters<typeof t>[0])}
-          </span>
-        ) : (
-          <span className="italic" style={{ color: colors.textMuted }}>
-            {unknownSongLabel}
-          </span>
-        )}
+      <div className={styles.songTitle}>
+        <span className={styles.nonSongLabel} style={{ color: colors.textMuted }}>
+          {itemType !== "song"
+            ? t(`itemType.${itemType}` as Parameters<typeof t>[0])
+            : unknownSongLabel}
+        </span>
       </div>
     );
   }
 
+  // Medley songs are joined with "/" in the approved card row (18-v3:
+  // "No brand girls / START:DASH!! / …"); each title keeps its own link.
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className={styles.songTitle}>
       {songNames.map((song, i) => (
         <span key={song.id}>
-          {i > 0 && <span className="mx-1 text-zinc-400">+</span>}
+          {i > 0 && <span className={styles.medleyJoin}>/</span>}
           <Link
             href={song.href}
             onClick={() =>
@@ -541,18 +547,12 @@ function SongTitleBlock({
                 position,
               })
             }
-            className="font-medium hover:underline"
-            style={{ color: colors.primary }}
           >
             {song.main}
           </Link>
-          {song.sub && (
-            <span className="ml-1 text-sm text-zinc-400">{song.sub}</span>
-          )}
+          {song.sub && <span className={styles.songSub}> {song.sub}</span>}
           {song.variantLabel && (
-            <span className="ml-1 text-xs text-zinc-500">
-              ({song.variantLabel})
-            </span>
+            <span className={styles.songSub}> ({song.variantLabel})</span>
           )}
         </span>
       ))}
@@ -566,37 +566,28 @@ function UnitBadge({
   artistId,
   artistSlug,
   label,
-  spaced = false,
 }: {
   artistColor: string | null;
   locale: string;
   artistId: number;
   artistSlug: string;
   label: string;
-  // Left gap when this chip follows another on a multi-credit row.
-  spaced?: boolean;
 }) {
-  // Mockup `event-page-desktop-mockup-v2.jsx:204-212`: bg uses an
-  // 8-digit hex with 18 alpha (~9%); text uses the unit color at full
-  // opacity. When the operator hasn't backfilled `Artist.color`,
-  // `resolveUnitColor` substitutes a deterministic palette pick keyed
-  // on the slug — multiple color-pending units in the same setlist
-  // render with distinguishable hues instead of all collapsing to
-  // brand blue (and also matching the unit chip color on the artist
-  // detail page, since that surface uses the same resolver).
+  // 18-v3 `.artist-tag`: the unit colour washes the chip
+  // (`color-mix(--artist 32%, white)`) and the label stays ink, so an
+  // unverified pastel never carries text. When the operator hasn't
+  // backfilled `Artist.color`, `resolveUnitColor` substitutes a
+  // deterministic palette pick keyed on the slug — colour-pending units
+  // in one setlist stay distinguishable, and match the artist page.
   const resolved = resolveUnitColor({
     slug: artistSlug,
     color: artistColor,
   });
-  const styled = {
-    backgroundColor: `${resolved}18`,
-    color: resolved,
-  };
   return (
     <Link
       href={entityPath("artists", locale, artistId, artistSlug)}
-      className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-medium hover:underline${spaced ? " ml-1" : ""}`}
-      style={styled}
+      className={styles.artistTag}
+      style={{ "--artist": resolved } as React.CSSProperties}
     >
       {label}
     </Link>
@@ -606,8 +597,8 @@ function UnitBadge({
 function FallbackUnitBadge({ label }: { label: string }) {
   return (
     <span
-      className="mt-1 inline-block rounded px-1.5 py-0.5 text-xs"
-      style={{ background: colors.primaryBg, color: colors.primary }}
+      className={styles.artistTag}
+      style={{ "--artist": colors.primaryBorder } as React.CSSProperties}
     >
       {label}
     </span>

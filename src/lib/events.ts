@@ -3,6 +3,13 @@ import { serializeBigInt } from "@/lib/utils";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
+import {
+  LOGO_EVENT_SELECT,
+  resolveEventLogo,
+  type PublicLogo,
+} from "@/lib/logoResolution";
+import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
+import type { EventSeriesType } from "@/generated/prisma/enums";
 
 type SeriesTranslation = {
   locale: string;
@@ -13,6 +20,7 @@ type SeriesTranslation = {
 type SeriesAncestor = {
   id: number;
   parentSeriesId: number | null;
+  type: EventSeriesType;
   originalName: string | null;
   originalShortName: string | null;
   originalLanguage: string;
@@ -80,6 +88,22 @@ export type EventForList = {
   // "🎵 N" on completed events; profile before introducing a denormal
   // `Event.setlistItemCount` field.
   _count: { setlistItems: number };
+  /**
+   * Resolved public logo (07's `resolveEventLogo`): the managed image,
+   * if the event or a series up its chain has one, plus the typography
+   * tint colour. Computed server-side from the cached series graph; the
+   * private asset/graph fields never ride along.
+   */
+  logo: PublicLogo;
+  /**
+   * Short text for the card's typography art, locale-resolved: the
+   * event's OWN series short name (a sub-series like "Day 1 leg" keeps
+   * its own identity even though the group header shows the root),
+   * then the standalone artist's short name, then the event's short
+   * name. Null only when every layer is blank — the page falls back to
+   * the event name.
+   */
+  artTitle: string | null;
 };
 
 export type EventsListGroup = {
@@ -124,13 +148,19 @@ export type EventsListGroup = {
    *     without finding a non-empty value
    */
   artistShortName: string | null;
+  /**
+   * The root series's DB `type`, for the header's "Tour / Festival"
+   * tag. Display metadata only — it never feeds grouping, ordering or
+   * filtering. Null for non-series groups (and a missing root).
+   */
+  seriesType: EventSeriesType | null;
   events: EventForList[];
   earliestStart: number;
   latestStart: number;
   /**
    * True when at least one event in the group resolves to "ongoing"
    * status. Drives the LIVE pill + always-expanded behavior on the
-   * SeriesSection / SeriesBlock header.
+   * list's `ConcertGroup` header.
    */
   hasOngoing: boolean;
 };
@@ -200,13 +230,12 @@ export async function getEventsListGrouped(
   locale: string,
   referenceNow: Date,
 ): Promise<EventsListData> {
-  const [eventsRaw, seriesRaw] = await Promise.all([
+  const [eventsRaw, seriesRaw, logoGraph] = await Promise.all([
     prisma.event.findMany({
       where: { isDeleted: false },
       select: {
         id: true,
         slug: true,
-        eventSeriesId: true,
         artistId: true,
         organizerName: true,
         status: true,
@@ -232,14 +261,22 @@ export async function getEventsListGrouped(
         // returns every row, so the events-list "🎵 N" badge would
         // disagree with the event-detail header on the same event.
         _count: { select: { setlistItems: { where: SONG_COUNT_WHERE } } },
+        // Logo inputs for 07's resolver (event mode/asset + the event
+        // artist's colour). Resolved below while ids are still bigint,
+        // then dropped — only the public projection leaves this module.
+        ...LOGO_EVENT_SELECT,
+        // Also in LOGO_EVENT_SELECT; named here because grouping and the
+        // art text read it too, independent of the resolver's needs.
+        eventSeriesId: true,
       },
-      orderBy: { startTime: "asc" },
+      orderBy: [{ startTime: "asc" }, { id: "asc" }],
     }),
     prisma.eventSeries.findMany({
       where: { isDeleted: false },
       select: {
         id: true,
         parentSeriesId: true,
+        type: true,
         originalName: true,
         originalShortName: true,
         originalLanguage: true,
@@ -261,11 +298,25 @@ export async function getEventsListGrouped(
         },
       },
     }),
+    // Cached (PUBLIC_DATA_TAG) whole-series graph — every logo writer
+    // calls revalidatePublicData(), so this uncached page picks up a
+    // logo change on the next request without its own tag.
+    getLogoSeriesGraph(),
   ]);
 
-  const events = serializeBigInt(eventsRaw) as unknown as EventForList[];
   const seriesList = serializeBigInt(seriesRaw) as unknown as SeriesAncestor[];
   const ancestry = new Map(seriesList.map((s) => [s.id, s]));
+  const events: EventForList[] = eventsRaw.map((raw) => {
+    const ev = serializeBigInt(raw) as unknown as EventForList &
+      Partial<Record<"logoMode" | "logoAsset" | "artist", unknown>>;
+    // Resolver inputs stay server-internal: only `logo` is public.
+    delete ev.logoMode;
+    delete ev.logoAsset;
+    delete ev.artist;
+    ev.logo = resolveEventLogo(raw, logoGraph);
+    ev.artTitle = null;
+    return ev;
+  });
 
   // Second-pass fetch: artists referenced by series-less events. Done
   // after the events query so we know which artistIds to look up
@@ -299,6 +350,31 @@ export async function getEventsListGrouped(
     }
   }
 
+  // Typography-art text (see `EventForList.artTitle`). The artist layer
+  // only applies to series-less events — exactly the ones whose artists
+  // were fetched above; a series event with no usable series names
+  // falls through to its own short name.
+  for (const ev of events) {
+    const ownSeries =
+      ev.eventSeriesId != null ? ancestry.get(ev.eventSeriesId) : undefined;
+    const standaloneArtist =
+      ev.eventSeriesId == null && ev.artistId != null
+        ? artistMap.get(String(ev.artistId))
+        : undefined;
+    ev.artTitle =
+      (ownSeries &&
+        displayNameWithFallback(ownSeries, ownSeries.translations, locale, "short")) ||
+      (standaloneArtist &&
+        displayNameWithFallback(
+          standaloneArtist,
+          standaloneArtist.translations,
+          locale,
+          "short",
+        )) ||
+      displayNameWithFallback(ev, ev.translations, locale, "short") ||
+      null;
+  }
+
   // Group all events by their derived key. The mockup shows
   // mixed-status events from the same tour together — a user looking
   // at "Hasunosora 6th Live" wants to see today's ongoing show next
@@ -318,9 +394,11 @@ export async function getEventsListGrouped(
 
     let title: string | null = null;
     let artistShortName: string | null = null;
+    let seriesType: EventSeriesType | null = null;
 
     if (kind === "series" && ref != null) {
       const root = ancestry.get(Number(ref));
+      seriesType = root?.type ?? null;
       title = root
         ? displayNameWithFallback(root, root.translations, locale) || null
         : null;
@@ -362,6 +440,7 @@ export async function getEventsListGrouped(
       id: key,
       title,
       artistShortName,
+      seriesType,
       events: [ev],
       earliestStart: 0,
       latestStart: 0,
@@ -380,7 +459,7 @@ export async function getEventsListGrouped(
       ev,
       ts: new Date(ev.startTime).getTime(),
     }));
-    dated.sort((a, b) => a.ts - b.ts);
+    dated.sort((a, b) => a.ts - b.ts || a.ev.id - b.ev.id);
     g.events = dated.map((d) => d.ev);
     g.earliestStart = dated[0]?.ts ?? 0;
     g.latestStart = dated[dated.length - 1]?.ts ?? 0;
@@ -407,8 +486,12 @@ export async function getEventsListGrouped(
     else pastGroups.push(g);
   }
 
-  activeGroups.sort((a, b) => a.earliestStart - b.earliestStart);
-  pastGroups.sort((a, b) => b.latestStart - a.latestStart);
+  // The earliest row's ID breaks group-time ties in both sections. It
+  // also makes the group order independent of Postgres's return order
+  // when two tours share the same boundary timestamp.
+  const firstId = (g: EventsListGroup) => g.events[0].id;
+  activeGroups.sort((a, b) => a.earliestStart - b.earliestStart || firstId(a) - firstId(b));
+  pastGroups.sort((a, b) => b.latestStart - a.latestStart || firstId(a) - firstId(b));
 
   return { activeGroups, pastGroups };
 }

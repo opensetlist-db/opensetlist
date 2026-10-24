@@ -1,0 +1,471 @@
+/*
+ * Album list page — layout from the approved redesign packet 26-v1
+ * (wiki `output/redesign/handoffs/26/v1/style.css` + design-contract.md).
+ *
+ * Consistency v3 (§4, §7.5) replaces three properties of 26-v1: the
+ * inner width (1100 → 1200px, so 1264px with the 32px gutters), the list
+ * title (32px from 700px up, 26px below, line-height 1.4, tracking
+ * -.03em — the shared list-title rule) and the pager + results summary
+ * below. Everything else is the 26-v1 layout.
+ *
+ * One column at every width. The packet steps at 1100 / 768 / 700 / 360:
+ *   - ≥1100  page gutter 32px.
+ *   - <1100  gutter 24px.
+ *   - <768   the release year moves from the row's right edge into the
+ *            secondary line under the title (`.mobileYear`), and the row
+ *            top-aligns its cover with the text.
+ *   - <700   gutter 16px, heading 26px, 64px cover, 14px title.
+ *   - <360   56px cover, 13px title, chevron hidden.
+ *
+ * The packet's stylesheet was written over browser defaults; Tailwind's
+ * preflight strips heading weight, list markers and margins, so those
+ * are restated here (h1/h2 `font-weight`, `list-style: none`).
+ *
+ * Colours are the 03 palette as written in the 26-v1 packet. CSS aliases
+ * in globals.css carry the ink, muted, blue, line and control-border
+ * values; the page background and focus ring colour come from the 06
+ * shell.
+ */
+
+.page {
+  width: 100%;
+  max-width: 1264px;
+  margin: 0 auto;
+  padding: 32px 32px 64px;
+  min-height: 60vh;
+  line-height: 1.65;
+  color: var(--foreground);
+}
+
+/* ── Heading panel ───────────────────────────────────────────── */
+
+.heading {
+  margin-bottom: 24px;
+  padding: 27px 30px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: linear-gradient(115deg, var(--accent-lavender), var(--gradient-heading-pink) 75%, var(--gradient-heading-lavender));
+}
+.title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+
+/* ── Artist filter ───────────────────────────────────────────── */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 30px;
+}
+/* Full artist names, wrapping inside the pill if one is wider than the
+   page (26-v1: no ellipsis). */
+.filter {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 17px;
+  border: 1px solid var(--border-strong);
+  border-radius: 24px;
+  background: var(--bg-card);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.filter:hover {
+  color: var(--primary);
+}
+.filter[aria-current] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--bg-card);
+}
+.filter:focus-visible {
+  outline-offset: 3px;
+}
+
+/* ── Year groups ─────────────────────────────────────────────── */
+
+.yearGroup {
+  margin-bottom: 30px;
+}
+.yearHeading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+/* Divider between the year and the count: the count is `order: 1`, so
+   the pseudo-element sits between them and takes the free width. */
+.yearHeading::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.yearTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.yearCount {
+  order: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+  box-shadow: 0 4px 18px var(--shadow-rows);
+}
+.rows > li + li {
+  border-top: 1px solid var(--border-rows);
+}
+
+/* ── Row ─────────────────────────────────────────────────────── */
+
+/* The whole row is one album link; the artist name inside is text. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 111px;
+  padding: 18px 20px;
+  color: var(--foreground);
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.row:hover {
+  background: var(--surface-interactive-row-hover);
+}
+.row:focus-visible {
+  outline-offset: -3px;
+}
+
+.cover {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(140deg, var(--primary-bg), var(--gradient-cover-lavender));
+  color: var(--text-secondary);
+}
+/* The image sits over the ♫ placeholder, which shows while a lazy cover
+   is still loading (packet markup). The white backing keeps the glyph
+   from showing through a cover with transparent pixels once loaded. */
+.cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--bg-card);
+}
+.coverNote {
+  font-size: 28px;
+  line-height: 1.2;
+}
+.coverLabel {
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 5px;
+}
+.type,
+.bonus {
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+/* Album / EP (and any future type) share the blue pill; single, live
+   album and soundtrack get their own tint. */
+.type {
+  font-weight: 700;
+  color: var(--text-type-single);
+  background: var(--primary-bg);
+}
+.type[data-type="single"] {
+  color: var(--status-upcoming-text);
+  background: var(--status-upcoming-surface);
+}
+.type[data-type="live_album"] {
+  color: var(--text-type-live-album);
+  background: var(--accent-lavender);
+}
+.type[data-type="soundtrack"] {
+  color: var(--status-cancelled-text);
+  background: var(--status-cancelled-surface);
+}
+.bonus {
+  font-weight: 600;
+  color: var(--status-upcoming-text);
+  background: var(--status-upcoming-surface);
+}
+.artist {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+/* Titles wrap in full — no ellipsis or line clamp (26-v1). */
+.rowTitle {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+}
+.rowSub {
+  margin-top: 3px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+.year {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.arrow {
+  flex-shrink: 0;
+  font-size: 21px;
+  color: var(--primary);
+}
+
+/* ── Results summary + pager (v3 §7.5) ───────────────────────── */
+
+.summary {
+  /* Packet value; the top margin collapses into the filter bar's 30px. */
+  margin: 16px 0 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+/* The summary is a fragment target with tabIndex -1 (pager links end in
+   `#album-results`); it is not a control, so no focus ring when the
+   browser moves focus to it. */
+.summary:focus {
+  outline: none;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 28px 0;
+}
+/* 44px-tall targets, 40px minimum width (packet). Previous/Next stay
+   in place, disabled, on the first/last page. */
+.pageItem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+/* Packet hover border #b9c9e7; --border-unit-link (#b8cbe7) is the
+   nearest existing palette alias, used instead of a page-only literal. */
+a.pageItem:hover {
+  border-color: var(--border-unit-link);
+  background: var(--primary-bg);
+}
+.pageItem[aria-current] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--bg-card);
+}
+.pageItem[aria-disabled] {
+  opacity: 0.5;
+}
+.pageEllipsis {
+  padding: 0 3px;
+  color: var(--text-muted);
+}
+
+/* ── Empty ───────────────────────────────────────────────────── */
+
+.empty {
+  padding: 60px 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+  text-align: center;
+  color: var(--text-secondary);
+}
+.emptyNote {
+  display: block;
+  margin-bottom: 16px;
+  font-size: 35px;
+}
+.emptyText {
+  margin: 0;
+}
+
+/* ── Breakpoints ─────────────────────────────────────────────── */
+
+@media (max-width: 1099px) {
+  .page {
+    padding: 24px 24px 56px;
+  }
+}
+
+@media (min-width: 768px) {
+  .mobileYear {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .row {
+    align-items: flex-start;
+  }
+  .cover {
+    margin-top: 3px;
+  }
+  .year {
+    display: none;
+  }
+}
+
+@media (max-width: 699px) {
+  .page {
+    padding: 20px 16px 40px;
+  }
+  .heading {
+    margin-bottom: 18px;
+    padding: 22px 20px;
+    border-radius: 16px;
+  }
+  .title {
+    font-size: 26px;
+  }
+  .filters {
+    margin-bottom: 24px;
+  }
+  .filter {
+    padding: 7px 13px;
+    font-size: 12px;
+  }
+  .yearGroup {
+    margin-bottom: 26px;
+  }
+  .yearTitle {
+    font-size: 20px;
+  }
+  .row {
+    gap: 12px;
+    padding: 16px 14px;
+  }
+  .cover {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+  }
+  .coverLabel {
+    font-size: 9px;
+  }
+  .meta {
+    gap: 4px 6px;
+  }
+  .type,
+  .bonus {
+    font-size: 10px;
+  }
+  .artist {
+    font-size: 11px;
+  }
+  .rowTitle {
+    font-size: 14px;
+  }
+  .rowSub {
+    font-size: 11px;
+  }
+  .arrow {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 359px) {
+  .filter {
+    padding-inline: 11px;
+  }
+  .row {
+    gap: 10px;
+    padding: 14px 12px;
+  }
+  .cover {
+    width: 56px;
+    height: 56px;
+  }
+  .coverNote {
+    font-size: 24px;
+  }
+  .coverLabel {
+    font-size: 8px;
+  }
+  .rowTitle {
+    font-size: 13px;
+  }
+  .arrow {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filter,
+  .row,
+  .pageItem {
+    transition: none;
+  }
+}

@@ -51,7 +51,7 @@ export function serializeBigInt<T>(obj: T): T {
  *
  * Use this when declaring the consumer-side type of a payload that
  * passed through `serializeBigIntAsString` (e.g. `RelatedEvent`,
- * the page-level `getAlbum` return shape, `<AlbumInfoCard>` props).
+ * the page-level `getAlbum` return shape, `<AlbumIdentity>` props).
  * Mirrors the wire shape so the type system stops claiming the
  * payload still carries `bigint`/`Date` after the serializer ran.
  */
@@ -149,7 +149,7 @@ const DEFAULT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
 /**
  * Desktop format used by every "list of events grouped by series"
  * surface — event list (`/[locale]/events`), artist / song / member
- * history tabs, series LegCard. Includes year so a row carries the
+ * history tabs. Includes year so a row carries the
  * full calendar context without depending on the surrounding header
  * (operator feedback 2026-04-29 — "show year in all pages,
  * consistently").
@@ -192,7 +192,7 @@ export const OPERATOR_TIMESTAMP_DATE_FORMAT: Intl.DateTimeFormatOptions = {
  * strings, and nullish inputs. Asserts the input as a non-nullable
  * string for the truthy branch so callers can use it as a type guard.
  *
- * Originally lived inline in ListingCard; lifted here so admin
+ * Originally lived inline in the album page's listing card; lifted here so admin
  * surfaces (ListingsClient) can apply the same scheme allowlist
  * instead of rendering operator-typed `href` verbatim.
  */

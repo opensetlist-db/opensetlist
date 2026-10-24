@@ -7,16 +7,16 @@ import { trackStoreClick, type StoreClickSurface } from "@/lib/analytics";
  * External store link that fires the `store_click` GA4 event on click,
  * then lets the browser navigate normally.
  *
- * Used for the album-page ListingCard "구매하기" button (the only
+ * Used for the album-page purchase card's "구매하기" button (the only
  * external store link in the album surfaces at b10c). A client island
  * because the click handler needs the browser; the server component
- * that renders it (ListingCard) passes the already-stringified params.
+ * that renders it (AlbumPurchasePanel) passes the already-stringified params.
  *
  * No `preventDefault` / manual navigation — `trackStoreClick` pushes to
  * gtag synchronously inside the handler, and the browser proceeds to
  * the href after the handler returns, so the event is recorded without
  * blocking or racing navigation. `target="_blank"` keeps the store in a
- * new tab (same as the original ListingCard anchor), which also means
+ * new tab (same as the original listing-card anchor), which also means
  * navigation never tears down this page before the event flushes.
  *
  * b16 hook: when affiliate-tag injection lands, this wrapper is where
@@ -33,6 +33,7 @@ export function TrackedStoreLink({
   isAffiliate,
   bonusId,
   style,
+  className,
   children,
 }: {
   href: string;
@@ -43,6 +44,7 @@ export function TrackedStoreLink({
   isAffiliate: boolean;
   bonusId?: string;
   style?: CSSProperties;
+  className?: string;
   children: ReactNode;
 }) {
   const fireStoreClick = () =>
@@ -61,6 +63,7 @@ export function TrackedStoreLink({
       target="_blank"
       rel="noopener noreferrer"
       style={style}
+      className={className}
       onClick={fireStoreClick}
       onAuxClick={(e) => {
         // Middle-click (and some browsers' modifier-click) opens a new
