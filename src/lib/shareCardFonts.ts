@@ -26,6 +26,7 @@ function covers(range: string, point: number): boolean {
 // Concurrent preview/share attempts share one retry, and failed attempts
 // are removed so the next explicit attempt can recover after the network.
 const retries = new WeakMap<FontFace, Promise<FontFace>>();
+const RETRY_TIMEOUT_MS = 10_000;
 
 function retryFace(face: FontFace, doc: Document): Promise<FontFace> {
   const existing = retries.get(face);
@@ -54,10 +55,18 @@ function retryFace(face: FontFace, doc: Document): Promise<FontFace> {
         );
         const Font = doc.defaultView?.FontFace;
         if (!Font) throw new Error("Share font loading unavailable");
-        const replacement = new Font(face.family, source, {
+        // CSS-connected families may include CSS quotes (WebKit). Passing
+        // those quotes to the constructor makes them part of the family name.
+        const replacement = new Font(familyName(face.family), source, {
           weight: face.weight, style: face.style, unicodeRange: face.unicodeRange,
         });
-        await replacement.load();
+        // Some engines leave an aborted FontFace.load() pending. The outer
+        // render deadline releases the UI, but must not leave this shared
+        // retry promise cached forever or every later click would reuse it.
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("Share font unavailable")), RETRY_TIMEOUT_MS);
+          replacement.load().then(() => resolve(), reject).finally(() => clearTimeout(timer));
+        });
         doc.fonts.add(replacement);
         return replacement;
       }

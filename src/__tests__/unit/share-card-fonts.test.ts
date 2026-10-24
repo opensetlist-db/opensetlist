@@ -64,7 +64,7 @@ describe("share image font delivery", () => {
   });
 
   it("retries an errored CSS face from its original self-hosted source", async () => {
-    const broken = face("DM Sans", "400", "U+0-FF", true);
+    const broken = face('"DM Sans"', "400", "U+0-FF", true);
     provideFonts([broken]);
     const target = card("OPEN");
     await expect(prepareShareCardFonts(target)).rejects.toThrow("offline");
@@ -84,7 +84,44 @@ describe("share image font delivery", () => {
     }] as unknown as StyleSheetList);
     await expect(prepareShareCardFonts(target)).resolves.toBeUndefined();
     expect(constructor).toHaveBeenCalledOnce();
+    expect(constructor).toHaveBeenCalledWith("DM Sans", expect.any(String), expect.objectContaining({ weight: "400" }));
     expect(replacement.load).toHaveBeenCalledOnce();
+  });
+
+  it("evicts a stalled retry and does not install its late face after a successful new attempt", async () => {
+    vi.useFakeTimers();
+    const broken = face('"DM Sans"', "400", "U+0-FF", true);
+    broken.status = "error";
+    const fonts = new Set<unknown>([broken]);
+    Object.defineProperty(document, "fonts", { configurable: true, get: () => fonts });
+    const declarations: Record<string, string> = {
+      "font-family": '"DM Sans"', "font-weight": "400", "font-style": "normal",
+      "unicode-range": "U+0-FF", src: 'url("/font.woff2")',
+    };
+    vi.spyOn(document, "styleSheets", "get").mockReturnValue([{
+      href: null, cssRules: [{ type: CSSRule.FONT_FACE_RULE, style: {
+        getPropertyValue: (key: string) => declarations[key] ?? "",
+      } }],
+    }] as unknown as StyleSheetList);
+    const stalled = face("DM Sans", "400", "U+0-FF");
+    let finish!: () => void;
+    stalled.load.mockImplementation(() => new Promise((resolve) => {
+      finish = () => { stalled.status = "loaded"; resolve(stalled); };
+    }));
+    const recovered = face("DM Sans", "400", "U+0-FF");
+    const constructor = vi.fn().mockImplementationOnce(function () { return stalled; })
+      .mockImplementationOnce(function () { return recovered; });
+    vi.stubGlobal("FontFace", constructor);
+    const target = card("OPEN");
+    const first = expect(prepareShareCardFonts(target)).rejects.toThrow("font unavailable");
+    await vi.advanceTimersByTimeAsync(10000);
+    await first;
+    await prepareShareCardFonts(target);
+    expect(constructor).toHaveBeenCalledTimes(2);
+    expect(fonts.has(recovered)).toBe(true);
+    finish();
+    await vi.runAllTimersAsync();
+    expect(fonts.has(stalled)).toBe(false);
   });
 
   it("stops the actual PNG pipeline before canvas when required fonts cannot load", async () => {

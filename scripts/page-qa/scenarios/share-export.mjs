@@ -47,7 +47,10 @@ function seed(id, songs, extra = null) {
 async function enter(page, loc, key = "Enter") {
   const m = messages[loc];
   const tab = page.getByRole("tab", { name: m.Setlist.tabPredicted, exact: true });
-  if (await tab.count()) await tab.click();
+  // Personal state mounts after the initial SSR/hydration boundary.
+  // Counting once can skip a not-yet-mounted tab on slower WebKit.
+  await tab.waitFor();
+  await tab.click();
   const entry = page.getByRole("button", { name: /🎯/ }).filter({ hasText: /./ }).last();
   await entry.waitFor();
   await entry.focus();
@@ -69,6 +72,10 @@ async function save(page, loc, file) {
 const scenario = {
   name: "share-export",
   async run(h) {
+    const part = process.env.C18_QA_PART ?? "all";
+    if (!["all", "exports", "controls", "faults"].includes(part)) {
+      throw new Error(`Unknown C18_QA_PART: ${part}`);
+    }
     const snapshot = JSON.parse(await h.getText("/api/setlist?eventId=111&locale=ko"));
     const songs = snapshot.items.filter((item) => item.type === "song")
       .flatMap((item) => item.songs.map(({ song }) => ({ songId: song.id, song }))).slice(0, 6);
@@ -82,7 +89,7 @@ const scenario = {
       fontManifest: manifest?.sha256 ?? null, source: "existing event entry; real PNG files, no DB mutation", evidence,
     }, null, 2));
     const locales = h.quick ? ["ko"] : ["ja", "ko", "en"];
-    for (const loc of locales) for (const [phase, id] of Object.entries(PHASES)) {
+    if (part === "all" || part === "exports") for (const loc of locales) for (const [phase, id] of Object.entries(PHASES)) {
       await h.section(`${phase} ${loc} actual exports`, async () => {
         let observer;
         const { ctx, page } = await h.open(`/${loc}/events/${id}`, { width: 390,
@@ -92,11 +99,20 @@ const scenario = {
             // its cloned iframe, invalidating response.body's CDP ids;
             // route.fetch retains the actual bytes fulfilled to each frame.
             await page.route(/\.woff2?(?:\?|$)/, async (route) => {
-              const response = await route.fetch();
-              const bytes = await response.body();
-              responses.set(response.url(), { url: response.url(), status: response.status(),
-                bytes: bytes.length, sha256: sha(bytes) });
-              await route.fulfill({ response, body: bytes });
+              try {
+                const response = await route.fetch({ maxRetries: 2 });
+                const bytes = await response.body();
+                responses.set(response.url(), { url: response.url(), status: response.status(),
+                  bytes: bytes.length, sha256: sha(bytes) });
+                await route.fulfill({ response, body: bytes });
+              } catch (error) {
+                // Closing a discarded capture iframe/context can abort an
+                // in-flight request. Keep active delivery failures in the
+                // evidence instead of rejecting an unhandled route promise.
+                const url = route.request().url();
+                if (!responses.has(url)) responses.set(url, { url, status: 0, error: String(error) });
+                await route.abort().catch(() => {});
+              }
             });
             observer = { finish: async () => [...responses.values()] };
           }),
@@ -195,13 +211,13 @@ const scenario = {
       }, { ms: 180000 });
     }
 
-    for (const loc of locales) for (const width of (h.quick ? [390, 1440] : [320, 375, 390, 430, 768, 1024, 1440])) {
+    if (part === "all" || part === "controls") for (const loc of locales) for (const width of (h.quick ? [390, 1440] : [320, 375, 390, 430, 768, 1024, 1440])) {
       await h.section(`controls ${loc} ${width}`, async () => {
         const { page } = await h.open(`/${loc}/events/109`, { width, beforeNavigate: seed("109", songs) });
         const { entry, dialog } = await enter(page, loc, width < 700 ? "Space" : "Enter");
         const action = page.getByRole("button", { name: messages[loc].ShareCard.downloadImage, exact: true });
+        await page.keyboard.press("Tab");
         await action.focus();
-        await page.keyboard.press("Shift");
         const focus = await action.evaluate((el) => {
           const s = getComputedStyle(el);
           return { outline: s.outline, offset: s.outlineOffset, radius: s.borderRadius,
@@ -211,14 +227,21 @@ const scenario = {
           focus.background === "none" && focus.shadow === "none" && focus.minHeight === "44px" &&
           focus.outline.includes("3px") && focus.offset === "4px", JSON.stringify(focus));
         await action.hover();
-        await page.waitForTimeout(160);
+        await page.waitForFunction((el) => getComputedStyle(el).backgroundColor === "rgb(16, 74, 169)",
+          await action.elementHandle(), { timeout: 3000 });
         h.check(`${loc} ${width}: primary hover`, await action.evaluate((el) =>
           getComputedStyle(el).backgroundColor === "rgb(16, 74, 169)"), "");
         await page.mouse.down();
-        await page.waitForTimeout(160);
+        await page.waitForFunction((el) => getComputedStyle(el).backgroundColor === "rgb(12, 61, 140)",
+          await action.elementHandle(), { timeout: 3000 });
         h.check(`${loc} ${width}: primary pressed`, await action.evaluate((el) =>
           getComputedStyle(el).backgroundColor === "rgb(12, 61, 140)"), "");
-        await page.mouse.move(1, 1); await page.mouse.up();
+        // Release over the card inside the dialog's content wrapper.
+        // A down-inside/up-on-backdrop click targets the backdrop's
+        // common ancestor and intentionally closes this dialog.
+        const buttonBox = await action.boundingBox();
+        await page.mouse.move(buttonBox.x + buttonBox.width / 2, buttonBox.y - 10);
+        await page.mouse.up();
         await action.evaluate((el) => { el.querySelector("span").textContent += " — ".repeat(2) + el.textContent.repeat(3); });
         const fits = await dialog.getByRole("button").evaluateAll((els) => els.every((el) => {
           const r = el.getBoundingClientRect();
@@ -232,7 +255,7 @@ const scenario = {
       });
     }
 
-    await h.section("prediction entry 0/1 and picker completion consumer", async () => {
+    if (part === "all" || part === "controls") await h.section("prediction entry 0/1 and picker completion consumer", async () => {
       const { page } = await h.open("/ko/events/109", { width: 390, beforeNavigate: seed("109", songs.slice(0, 1)) });
       const { dialog } = await enter(page, "ko");
       await page.keyboard.press("Escape"); await dialog.waitFor({ state: "detached" });
@@ -241,14 +264,15 @@ const scenario = {
       await confirm.waitFor();
       h.check("current-dev picker completion uses primary", await confirm.evaluate((el) => getComputedStyle(el).borderRadius === "8px"), "C10 local replacement remains owned by C10");
       await confirm.click();
-      h.check("picker completion closes picker", await confirm.count() === 0, "");
+      await confirm.waitFor({ state: "hidden" });
+      h.check("picker completion closes picker", !(await confirm.isVisible()), "waited for sheet close transition");
       await page.evaluate(() => localStorage.removeItem("predict-109"));
       await page.reload({ waitUntil: "load" });
       await page.waitForTimeout(800);
       h.check("zero predictions hides share after positive one-pick entry", await page.getByRole("button", { name: /🎯/ }).count() === 0, "no DB writes");
     });
 
-    await h.section("PNG clipboard and canvas failure/retry", async () => {
+    if (part === "all" || part === "faults") await h.section("PNG clipboard and canvas failure/retry", async () => {
       const { ctx, page } = await h.open("/ko/events/111", { width: 390, beforeNavigate: seed("111", songs) });
       await enter(page, "ko");
       const copy = page.getByRole("button", { name: messages.ko.ShareCard.copyImage, exact: true });
@@ -278,7 +302,7 @@ const scenario = {
       h.check("same entry retry succeeds", await copy.isEnabled(), "actual clipboard write after canvas fault");
     }, { ms: 120000 });
 
-    await h.section("source font and clone-only font failures recover", async () => {
+    if (part === "all" || part === "faults") await h.section("source font and clone-only font failures recover", async () => {
       for (const cloneOnly of [false, true]) {
         let blocked = true;
         let faults = 0;
@@ -310,7 +334,7 @@ const scenario = {
       }
     }, { ms: 180000 });
 
-    await h.section("native share/cancel/fallback and analytics API boundaries", async () => {
+    if (part === "all" || part === "faults") await h.section("native share/cancel/fallback and analytics API boundaries", async () => {
       const { page } = await h.open("/ko/events/109", { width: 390,
         beforeNavigate: seed("109", songs, async ({ ctx }) => {
           await ctx.addInitScript(() => {
