@@ -7,8 +7,8 @@
 //   - neutral "updating live" notice
 //   - song-name links >= 24px tall (reactions / rows untouched)
 //   - per-song performer toggle beside the credit chips (28x28, aria-
-//     expanded / aria-controls, titled panel, keyboard), and the 18-v3
-//     <details> kept on chip-less rows
+//     expanded / aria-controls, titled panel, keyboard), and individual
+//     performer names always visible on chip-less rows
 //   - the whole roster in one grid (no "more" step), no duplicate cards
 //   - trending songs card (trending-v1): amber top rule, 20/18px heading,
 //     3 columns from a 1024px viewport / 1 below, 24px to the setlist card
@@ -117,10 +117,12 @@ function readDisplay() {
         panelNames: panel?.querySelector("p")?.textContent.trim() ?? "",
       };
     }),
-    detailsRows: card ? card.querySelectorAll('li details[class*="__creditDetails"]').length : 0,
-    chiplessDetailsBesideChips: card
-      ? [...card.querySelectorAll('li details[class*="__creditDetails"]')].filter((d) => d.closest("li").querySelector('[class*="__creditLine"]')).length
-      : 0,
+    inlinePerformers: card ? [...card.querySelectorAll('[data-testid="setlist-performers"]')].map((p) => ({
+      text: p.textContent.trim(),
+      visible: p.checkVisibility(),
+      clipped: p.scrollWidth > p.clientWidth + 1,
+      directParagraph: p.tagName === "P" && p.parentElement.className.includes("__songBody"),
+    })) : [],
     roster: roster
       ? {
           more: roster.querySelectorAll("details").length,
@@ -207,7 +209,6 @@ const scenario = {
         check(name("toggles beside chips, 28x28"), d.toggles.length > 0 && d.toggles.every((t) => t.besideChips && t.w === 28 && t.h === 28), `${d.toggles.length} toggles; ${JSON.stringify(d.toggles.find((t) => !(t.besideChips && t.w === 28 && t.h === 28)) ?? "")}`);
         const title = msg(loc, "EventDetail.songPerformers");
         check(name("toggle names + panels"), d.toggles.every((t) => t.label === title && t.panelTitle === title && t.panelHidden === true && t.expanded === "false" && t.panelNames.length > 0), title);
-        check(name("no details beside chips"), d.chiplessDetailsBesideChips === 0, String(d.chiplessDetailsBesideChips));
         const r = d.roster;
         check(name("roster: one grid, no more step"), !!r && r.more === 0 && r.grids === 1, JSON.stringify(r && { more: r.more, grids: r.grids }));
         check(name("roster: every card, no duplicates"), !!r && r.cards === r.count && new Set(r.names).size === r.names.length && r.cards > 6, `${r?.cards} cards / count ${r?.count}`);
@@ -266,9 +267,8 @@ const scenario = {
         const want = width >= MOBILE_BELOW ? 32 : 24;
         check(name(`title ${want}px`), d.title.size === want, String(d.title.size));
         check(name("no LIVE rule / notice"), !d.heroRule.includes(" 3px ") && d.notice === null, d.heroRule);
-        check(name("chip-less rows keep the 18-v3 disclosure"), d.detailsRows > 0, String(d.detailsRows));
-        const summary = await page.locator('section[id^="setlist-card-"] li details[class*="__creditDetails"] > summary').first().textContent();
-        check(name("disclosure label"), summary?.trim() === msg(loc, "EventDetail.creditsToggle"), summary);
+        check(name("chip-less performer names immediately visible"), d.inlinePerformers.length > 0 && d.inlinePerformers.every((p) => p.text && p.visible && !p.clipped), JSON.stringify(d.inlinePerformers));
+        check(name("performers are direct row text"), d.inlinePerformers.length > 0 && d.inlinePerformers.every((p) => p.directParagraph), String(d.inlinePerformers.length));
         check(name("roster: one grid"), !!d.roster && d.roster.more === 0 && d.roster.cards === d.roster.count, JSON.stringify(d.roster && { cards: d.roster.cards, count: d.roster.count }));
         const tr = await page.evaluate(readTrending);
         if (tr) checkTrending(tr, { width, name, check, loc });

@@ -290,9 +290,8 @@ export function SetlistRow({
     (namedBadges.length > 0 ||
       badgeArtists.length > 0 ||
       item.stageType !== "full_group");
-  // The per-song performer names live behind a toggle (below). A row
-  // with nobody credited gets no toggle at all — an empty disclosure
-  // would promise content that isn't there.
+  // Rows with a credit chip reveal performers through its toggle;
+  // chip-less rows show the same names directly. Omit empty credits.
   const hasPerformerCredits = !isNonSong && performers.length > 0;
   return (
     // 18-v3 `.song-row`: each row is its own small card — number chip,
@@ -386,16 +385,12 @@ export function SetlistRow({
           </CreditHeading>
         )}
 
-        {/* Chip-less rows (a `full_group` row on a single-artist event,
-            where the chip is deliberately suppressed) have no chip line
-            for the toggle to sit beside, so they keep the 18-v3
-            "출연 크레딧" disclosure — exactly what the approved v3 browser
-            mockup left on those rows. */}
+        {/* Without a chip line, the individual performers are the credit
+            itself, so show them directly under the song title. */}
         {!hasCreditLine && hasPerformerCredits && (
-          <details className={styles.creditDetails}>
-            <summary>{creditsT("creditsToggle")}</summary>
-            <p>{performers.join(", ")}</p>
-          </details>
+          <p className={styles.performerNames} data-testid="setlist-performers">
+            {performers.join(", ")}
+          </p>
         )}
 
         {/* Affordance slot — per-row action area. Holds up to two
@@ -442,8 +437,8 @@ export function SetlistRow({
  * Nothing new is inferred: no original singer, no real-person name, no
  * event headliner standing in for a missing chip.
  *
- * Only rows with a chip line get it; chip-less rows keep their 18-v3
- * <details> (see the call site). Rows with chips but no performers get
+ * Only rows with a chip line get it; chip-less rows show their names
+ * directly (see the call site). Rows with chips but no performers get
  * the chips alone.
  *
  * A real <button> with aria-expanded / aria-controls instead of

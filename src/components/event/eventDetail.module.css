@@ -768,20 +768,11 @@ a.groupChip:hover {
   margin: 2px 0;
   overflow-wrap: anywhere;
 }
-/* Chip-less rows keep the 18-v3 performer disclosure (see SetlistRow). */
-.creditDetails {
-  margin-top: 8px;
+.performerNames {
+  margin: 5px 0 0;
   font-size: 12px;
+  line-height: 1.6;
   color: var(--text-secondary);
-}
-.creditDetails > summary {
-  min-height: 30px;
-  padding: 3px 0;
-  cursor: pointer;
-  color: var(--primary);
-}
-.creditDetails > p {
-  margin: 2px 0 0;
   overflow-wrap: anywhere;
 }
 .artistTag {
