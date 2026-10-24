@@ -51,7 +51,7 @@ export function serializeBigInt<T>(obj: T): T {
  *
  * Use this when declaring the consumer-side type of a payload that
  * passed through `serializeBigIntAsString` (e.g. `RelatedEvent`,
- * the page-level `getAlbum` return shape, `<AlbumInfoCard>` props).
+ * the page-level `getAlbum` return shape, `<AlbumIdentity>` props).
  * Mirrors the wire shape so the type system stops claiming the
  * payload still carries `bigint`/`Date` after the serializer ran.
  */
@@ -126,22 +126,30 @@ export function pickLocaleTranslation<T extends { locale: string }>(
  *
  * `options` lets callers override the default `{year, month, day}`
  * shape — needed for surfaces that want only month, or weekday +
- * month + day (home cards). The default preserves the original
- * behavior so existing call sites don't change. When formatting a
- * UTC-stored date for display, callers should pass
- * `{ ..., timeZone: "UTC" }` so the rendered day matches how the
- * value is stored (CLAUDE.md §"Date & Time").
+ * month + day (home cards). Callers that pass their own `options`
+ * must include `timeZone` themselves: `"UTC"` for a stored date
+ * (CLAUDE.md §"Date & Time"), or an explicit zone when the surface
+ * means one (admin import-review pins Asia/Seoul).
+ *
+ * The default carries `timeZone: "UTC"` because every stored date is
+ * UTC. Without it the rendered day follows the process's local zone,
+ * which shifts a stored UTC midnight to the previous day in any
+ * UTC-negative zone — invisible on Vercel and CI, which both run in
+ * UTC. It also keeps SSR and the browser in agreement for client
+ * components, whose hydration would otherwise differ by the viewer's
+ * zone.
  */
 const DEFAULT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "long",
   day: "numeric",
+  timeZone: "UTC",
 };
 
 /**
  * Desktop format used by every "list of events grouped by series"
  * surface — event list (`/[locale]/events`), artist / song / member
- * history tabs, series LegCard. Includes year so a row carries the
+ * history tabs. Includes year so a row carries the
  * full calendar context without depending on the surrounding header
  * (operator feedback 2026-04-29 — "show year in all pages,
  * consistently").
@@ -159,6 +167,23 @@ export const HISTORY_ROW_DATE_FORMAT: Intl.DateTimeFormatOptions = {
   day: "numeric",
   timeZone: "UTC",
 };
+
+/**
+ * Calendar day of a full instant (`createdAt` and other timestamps) on
+ * operator-only admin surfaces. Unlike `Event.date` or `releaseDate`,
+ * which are date-only values stored at UTC midnight, a timestamp has
+ * no calendar day of its own: rendered in UTC, anything written
+ * between 00:00 and 08:59 KST shows the previous day. The operator
+ * works in Korea and the admin UI is Korean-only, so these surfaces
+ * read the instant in Asia/Seoul. Date-only values on the same pages
+ * keep the UTC default.
+ */
+export const OPERATOR_TIMESTAMP_DATE_FORMAT: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  timeZone: "Asia/Seoul",
+};
 /**
  * URL scheme guard for operator-entered external links — productUrl
  * inputs on AlbumStoreListing and similar admin surfaces. Returns
@@ -167,7 +192,7 @@ export const HISTORY_ROW_DATE_FORMAT: Intl.DateTimeFormatOptions = {
  * strings, and nullish inputs. Asserts the input as a non-nullable
  * string for the truthy branch so callers can use it as a type guard.
  *
- * Originally lived inline in ListingCard; lifted here so admin
+ * Originally lived inline in the album page's listing card; lifted here so admin
  * surfaces (ListingsClient) can apply the same scheme allowlist
  * instead of rendering operator-typed `href` verbatim.
  */

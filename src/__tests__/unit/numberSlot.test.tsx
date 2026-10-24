@@ -12,11 +12,11 @@ describe("NumberSlot — confirmed state (no buttons)", () => {
         disagreeAriaLabel="d"
       />,
     );
-    expect(screen.getByText("5")).toBeTruthy();
+    expect(screen.getByText("05")).toBeTruthy();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("regression: span carries text-right + font-mono (byte-equiv pre-Confirm-UI)", () => {
+  it("renders the confirmed position as the 18-v3 number chip", () => {
     render(
       <NumberSlot
         state="confirmed"
@@ -27,8 +27,8 @@ describe("NumberSlot — confirmed state (no buttons)", () => {
     );
     const span = screen.getByText("42");
     expect(span.tagName.toLowerCase()).toBe("span");
-    expect(span.className).toContain("text-right");
-    expect(span.className).toContain("font-mono");
+    // CSS-module class (hashed in tests, name kept as a substring).
+    expect(span.className).toMatch(/songNum/);
   });
 
   it("ignores myVote on confirmed rows (no buttons rendered regardless)", () => {
@@ -97,9 +97,9 @@ describe("NumberSlot — rumoured state, dual vote buttons", () => {
     const disagreeBtn = screen.getByRole("button", { name: "d" });
     expect(confirmBtn.getAttribute("aria-pressed")).toBe("true");
     expect(confirmBtn.getAttribute("style")).toContain("solid");
-    // colors.primaryBg = #e8f4fd → rgb(232, 244, 253)
+    // colors.primaryBg = #EAF2FF → rgb(234, 242, 255)
     expect(confirmBtn.getAttribute("style")?.toLowerCase()).toContain(
-      "rgb(232, 244, 253)",
+      "rgb(234, 242, 255)",
     );
     // ✕ stays muted/dashed when only ✓ is voted.
     expect(disagreeBtn.getAttribute("aria-pressed")).toBe("false");

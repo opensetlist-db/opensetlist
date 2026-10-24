@@ -125,6 +125,33 @@ export type GroupForList = {
   isSynthetic: boolean;
 };
 
+/**
+ * Fixed row order inside one artists-list panel: artists with an
+ * ongoing show first, then `originalName`, then id. Same rule as the
+ * panel order in `getArtistGroupsForList` (ongoing pin + originalName —
+ * the cross-locale anchor, so ja/ko/en list rows identically), plus the
+ * id tiebreak so equal or missing names still sort deterministically.
+ *
+ * The group-link query has no usable ORDER BY for this (`hasOngoing` is
+ * derived after the fetch), and without a sort the rows followed
+ * Postgres' heap order, which differed between the pre-redesign
+ * baseline, the approved snapshot and later builds. Deliberately not
+ * by event count: the approved list design avoids reading as a ranking.
+ */
+export function compareListRows(a: ArtistRowData, b: ArtistRowData): number {
+  return compareOngoingThenName(a, b) || a.id - b.id;
+}
+
+/** Shared panel/row rule: ongoing first, then `originalName`. One
+ *  function so the panel order and the row order cannot drift apart. */
+function compareOngoingThenName(
+  a: { hasOngoing: boolean; originalName: string | null },
+  b: { hasOngoing: boolean; originalName: string | null },
+): number {
+  if (a.hasOngoing !== b.hasOngoing) return a.hasOngoing ? -1 : 1;
+  return (a.originalName ?? "").localeCompare(b.originalName ?? "");
+}
+
 export async function getArtistGroupsForList(
   filter: ArtistsListFilter,
   referenceNow: Date,
@@ -177,6 +204,8 @@ export async function getArtistGroupsForList(
                   // unit defaults to `isMainUnit=false` and stays hidden
                   // until promoted via the admin form or CSV.
                   where: { isDeleted: false, isMainUnit: true },
+                  // Same fixed chip order as the ungrouped query below.
+                  orderBy: { id: "asc" },
                   select: {
                     id: true,
                     originalName: true,
@@ -232,6 +261,11 @@ export async function getArtistGroupsForList(
         },
         subArtists: {
           where: { isDeleted: false, isMainUnit: true },
+          // Fixed chip order: id = registration order, which follows
+          // each franchise's official unit order (Aqours: CYaRon! →
+          // AZALEA → Guilty Kiss). Without it the order drifted with
+          // Postgres' heap order between renders.
+          orderBy: { id: "asc" },
           select: {
             id: true,
             originalName: true,
@@ -313,6 +347,7 @@ export async function getArtistGroupsForList(
       hasOngoing: ongoingByArtist.has(artist.id),
       totalEvents: eventCountByArtist.get(artist.id) ?? 0,
     }));
+    artists.sort(compareListRows);
 
     return {
       id: g.id,
@@ -335,10 +370,7 @@ export async function getArtistGroupsForList(
   // Pin groups with ongoing events to top, then alphabetize by
   // originalName (locale-aware sorting happens at display time —
   // originalName is the stable cross-locale anchor).
-  realGroups.sort((a, b) => {
-    if (a.hasOngoing !== b.hasOngoing) return a.hasOngoing ? -1 : 1;
-    return (a.originalName ?? "").localeCompare(b.originalName ?? "");
-  });
+  realGroups.sort(compareOngoingThenName);
 
   // ── Synthetic ungrouped sections ──────────────────────────────────
   type RawUngroupedArtist = (typeof ungroupedRaw)[number];
@@ -404,6 +436,8 @@ export async function getArtistGroupsForList(
  *   none. Operator-facing chip order (FilterBar) matches this so the
  *   page reads top-to-bottom in the same order as the chips left-to-
  *   right.
+ * - Rows inside each section follow `compareListRows`, the same order
+ *   real Group panels use.
  *
  * Synthetic sections always have `isSynthetic: true` so consumers
  * (GroupSection, future per-section affordances) can branch on the
@@ -435,6 +469,7 @@ export function synthesizeUngroupedSections(
     if (key === "none" && filter !== "all") continue;
     const artists = buckets.get(key);
     if (!artists || artists.length === 0) continue;
+    artists.sort(compareListRows);
     sections.push({
       id: `synthetic:ungrouped:${key}`,
       category: key === "none" ? null : (key as GroupCategory),

@@ -4,6 +4,11 @@ import { SetlistRow } from "@/components/SetlistRow";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import { resolveUnitColor } from "@/lib/artistColor";
 import { hexToRgbString } from "@/__tests__/utils/color";
+import { colors } from "@/styles/tokens";
+
+// Artist colours fed in as fixture data and expected back on `--artist`.
+const CERISE = "#e91e8c";
+const KAHO_SOLO = "#ffb74d";
 
 vi.mock("next-intl", () => ({
   // Match the predicted-setlist test's substituting mock: when the
@@ -101,7 +106,7 @@ describe("SetlistRow", () => {
     expect(li?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
     const mcLabel = screen.getByText("itemType.mc");
-    expect(mcLabel.style.color).toBe(hexToRgbString("#94a3b8"));
+    expect(mcLabel.style.color).toBe(hexToRgbString(colors.textMuted));
 
     rerender(
       <SetlistRow
@@ -115,7 +120,7 @@ describe("SetlistRow", () => {
     expect(container.querySelector("li")?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
     expect(screen.getByText("itemType.video").style.color).toBe(
-      hexToRgbString("#94a3b8"),
+      hexToRgbString(colors.textMuted),
     );
 
     rerender(
@@ -130,7 +135,7 @@ describe("SetlistRow", () => {
     expect(container.querySelector("li")?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
     expect(screen.getByText("itemType.interval").style.color).toBe(
-      hexToRgbString("#94a3b8"),
+      hexToRgbString(colors.textMuted),
     );
   });
 
@@ -246,7 +251,7 @@ describe("SetlistRow", () => {
     // position number.
     expect(screen.queryByRole("button", { name: "confirmAria" })).toBeNull();
     expect(screen.queryByRole("button", { name: "disagreeAria" })).toBeNull();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("01")).toBeInTheDocument();
   });
 
   describe("group badge on multi-group events", () => {
@@ -440,13 +445,11 @@ describe("SetlistRow", () => {
       />,
     );
     const badge = screen.getByText("Cerise Bouquet");
-    // Text color uses the artist.color hex directly — jsdom normalizes to
-    // rgb form, which we match via the helper. The background uses the
-    // 8-digit `${color}18` (alpha 0.094) form, which jsdom normalizes
-    // inconsistently across versions, so just assert it's NON-empty (not
-    // the zinc-class fallback path).
-    expect(badge.style.color).toBe(hexToRgbString("#e91e8c"));
-    expect(badge.style.backgroundColor).not.toBe("");
+    // 18-v3 artist tag: the artist colour feeds `--artist`, which the
+    // stylesheet mixes into the chip background; the label stays ink
+    // (no inline text colour), so a pale unit colour can't carry text.
+    expect(badge.style.getPropertyValue("--artist")).toBe(CERISE);
+    expect(badge.style.color).toBe("");
   });
 
   it("falls back to a deterministic palette color when Artist.color is null", () => {
@@ -489,11 +492,10 @@ describe("SetlistRow", () => {
       slug: "cerise-bouquet",
       color: null,
     });
-    expect(badge.style.color).toBe(hexToRgbString(expected));
-    expect(badge.style.backgroundColor).not.toBe("");
+    expect(badge.style.getPropertyValue("--artist")).toBe(expected);
   });
 
-  it("uses primary color for the song link (sourced from tokens)", () => {
+  it("leaves the song link's colour to the row stylesheet (ink title, 18-v3)", () => {
     render(
       <SetlistRow
         item={makeItem()}
@@ -503,13 +505,14 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    // Primary token is #0277BD (handoff §1). Without importing tokens directly
-    // we can verify via the rendered jsdom rgb form.
+    // The approved card row titles songs in ink (hover turns them
+    // blue); no inline colour may override the stylesheet.
     const link = screen.getByText("Test Song");
-    expect(link.style.color).toBe(hexToRgbString("#0277BD"));
+    expect(link.tagName).toBe("A");
+    expect(link.style.color).toBe("");
   });
 
-  it("uses a CSS grid with `items-start` so position + title align at the top, not vertically centered", () => {
+  it("renders the row as the 18-v3 card row (number column + body grid)", () => {
     const { container } = render(
       <SetlistRow
         item={makeItem()}
@@ -519,13 +522,10 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    // Mockup `event-page-desktop-mockup-v2.jsx:185` uses
-    // `alignItems: "start"` on the row grid so the position number
-    // sits flush with the first line of the title (not centered
-    // vertically against the unit badge).
+    // The grid itself lives in the CSS module (`.songRow`); hashed
+    // class names keep the source name as a substring in tests.
     const li = container.querySelector("li");
-    expect(li?.className).toContain("grid");
-    expect(li?.className).toContain("items-start");
+    expect(li?.className).toMatch(/songRow/);
   });
 
   it("renders the generic stageType label for an ad-hoc unit-stage row with no Artist credit (D8)", () => {
@@ -690,7 +690,7 @@ describe("SetlistRow", () => {
       />,
     );
     const badge = screen.getByText("Kaho");
-    expect(badge.style.color).toBe(hexToRgbString("#ffb74d"));
+    expect(badge.style.getPropertyValue("--artist")).toBe(KAHO_SOLO);
     expect(
       container.querySelector('a[href="/en/artists/11/kaho-solo"]'),
     ).not.toBeNull();
@@ -835,6 +835,139 @@ describe("SetlistRow", () => {
   });
 });
 
+// consistency-03-v3 §7.3: the per-song performer list opens from a toggle
+// beside the credit chips instead of a separate <details> line.
+describe("SetlistRow — per-song performer toggle", () => {
+  const sayaka = {
+    stageIdentity: {
+      id: "si-sayaka",
+      originalName: "Sayaka",
+      originalShortName: null,
+      originalLanguage: "ja",
+      translations: [],
+      artistLinks: [],
+    },
+    realPerson: null,
+  };
+  const unitCredit = {
+    artist: {
+      id: 10,
+      slug: "cerise-bouquet",
+      type: "unit" as const,
+      originalName: "Cerise Bouquet",
+      originalShortName: null,
+      originalLanguage: "ja",
+      color: CERISE,
+      translations: [],
+    },
+  };
+
+  it("unit row: chevron button beside the chip opens the titled member list", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "songPerformers" });
+    // Same flex line as the chip — the toggle follows it, not a row below.
+    expect(toggle.parentElement).toBe(
+      screen.getByText("Cerise Bouquet").closest("a")!.parentElement!.parentElement,
+    );
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const panel = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    expect(panel).not.toBeVisible();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(panel).toBeVisible();
+    expect(panel).toHaveTextContent("songPerformers");
+    expect(panel).toHaveTextContent("Sayaka");
+    fireEvent.click(toggle);
+    expect(panel).not.toBeVisible();
+  });
+
+  it("chip-less full_group row keeps the 18-v3 disclosure and invents no chip", () => {
+    const { container, rerender } = render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    // Positive control: the same row with a chip has the chip and the toggle.
+    expect(container.querySelector('a[href*="/artists/"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "songPerformers" })).toBeInTheDocument();
+
+    rerender(
+      <SetlistRow
+        item={makeItem({ stageType: "full_group", artists: [], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
+    const details = container.querySelector("details")!;
+    expect(details.querySelector("summary")).toHaveTextContent("creditsToggle");
+    expect(details).toHaveTextContent("Sayaka");
+    // No headliner / stageType chip stands in for the missing credit.
+    expect(container.querySelector('a[href*="/artists/"]')).toBeNull();
+    expect(screen.queryByText("stageType.full_group")).toBeNull();
+  });
+
+  it("no performers → no toggle, even when the row has a chip", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    expect(screen.getByText("Cerise Bouquet")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
+  });
+
+  it("MC rows get no toggle even with performers attached", () => {
+    const { container, rerender } = render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    // Positive control: a song row with the same performers has the toggle.
+    expect(screen.getByRole("button", { name: "songPerformers" })).toBeInTheDocument();
+    rerender(
+      <SetlistRow
+        item={makeItem({
+          type: "mc",
+          songs: [],
+          stageType: "unit",
+          artists: [unitCredit],
+          performers: [sayaka],
+        })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    expect(screen.getByText("itemType.mc")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
+    expect(container.querySelector("details")).toBeNull();
+  });
+});
+
 describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
   it("default (no rowState passed): renders the position as a span (byte-equiv with pre-refactor)", () => {
     render(
@@ -847,7 +980,7 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
       />,
     );
     // Position 3 (index + 1) renders as a span, not a button.
-    const position = screen.getByText("3");
+    const position = screen.getByText("03");
     expect(position.tagName.toLowerCase()).toBe("span");
     // No interactive ARIA labels for the rumoured/my-confirmed
     // states.

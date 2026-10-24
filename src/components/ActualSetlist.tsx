@@ -18,11 +18,7 @@ import type {
   LiveSetlistItem,
   ReactionCountsMap,
 } from "@/lib/types/setlist";
-import { colors } from "@/styles/tokens";
-import {
-  SETLIST_DESKTOP_GRID_COLS,
-  SETLIST_DESKTOP_GRID_GAP,
-} from "@/components/setlistLayout";
+import styles from "@/components/event/eventDetail.module.css";
 import { AUTO_CONFIRM_TICK_MS, getConfirmStatus } from "@/lib/confirmStatus";
 import { useLocalConfirm } from "@/hooks/useLocalConfirm";
 import { useLocalDisagree } from "@/hooks/useLocalDisagree";
@@ -83,7 +79,6 @@ export function ActualSetlist({
   eventArtistId,
   snapshotCapturedAt,
 }: Props) {
-  const t = useTranslations("Event");
   const ct = useTranslations("Common");
   const confirmT = useTranslations("Confirm");
 
@@ -282,15 +277,9 @@ export function ActualSetlist({
 
   return (
     <>
-      <SetlistColumnHeader
-        labels={{
-          position: t("colPosition"),
-          song: t("colSong"),
-          performers: t("colPerformers"),
-          reactions: t("colReactions"),
-        }}
-      />
-      <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {/* No column header: the 18-v3 card rows are not a table (the
+          performers column became each row's credits disclosure). */}
+      <ol className={styles.setlistList}>
         {mainBuckets.map(([position, bucket], bucketIndex) => (
           <Fragment key={position}>
             {bucket.map((item) => {
@@ -393,7 +382,7 @@ export function ActualSetlist({
       {encoreBuckets.length > 0 && (
         <>
           <EncoreDivider label={ct("encore")} />
-          <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          <ol className={styles.setlistList}>
             {encoreBuckets.map(([position, bucket], bucketIndex) => (
               <Fragment key={position}>
                 {bucket.map((item) => {
@@ -452,17 +441,7 @@ export function ActualSetlist({
           padding + bg, borderTop instead of borderBottom) so the
           strip reads as a "footer" answer to the header above. */}
       {hasRumoured && (
-        <div
-          className="text-[11px]"
-          style={{
-            padding: "8px 20px",
-            color: colors.textMuted,
-            background: colors.bgFaint,
-            borderTop: `0.5px solid ${colors.border}`,
-          }}
-        >
-          {confirmT("description")}
-        </div>
+        <p className={styles.confirmHelp}>{confirmT("description")}</p>
       )}
     </>
   );
@@ -552,54 +531,8 @@ function deriveMyVote(
   return "none";
 }
 
-// Lifted verbatim from `<LiveSetlist>` so `<ActualSetlist>` stays
-// self-contained. Single source of truth for the column template +
-// gap is `setlistLayout.ts`.
-function SetlistColumnHeader({
-  labels,
-}: {
-  labels: {
-    position: string;
-    song: string;
-    performers: string;
-    reactions: string;
-  };
-}) {
-  const headerStyle = {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: 700,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase" as const,
-  };
-  return (
-    <div
-      aria-hidden="true"
-      className="hidden lg:grid"
-      style={{
-        gridTemplateColumns: SETLIST_DESKTOP_GRID_COLS,
-        columnGap: SETLIST_DESKTOP_GRID_GAP,
-        padding: "8px 20px",
-        background: colors.bgFaint,
-        borderBottom: `2px solid ${colors.border}`,
-      }}
-    >
-      <span style={headerStyle}>{labels.position}</span>
-      <span style={headerStyle}>{labels.song}</span>
-      <span style={headerStyle}>{labels.performers}</span>
-      <span style={headerStyle}>{labels.reactions}</span>
-    </div>
-  );
-}
-
+// 18-v3 `.encore`: a lavender band above the encore rows (it was a
+// hairline divider with a centred label before the card rows).
 function EncoreDivider({ label }: { label: string }) {
-  return (
-    <div className="my-4 flex items-center gap-3">
-      <div className="h-px flex-1 bg-zinc-200" />
-      <span className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-        {label}
-      </span>
-      <div className="h-px flex-1 bg-zinc-200" />
-    </div>
-  );
+  return <div className={styles.encore}>{label}</div>;
 }

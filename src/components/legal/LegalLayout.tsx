@@ -1,15 +1,17 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { LegalSection } from "@/components/legal/LegalSection";
+import { LegalToc } from "@/components/legal/LegalToc";
 import type { LegalContent } from "@/lib/types/legal";
 import { formatDate } from "@/lib/utils";
-import { colors, layout, radius, shadows } from "@/styles/tokens";
+import styles from "./legal.module.css";
 
-// Local tab descriptor. Not using the shared `<TabBar>` component
+// Local page-switch descriptor. Not using the shared `<TabBar>` component
 // because privacy/terms are *separate routes* — the shared TabBar is
 // query-param driven (`?tab=...` on a single route, used by the
-// artist/song detail pages). Inlining two `<Link>` buttons keeps
-// legal-pages routing semantics intact.
+// artist/song detail pages). Plain `<Link>`s with `aria-current="page"`
+// keep legal-pages routing semantics intact.
 type LegalTab = { key: "privacy" | "terms"; label: string; href: "/privacy" | "/terms" };
 
 import privacyKo from "@/content/privacy/ko";
@@ -49,8 +51,23 @@ interface Props {
   locale: string;
 }
 
+/**
+ * Privacy / terms page body — approved redesign packet 34-v1.
+ *
+ * ≥1024px: 240px (210px below 1100) sticky sidebar with the page
+ * switcher and section TOC, content column beside it. <1024px: the
+ * sidebar is replaced by a two-choice route switcher above the title
+ * card and a collapsed "Contents" `<details>` between the preamble and
+ * the document. Both TOCs link the same source section ids.
+ *
+ * Content, numbering, revision dates and links come unchanged from
+ * `src/content/{privacy,terms}/*` — this component only lays them out.
+ */
 export default async function LegalLayout({ page, locale }: Props) {
-  const t = await getTranslations("legal");
+  const [t, ct] = await Promise.all([
+    getTranslations("legal"),
+    getTranslations("Common"),
+  ]);
   const content = CONTENT[`${page}:${locale}`] ?? EMPTY_CONTENT;
 
   const privacyTitle = t("privacyTitle");
@@ -69,226 +86,109 @@ export default async function LegalLayout({ page, locale }: Props) {
   const ctaKey = isPrivacy ? "bottomLinkViewTerms" : "bottomLinkViewPrivacy";
 
   const isEmpty = content.sections.length === 0;
+  const tocSections = content.sections.map(({ id, title }) => ({ id, title }));
+
+  // Rendered twice (sidebar ≥1024, route switcher <1024); CSS shows one.
+  const pageLinks = tabs.map((tab) => (
+    <Link
+      key={tab.key}
+      href={tab.href}
+      aria-current={tab.key === page ? "page" : undefined}
+    >
+      {tab.label}
+    </Link>
+  ));
 
   return (
-    <main className="flex-1" style={{ background: colors.bgPage }}>
-      <div className="mx-auto max-w-[480px] px-4 pb-20 pt-5 lg:max-w-[800px] lg:px-10 lg:pt-10">
-        {/* Mobile tab bar above the grid; hidden on desktop where the
-            sidebar takes over. */}
-        <nav
-          aria-label={t("legalNavLabel")}
-          className="mb-5 flex lg:hidden"
-          style={{
-            background: colors.bgCard,
-            borderRadius: 12,
-            padding: 4,
-            boxShadow: shadows.nav,
-          }}
-        >
-          {tabs.map((tab) => {
-            const isActive = tab.key === page;
-            return (
-              <Link
-                key={tab.key}
-                href={tab.href}
-                aria-current={isActive ? "page" : undefined}
-                className="flex-1 text-center text-[12px] font-bold transition-colors"
-                style={{
-                  padding: "8px 4px",
-                  borderRadius: 8,
-                  background: isActive ? colors.primary : "transparent",
-                  color: isActive ? "white" : colors.textSubtle,
-                  textDecoration: "none",
-                }}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
+    <main className={styles.page}>
+      <div className={styles.breadcrumb}>
+        <Breadcrumb
+          ariaLabel={ct("breadcrumb")}
+          items={[
+            { label: ct("home"), href: `/${locale}` },
+            { label: documentTitle },
+          ]}
+        />
+      </div>
 
-        <div className="lg:grid lg:grid-cols-[180px_1fr] lg:items-start lg:gap-10">
-          {/* Desktop sidebar — sticky page switcher + section TOC.
-              `top` is inline so the value derives from the
-              `layout.navHeight.desktop` token rather than a Tailwind
-              arbitrary value; the +16 is breathing room above the
-              navbar bottom edge. The `lg:sticky` class still gates
-              when sticky positioning kicks in. */}
-          <aside
-            className="hidden lg:sticky lg:block"
-            style={{ top: layout.navHeight.desktop + 16 }}
-          >
-            <div className="mb-6">
-              {tabs.map((tab) => {
-                const isActive = tab.key === page;
-                return (
-                  <Link
-                    key={tab.key}
-                    href={tab.href}
-                    aria-current={isActive ? "page" : undefined}
-                    className="block text-[13px] transition-colors"
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      marginBottom: 2,
-                      fontWeight: isActive ? 700 : 500,
-                      color: isActive ? colors.primary : colors.textSubtle,
-                      background: isActive
-                        ? colors.primaryBg
-                        : "transparent",
-                      textDecoration: "none",
-                    }}
-                  >
-                    {tab.label}
-                  </Link>
-                );
-              })}
-            </div>
+      <nav
+        aria-label={t("legalNavLabel")}
+        className={`${styles.pageNav} ${styles.mobilePages}`}
+      >
+        {pageLinks}
+      </nav>
 
-            {!isEmpty && (
-              <nav aria-label={t("tocLabel")}>
-                <div
-                  className="mb-2 text-[11px] font-bold uppercase"
-                  style={{
-                    color: colors.textMuted,
-                    letterSpacing: "0.06em",
-                  }}
-                  aria-hidden="true"
-                >
-                  {t("tocLabel")}
-                </div>
-                {content.sections.map((s) => (
-                  <a
-                    key={s.id}
-                    href={`#${s.id}`}
-                    className="block text-[12px] leading-snug transition-colors"
-                    style={{
-                      color: colors.textSubtle,
-                      padding: "5px 12px",
-                      borderRadius: 6,
-                      marginBottom: 2,
-                      textDecoration: "none",
-                    }}
-                  >
-                    {s.title}
-                  </a>
-                ))}
-              </nav>
-            )}
-          </aside>
+      <div className={styles.grid}>
+        <aside className={styles.sidebar}>
+          <nav aria-label={t("legalNavLabel")} className={styles.pageNav}>
+            {pageLinks}
+          </nav>
+          {!isEmpty && (
+            <>
+              {/* Visual heading only — the nav's aria-label already
+                  names it for assistive tech. */}
+              <p className={styles.tocTitle} aria-hidden="true">
+                {t("tocLabel")}
+              </p>
+              <LegalToc
+                sections={tocSections}
+                ariaLabel={t("tocLabel")}
+                className={styles.toc}
+              />
+            </>
+          )}
+        </aside>
 
-          {/* Body column. */}
-          <div>
-            {/* Document header card. */}
-            <div
-              className="overflow-hidden"
-              style={{
-                background: colors.bgCard,
-                borderRadius: radius.card,
-                padding: "24px 24px 20px",
-                marginBottom: 16,
-                boxShadow: shadows.card,
-              }}
-            >
-              <div
-                className="mb-2 text-[10px] font-bold uppercase"
-                style={{
-                  color: colors.primary,
-                  letterSpacing: "0.08em",
-                }}
-              >
-                {t("openSetlistLabel")}
-              </div>
-              <h1
-                className="mb-2 text-[20px] font-bold lg:text-[22px]"
-                style={{ color: colors.textPrimary }}
-              >
-                {documentTitle}
-              </h1>
-              {content.lastUpdated && (
-                <div
-                  className="text-[12px]"
-                  style={{ color: colors.textMuted }}
-                >
-                  {t("lastUpdated")}:{" "}
+        <div className={styles.content}>
+          <div className={styles.titleCard}>
+            <p className={styles.eyebrow}>{t("openSetlistLabel")}</p>
+            <h1 className={styles.title}>{documentTitle}</h1>
+            {content.lastUpdated && (
+              <p className={styles.updated}>
+                {t("lastUpdated")}:{" "}
+                <time dateTime={content.lastUpdated}>
                   {formatDate(content.lastUpdated, locale, LAST_UPDATED_FORMAT)}
-                </div>
-              )}
-            </div>
-
-            {/* Optional preamble paragraph between header + body. */}
-            {content.intro && (
-              <p
-                className="mb-4 text-[13px]"
-                style={{
-                  color: colors.textSecondary,
-                  lineHeight: 1.8,
-                  paddingLeft: 4,
-                  paddingRight: 4,
-                }}
-              >
-                {content.intro}
+                </time>
               </p>
             )}
-
-            {/* Body card — sections OR empty-state fallback. */}
-            <div
-              className="overflow-hidden"
-              style={{
-                background: colors.bgCard,
-                borderRadius: radius.card,
-                padding: "24px",
-                boxShadow: shadows.card,
-              }}
-            >
-              {isEmpty ? (
-                <p
-                  className="py-10 text-center text-[13px]"
-                  style={{ color: colors.textMuted, lineHeight: 1.7 }}
-                >
-                  {t("unavailableInLocale")}
-                </p>
-              ) : (
-                content.sections.map((s) => (
-                  <LegalSection key={s.id} section={s} />
-                ))
-              )}
-            </div>
-
-            {/* Bottom page-switch link. Hidden when this locale's
-                content is empty — the user landed on a "Korean only"
-                fallback, and routing them to the *other* legal page in
-                the same missing locale would just dead-end on another
-                empty-state. */}
-            {!isEmpty && (
-              <div
-                className="mt-5 flex items-center justify-between"
-                style={{
-                  background: colors.bgCard,
-                  borderRadius: 12,
-                  padding: "16px 20px",
-                  boxShadow: shadows.nav,
-                }}
-              >
-                <span
-                  className="text-[12px]"
-                  style={{ color: colors.textMuted }}
-                >
-                  {t(promptKey)}
-                </span>
-                <Link
-                  href={otherPageHref}
-                  className="text-[12px] font-semibold"
-                  style={{
-                    color: colors.primary,
-                    textDecoration: "none",
-                  }}
-                >
-                  {t(ctaKey)}
-                </Link>
-              </div>
-            )}
           </div>
+
+          {/* Optional preamble paragraph between header + body. */}
+          {content.intro && <p className={styles.intro}>{content.intro}</p>}
+
+          {!isEmpty && (
+            <details className={styles.mobileToc}>
+              <summary>{t("tocLabel")}</summary>
+              <LegalToc
+                sections={tocSections}
+                ariaLabel={t("tocLabel")}
+                className={styles.toc}
+              />
+            </details>
+          )}
+
+          {/* Body — sections OR empty-state fallback. */}
+          <article className={styles.document} aria-label={documentTitle}>
+            {isEmpty ? (
+              <p className={styles.empty}>{t("unavailableInLocale")}</p>
+            ) : (
+              content.sections.map((s) => (
+                <LegalSection key={s.id} section={s} />
+              ))
+            )}
+          </article>
+
+          {/* Bottom page-switch link. Hidden when this locale's
+              content is empty — the user landed on a "Korean only"
+              fallback, and routing them to the *other* legal page in
+              the same missing locale would just dead-end on another
+              empty-state. */}
+          {!isEmpty && (
+            <div className={styles.bottomSwitch}>
+              <p>{t(promptKey)}</p>
+              <Link href={otherPageHref}>{t(ctaKey)}</Link>
+            </div>
+          )}
         </div>
       </div>
     </main>

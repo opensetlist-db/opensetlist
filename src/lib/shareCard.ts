@@ -148,6 +148,9 @@ const CAPTURE_SHIFTS = {
   // center rather than the visible-glyph center.
   "row-title": -5,
   "row-number": -5,
+  // ✓ / · result mark at the row's right edge: the same glyph drift as
+  // the title, so it rides the same shift to stay on the title's line.
+  "row-mark": -5,
   // LIVE pill. The label rides -8 to lift the visible cap-middle
   // onto the badge's vertical center (same Segoe-UI-ascender
   // pattern as the row title). The dot doesn't carry a tall

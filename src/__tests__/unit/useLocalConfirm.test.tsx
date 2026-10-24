@@ -10,7 +10,7 @@ import { renderHook, act } from "@testing-library/react";
 const flagState = vi.hoisted(() => ({ value: false }));
 vi.mock("@/lib/launchFlags", () => ({
   get LAUNCH_FLAGS() {
-    return { showSignIn: false, showSearch: false, confirmDbEnabled: flagState.value };
+    return { showSignIn: false, confirmDbEnabled: flagState.value };
   },
 }));
 

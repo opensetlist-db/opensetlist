@@ -1,0 +1,11 @@
+{
+  "id": "example-task",
+  "target": "dev",
+  "documents": [{ "id": "instructions", "path": "instructions.md" }],
+  "requirements": {
+    "checks": ["unit"],
+    "reviews": ["standards", "spec", "claude"],
+    "attestations": ["ios"],
+    "evidence": ["validation"]
+  }
+}

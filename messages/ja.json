@@ -2,21 +2,30 @@
   "Home": {
     "title": "OpenSetlist",
     "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",
-    "ongoingTitle": "🔴 開催中",
-    "ongoingSubtitle": "セットリスト更新中",
-    "upcomingTitle": "今後の公演",
-    "recentTitle": "最近の公演",
-    "viewAllSchedule": "すべての日程を見る ›",
-    "viewAllEvents": "すべてのイベントを見る ›",
-    "songCountOngoing": "{count, plural, other {🎵 #曲 進行中}}",
-    "songCount": "{count, plural, other {🎵 #曲}}",
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, other {あと#時間}}",
     "minutesLeft": "{minutes, plural, other {あと#分}}",
     "wishOpen": "セットリスト予想受付中",
-    "noEvents": "もうすぐ公演情報が更新されます。",
-    "noUpcoming": "今後30日以内の公演はありません。",
-    "noRecent": "過去30日以内の公演はありません。"
+    "liveEyebrow": "LIVE NOW",
+    "liveTitle": "いま開催中",
+    "upcomingEyebrow": "LIVE DISCOVERY",
+    "upcomingTitle": "今後の公演",
+    "allConcerts": "すべてのイベント",
+    "railHint": "横にスクロールして、次の公演へ →",
+    "pastEyebrow": "SETLIST ARCHIVE",
+    "recentTitle": "最近の公演",
+    "archiveTitle": "過去のセットリストから",
+    "recentNote": "最近30日間に開催され、曲が登録されている公演です。",
+    "archiveNote": "最近30日間の公演にセットリストがないため、以前の公演を紹介します。",
+    "emptyUpcoming": "現在、掲載されている開催予定の公演はありません。",
+    "emptyPast": "まだ曲が登録されたセットリストはありません。",
+    "browse": "イベントを探す",
+    "liveBadge": "開催中",
+    "scheduled": "開催予定 · {label}",
+    "setlistSongs": "{count, plural, other {#曲のセットリスト}}",
+    "setlistWaiting": "セットリストの更新を待っています",
+    "viewSetlist": "セットリストを見る",
+    "pastLink": "過去のセットリスト"
   },
   "Common": {
     "notFound": "ページが見つかりません。",
@@ -98,7 +107,14 @@
     "ungroupedNoCategorySection": "未分類",
     "showOtherUnits": "その他のユニットを表示 ({count})",
     "hideOtherUnits": "その他のユニットを隠す",
-    "songCount": "🎵 {count}"
+    "songCount": "🎵 {count}",
+    "tabsAriaLabel": "アーティストの情報",
+    "viewAllAlbums": "アルバムをすべて見る",
+    "viewAllHistory": "公演履歴をすべて見る",
+    "historyColumns": {
+      "dateStatus": "日付・状態",
+      "event": "公演"
+    }
   },
   "Song": {
     "title": "楽曲",
@@ -121,6 +137,8 @@
     "baseVariant": "基本",
     "recentPerformances": "公演履歴",
     "performanceCount": "{count}回公演",
+    "kindBadge": "楽曲",
+    "statsPerformances": "公演",
     "statsTours": "ツアー",
     "releaseYearLabel": "発売",
     "albumLabel": "収録",
@@ -152,7 +170,14 @@
     "noAlbums": "表示できるアルバムはありません",
     "filterAll": "すべて",
     "artistFilterAria": "アーティストフィルター",
-    "yearAlbumCount": "{count}枚",
+    "yearPageCount": "このページ {count}件",
+    "pagination": {
+      "aria": "アルバムのページ",
+      "prev": "前へ",
+      "next": "次へ",
+      "pageLabel": "ページ {page}",
+      "summary": "全{total}件中 {start}–{end}件 · 1ページ{perPage}件 · {page} / {totalPages}"
+    },
     "undatedYear": "発売日未定",
     "albumActiveBonuses": "店舗特典 {count}件",
     "albumActiveBonusesBadge": "特典 {count}",
@@ -167,16 +192,12 @@
     "tab": {
       "bonus": "購入",
       "tracks": "収録曲",
-      "events": "関連公演",
-      "withCount": "{label} ({count})"
+      "events": "関連公演"
     },
     "stats": {
       "trackCount": "{count, plural, other {#曲}}",
       "bonusCount": "{count, plural, other {特典 #}}",
-      "endedBonusCount": "{count, plural, other {終了 #}}",
       "listingCount": "{count, plural, other {店舗 #}}",
-      "totalBonusCount": "{count, plural, other {計 #件}}",
-      "activeBonusCount": "{count, plural, other {受付中 #}}",
       "bonusSectionLabel": "店舗特典"
     },
     "breadcrumb": {
@@ -207,6 +228,11 @@
       },
       "buy": "購入する",
       "showEnded": "{count, plural, other {終了済みの店舗を見る (#)}}",
+      "summary": {
+        "total": "合計 {count}",
+        "current": "現在 {count}",
+        "ended": "終了 {count}"
+      },
       "empty": "登録された店舗情報がありません。"
     },
     "tracks": {
@@ -241,6 +267,9 @@
     "performanceHistory": "公演履歴",
     "noPerformances": "公演記録がありません。",
     "unknown": "名称未定のメンバー",
+    "eyebrow": "メンバー",
+    "viewAllSongs": "楽曲をすべて見る",
+    "viewAllHistory": "公演履歴をすべて見る",
     "tabOverview": "概要",
     "tabSongs": "楽曲 ({count})",
     "tabHistory": "公演履歴 ({count})",
@@ -261,8 +290,6 @@
   },
   "Event": {
     "title": "イベント",
-    "allEvents": "イベント一覧",
-    "subtitle": "公演のセットリストとリアクションをチェック",
     "ongoing": "開催中",
     "upcoming": "今後のイベント",
     "past": "過去のイベント",
@@ -276,14 +303,12 @@
       "upcoming": "開催予定",
       "completed": "終了"
     },
-    "emptyFilterState": "該当する公演がありません",
     "eventCount": "{count, plural, other {#公演}}",
     "songCount": "{count, plural, other {🎵 #}}",
     "tableHeader": {
       "date": "日付",
       "status": "ステータス",
       "name": "公演名",
-      "venue": "会場",
       "songs": "曲数"
     },
     "setlist": "セットリスト",
@@ -305,11 +330,6 @@
     "iconLabelReactions": "リアクション",
     "songsValue": "{count, plural, other {#曲}}",
     "itemsLabel": "{count, plural, other {#項目}}",
-    "tapToAddReaction": "タップしてリアクションを追加",
-    "colPosition": "#",
-    "colSong": "楽曲",
-    "colPerformers": "出演",
-    "colReactions": "リアクション",
     "unitsLabel": "ユニット",
     "performersLabel": "出演者",
     "guestLabel": "ゲスト",
@@ -342,6 +362,47 @@
       "detailsCta": "アルバム詳細を見る →"
     }
   },
+  "EventDetail": {
+    "jumpLabel": "ページ内の項目",
+    "infoTitle": "イベント情報",
+    "factDate": "日付",
+    "factStart": "開始",
+    "sameSeriesTitle": "同じシリーズ",
+    "viewSeries": "シリーズを見る",
+    "creditsToggle": "出演クレジット",
+    "songPerformers": "この曲の出演メンバー",
+    "liveNotice": "リアルタイムで更新中",
+    "cancelledTitle": "開催中止",
+    "cancelledBody": "この公演は中止です。聴きたい曲・予想曲の保存や編集はできません。",
+    "opensTitle": "参加受付の開始",
+    "opensBody": "聴きたい曲とセットリスト予想は、以下の日時から参加できます。"
+  },
+  "EventList": {
+    "eyebrow": "EVENTS & SETLISTS",
+    "title": "イベント一覧",
+    "subtitle": "公演を見つけて、ライブの記録をたどる。",
+    "filterLabel": "イベントの絞り込み",
+    "activeHeading": "開催中・これからのイベント",
+    "pastHeading": "過去のイベント",
+    "seriesType": {
+      "concert_tour": "ツアー",
+      "festival": "フェス"
+    },
+    "eventCount": "{count, plural, other {# 公演}}",
+    "songCount": "{count, plural, other {# 曲}}",
+    "status": {
+      "upcoming": "開催予定",
+      "completed": "終了",
+      "cancelled": "開催中止"
+    },
+    "collapseGroup": "{title}を折りたたむ",
+    "expandGroup": "{title}を展開する",
+    "empty": "該当する公演がありません",
+    "viewAll": "すべてのイベントを見る",
+    "prev": "前へ",
+    "next": "次へ",
+    "pageStatus": "{current} / {total}"
+  },
   "EventDateTime": {
     "localTime": "現地時刻"
   },
@@ -355,6 +416,7 @@
       "standalone": "単独公演"
     },
     "organizer": "主催",
+    "artistLabel": "アーティスト",
     "events": "イベント一覧",
     "noEvents": "登録されたイベントがありません。",
     "unknownSeries": "名称未定のシリーズ",
@@ -391,7 +453,8 @@
     "surprise": "サプライズ",
     "moved": "感動",
     "trending": "この公演の話題曲",
-    "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!"
+    "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!",
+    "trendingTop": "TOP 3"
   },
   "Setlist": {
     "tabActual": "実際のセットリスト",
@@ -481,13 +544,26 @@
     "shareTextLive": "公演進行中 — 現在 {total}曲中 {matched}曲的中 ({percentage}%)",
     "shareTextPrediction": "私の予想セットリスト — {count}曲",
     "close": "閉じる",
-    "scoreLabel": "予想的中率",
-    "scoreMatchedOf": "{total}曲中 {matched}曲的中",
-    "scorePredicted": "{count}曲予想",
-    "predictionLabel": "予想セットリスト",
-    "predictionCount": "{count}曲",
-    "liveBadge": "LIVE",
-    "encore": "アンコール"
+    "encore": "アンコール",
+    "eyebrow": "MY SETLIST / {index}",
+    "pillPrediction": "PREDICTION",
+    "pillLive": "LIVE",
+    "pillFinal": "FINAL",
+    "titlePrediction": "私の予想セットリスト",
+    "titleLive": "ここまでの的中",
+    "titleFinal": "私の最終結果",
+    "predictedUnit": "曲を予想",
+    "basisLive": "現在登録された{count}曲が対象",
+    "basisFinal": "最終登録された{count}曲が対象",
+    "notePrediction": "この公演を楽しみに選んだ、私の予想です。",
+    "noteLive": "{time} 時点 · 保存時の結果",
+    "noteFinal": "曲順に関係なく判定 · 登録内容の修正により結果は変わります",
+    "orderPrediction": "私の予想順",
+    "orderActual": "実際の曲順",
+    "tracks": "{count} TRACKS",
+    "legendHit": "予想的中",
+    "legendMiss": "予想にない曲",
+    "noResult": "登録曲がないため、結果を集計できません。"
   },
   "Confirm": {
     "confirmAria": "正しい",
@@ -674,17 +750,81 @@
     "albums": "アルバム",
     "signIn": "ログイン",
     "openMenu": "メニューを開く",
-    "closeMenu": "メニューを閉じる"
+    "closeMenu": "メニューを閉じる",
+    "mainNav": "メインメニュー",
+    "search": "検索",
+    "searchPlaceholder": "イベント・アーティスト・曲・アルバムを検索",
+    "skipToContent": "本文へ移動"
+  },
+  "Search": {
+    "title": "検索",
+    "subtitle": "イベント、アーティスト、アルバム、曲を検索",
+    "metaTitle": "「{q}」の検索結果",
+    "inputLabel": "サイト内検索",
+    "placeholder": "イベント・アーティスト・曲・アルバムを検索",
+    "submit": "検索",
+    "clear": "検索語を消去",
+    "formLabel": "コンテンツ検索",
+    "typesLabel": "検索対象",
+    "all": "すべて",
+    "events": "イベント",
+    "artists": "アーティスト",
+    "songs": "曲",
+    "albums": "アルバム",
+    "results": "検索結果 · “{q}”",
+    "more": "{type} · もっと見る",
+    "noGroup": "該当する結果はありません。",
+    "emptyTitle": "探したい名前を入力してください",
+    "emptyBody": "イベント名、アーティスト名、曲名、アルバム名から探せます。",
+    "noneTitle": "一致する結果が見つかりませんでした",
+    "noneBody": "名前の一部や別の登録言語の表記で、もう一度お試しください。",
+    "errorTitle": "検索結果を読み込めませんでした",
+    "errorBody": "検索語はそのままです。時間をおいて、もう一度お試しください。",
+    "retry": "もう一度試す",
+    "longTitle": "検索語が長すぎます",
+    "longBody": "{max}文字以内に短くして検索してください。",
+    "edit": "検索語を編集",
+    "rangeTitle": "このページには結果がありません",
+    "rangeBody": "最初のページから、もう一度ご確認ください。",
+    "first": "最初のページへ",
+    "prev": "前へ",
+    "next": "次へ",
+    "page": "ページ {page}",
+    "pagination": "検索結果のページ移動",
+    "matched": "一致した表記",
+    "base": "基本バージョン",
+    "variant": "別バージョン",
+    "artistType": {
+      "solo": "ソロ",
+      "group": "グループ",
+      "unit": "ユニット"
+    },
+    "albumType": {
+      "single": "シングル",
+      "album": "アルバム",
+      "ep": "EP",
+      "live_album": "ライブアルバム",
+      "soundtrack": "サウンドトラック"
+    }
   },
   "Hero": {
-    "heading": "みんなでつなぐ、ライブの物語",
-    "searchPlaceholder": "アーティスト、イベント、曲を検索..."
+    "eyebrow": "OPENSETLIST",
+    "heading": "<line>みんなでつなぐ、</line><line>ライブの物語</line>",
+    "lead": "公演を見つけて、セットリストをたどる。ライブの記録を、みんなで。",
+    "browse": "イベントを探す",
+    "pastSetlists": "過去のセットリストを見る",
+    "caption": "架空のライブ会場イメージ"
   },
   "Footer": {
     "privacy": "プライバシーポリシー",
     "terms": "利用規約",
     "contact": "お問い合わせ",
-    "copyright": "© {year} OpenSetlist"
+    "copyright": "© {year} OpenSetlist",
+    "unofficial": "ファンによる非公式サイトです。出演者・主催者・権利者とは関係ありません。",
+    "navLabel": "サイト情報"
+  },
+  "SharedImage": {
+    "noImage": "画像なし"
   },
   "legal": {
     "privacyTitle": "プライバシーポリシー",

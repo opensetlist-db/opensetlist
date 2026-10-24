@@ -71,7 +71,7 @@ const EVENT_SERIES_FILTER: Prisma.EventWhereInput = {
 // (`serializeBigIntAsString` runs in the cached helper below).
 // BigIntStringified rewrites every `bigint` → `string` and every
 // `Date` → `string`, matching what JSON.stringify actually produces.
-// Consumers (`<AlbumRelatedEventsTab>`) read ids as strings + dates
+// Consumers (`<AlbumEventsPanel>`) read ids as strings + dates
 // as ISO strings; this alias keeps the type system in sync with the
 // runtime instead of advertising raw Prisma `bigint`/`Date` shapes
 // the wire payload no longer carries.

@@ -29,6 +29,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+# Chromium on Windows writes this into the cwd during Playwright runs
+debug.log
 
 # env files (can opt-in for committing if needed)
 .env*

@@ -8,8 +8,9 @@ import { useImpressionPolling } from "@/hooks/useImpressionPolling";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
+import styles from "@/components/event/eventDetail.module.css";
 import { ImpressionCell } from "./ImpressionCell";
-import { borderWidth, colors, motion, radius, shadows } from "@/styles/tokens";
+import { borderWidth, colors, motion, radius } from "@/styles/tokens";
 // Type lives in `src/lib/types/impression.ts` so hooks under
 // `src/hooks/` can describe impressions without importing from
 // `src/components/` (which would create a circular dependency with
@@ -540,63 +541,44 @@ export function EventImpressions({
   const isEmptyTrimmed = trimmedLength < 1;
 
   // Card / chrome styles centralized so the JSX stays readable. The
-  // my-impression cards (submitted / editing modes) use the primary-tinted
-  // palette per handoff §3-6 to visually mark them as the user's own;
-  // the new-impression input + others-list rows use neutral chrome.
+  // my-impression cards (submitted / editing modes) keep the
+  // primary-tinted palette per handoff §3-6 to mark them as the user's
+  // own; other rows sit on the lavender panel as translucent white
+  // cards (18-v3 `.preview-comment`).
   const myImpressionCardStyle: React.CSSProperties = {
     background: colors.primaryBg,
     border: `${borderWidth.emphasis} solid ${colors.primaryBorder}`,
     borderRadius: radius.card,
   };
-  const neutralCardStyle: React.CSSProperties = {
-    background: colors.bgCard,
-    border: `1px solid ${colors.border}`,
-    borderRadius: radius.card,
-  };
   const otherCardStyle: React.CSSProperties = {
     background: colors.bgCard,
-    border: `1px solid ${colors.borderLight}`,
-    borderRadius: radius.card,
+    border: `1px solid ${colors.impressionCardBorder}`,
+    borderRadius: 8,
   };
+  // 18-v3 `.impression-form textarea`: full-width white field with a
+  // 3:1 lavender-gray border, at least 100px tall, user-resizable.
   const textareaStyle: React.CSSProperties = {
-    border: `1px solid ${colors.border}`,
-    borderRadius: radius.tag,
+    border: `1px solid ${colors.impressionField}`,
+    borderRadius: 8,
     background: colors.bgCard,
+    color: colors.textPrimary,
   };
+  // Primary action (18-v3 `.button.primary`, 46px).
+  const submitClass =
+    "min-h-[46px] rounded-lg px-[18px] text-[13px] font-bold text-white disabled:opacity-40";
 
   return (
+    // 18-v3 `#impressions`: lavender-washed panel with the lead-bar
+    // heading; form first, then everyone's impressions, one column at
+    // every width.
     <section
-      className="mt-10"
-      style={{
-        background: colors.bgCard,
-        borderRadius: radius.card,
-        boxShadow: shadows.card,
-        overflow: "hidden",
-      }}
+      id="event-impressions"
+      aria-labelledby="event-impressions-title"
+      className={`${styles.panel} ${styles.impressionsPanel}`}
     >
-      {/* Card header — title + count + optional LIVE pill. Bottom
-          border separates it from the impressions body, matching
-          the mockup `event-page-desktop-mockup-v2.jsx:695-702`. */}
-      <div
-        className="flex items-baseline justify-between gap-2"
-        style={{
-          padding: "16px 20px 12px",
-          borderBottom: `1px solid ${colors.borderLight}`,
-        }}
-      >
+      <div className={styles.panelHead}>
         <div className="flex items-center gap-2">
-          <h2
-            // Locale-safe uppercase — CJK characters ("한줄감상",
-            // "ひとこと") render unchanged; English ("Impressions")
-            // gets the all-caps treatment per operator preference.
-            style={{
-              fontSize: 15,
-              fontWeight: 700,
-              color: colors.textPrimary,
-              textTransform: "uppercase",
-              margin: 0,
-            }}
-          >
+          <h2 id="event-impressions-title" className={styles.panelTitle}>
             {t("title")}
           </h2>
           {isOngoing && (
@@ -611,7 +593,7 @@ export function EventImpressions({
               <span
                 className="h-1.5 w-1.5 rounded-full"
                 style={{
-                  background: colors.live,
+                  background: colors.liveDot,
                   animation: motion.livePulse,
                 }}
               />
@@ -630,42 +612,26 @@ export function EventImpressions({
             first", and a 「한줄감상 없음」 badge is one more zero-stat
             on pre-show pages (the Soft 404 pattern). */}
         {totalCount > 0 && (
-          <span className="text-xs" style={{ color: colors.textMuted }}>
+          <span className={styles.panelCount}>
             {t("count", { count: totalCount })}
           </span>
         )}
       </div>
 
-      {/*
-        Mobile: vertical stack (my-impression block above the list).
-        Desktop (lg): 2-col grid `[my-impression | list]` per handoff §3-6.
-        Grid's natural single-col on mobile means no extra layout branching.
-      */}
-      <div
-        className="lg:grid lg:grid-cols-2 lg:items-start"
-        style={{ padding: "16px 20px", gap: 24 }}
-      >
+      <div>
+        {/* "My impression" and "all impressions" keep their names as
+            accessible labels (the textarea / list); the approved panel
+            shows no visible sub-headings. */}
         <div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: colors.textMuted,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              marginBottom: 10,
-            }}
-          >
-            {t("myLabel")}
-          </div>
           {mode === "new" && (
-            <div className="mb-4 p-3" style={neutralCardStyle}>
+            <div className="mb-4">
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder={t("placeholder")}
-                rows={2}
-                className="w-full resize-none p-2 text-sm outline-none"
+                aria-label={t("myLabel")}
+                rows={3}
+                className="block min-h-[100px] w-full resize-y p-3 text-sm"
                 style={textareaStyle}
               />
               {error && (
@@ -677,7 +643,7 @@ export function EventImpressions({
                   {error}
                 </div>
               )}
-              <div className="mt-2 flex items-center justify-between text-xs">
+              <div className="mt-2.5 flex items-center justify-between gap-3 text-xs">
                 <span
                   style={{
                     color: overLimit ? colors.error : colors.textSecondary,
@@ -689,7 +655,7 @@ export function EventImpressions({
                   type="button"
                   onClick={handleSubmit}
                   disabled={submitting || isEmptyTrimmed || overLimit}
-                  className="rounded px-3 py-1 text-white disabled:opacity-40"
+                  className={submitClass}
                   style={{ background: colors.primary }}
                 >
                   {t("submit")}
@@ -732,8 +698,9 @@ export function EventImpressions({
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                rows={2}
-                className="w-full resize-none p-2 text-sm outline-none"
+                aria-label={t("myLabel")}
+                rows={3}
+                className="block min-h-[100px] w-full resize-y p-3 text-sm"
                 style={textareaStyle}
               />
               {cooldownSeconds > 0 && (
@@ -765,7 +732,7 @@ export function EventImpressions({
                   <button
                     type="button"
                     onClick={cancelEditing}
-                    className="rounded px-3 py-1"
+                    className="min-h-[46px] rounded-lg px-[18px] text-[13px] font-bold"
                     style={{
                       border: `1px solid ${colors.border}`,
                       color: colors.textSecondary,
@@ -778,7 +745,7 @@ export function EventImpressions({
                     type="button"
                     onClick={handleEdit}
                     disabled={submitting || cooldownSeconds > 0 || isEmptyTrimmed || overLimit}
-                    className="rounded px-3 py-1 text-white disabled:opacity-40"
+                    className={submitClass}
                     style={{ background: colors.primary }}
                   >
                     {t("submit")}
@@ -790,32 +757,20 @@ export function EventImpressions({
         </div>
 
         <div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: colors.textMuted,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              marginBottom: 10,
-            }}
-          >
-            {t("allLabel")}
-          </div>
           {impressions.length === 0 ? (
             <p className="text-sm" style={{ color: colors.textSecondary }}>
               {t("empty")}
             </p>
           ) : (
             <>
-              <ul className="space-y-2">
+              <ul className="space-y-2" aria-label={t("allLabel")}>
                 {impressions.map((imp) => {
                   const isOwn = saved?.chainId === imp.rootImpressionId;
                   const hasReported = reportedChainIds.has(imp.rootImpressionId);
                   return (
                     <li
                       key={imp.id}
-                      className="p-3 text-sm"
+                      className="px-3 py-[15px] text-sm"
                       style={otherCardStyle}
                     >
                       <ImpressionCell

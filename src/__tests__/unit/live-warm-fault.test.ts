@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { format } from "node:util";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Drill fault injection at the warm-cache boundary (`src/lib/liveWarm.ts`,
@@ -246,7 +247,7 @@ describe("reader modes (warmLookup)", () => {
     arm("geterror");
     expect(await warmLookup(EVENT, "ja", 7)).toEqual({ result: "error" });
     expect(get).toHaveBeenCalledTimes(1);
-    expect(String(vi.mocked(console.error).mock.calls[0][0])).toMatch(
+    expect(format(...vi.mocked(console.error).mock.calls[0])).toMatch(
       /lookup-error .*injected fault: geterror/,
     );
   });
@@ -314,7 +315,7 @@ describe("writer modes (runWarmJob)", () => {
     expect(sets).toHaveLength(3);
     for (const l of sets) expect(l).toMatch(/ ok=false /);
     expect(
-      vi.mocked(console.error).mock.calls.filter((c) => String(c[0]).includes("injected fault: seterror")),
+      vi.mocked(console.error).mock.calls.filter((c) => format(...c).includes("injected fault: seterror")),
     ).toHaveLength(3);
     expect((await warmLookup(EVENT, "ja", 5)).result).toBe("miss");
   });
@@ -428,8 +429,15 @@ describe("writer modes (runWarmJob)", () => {
 // ---------------------------------------------------------------------
 
 // Numeric value of ` <key>=<n>` on a log line (NaN when absent / `-`).
-const num = (line: string, key: string) =>
-  Number(line.match(new RegExp(` ${key}=(\\d+)(?: |$)`))?.[1]);
+// A token lookup rather than a RegExp built from `key`, which Semgrep's
+// detect-non-literal-regexp rule blocks.
+const num = (line: string, key: string) => {
+  const v = line
+    .split(" ")
+    .find((t) => t.startsWith(`${key}=`))
+    ?.slice(key.length + 1);
+  return v !== undefined && /^\d+$/.test(v) ? Number(v) : NaN;
+};
 const setLinesOf = () => lines().filter((l) => l.startsWith("[liveWarm] set "));
 const startLines = () => lines().filter((l) => l.startsWith("[liveWarm] start "));
 

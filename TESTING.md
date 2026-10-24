@@ -1,657 +1,311 @@
-# TESTING.md — OpenSetlist Test Strategy
+# TESTING.md — OpenSetlist tests
 
-> This file defines the testing strategy for OpenSetlist.
-> Read this before writing any tests.
-> Tests live in `src/__tests__/` (unit/integration) and `e2e/` (E2E).
+> What the config files can't tell you: which command runs which suite,
+> which suites write to the shared dev database, and the house rules for
+> new tests. For globs, environments and timeouts, read the configs
+> themselves — `package.json` (scripts), `vitest.config.ts`,
+> `vitest.integration.config.ts`, `playwright.config.ts`.
 
 ---
 
-## Test Stack
+## Suites and commands
 
-```
-Unit + Integration: Vitest
-E2E:                Playwright
-```
+| Suite | Command | Config | Lives in | Database |
+|---|---|---|---|---|
+| Unit | `npm test` | `vitest.config.ts` | `src/**/*.test.{ts,tsx}` (mostly `src/__tests__/unit/`) | none — Prisma is mocked |
+| Integration | `npm run test:integration` | `vitest.integration.config.ts` | `src/__tests__/integration/` | **shared dev Supabase** |
+| E2E | `npm run test:e2e` | `playwright.config.ts` | `tests/e2e/` | dev DB through the app |
+| Event-detail TTFB | `scripts/ttfb-event-detail.sh <base-url> [label]` | — | `scripts/` | dev DB through the app (reads) |
+| Load (manual) | see `tests/load/README.md` | — | `tests/load/` | some scripts write to dev |
 
-### Install
+CI (`.github/workflows/ci.yml`) runs only lint, the TESTING.md row
+check, `tsc --noEmit`, the unit suite and a report-only dead-code pass. Integration and E2E run
+locally, by hand.
+
+The unit suite runs with `TZ=America/Los_Angeles` (set in
+`vitest.config.ts`), on every machine and in CI. A stored UTC date
+formatted without `timeZone: "UTC"` therefore renders a day early and
+fails, instead of passing on UTC hosts (Vercel, CI) and drifting only on
+a developer's machine. Write date tests against that zone, never by
+reading the host's. `tz-pin.test.ts` fails if the pin stops taking effect.
+
+`npm run lint` is ESLint plus `npm run lint:css` (stylelint over
+`src/**/*.module.css`, `stylelint.config.mjs`: hex colour literals fail
+in the 11 palette-only modules listed in its override; other modules
+warn, and `src/app/globals.css` remains exempt for palette definitions).
+`npm run lint:dead` (knip, `knip.config.ts`) lists files nothing
+imports and exports nothing uses; CI does not fail on it
+(`continue-on-error`).
+
+Filtering a long unit run once instead of rerunning it to find the
+failing file (the echo keeps vitest's exit code visible through the
+pipe):
 
 ```bash
-# Vitest
-npm install -D vitest @vitest/ui @vitejs/plugin-react
-
-# Playwright
-npm install -D @playwright/test
-npx playwright install
-```
-
-### vitest.config.ts
-
-```typescript
-import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-
-export default defineConfig({
-  plugins: [react()],
-  test: {
-    environment: 'node',
-    globals: true,
-    setupFiles: ['./src/__tests__/setup.ts'],
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-})
-```
-
-### package.json scripts
-
-```json
-{
-  "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:ui": "vitest --ui",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
-  }
-}
-```
-
----
-
-## Folder Structure
-
-```
-src/
-  __tests__/
-    setup.ts              ← global test setup (DB connection etc.)
-    unit/
-      display.test.ts     ← displayName() helper
-      translation.test.ts ← shouldShowTranslateButton()
-      rollup.test.ts      ← computeRollup() logic
-      csv.test.ts         ← CSV parsing + validation
-    integration/
-      import.test.ts      ← CSV import upsert
-      comment.test.ts     ← comment creation + rollup ancestry
-      fallback.test.ts    ← getTranslation() locale fallback
-    api/
-      health.test.ts      ← GET /api/health
-      import-route.test.ts← POST /api/import validation
-e2e/
-  setlist.spec.ts         ← setlist page loads
-  admin.spec.ts           ← admin setlist entry
-  auth.spec.ts            ← login flow (Phase 1B)
-```
-
----
-
-## Priority — What to Test First
-
-**"If this breaks, the site is broken."**
-
-```
-Priority 1 — test immediately:
-  displayName() fallback
-  shouldShowTranslateButton()
-  /api/health
-
-Priority 2 — before 후쿠오카 Day1 (2026-05-02):
-  CSV import upsert (idempotency)
-  setlist page E2E
-
-Priority 3 — before Sprint 3 (rollup feature):
-  computeRollup() — most critical, core differentiator
-  comment creation + rollup ancestry integration test
-
-Priority 4 — ongoing:
-  getTranslation() locale fallback
-  Report auto-hide threshold
-  DictionaryTerm applyDictionary() substitution
-```
-
----
-
-## Unit Tests
-
-### src/__tests__/unit/display.test.ts
-
-```typescript
-import { describe, it, expect } from 'vitest'
-import { displayName } from '@/lib/display'
-
-describe('displayName', () => {
-  it('returns shortName when available', () => {
-    expect(displayName({
-      name: '蓮ノ空女学院スクールアイドルクラブ',
-      shortName: '蓮ノ空'
-    })).toBe('蓮ノ空')
-  })
-
-  it('falls back to name when shortName is null', () => {
-    expect(displayName({
-      name: '蓮ノ空女学院スクールアイドルクラブ',
-      shortName: null
-    })).toBe('蓮ノ空女学院スクールアイドルクラブ')
-  })
-
-  it('falls back to name when shortName is undefined', () => {
-    expect(displayName({
-      name: '蓮ノ空女学院スクールアイドルクラブ',
-    })).toBe('蓮ノ空女学院スクールアイドルクラブ')
-  })
-
-  it('returns full name in full mode even when shortName exists', () => {
-    expect(displayName({
-      name: '蓮ノ空女学院スクールアイドルクラブ',
-      shortName: '蓮ノ空'
-    }, 'full')).toBe('蓮ノ空女学院スクールアイドルクラブ')
-  })
-})
-```
-
-### src/__tests__/unit/translation.test.ts
-
-```typescript
-import { describe, it, expect } from 'vitest'
-import { shouldShowTranslateButton } from '@/lib/translation'
-
-describe('shouldShowTranslateButton', () => {
-  it('returns false for known locale', () => {
-    expect(shouldShowTranslateButton('ja', ['ko', 'ja', 'en'])).toBe(false)
-  })
-
-  it('returns true for unknown locale', () => {
-    expect(shouldShowTranslateButton('zh-CN', ['ko', 'ja'])).toBe(true)
-  })
-
-  it('returns false for preferred locale', () => {
-    expect(shouldShowTranslateButton('ko', ['ko'])).toBe(false)
-  })
-
-  it('returns false when detectedLocale is null', () => {
-    expect(shouldShowTranslateButton(null, ['ko'])).toBe(false)
-  })
-
-  it('returns false when detectedLocale is undefined', () => {
-    expect(shouldShowTranslateButton(undefined, ['ko'])).toBe(false)
-  })
-})
-```
-
-### src/__tests__/unit/csv.test.ts
-
-```typescript
-import { describe, it, expect } from 'vitest'
-import { parseArtistCSV, validateArtistRow } from '@/lib/csv'
-
-describe('parseArtistCSV', () => {
-  it('parses valid artist CSV', () => {
-    const csv = `slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName
-hasunosora,group,,蓮ノ空女学院スクールアイドルクラブ,蓮ノ空,하스노소라여학원,하스노소라`
-
-    const rows = parseArtistCSV(csv)
-    expect(rows).toHaveLength(1)
-    expect(rows[0].slug).toBe('hasunosora')
-    expect(rows[0].ja_shortName).toBe('蓮ノ空')
-  })
-
-  it('handles empty imageUrl column', () => {
-    const csv = `slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName,imageUrl
-hasunosora,group,,蓮ノ空,蓮ノ空,하스노소라,하스노소라,`
-
-    const rows = parseArtistCSV(csv)
-    expect(rows[0].imageUrl).toBeNull()
-  })
-})
-
-describe('validateArtistRow', () => {
-  it('returns error for invalid type', () => {
-    const result = validateArtistRow({ slug: 'test', type: 'invalid' })
-    expect(result.errors).toContain('invalid type')
-  })
-
-  it('returns error for missing slug', () => {
-    const result = validateArtistRow({ type: 'group' })
-    expect(result.errors).toContain('slug is required')
-  })
-
-  it('passes for valid row', () => {
-    const result = validateArtistRow({
-      slug: 'hasunosora',
-      type: 'group',
-      ja_name: '蓮ノ空',
-    })
-    expect(result.errors).toHaveLength(0)
-  })
-})
-```
-
-### src/__tests__/unit/rollup.test.ts
-
-```typescript
-import { describe, it, expect } from 'vitest'
-import { computeRollup } from '@/lib/rollup'
-
-// computeRollup takes a setlistItem with its relations loaded
-// and returns the 6 rollup arrays
-
-describe('computeRollup', () => {
-  it('includes song IDs from setlist item songs', () => {
-    const result = computeRollup({
-      songs: [{ songId: 'song-1' }, { songId: 'song-2' }],
-      event: mockEvent,
-    })
-    expect(result.rollupSongIds).toContain('song-1')
-    expect(result.rollupSongIds).toContain('song-2')
-  })
-
-  it('includes leaf event and all ancestor event IDs', () => {
-    // Event hierarchy: saitama-day1 → saitama-leg → 6th-bgp-series
-    const result = computeRollup({
-      songs: [],
-      event: {
-        id: 'saitama-day1',
-        parentEvent: {
-          id: 'saitama-leg',
-          parentEvent: null,
-        },
-        eventSeries: { id: '6th-bgp' },
-      },
-    })
-    expect(result.rollupEventIds).toContain('saitama-day1')
-    expect(result.rollupEventIds).toContain('saitama-leg')
-  })
-
-  it('includes direct artist and all parent artists', () => {
-    // Cerise Bouquet → 蓮ノ空
-    const result = computeRollup({
-      songs: [],
-      event: mockEventWithArtists([
-        { id: 'cerise-bouquet', parentArtist: { id: 'hasunosora' } }
-      ]),
-    })
-    expect(result.rollupArtistIds).toContain('cerise-bouquet')
-    expect(result.rollupArtistIds).toContain('hasunosora')
-  })
-
-  it('only includes groups where hasBoard=true in rollupGroupIds', () => {
-    const result = computeRollup({
-      songs: [],
-      event: mockEventWithGroups([
-        { id: 'lovelive-group', hasBoard: true },
-        { id: 'some-label', hasBoard: false },
-      ]),
-    })
-    expect(result.rollupGroupIds).toContain('lovelive-group')
-    expect(result.rollupGroupIds).not.toContain('some-label')
-  })
-})
-```
-
----
-
-## Integration Tests
-
-### src/__tests__/setup.ts
-
-```typescript
-import { prisma } from '@/lib/prisma'
-import { afterAll, beforeAll } from 'vitest'
-
-// Use a separate test database
-// Set TEST_DATABASE_URL in .env.test
-
-beforeAll(async () => {
-  await prisma.$connect()
-})
-
-afterAll(async () => {
-  await prisma.$disconnect()
-})
-```
-
-### src/__tests__/integration/import.test.ts
-
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest'
-import { prisma } from '@/lib/prisma'
-import { importArtistsFromCSV } from '@/lib/csv-import'
-
-const TEST_CSV = `slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName
-hasunosora,group,,蓮ノ空女学院スクールアイドルクラブ,蓮ノ空,하스노소라여학원,하스노소라
-cerise-bouquet,unit,hasunosora,Cerise Bouquet,Cerise Bouquet,세리제 부케,세리제`
-
-beforeEach(async () => {
-  // Clean test data
-  await prisma.artistTranslation.deleteMany()
-  await prisma.artist.deleteMany()
-})
-
-describe('importArtistsFromCSV', () => {
-  it('creates artists from CSV', async () => {
-    await importArtistsFromCSV(TEST_CSV)
-    const count = await prisma.artist.count()
-    expect(count).toBe(2)
-  })
-
-  it('is idempotent — running twice does not duplicate', async () => {
-    await importArtistsFromCSV(TEST_CSV)
-    await importArtistsFromCSV(TEST_CSV)
-    const count = await prisma.artist.count()
-    expect(count).toBe(2)  // still 2, not 4
-  })
-
-  it('creates translations for each locale', async () => {
-    await importArtistsFromCSV(TEST_CSV)
-    const translations = await prisma.artistTranslation.findMany({
-      where: { locale: 'ja' }
-    })
-    expect(translations).toHaveLength(2)
-    expect(translations[0].shortName).toBe('蓮ノ空')
-  })
-
-  it('sets parentArtistId correctly for sub-units', async () => {
-    await importArtistsFromCSV(TEST_CSV)
-    const cerise = await prisma.artist.findFirst({
-      include: { parentArtist: true }
-    })
-    expect(cerise?.parentArtist?.id).toBeDefined()
-  })
-})
-```
-
-### src/__tests__/integration/comment.test.ts
-
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest'
-import { prisma } from '@/lib/prisma'
-import { createCommentWithRollup } from '@/lib/comments'
-
-describe('comment rollup ancestry', () => {
-  it('populates all 6 rollup arrays when posted on setlistItem', async () => {
-    const comment = await createCommentWithRollup({
-      userId: testUserId,
-      type: 'comment',
-      setlistItemId: testSetlistItemId,
-      content: '고베에서 진짜 울었음',
-    })
-
-    // rollupSongIds — songs of the setlist item
-    expect(comment.rollupSongIds.length).toBeGreaterThan(0)
-
-    // rollupEventIds — leaf event + ancestors
-    expect(comment.rollupEventIds).toContain(testEventId)
-
-    // rollupArtistIds — direct + parent artists
-    expect(comment.rollupArtistIds).toContain(hasunosoraId)
-
-    // rollupGroupIds — hasBoard=true groups only
-    expect(comment.rollupGroupIds).toContain(loveliveGroupId)
-
-    // rollupCategories
-    expect(comment.rollupCategories).toContain('anime')
-  })
-
-  it('rollup arrays are immutable after creation', async () => {
-    const comment = await createCommentWithRollup({
-      userId: testUserId,
-      type: 'comment',
-      setlistItemId: testSetlistItemId,
-      content: 'test',
-    })
-
-    const originalRollup = [...comment.rollupArtistIds]
-
-    // Even if we update the comment content, rollup should not change
-    await prisma.comment.update({
-      where: { id: comment.id },
-      data: { content: 'updated content' }
-    })
-
-    const updated = await prisma.comment.findUnique({
-      where: { id: comment.id }
-    })
-
-    expect(updated?.rollupArtistIds).toEqual(originalRollup)
-  })
-})
-```
-
-### src/__tests__/integration/fallback.test.ts
-
-```typescript
-import { describe, it, expect } from 'vitest'
-import { getTranslation } from '@/lib/i18n'
-
-describe('getTranslation locale fallback', () => {
-  it('returns ko translation when available', async () => {
-    const artist = await prisma.artist.findFirst({
-      include: { translations: true }
-    })
-    const t = getTranslation(artist!.translations, 'ko')
-    expect(t?.locale).toBe('ko')
-  })
-
-  it('falls back to ja when ko not available', () => {
-    const translations = [
-      { locale: 'ja', name: '蓮ノ空', shortName: '蓮ノ空' }
-    ]
-    const t = getTranslation(translations, 'ko')
-    expect(t?.locale).toBe('ja')
-  })
-
-  it('falls back to first available when neither ko nor ja', () => {
-    const translations = [
-      { locale: 'en', name: 'Hasunosora', shortName: 'Hasunosora' }
-    ]
-    const t = getTranslation(translations, 'ko')
-    expect(t?.locale).toBe('en')
-  })
-
-  it('returns null for empty translations array', () => {
-    const t = getTranslation([], 'ko')
-    expect(t).toBeNull()
-  })
-})
-```
-
----
-
-## E2E Tests
-
-### playwright.config.ts
-
-```typescript
-import { defineConfig } from '@playwright/test'
-
-export default defineConfig({
-  testDir: './e2e',
-  use: {
-    baseURL: process.env.TEST_BASE_URL ?? 'http://localhost:3000',
-  },
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-  },
-})
-```
-
-### e2e/setlist.spec.ts
-
-```typescript
-import { test, expect } from '@playwright/test'
-
-test.describe('setlist page', () => {
-  test('loads event page with setlist', async ({ page }) => {
-    await page.goto('/ko/events/1')
-    await expect(page.getByRole('heading')).toBeVisible()
-    // Setlist items rendered
-    await expect(page.locator('[data-testid="setlist-item"]').first()).toBeVisible()
-  })
-
-  test('shows upcoming badge for future events', async ({ page }) => {
-    await page.goto('/ko/events/1')  // 6th Live 후쿠오카 Day1 (upcoming)
-    await expect(page.getByText('예정')).toBeVisible()
-  })
-
-  test('song page shows performance history', async ({ page }) => {
-    await page.goto('/ko/songs/1')
-    await expect(page.getByTestId('performance-history')).toBeVisible()
-  })
-
-  test('locale redirect works — US visitor lands on /ko/', async ({ page }) => {
-    // Simulate non-Korean browser
-    await page.goto('/', { headers: { 'Accept-Language': 'en-US' } })
-    await expect(page).toHaveURL(/\/ko\//)
-  })
-})
-```
-
-### e2e/admin.spec.ts
-
-```typescript
-import { test, expect } from '@playwright/test'
-
-test.describe('admin setlist entry', () => {
-  test.beforeEach(async ({ page }) => {
-    // Admin login
-    await page.goto('/admin/login')
-    await page.fill('[name=password]', process.env.ADMIN_PASSWORD!)
-    await page.click('[type=submit]')
-  })
-
-  test('can add a setlist item under 30 seconds', async ({ page }) => {
-    const start = Date.now()
-
-    await page.goto('/admin/events/1/setlist')
-    await page.fill('[name=songSearch]', 'DEEPNESS')
-    await page.click('[data-testid="song-option-DEEPNESS"]')
-    await page.selectOption('[name=stageType]', 'full_group')
-    await page.click('[type=submit]')
-
-    await expect(page.getByText('DEEPNESS')).toBeVisible()
-
-    const elapsed = Date.now() - start
-    expect(elapsed).toBeLessThan(30000)  // under 30 seconds
-  })
-
-  test('CSV import page rejects invalid file', async ({ page }) => {
-    await page.goto('/admin/import')
-    // Upload a bad CSV
-    await page.setInputFiles('input[type=file]', {
-      name: 'bad.csv',
-      mimeType: 'text/csv',
-      buffer: Buffer.from('invalid,columns\nbad,data')
-    })
-    await page.click('[data-testid="import-button"]')
-    await expect(page.getByTestId('error-message')).toBeVisible()
-  })
-})
-```
-
----
-
-## Test Database Setup
-
-Use a separate Supabase project or local PostgreSQL for integration tests:
-
-```env
-# .env.test
-DATABASE_URL="postgresql://postgres:password@localhost:5432/opensetlist_test"
-```
-
-```bash
-# Create test DB and push schema
-DATABASE_URL=<test_url> npx prisma db push
-```
-
-Integration tests use `beforeEach` to clean relevant tables.
-Never run integration tests against the production database.
-
----
-
-## Running Tests
-
-```bash
-# Unit tests only (fast, no DB needed)
-npx vitest run src/__tests__/unit
-
-# Full unit suite — the default config excludes integration/. Filter
-# the output once rather than rerunning to find the failing file (the
-# echo keeps vitest's exit code visible through the pipe):
 npx vitest run 2>&1 | grep -E "FAIL|×|Test Files|Tests "; echo "exit=${PIPESTATUS[0]}"
-
-# Integration tests (real dev DB; separate config)
-npm run test:integration
-
-# Watch mode during development
-npx vitest
-
-# E2E tests (requires dev server running)
-npx playwright test
-
-# E2E with UI
-npx playwright test --ui
-
-# Specific test file
-npx vitest run src/__tests__/unit/display.test.ts
 ```
+
+Before review, lint every file the branch changed, with warnings
+failing. Warnings do not fail CI, so a file left out of a partial lint
+reaches the PR with its warning (a `hex-colour-literals`, say) as a mere
+CI annotation. The diff limits the check to this branch's files, so the
+repo's pre-existing warnings do not block it; replace `dev` with the
+PR's base (`feature/redesign` for redesign tickets). The guard skips an
+empty list (a bare `npx eslint` lints the whole repo), and
+`--no-warn-ignored` keeps a changed file under an ignore pattern from
+counting as a warning:
+
+```bash
+files=$(git diff --name-only --diff-filter=d origin/dev...HEAD -- '*.ts' '*.tsx' '*.mjs'); [ -z "$files" ] || npx eslint --max-warnings=0 --no-warn-ignored $files
+```
+
+### Unit — no database
+
+`npm test` never opens a connection: the files that import
+`@/lib/prisma` either `vi.mock` it or `vi.spyOn` the methods they call
+(importing the client builds a pool but connects only on a query). Keep
+it that way — a unit test that needs real rows belongs in the
+integration suite.
+
+### Integration — the shared dev database
+
+There is no separate test database. The integration setup
+(`src/__tests__/integration/setup.ts`) loads `.env.local` and `.env` and
+throws unless both `DATABASE_URL` and `DATABASE_URL_UNPOOLED` point at
+the dev Supabase project, so a prod URL in the shell cannot slip
+through. Files run one at a time (`fileParallelism: false`).
+
+The dev DB also backs the Vercel Preview and other sessions' work, so
+know what each suite leaves behind:
+
+| Integration file | Writes? | What it creates, and its cleanup |
+|---|---|---|
+| `board-picks.test.ts` | **writes** | artist, song, series, event, setlist item, `BoardPick` rows; `afterAll` deletes them |
+| `board-wishes.test.ts` | **writes** | artists, songs, series, event, `SongWish` rows; `afterAll` deletes them |
+| `member-order.test.ts` | **writes** | artist, event, stage identity, performers; `afterAll` deletes them |
+| `n14-live-path.test.ts` | **writes** | event, setlist items, reactions, wishes, confirms; also joins the dev Supabase Realtime channel (anon key) and broadcasts; `afterAll` deletes the rows |
+| `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
+| `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
+| `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
+| `logo-resolution.test.ts` | **writes** | three series + two events keyed `logo-itest-<ts>-*`, `ImageAsset` rows keyed `itest/logo-itest-<ts>/…`, plus one admin `PUT /api/admin/event-series/[id]` and one `PUT /api/admin/events/[id]` on its own fixtures; creates its own coloured artist `logo-itest-<ts>-artist`; `afterAll` deletes them and asserts none are left |
+| `image-upload-service.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/upload-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `album-cover.test.ts` | **writes** | one album with slug `cover-itest-<ts>`, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/cover-itest-<ts>/`; re-imports that one slug through the CSV importer; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `series-logo-route.test.ts` | **writes** | parent/child series (+ a soft-deleted one) and one event, all named `series-logo-itest-<ts> …`, through the admin handlers; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/series-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `event-logo-route.test.ts` | **writes** | parent/child series and events (one soft-deleted) named `event-logo-itest-<ts> …` through the admin handlers, with a fake poster URL; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/event-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `global-search.test.ts` | **writes** | songs (one variant, one soft-deleted), artists, an album and events whose slug starts `srchitest<ts>`, plus their translations and one `SongArtist`; search reads only; `afterAll` deletes them and asserts none are left |
+| `home-events.test.ts` | **writes** | one song and events dated 2099 whose slug starts `home-itest<ts>`, with setlist items (+ `SetlistItemSong`) on some; home queries read with a 2099 reference instant so real events stay out of the windows; `afterAll` deletes them and asserts none are left |
+| `album-list-pagination.test.ts` | **writes** | read-only paging of the whole album catalog and every artist chip against a raw-SQL ordering; then 5 artists (2 deleted sub-units) and 29 albums dated 2099 or undated whose slug starts `c07itest<ts>`, with `AlbumArtist` links; `beforeAll` purges earlier `c07itest` leftovers, `afterAll` deletes them and asserts none are left |
+| `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
+| `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
+
+Every `*.test.ts` here needs a row, and every row a file:
+`npm run check:testing-md` (a CI step right after Lint) fails otherwise. The
+same holds for the E2E table below.
+
+A suite killed mid-run (Ctrl-C, a hook timeout) skips its `afterAll`
+and leaves its fixture rows in dev. A new integration test must create
+its own fixtures and delete them in `afterAll`; never assert on, or
+mutate, rows another feature depends on.
+
+A suite that asserts an exact list or count must also remove an earlier
+run's leftovers before it starts, or one interrupted run fails every
+later one. Start every fixture slug with a fixed prefix of the file's
+own, and at the start of `beforeAll` hard-delete everything matching
+that prefix (a per-run token after it is fine; the purge must not
+depend on it). Reference: `purge(PREFIX)` in
+`src/__tests__/integration/home-events.test.ts` (on `feature/redesign`
+until it merges).
+
+**Inspecting the dev DB by hand** (row counts, grants, RLS, before/after
+checks for a test or migration): use `node scripts/db-ro.mjs "<sql>"
+["<sql>" …]` (or `--file q.sql`, `--json`) instead of an ad-hoc `pg`
+script. It is dev-only (same URL guard as the integration setup, from
+`scripts/dev-db-guard.mjs`) and read-only (each statement runs inside
+`BEGIN READ ONLY … ROLLBACK`, writes and session `SET` are refused before
+connecting). It runs from any directory or task worktree and prints
+timestamps as UTC.
+
+**Adding QA fixtures** (new Album / EventSeries / Event rows, optional
+AlbumArtist links to existing artists, series / event logo modes with
+their own ImageAsset rows, for states the seed data lacks):
+`node scripts/db-fixture-add.mjs --prefix "[QA] <Tag>" --spec <json>
+--dry-run` first — guarded insert, spec format in its header; never an
+ad-hoc insert script. Its stdout goes to `scripts/page-qa.mjs --fixture`
+unchanged, and it prints the `db-fixture-rm` command for the same rows.
+
+**Removing QA fixtures** (EventSeries / Event / Album / ImageAsset rows
+made through the admin UI, which only soft-deletes): `node
+scripts/db-fixture-rm.mjs --dry-run …` — guarded hard delete, usage in
+its header; never an ad-hoc delete script.
+
+### E2E — through the app
+
+`playwright.config.ts` starts `npm run dev` on `localhost:3000` unless
+`TEST_BASE_URL` is set (then it tests that deployment and starts
+nothing). The specs load `.env` and `.env.local` through
+`tests/e2e/helpers/env.ts`, and each spec **skips** when the sample IDs
+it needs are missing — a green run with skips proves little, so check
+the skip count.
+
+| Spec | Writes? | Needs |
+|---|---|---|
+| `album.spec.ts` | GET only | `E2E_ALBUM_ID`, `E2E_SINGLE_ID`, `E2E_LIVE_ALBUM_ID` |
+| `album-cross-links.spec.ts` | GET only | `E2E_MULTI_ALBUM_SONG_ID`, `E2E_DISCOGRAPHY_ARTIST_ID`, `E2E_BD_SERIES_ID` |
+| `bonus-scrape.spec.ts` | GET only | `E2E_BONUS_ALBUM_ID` |
+| `event-bd-section.spec.ts` | GET only | `E2E_BD_EVENT_ID`, `E2E_PLAIN_EVENT_ID` |
+| `home.spec.ts` | GET only | none — asserts roles, landmarks and URLs, so any dev catalog state passes |
+| `search.spec.ts` | GET only | a catalog where `a` matches >20 songs (any seeded dev DB) |
+| `seo-canonical.spec.ts` | GET only | events in the sitemap |
+| `setlist-unknown-song.spec.ts` | **writes** | `E2E_UNKNOWN_SONG_EVENT_ID`, `E2E_MULTI_ALBUM_SONG_ID`, `ADMIN_PASSWORD` |
+
+`setlist-unknown-song.spec.ts` logs in as admin, POSTs a songless
+setlist item to the event, PUTs a song onto it, and in `finally`
+DELETEs it — a **soft** delete, so an `isDeleted` row stays on that
+event for every run. Point `E2E_UNKNOWN_SONG_EVENT_ID` at a throwaway
+dev event, never one the Preview or another task relies on.
+
+### Event-detail TTFB — same measurement as CI
+
+`scripts/ttfb-event-detail.sh` is the measurement the
+`perf — event detail TTFB` workflow (`event-detail-perf.yml`) runs on
+both sides of a PR: a warm-up pass, then 2 passes over ko/ja/en ×
+`PERF_EVENT_IDS` (default: dev events 1 and 2, as `{id}/{slug}`),
+averaging curl's `time_starttransfer` over HTTP-200 samples only. It
+prints the mean on stdout and each sample on stderr, and exits 1 when
+more than half the samples are non-200.
+
+To reproduce a CI number, measure a production build against the dev
+DB. Blank the Sentry variables so the build uploads nothing:
+
+```bash
+SENTRY_AUTH_TOKEN= SENTRY_DSN= NEXT_PUBLIC_SENTRY_DSN= npm run build
+npm run start
+scripts/ttfb-event-detail.sh http://localhost:3000 LOCAL
+```
+
+Absolute numbers differ from the runner's (different network path to
+Supabase Seoul); compare a branch against its base on the same machine,
+as the workflow does.
+
+### Redesign captures and shell QA
+
+For color-literal to custom-property refactors, use
+[`scripts/palette-verify.mjs`](scripts/palette-verify.mjs): static AST/value audit,
+paired image/computed canary before expanding a chosen case list, and existing
+QA report comparison. [The runbook](docs/palette-verification.md) defines the
+evidence scope, config formats, limitations and matrix expansion conditions.
+Run its no-DB deterministic tests with
+`node --test scripts/capture/*.test.mjs scripts/palette/*.test.mjs` (installed
+Playwright Chromium and WebKit required). `redesign-capture.mjs --visual-ready` opts into
+bounded image/font decode and paint readiness; the default performance capture
+mode retains its historical wait and measurements.
+
+Both run against a production build like the TTFB script above
+(`npx next start -p 3110`), and their output stays out of the repo.
+
+`scripts/redesign-capture.mjs` captures screenshots and per-page metrics
+for the redesign page set. `--compare <captures.json>` diffs the new run
+against a baseline manifest (the ticket 02 one is in the wiki vault,
+`output/redesign/handoffs/02/captures/captures.json`) and prints the
+regressions: new horizontal scroll, CLS, console errors, `lang`, status.
+
+`scripts/redesign-shell-qa.mjs` checks the shared shell (header bands,
+overflow, menu keyboard behaviour, focus ring, locale switch, reduced
+motion) across locales × widths and exits 1 on any FAIL. Page tickets run
+it after any shared-style change (redesign spec story 51): chromium in
+full, `--browser webkit --quick` for Safari. `--summary` prints only the
+FAIL lines (timeouts included) and the tally; every check, PASS and N/A
+too, stays in `<out>/<browser>-qa.json`. Without `--out`, `<out>` is
+`test-results/shell-qa/<browser>` (`<browser>-quick` with `--quick`) under
+the checkout root, printed as the first line; a rerun overwrites it.
+
+A production hydration mismatch shows up only as "Minified React error
+#418/#423/#425", with no component or text. `redesign-capture.mjs` then
+prints a hint line naming `scripts/hydration-diff.mjs <url> --timezone
+Asia/Seoul`. That script diffs the SSR HTML against the hydrated DOM in
+each `--timezone` (repeatable, default UTC) and prints the page errors
+plus the text found on only one side, with an ancestor path. Compare two
+zones to tell a timezone-dependent render from post-hydration client
+updates.
+
+Admin pages (cover/logo editors) use `scripts/serve-build.sh <port>`
+(build + `next start`, Sentry blanked, refuses a foreign port holder,
+`--stop` kills only its own verified PID) and `scripts/admin-qa.mjs
+--scenario <name>`, which logs in, creates and always deletes a dev-DB
+fixture, and runs overflow/keyboard/label/motion/referrer checks; a page
+adds a scenario under `scripts/admin-qa/scenarios/` (copy `album-cover`).
+
+Public pages (artist detail, album detail, …) use `scripts/page-qa.mjs
+--scenario <name>` against the same kind of build: it runs the locale ×
+width layout matrix (overflow, `<html lang>`, raw i18n keys, runtime
+errors), reduced motion with a positive control and canonical/404 checks
+through the request API, with a per-action `--timeout` and a whole-run
+`--timeout-min`, and writes a `.log` and `.json` per run. It never writes
+to the DB; fixture rows come in through `--fixture <json>`. A page ticket
+adds a scenario under `scripts/page-qa/scenarios/` (copy `artist-detail`)
+instead of its own QA script: chromium in full, `--browser webkit --quick`
+for Safari. `layoutMatrix({ basics, capture })` adds one h1, 24px
+targets and heading markup (no heading in a phrasing-only parent such
+as a span, `<summary>` headings direct and at most one; unit-tested in
+`page-qa-markup.test.ts`) per cell and a capture taken before any focus
+step; `h.afterNav(page, { url, ready, action })` waits out a client
+navigation (Link, `?tab=`, `goBack`) until `ready` is in the new `<main>`;
+`h.contrast` (exact CSS-module suffix `__<name>`, translucent backgrounds
+composited), `h.focusRing`, `h.scrollRegion` (fresh-load ArrowRight) and
+`reducedMotion({ rest, optional })` cover the rest of a page ticket's
+checklist — `home` uses them all. Responses ≥400 count as errors except
+the local `_vercel/speed-insights` 404; a check whose subject is absent
+on the build or data prints SKIP, which never fails a run.
+
+`page-qa.mjs`, `admin-qa.mjs` and `redesign-capture.mjs` read
+`messages/` and `.env` from the git checkout holding the current
+directory, and their scenarios from beside the script. A copy extracted
+from another branch (e.g. into a redesign worktree's gitignored
+`.claude/tmp/`, with its `page-qa/` or `admin-qa/` folder, plus
+`dev-db-guard.mjs` for admin-qa) therefore runs against the worktree it
+is started from.
 
 ---
 
-## data-testid Convention
+## Windows task tools
 
-Add `data-testid` attributes to key UI elements for E2E test stability:
+Use `powershell -NoProfile -File scripts/task-runtime.ps1 serve-build
+-Runtime GitBash -Port 3191` to select Git Bash explicitly, or select
+`-Runtime WSL -Distro <name>` with Linux Node installed. Windows removal
+uses the same entry point with `worktree-rm -Path <absolute-path>
+-ReleasedHead <full-handoff-head> -MergeRef origin/dev` (first add `-DryRun`).
+It always runs natively and refuses dirty, active, unmerged, or unsafe paths.
+See [Windows runtime and cleanup](docs/windows-task-runtime.md) for archive
+requirements, process ownership, sweep behavior, JSON results and exit codes.
+Run the independent Windows Git/junction/lock/process fixtures with
+`powershell -NoProfile -NonInteractive -File scripts/windows/runtime.test.ps1`.
 
-```tsx
-// Use data-testid, not class names or text content
-<div data-testid="setlist-item">...</div>
-<div data-testid="performance-history">...</div>
-<button data-testid="translate-button">번역보기</button>
-<div data-testid="comment-section">...</div>
-<div data-testid="error-message">...</div>
-```
+## What to test
 
----
+**"If this breaks, the site is broken."** Test first what a fan
+loading a setlist page or an operator entering one on show night would
+hit: display-name and translation fallbacks, setlist rendering and its
+admin write path, the realtime live path, canonical URLs and redirects.
 
-## What NOT to Test
+Not worth a test:
 
 ```
 ❌ Prisma model definitions (Prisma tests its own ORM)
 ❌ Next.js routing (framework responsibility)
 ❌ Tailwind CSS styling
-❌ Third-party API responses (Papago, DeepL) — mock these
+❌ Third-party API responses (translation providers, scrapers) — mock these
 ❌ 100% code coverage — not the goal
 ```
 
----
+## data-testid convention
 
-## Implementation Checklist
+When an E2E spec has to pick out an element, select by `data-testid`,
+not by class names or visible text (text changes per locale). The
+current specs mostly assert on URLs, status codes and markup such as
+`<link rel="canonical">`, so few elements carry one yet; add it where
+a new spec needs it:
 
-```
-Sprint 1 (before 2026-05-02):
-  [ ] Install Vitest + Playwright
-  [ ] vitest.config.ts
-  [ ] playwright.config.ts
-  [ ] display.test.ts
-  [ ] translation.test.ts (shouldShowTranslateButton)
-  [ ] csv.test.ts (parsing + validation)
-  [ ] import.test.ts (upsert idempotency)
-  [ ] setlist.spec.ts (page loads, locale redirect)
-
-Sprint 2 (before 2026-05-30):
-  [ ] comment.test.ts (rollup ancestry — most important)
-  [ ] fallback.test.ts (locale fallback)
-  [ ] admin.spec.ts (setlist entry speed)
-  [ ] auth.spec.ts (login flow)
-
-Sprint 3 (before 2026-07-11):
-  [ ] rollup.test.ts (unit test for computeRollup)
-  [ ] BBS post rollup tests
-  [ ] Report auto-hide threshold test
-  [ ] DictionaryTerm applyDictionary test
+```tsx
+<div data-testid="setlist-item">...</div>
+<button data-testid="translate-button">...</button>
 ```

@@ -4,7 +4,11 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import {
+  entityAlternates,
+  entityPath,
+  enforceCanonicalSlug,
+} from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import {
@@ -21,30 +25,25 @@ import { deriveOgPaletteFromCachedArtist } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
-import { InfoCard } from "@/components/InfoCard";
-import { TabBar } from "@/components/TabBar";
-import { SectionLabel } from "@/components/SectionLabel";
 import { ArtistAlbumsSection } from "@/components/ArtistAlbumsSection";
-import { StatsSubLabel } from "@/components/StatsSubLabel";
-import { StatusBadge } from "@/components/StatusBadge";
-import {
-  PerformanceGroup,
-  type PerformanceSeries,
-  type PerformanceEvent,
-} from "@/components/PerformanceGroup";
-import {
-  PERFORMANCE_ROW_GRID,
-  PERFORMANCE_ROW_INDENT_PX,
-  PERFORMANCE_ROW_GAP_PX,
-  STATUS_BADGE_INDENT_PX,
-  STATUS_COL_IDX,
-  TRAILING_COL_IDX,
-} from "@/components/performance-row-layout";
-import { colors, radius, shadows } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
 import { UnitCard } from "@/components/artists/UnitCard";
 import { UnitsToggle } from "@/components/artists/UnitsToggle";
 import { MemberChip } from "@/components/artists/MemberChip";
+import {
+  ArtistEventRow,
+  type ArtistEventView,
+} from "@/components/artists/ArtistEventRow";
+import { ArtistHistoryGroup } from "@/components/artists/ArtistHistoryGroup";
+import {
+  IDENTITY_FALLBACK_ACCENT,
+  MEMBER_FALLBACK_COLOR,
+  accentStyle,
+  fallbackNameLang,
+  localizedFieldLang,
+  originalLang,
+} from "@/components/artists/artistDetail";
+import styles from "@/components/artists/artistDetail.module.css";
 
 type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
@@ -233,7 +232,8 @@ type ArtistEvent = {
   id: number;
   slug: string;
   status: "scheduled" | "ongoing" | "completed" | "cancelled";
-  date: string;
+  // `Event.date` is `DateTime? @db.Date` — null for a TBA concert.
+  date: string | null;
   startTime: string;
   originalName: string | null;
   originalShortName: string | null;
@@ -349,16 +349,19 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // UTC-only rule + matches the artists-list-redesign pattern).
   const referenceNow = new Date();
 
-  // Sidebar H1: localized name BIG, original name SMALL (operator
-  // preference). `displayOriginalName` is now translation-primary at
-  // the helper level (since the 2026-04-28 refactor of
-  // `src/lib/display.ts`), so consume `.main` directly as the
-  // headline and `.sub` as the secondary line — same call used by
-  // every other identity surface (members, series, breadcrumb
-  // labels) so the page can't drift from the rest of the app.
+  // H1: localized name BIG, original name SMALL (operator preference).
+  // `displayOriginalName` is translation-primary at the helper level, so
+  // `.main` is the headline and `.sub` (set only when a distinct
+  // viewer-locale translation exists) is the original-language line.
+  // With no translation, `.main` IS the original — mark it with the
+  // source language so an English page reads a Japanese H1 as Japanese
+  // (20 review: missing source-language attributes).
   const { main: artistPrimaryName, sub: artistSecondaryName } =
     displayOriginalName(artist, artist.translations, locale);
   const localizedFullName = artistPrimaryName || t("unknown");
+  const headlineLang = artistSecondaryName
+    ? undefined
+    : originalLang(artist.originalLanguage, locale);
   const bio = resolveLocalizedField(
     artist,
     artist.translations,
@@ -366,6 +369,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     "bio",
     "originalBio",
   );
+  const bioLang = localizedFieldLang(artist, artist.translations, locale, "bio");
   // Breadcrumb crumbs always render the short variant (project rule:
   // breadcrumbs prefer compact labels; the same artist's full name
   // shows in the page header anyway). `displayNameWithFallback` with
@@ -380,10 +384,6 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         "short",
       )
     : null;
-  // Leaf crumb uses the same short cascade. The h1 above shows the
-  // localized full name; keeping the breadcrumb leaf short avoids the
-  // ribbon overflowing on long names like "蓮ノ空女学院スクール
-  // アイドルクラブ".
   const breadcrumbLeafName =
     displayNameWithFallback(artist, artist.translations, locale, "short") ||
     t("unknown");
@@ -448,13 +448,11 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     }
   }
 
-  // Per-event setlist-item count for completed events. Used to render
-  // the trailing "🎵 N" badge on each row (mockup line 226-230).
-  // Counts SetlistItem rows that have at least one song attached
-  // (`songs: { some: {} }`) — covers both single-song slots and
-  // medley slots equally. Only completed events get the count;
-  // ongoing/upcoming have partial data and the mockup omits the
-  // badge for them too.
+  // Per-event setlist-item count for completed events, shown as the
+  // "🎵 N" songs cell. Counts SetlistItem rows that have at least one
+  // song attached (`songs: { some: {} }`) — covers both single-song
+  // slots and medley slots equally. Only completed events get the
+  // count; ongoing/upcoming have partial data.
   const songCountByEvent = new Map<string, number>();
   if (completedEventIds.length > 0) {
     const groups = await prisma.setlistItem.groupBy({
@@ -472,23 +470,19 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     }
   }
 
-  const tabs = [
+  const tabs: { key: TabKey; label: string }[] = [
     { key: "overview", label: t("tabOverview") },
     // Albums tab only when the artist has albums — no point in an empty
     // tab. The full discography is fetched by the tab body, not here.
     ...(albumCount > 0
-      ? [{ key: "albums", label: t("tabAlbums", { count: albumCount }) }]
+      ? [{ key: "albums" as const, label: t("tabAlbums", { count: albumCount }) }]
       : []),
     { key: "history", label: t("tabHistory", { count: totalEvents }) },
   ];
 
-  // Resolved status labels passed to <PerformanceGroup>; the component
-  // itself is locale-free so the label dictionary lives here.
-  // Ongoing badge uses the marketing "LIVE" label (matching the home,
-  // event list, series, and song detail surfaces) — keeps the
-  // ongoing-event affordance one consistent string across the app
-  // instead of mixing "진행 중" / "LIVE" / "Ongoing" depending on
-  // which page surfaces the badge.
+  // Resolved status labels. Ongoing uses the marketing "LIVE" label
+  // (matching the home, event list, series, and song detail surfaces)
+  // so the ongoing affordance is one consistent string across the app.
   const statusLabels: Record<ResolvedEventStatus, string> = {
     ongoing: evT("live"),
     upcoming: evT("status.upcoming"),
@@ -497,208 +491,280 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   };
 
   // Build a flat per-event view-model first, then group by series.
-  // Doing it this way means the recent-3 list (Overview tab) and the
-  // per-series collapsible groups (History tab) read from the same
-  // source — no duplicated date-formatting / status-resolving logic.
+  // The recent-3 list (Overview tab) and the per-series groups
+  // (History tab) read from the same source — no duplicated
+  // date-formatting / status-resolving logic.
   //
   // Standalone events (eventSeriesId IS NULL) collapse into one
   // synthetic group keyed `"standalone"` — kept distinct from any
   // numeric seriesId since real BigInt IDs serialize to numbers.
-  // The render branch below labels this group with
-  // `t("standaloneEvents")`.
   const STANDALONE_KEY = "standalone";
-  type EventView = PerformanceEvent & {
-    seriesKey: string;
-    rawDateMs: number;
-  };
-  // First, dedupe series surfaced via `artistEvents`. Each event row
-  // carries its EventSeries (or null for standalone events), so a
-  // series is `seen` the first time any of its events shows up.
-  // Order matches the events query (date desc), so the first-event-
-  // seen-per-series order roughly matches recent-activity order —
-  // refined by the explicit sort below.
-  const seriesById = new Map<
-    string,
-    ArtistEvent["eventSeries"]
-  >();
+  const seriesKeyOf = (ev: ArtistEvent) =>
+    ev.eventSeriesId == null ? STANDALONE_KEY : String(ev.eventSeriesId);
+  type EventView = ArtistEventView & { seriesKey: string; rawDateMs: number };
+  // Dedupe series surfaced via `artistEvents`. Each event row carries
+  // its EventSeries (or null for standalone events).
+  const seriesById = new Map<string, ArtistEvent["eventSeries"]>();
   for (const ev of artistEvents) {
-    const key = ev.eventSeriesId == null
-      ? STANDALONE_KEY
-      : String(ev.eventSeriesId);
+    const key = seriesKeyOf(ev);
     if (!seriesById.has(key)) seriesById.set(key, ev.eventSeries);
   }
 
-  const eventViews: EventView[] = [];
-  for (const event of artistEvents) {
+  const eventViews: EventView[] = artistEvents.map((event) => {
     const status = getEventStatus(
       { status: event.status, startTime: event.startTime },
       referenceNow,
     );
-    const eventIdStr = String(event.id);
-    const songCount = songCountByEvent.get(eventIdStr);
-    const trailing =
-      status === "completed" && songCount !== undefined && songCount > 0 ? (
-        <span
-          style={{
-            fontSize: 11,
-            color: colors.textMuted,
-            flexShrink: 0,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {t("songCount", { count: songCount })}
-        </span>
-      ) : null;
-    eventViews.push({
-      // serializeBigInt coerces every id to number at runtime; the
-      // String() cast satisfies PerformanceEvent's id contract
-      // without leaking the bigint type out of the JSON shape.
-      id: eventIdStr,
-      seriesKey: event.eventSeriesId == null
-        ? STANDALONE_KEY
-        : String(event.eventSeriesId),
+    const songCount = songCountByEvent.get(String(event.id));
+    const series = event.eventSeries;
+    // serializeBigInt runs JSON.stringify, so `date` is an ISO string
+    // at runtime — or null for a TBA concert. Never stringify the null:
+    // `String(null)` would put `dateTime="null"` on the row and NaN into
+    // every sort below (a NaN comparator leaves the order undefined).
+    const isoDate = event.date ?? null;
+    return {
+      id: String(event.id),
+      href: entityPath("events", locale, event.id, event.slug),
       status,
+      statusLabel: statusLabels[status],
       formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
+      isoDate: isoDate ? isoDate.slice(0, 10) : null,
       name:
         displayNameWithFallback(event, event.translations, locale) ||
         evT("unknownEvent"),
-      href: `/${locale}/events/${event.id}/${event.slug}`,
-      trailing,
-      // serializeBigInt also runs JSON.stringify, which converts
-      // Date columns to ISO strings — so the runtime value is a
-      // string here even though Prisma's type still says Date.
-      // String() coerces uniformly without an `as` cast.
-      rawDateMs: new Date(String(event.date)).getTime(),
-    });
-  }
+      nameLang: fallbackNameLang(event, event.translations, locale),
+      // Series subtitle (operator feedback, 2026-04-29: event names
+      // alone don't carry the tour). The history grid hides it — the
+      // group header names the series there.
+      seriesName: series
+        ? displayNameWithFallback(series, series.translations, locale) || null
+        : null,
+      seriesLang: series
+        ? fallbackNameLang(series, series.translations, locale)
+        : undefined,
+      songCountLabel:
+        status === "completed" && songCount !== undefined && songCount > 0
+          ? t("songCount", { count: songCount })
+          : null,
+      seriesKey: seriesKeyOf(event),
+      // Undated rows sort after every dated one in the date-desc lists.
+      rawDateMs: isoDate ? new Date(isoDate).getTime() : 0,
+    };
+  });
 
   // Group by series for the History tab. Pin any series with an
   // ongoing event to the top; remainder by most-recent event date
   // desc.
-  const seriesViews: PerformanceSeries[] = [...seriesById.entries()]
+  const seriesViews = [...seriesById.entries()]
     .map(([seriesKey, series]) => {
-      const seriesEvents = eventViews.filter(
-        (ev) => ev.seriesKey === seriesKey,
-      );
-      // Within a series, keep the operator-specified date-desc order.
-      seriesEvents.sort((a, b) => b.rawDateMs - a.rawDateMs);
-      const hasOngoing = seriesEvents.some((e) => e.status === "ongoing");
-      const mostRecentMs = seriesEvents.reduce(
+      const events = eventViews
+        .filter((ev) => ev.seriesKey === seriesKey)
+        // Within a series, keep the operator-specified date-desc order.
+        .sort((a, b) => b.rawDateMs - a.rawDateMs);
+      const hasOngoing = events.some((e) => e.status === "ongoing");
+      const mostRecentMs = events.reduce(
         (m, e) => (e.rawDateMs > m ? e.rawDateMs : m),
         0,
       );
-      // Standalone group (no series): label via i18n, use the
-      // synthetic key as the React key. PerformanceGroup doesn't
-      // know or care that this group is synthetic.
-      const isStandalone = series == null;
       return {
-        seriesId: isStandalone ? STANDALONE_KEY : String(series.id),
-        seriesShort: isStandalone
-          ? t("standaloneEvents")
-          : displayNameWithFallback(series, series.translations, locale) ||
-            evT("unknownEvent"),
+        key: seriesKey,
+        title: series
+          ? displayNameWithFallback(series, series.translations, locale) ||
+            evT("unknownEvent")
+          : t("standaloneEvents"),
+        titleLang: series
+          ? fallbackNameLang(series, series.translations, locale)
+          : undefined,
         hasOngoing,
-        events: seriesEvents,
+        events,
         sortKey: hasOngoing ? Number.MAX_SAFE_INTEGER : mostRecentMs,
       };
     })
-    .sort(
-      (a, b) =>
-        (b as { sortKey: number }).sortKey -
-        (a as { sortKey: number }).sortKey,
-    )
-    // Strip the temporary sortKey to honor the declared
-    // PerformanceSeries shape — explicit field-by-field copy avoids
-    // the unused `_` discard binding that no-unused-vars warns on.
-    .map((s) => ({
-      seriesId: s.seriesId,
-      seriesShort: s.seriesShort,
-      hasOngoing: s.hasOngoing,
-      events: s.events,
-    }));
+    .sort((a, b) => b.sortKey - a.sortKey);
 
   // Recent-3 preview for the Overview tab — newest events across the
-  // entire artist, regardless of series.
-  // Strip the temporary `rawDateMs` and `seriesId` fields back to the
-  // declared PerformanceEvent shape — explicit field copy avoids the
-  // unused `_` discard pattern that triggers no-unused-vars.
-  // Resolve a series-name subtitle for each recent-events row. The
-  // history tab already conveys the series via PerformanceGroup
-  // headers, but the flat 3-row recent-events block on the overview
-  // tab loses that context — operator feedback (2026-04-29):
-  // "Recent event should show series name if exist as performance
-  // history does. Event name does not include full information."
-  // Pull from the existing `seriesById` map so this stays one extra
-  // string per row, no extra query.
-  type RecentEventRow = PerformanceEvent & { seriesName: string | null };
-  const recentEvents: RecentEventRow[] = [...eventViews]
+  // entire artist (future dates included), regardless of series.
+  const recentEvents = [...eventViews]
     .sort((a, b) => b.rawDateMs - a.rawDateMs)
-    .slice(0, 3)
-    .map((e) => {
-      const series = seriesById.get(e.seriesKey);
-      const seriesName = series
-        ? displayNameWithFallback(series, series.translations, locale) || null
-        : null;
-      return {
-        id: e.id,
-        status: e.status,
-        formattedDate: e.formattedDate,
-        name: e.name,
-        href: e.href,
-        trailing: e.trailing,
-        seriesName,
-      };
-    });
+    .slice(0, 3);
 
   // Pre-render a sub-unit card to a ReactNode so <UnitsToggle>
   // (client) can compose the main/other split without re-running the
-  // server-side resolution. Closure over `locale`, `t`, and color
-  // constants keeps the call sites compact.
+  // server-side resolution.
   type SubUnit = (typeof subUnits)[number];
-  const renderUnitCard = (unit: SubUnit) => {
-    const unitName =
-      displayNameWithFallback(unit, unit.translations, locale) || t("unknown");
-    // Color: `Artist.color` if set, else a deterministic pick from
-    // `unitFallbackPalette` keyed on `unit.slug` (so multiple
-    // color-pending sub-units render with distinguishable hues
-    // instead of all collapsing to brand blue). One resolved color
-    // drives both the text/hover-border and the 4×18 left stripe —
-    // dropping the prior `BRAND_GRADIENT` two-stop variant since at
-    // 4×18 a solid hue reads identically while keeping the resolver
-    // surface (one input, one output) simple.
-    const unitColor = resolveUnitColor(unit);
-    const stripeBg = unitColor;
-    const members = unit.stageLinks.map(
-      (sl) =>
-        displayNameWithFallback(
+  const renderUnitCard = (unit: SubUnit) => (
+    <UnitCard
+      key={unit.id}
+      href={entityPath("artists", locale, unit.id, unit.slug)}
+      name={{
+        text:
+          displayNameWithFallback(unit, unit.translations, locale) ||
+          t("unknown"),
+        lang: fallbackNameLang(unit, unit.translations, locale),
+      }}
+      // Stored `Artist.color`, else a deterministic slug-palette pick,
+      // so colour-pending units stay distinguishable and match their
+      // event-page setlist pill (same resolver).
+      color={resolveUnitColor(unit)}
+      members={unit.stageLinks.map((sl) => ({
+        text:
+          displayNameWithFallback(
+            sl.stageIdentity,
+            sl.stageIdentity.translations,
+            locale,
+          ) || t("unknownMember"),
+        lang: fallbackNameLang(
           sl.stageIdentity,
           sl.stageIdentity.translations,
           locale,
-        ) || t("unknownMember"),
-    );
-    return (
-      <UnitCard
-        key={unit.id}
-        href={`/${locale}/artists/${unit.id}/${unit.slug}`}
-        unitName={unitName}
-        unitColor={unitColor}
-        stripeBg={stripeBg}
-        members={members}
-      />
-    );
-  };
+        ),
+      }))}
+    />
+  );
 
+  const artistHref = entityPath("artists", locale, artist.id, artist.slug);
+
+  const unitsPanel = subUnits.length > 0 && (
+    <section className={styles.panel}>
+      <div className={styles.sectionHead}>
+        <h2 className={styles.sectionTitle}>{t("subUnits")}</h2>
+      </div>
+      <UnitsToggle
+        mainCards={mainSubUnits.map(renderUnitCard)}
+        otherCards={otherSubUnits.map(renderUnitCard)}
+        showLabel={t("showOtherUnits", { count: otherSubUnits.length })}
+        hideLabel={t("hideOtherUnits")}
+      />
+    </section>
+  );
+
+  // Every direct StageIdentityArtist link, graduated members included,
+  // in official member order (`byStageIdentityOrderBy`).
+  const membersPanel = artist.stageLinks.length > 0 && (
+    <section className={styles.panel}>
+      <div className={styles.sectionHead}>
+        <h2 className={styles.sectionTitle}>
+          {t("membersWithCount", { count: artist.stageLinks.length })}
+        </h2>
+      </div>
+      <ul className={styles.memberGrid}>
+        {artist.stageLinks.map((sl) => {
+          const si = sl.stageIdentity;
+          const owningUnit = memberToUnit.get(si.id);
+          // Colour cascade: owning sub-unit's stored colour (members
+          // inherit their unit's identity) → member's own SI colour →
+          // muted. Deliberately not the slug palette: an invented hue
+          // would claim a membership colour that doesn't exist.
+          const color = owningUnit?.color ?? si.color ?? MEMBER_FALLBACK_COLOR;
+          const avatarText = displayNameWithFallback(
+            si,
+            si.translations,
+            locale,
+            "short",
+          );
+          return (
+            <li key={sl.id}>
+              <MemberChip
+                href={entityPath("members", locale, si.id, si.slug)}
+                name={{
+                  text:
+                    displayNameWithFallback(si, si.translations, locale) ||
+                    t("unknownMember"),
+                  lang: fallbackNameLang(si, si.translations, locale),
+                }}
+                // Initial from the locale short-name cascade (a
+                // recognised handle), separate from the full body name.
+                avatarLabel={
+                  avatarText
+                    ? {
+                        text: avatarText,
+                        lang: fallbackNameLang(
+                          si,
+                          si.translations,
+                          locale,
+                          "short",
+                        ),
+                      }
+                    : null
+                }
+                unitName={
+                  owningUnit
+                    ? {
+                        // Same fallback as the unit card, so a unit
+                        // with no displayable name never leaves an
+                        // empty second line on the chip.
+                        text:
+                          displayNameWithFallback(
+                            owningUnit,
+                            owningUnit.translations,
+                            locale,
+                          ) || t("unknown"),
+                        lang: fallbackNameLang(
+                          owningUnit,
+                          owningUnit.translations,
+                          locale,
+                        ),
+                      }
+                    : null
+                }
+                color={color}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+
+  const recentEventsPanel = (
+    <section className={styles.panel}>
+      <div className={styles.sectionHead}>
+        <h2 className={styles.sectionTitle}>{t("recentEvents")}</h2>
+        {totalEvents > recentEvents.length && (
+          <Link
+            href={`${artistHref}?tab=history`}
+            scroll={false}
+            className={styles.more}
+            aria-label={t("viewAllHistory")}
+          >
+            {t("viewAll")}
+          </Link>
+        )}
+      </div>
+      {recentEvents.length === 0 ? (
+        <p className={styles.empty}>{t("noEvents")}</p>
+      ) : (
+        <ul className={styles.list}>
+          {recentEvents.map((event) => (
+            <li key={event.id}>
+              <ArtistEventRow event={event} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
+  const albumsPreview = (
+    // "최신 앨범" compact preview. Self-fetching; renders null when the
+    // artist has no albums. The full discography lives in the Albums tab.
+    <ArtistAlbumsSection
+      artistId={artistId}
+      artistSlug={artist.slug}
+      locale={locale}
+      mode="preview"
+    />
+  );
+
+  const hasLeftColumn = Boolean(unitsPanel || membersPanel);
+
+  // Body is a flex column: `<main>` takes the remaining height
+  // (`flex-1`) and `.page` pins `width: 100%` next to its max-width so
+  // the column tracks the viewport, not its content.
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: colors.bgPage,
-      }}
-    >
-      <div
-        className="mx-auto px-4 lg:px-10"
-        style={{ maxWidth: 1100 }}
-      >
+    <main className="flex-1">
+      <div className={styles.page}>
+      <div className={styles.breadcrumb}>
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
           items={[
@@ -713,487 +779,159 @@ export default async function ArtistPage({ params, searchParams }: Props) {
               ? [
                   {
                     label: parentName,
-                    href: `/${locale}/artists/${artist.parentArtist.id}/${artist.parentArtist.slug}`,
+                    href: entityPath(
+                      "artists",
+                      locale,
+                      artist.parentArtist.id,
+                      artist.parentArtist.slug,
+                    ),
                   } satisfies BreadcrumbItem,
                 ]
               : []),
             { label: breadcrumbLeafName },
           ]}
         />
+      </div>
 
-        {/* `grid-cols-1` is required on mobile — without it, the
-            implicit grid track defaults to `minmax(min-content,
-            max-content)` and the track grows to fit the widest
-            descendant's `min-content`. Cards containing `whiteSpace:
-            nowrap` titles (long song names, series subtitles)
-            therefore stretch the grid wider than the viewport on
-            small screens, with the page background only painting to
-            the viewport edge — visible as a colored gutter beside
-            the over-wide cards. `minmax(0, 1fr)` (which Tailwind's
-            `grid-cols-1` compiles to) clamps the track to viewport
-            and lets the inner ellipsis truncation actually engage. */}
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] lg:gap-7" style={{ alignItems: "start", paddingBottom: 60 }}>
-          {/* Sidebar (mobile: stacked above tabs; desktop: sticky 280px column) */}
-          <div className="lg:sticky lg:top-[72px]" style={{ marginBottom: 12 }}>
-            <InfoCard artist={artist}>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  color: colors.primary,
-                  background: colors.primaryBg,
-                  borderRadius: 10,
-                  padding: "2px 8px",
-                  textTransform: "uppercase",
-                }}
-              >
-                {t(`type.${artist.type}`)}
-              </span>
-              <h1
-                className="lg:text-[17px]"
-                style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  color: colors.textPrimary,
-                  lineHeight: 1.35,
-                  marginTop: 10,
-                  marginBottom: artistSecondaryName ? 6 : 14,
-                }}
-              >
-                {localizedFullName}
-              </h1>
-              {artistSecondaryName && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: colors.textMuted,
-                    marginBottom: 14,
-                  }}
-                >
-                  {artistSecondaryName}
-                </div>
-              )}
-              {bio && (
-                <p
-                  style={{
-                    fontSize: 13,
-                    color: colors.textSecondary,
-                    lineHeight: 1.7,
-                    marginBottom: 18,
-                  }}
-                >
-                  {bio}
-                </p>
-              )}
-              <div style={{ display: "flex", gap: 20 }}>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: colors.textPrimary,
-                    }}
-                  >
-                    {totalEvents}
-                  </div>
-                  <StatsSubLabel>
-                    {t("statsTotalEvents")}
-                  </StatsSubLabel>
-                </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: colors.textPrimary,
-                    }}
-                  >
-                    {totalCompleted}
-                  </div>
-                  <StatsSubLabel>
-                    {t("statsCompleted")}
-                  </StatsSubLabel>
-                </div>
-                {subUnits.length > 0 && (
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 20,
-                        fontWeight: 700,
-                        color: colors.textPrimary,
-                      }}
-                    >
-                      {subUnits.length}
-                    </div>
-                    <StatsSubLabel>
-                      {t("statsSubUnits")}
-                    </StatsSubLabel>
-                  </div>
-                )}
-              </div>
-            </InfoCard>
-          </div>
-
-          {/* Main content */}
-          <div>
-            <TabBar
-              tabs={tabs}
-              active={activeTab}
-              ariaLabel={ct("tabsAriaLabel")}
-            />
-
-            {activeTab === "overview" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {subUnits.length > 0 && (
-                  <section
-                    style={{
-                      background: colors.bgCard,
-                      borderRadius: radius.card,
-                      padding: "18px 20px",
-                      boxShadow: shadows.card,
-                    }}
-                  >
-                    <SectionLabel>{t("subUnits")}</SectionLabel>
-                    <UnitsToggle
-                      mainCards={mainSubUnits.map(renderUnitCard)}
-                      otherCards={otherSubUnits.map(renderUnitCard)}
-                      showLabel={t("showOtherUnits", {
-                        count: otherSubUnits.length,
-                      })}
-                      hideLabel={t("hideOtherUnits")}
-                    />
-                  </section>
-                )}
-
-                {artist.stageLinks.length > 0 && (
-                  <section
-                    style={{
-                      background: colors.bgCard,
-                      borderRadius: radius.card,
-                      padding: "18px 20px",
-                      boxShadow: shadows.card,
-                    }}
-                  >
-                    <SectionLabel>
-                      {t("membersWithCount", {
-                        count: artist.stageLinks.length,
-                      })}
-                    </SectionLabel>
-                    <div
-                      style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-                    >
-                      {artist.stageLinks.map((sl) => {
-                        const owningUnit = memberToUnit.get(
-                          sl.stageIdentity.id,
-                        );
-                        // Color cascade: owning sub-unit's color
-                        // (members inherit their unit's brand) →
-                        // member's own SI color → muted gray. Same
-                        // chain as before; the hover treatment in
-                        // MemberChip is what activates the unit
-                        // identity on interaction.
-                        const unitColor =
-                          owningUnit?.color ??
-                          sl.stageIdentity.color ??
-                          colors.textMuted;
-                        const unitName = owningUnit
-                          ? displayNameWithFallback(
-                              owningUnit,
-                              owningUnit.translations,
-                              locale,
-                            )
-                          : null;
-                        const memberName =
-                          displayNameWithFallback(
-                            sl.stageIdentity,
-                            sl.stageIdentity.translations,
-                            locale,
-                          ) || t("unknownMember");
-                        // Avatar initial source: locale shortName
-                        // cascade (locale.shortName → locale.name →
-                        // originalShortName → originalName), kept
-                        // separate from `memberName` (which is always
-                        // the full name for the body text). Empty
-                        // string normalized to null so MemberChip's
-                        // fallback chain triggers correctly.
-                        const memberAvatarLabel =
-                          displayNameWithFallback(
-                            sl.stageIdentity,
-                            sl.stageIdentity.translations,
-                            locale,
-                            "short",
-                          ) || null;
-                        return (
-                          <MemberChip
-                            key={sl.id}
-                            href={`/${locale}/members/${sl.stageIdentity.id}/${sl.stageIdentity.slug}`}
-                            memberName={memberName}
-                            avatarLabel={memberAvatarLabel}
-                            unitName={unitName}
-                            unitColor={unitColor}
-                          />
-                        );
-                      })}
-                    </div>
-                  </section>
-                )}
-
-                {/* "최신 앨범" compact preview (b09 + QA pass). Self-
-                    fetching; renders null when the artist has no albums.
-                    The full discography lives in the Albums tab. */}
-                <ArtistAlbumsSection
-                  artistId={artistId}
-                  artistSlug={artist.slug}
-                  locale={locale}
-                  mode="preview"
-                />
-
-                <section
-                  style={{
-                    background: colors.bgCard,
-                    borderRadius: radius.card,
-                    overflow: "hidden",
-                    boxShadow: shadows.card,
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: "16px 20px 12px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      borderBottom: `1px solid ${colors.borderLight}`,
-                    }}
-                  >
-                    <SectionLabel noBorder style={{ marginBottom: 0 }}>
-                      {t("recentEvents")}
-                    </SectionLabel>
-                    {totalEvents > recentEvents.length && (
-                      <Link
-                        href={`/${locale}/artists/${artist.id}/${artist.slug}?tab=history`}
-                        style={{
-                          fontSize: 12,
-                          color: colors.primary,
-                          fontWeight: 600,
-                          textDecoration: "none",
-                        }}
-                      >
-                        {t("viewAll")}
-                      </Link>
-                    )}
-                  </div>
-                  {recentEvents.length === 0 ? (
-                    <p
-                      style={{
-                        padding: "32px 16px",
-                        fontSize: 14,
-                        color: colors.textMuted,
-                        textAlign: "center",
-                      }}
-                    >
-                      {t("noEvents")}
-                    </p>
-                  ) : (
-                    recentEvents.map((event, i) => (
-                      <Link
-                        key={event.id}
-                        href={event.href}
-                        className="row-hover-bg"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "10px 20px",
-                          borderBottom:
-                            i < recentEvents.length - 1
-                              ? `1px solid ${colors.borderFaint}`
-                              : "none",
-                          textDecoration: "none",
-                          color: "inherit",
-                        }}
-                      >
-                        <StatusBadge
-                          status={event.status}
-                          size="sm"
-                          label={statusLabels[event.status]}
-                        />
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: colors.textMuted,
-                            // Match the history tab's date column
-                            // (`PERFORMANCE_ROW_GRID` second track at
-                            // 100px) so a long-form locale date like
-                            // "2026년 4월 25일" doesn't truncate. The
-                            // 52px width was inherited from the
-                            // mockup's `formatDateShort` helper, which
-                            // we don't use — `formatDate` produces the
-                            // full year-month-day string.
-                            width: 100,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {event.formattedDate}
-                        </span>
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 1,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 600,
-                              color: colors.primary,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {event.name}
-                          </span>
-                          {event.seriesName && (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: colors.textMuted,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {event.seriesName}
-                            </span>
-                          )}
-                        </div>
-                        {event.trailing}
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            fontSize: 13,
-                            color: colors.borderSubtle,
-                          }}
-                        >
-                          ›
-                        </span>
-                      </Link>
-                    ))
-                  )}
-                </section>
-              </div>
-            )}
-
-            {activeTab === "albums" && albumCount > 0 && (
-              // Full discography (single-column rows). Self-fetching.
-              <ArtistAlbumsSection
-                artistId={artistId}
-                artistSlug={artist.slug}
-                locale={locale}
-                mode="full"
-              />
-            )}
-
-            {activeTab === "history" && (
-              <div
-                style={{
-                  background: colors.bgCard,
-                  borderRadius: radius.card,
-                  overflow: "hidden",
-                  boxShadow: shadows.card,
-                }}
-              >
-                <div
-                  style={{
-                    padding: "16px 20px 12px",
-                    borderBottom: `1px solid ${colors.borderLight}`,
-                  }}
-                >
-                  <SectionLabel noBorder style={{ marginBottom: 0 }}>
-                    {t("historyHeader", { count: totalEvents })}
-                  </SectionLabel>
-                </div>
-                {seriesViews.length === 0 ? (
-                  <p
-                    style={{
-                      padding: "32px 16px",
-                      fontSize: 14,
-                      color: colors.textMuted,
-                      textAlign: "center",
-                    }}
-                  >
-                    {t("noEvents")}
-                  </p>
-                ) : (
-                  <>
-                    {/* Desktop-only column-header strip — same grid
-                        template as the rows below so headers line up
-                        with row tracks. Mirrors the song detail
-                        page's history tab pattern (which uses the
-                        identical PERFORMANCE_ROW_GRID export). Hidden
-                        on mobile via `hidden lg:grid`; mobile rows
-                        carry no column header. */}
-                    <div
-                      className="hidden lg:grid"
-                      style={{
-                        gridTemplateColumns: PERFORMANCE_ROW_GRID,
-                        gap: PERFORMANCE_ROW_GAP_PX,
-                        padding: `8px 16px 8px ${PERFORMANCE_ROW_INDENT_PX}px`,
-                        background: colors.bgFaint,
-                        borderBottom: `1px solid ${colors.border}`,
-                      }}
-                    >
-                      {[
-                        evT("tableHeader.status"),
-                        evT("tableHeader.date"),
-                        evT("tableHeader.name"),
-                        evT("tableHeader.songs"),
-                        "",
-                      ].map((label, i) => (
-                        <span
-                          key={i}
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: colors.textMuted,
-                            letterSpacing: "0.06em",
-                            textTransform: "uppercase",
-                            // Anchor trailing column with row chips
-                            // (right-aligned), and pad STATUS by the
-                            // badge's internal padding so the header
-                            // text aligns with the badge text. See
-                            // performance-row-layout.ts for the
-                            // detailed rationale.
-                            textAlign:
-                              i === TRAILING_COL_IDX ? "right" : "left",
-                            paddingLeft:
-                              i === STATUS_COL_IDX ? STATUS_BADGE_INDENT_PX : 0,
-                          }}
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                    {seriesViews.map((sv) => (
-                      <PerformanceGroup
-                        key={sv.seriesId}
-                        series={sv}
-                        statusLabels={statusLabels}
-                        eventCountLabel={t("eventCount", {
-                          count: sv.events.length,
-                        })}
-                      />
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+      {/* Identity: full-width panel (20-v1), no portrait or artwork —
+          artists have no managed photos and the redesign adds none.
+          The stored artist colour paints only the 5px left stripe. */}
+      <section
+        className={styles.identity}
+        style={accentStyle(artist.color ?? IDENTITY_FALLBACK_ACCENT)}
+      >
+        <div className={styles.identityCopy}>
+          <p className={styles.eyebrow}>
+            {t("title")}
+            <span className={styles.badge}>{t(`type.${artist.type}`)}</span>
+          </p>
+          <h1 className={styles.title} lang={headlineLang}>
+            {localizedFullName}
+          </h1>
+          {artistSecondaryName && (
+            <p
+              className={styles.original}
+              lang={originalLang(artist.originalLanguage, locale)}
+            >
+              {artistSecondaryName}
+            </p>
+          )}
+          {bio && (
+            <p className={styles.bio} lang={bioLang}>
+              {bio}
+            </p>
+          )}
         </div>
+        <dl className={styles.stats}>
+          <div>
+            <dt>{t("statsTotalEvents")}</dt>
+            <dd>{totalEvents}</dd>
+          </div>
+          <div>
+            <dt>{t("statsCompleted")}</dt>
+            <dd>{totalCompleted}</dd>
+          </div>
+          {subUnits.length > 0 && (
+            <div>
+              <dt>{t("statsSubUnits")}</dt>
+              <dd>{subUnits.length}</dd>
+            </div>
+          )}
+        </dl>
+      </section>
+
+      {/* Server-routed `?tab=` links, not ARIA tabs: each tab is a
+          fresh server render, so the WAI-ARIA tab pattern (panels in
+          one DOM, roving arrow-key focus) would misdescribe the
+          interaction. `aria-current` marks the active one. A direct
+          `?tab=albums` link to an artist without albums renders the
+          empty discography with no tab marked — that tab is hidden. */}
+      <nav className={styles.tabs} aria-label={t("tabsAriaLabel")}>
+        {tabs.map((tab) => (
+          <Link
+            key={tab.key}
+            href={`${artistHref}?tab=${tab.key}`}
+            scroll={false}
+            className={styles.tab}
+            aria-current={tab.key === activeTab ? "page" : undefined}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </nav>
+
+      {activeTab === "overview" &&
+        (hasLeftColumn ? (
+          <div className={styles.overview}>
+            <div className={styles.stack}>
+              {unitsPanel}
+              {membersPanel}
+            </div>
+            <div className={styles.stack}>
+              {albumsPreview}
+              {recentEventsPanel}
+            </div>
+          </div>
+        ) : (
+          <div className={styles.stack}>
+            {albumsPreview}
+            {recentEventsPanel}
+          </div>
+        ))}
+
+      {activeTab === "albums" && (
+        // Full discography (single-column rows). Self-fetching.
+        <ArtistAlbumsSection
+          artistId={artistId}
+          artistSlug={artist.slug}
+          locale={locale}
+          mode="full"
+        />
+      )}
+
+      {activeTab === "history" &&
+        (seriesViews.length === 0 ? (
+          <section className={styles.panel}>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>
+                {t("historyHeader", { count: 0 })}
+              </h2>
+            </div>
+            <p className={styles.empty}>{t("noEvents")}</p>
+          </section>
+        ) : (
+          <>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>
+                {t("historyHeader", { count: totalEvents })}
+              </h2>
+            </div>
+            <div className={styles.history}>
+              {seriesViews.map((sv) => (
+                <ArtistHistoryGroup
+                  key={sv.key}
+                  title={sv.title}
+                  titleLang={sv.titleLang}
+                  countLabel={t("eventCount", { count: sv.events.length })}
+                  liveLabel={sv.hasOngoing ? statusLabels.ongoing : null}
+                  columns={{
+                    dateStatus: t("historyColumns.dateStatus"),
+                    event: t("historyColumns.event"),
+                    songs: ct("songs"),
+                  }}
+                >
+                  <ul className={styles.list}>
+                    {sv.events.map((event) => (
+                      <li key={event.id}>
+                        <ArtistEventRow event={event} />
+                      </li>
+                    ))}
+                  </ul>
+                </ArtistHistoryGroup>
+              ))}
+            </div>
+          </>
+        ))}
       </div>
     </main>
   );

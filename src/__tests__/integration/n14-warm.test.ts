@@ -159,13 +159,25 @@ describe("writer warming ON (LIVE_WARM_ENTRIES=1, in-memory Runtime Cache)", () 
     const warmLines = log.mock.calls
       .map((c) => String(c[0]))
       .filter((l) => l.startsWith("[liveWarm] "));
-    expect(warmLines[0]).toMatch(new RegExp(`^\\[liveWarm\\] start event=${eventId} rev=${rev} `));
+    // Regex literals with captures, compared to the expected values: a
+    // pattern built from the values is what the non-literal-regexp lint
+    // (and CI Semgrep) blocks.
+    expect(/^\[liveWarm\] start event=(\d+) rev=(\d+) /.exec(warmLines[0] ?? "")?.slice(1)).toEqual([
+      String(eventId),
+      String(rev),
+    ]);
     const sets = warmLines.filter((l) => l.startsWith("[liveWarm] set "));
     expect(sets).toHaveLength(locales.length);
     for (const l of sets) {
-      expect(l).toMatch(new RegExp(` atLeastRev=${rev} rev=${rev} bytes=\\d+ buildMs=\\d+ setMs=\\d+ ok=true `));
+      expect(/ atLeastRev=(\d+) rev=(\d+) bytes=\d+ buildMs=\d+ setMs=\d+ ok=true /.exec(l)?.slice(1)).toEqual([
+        String(rev),
+        String(rev),
+      ]);
     }
-    expect(warmLines.at(-1)).toMatch(new RegExp(`^\\[liveWarm\\] done event=${eventId} rev=${rev} ms=\\d+ `));
+    expect(/^\[liveWarm\] done event=(\d+) rev=(\d+) ms=\d+ /.exec(warmLines.at(-1) ?? "")?.slice(1)).toEqual([
+      String(eventId),
+      String(rev),
+    ]);
 
     for (const locale of locales) {
       const warm = await getSetlist(`&locale=${locale}&minRev=${rev}&hint=1`);
@@ -281,7 +293,12 @@ describe("slowbuild drill hold (dev DB, pool max 2)", () => {
       );
     log.mockRestore();
     expect(sets).toHaveLength(locales.length);
-    const num = (l: string, k: string) => Number(l.match(new RegExp(` ${k}=(\\d+)(?: |$)`))?.[1]);
+    // Token lookup instead of a RegExp built from `k` (Semgrep
+    // detect-non-literal-regexp); NaN when the key is absent or `-`.
+    const num = (l: string, k: string) => {
+      const v = l.split(" ").find((t) => t.startsWith(`${k}=`))?.slice(k.length + 1);
+      return v !== undefined && /^\d+$/.test(v) ? Number(v) : NaN;
+    };
     const iv = sets
       .map((l) => {
         expect(l).toMatch(/ ok=true /);

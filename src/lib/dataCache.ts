@@ -254,7 +254,9 @@ function expireTags(tags: string[]): void {
       // cache couldn't be told about it — worst case the public page
       // is stale for one TTL. Throws outside a Next request scope
       // (unit tests, scripts).
-      console.error(`[dataCache] revalidateTag(${tag}) failed`, err);
+      // `tag` goes in as a %s argument, not interpolated into the
+      // format string, so a `%` in it can't be read as a directive.
+      console.error("[dataCache] revalidateTag(%s) failed", tag, err);
     }
   }
 }
@@ -332,16 +334,23 @@ export function warmEntryCache(): RuntimeCache {
  */
 function expireWarmPublicData(): void {
   const startedAt = Date.now();
-  console.log(`[dataCache] expire-warm phase=start at=${startedAt} instance=${INSTANCE_ID}`);
+  console.log(
+    "[dataCache] expire-warm phase=start at=%s instance=%s",
+    startedAt,
+    INSTANCE_ID,
+  );
   const settled = (ok: boolean) => {
     const at = Date.now();
     console.log(
-      `[dataCache] expire-warm phase=done ok=${ok} ms=${at - startedAt} at=${at} ` +
-        `instance=${INSTANCE_ID}`,
+      "[dataCache] expire-warm phase=done ok=%s ms=%s at=%s instance=%s",
+      ok,
+      at - startedAt,
+      at,
+      INSTANCE_ID,
     );
   };
   const fail = (err: unknown) =>
-    console.error(`[dataCache] expireTag(${WARM_PUBLIC_DATA_TAG}) failed`, err);
+    console.error("[dataCache] expireTag(%s) failed", WARM_PUBLIC_DATA_TAG, err);
   let pending: Promise<void>;
   try {
     pending = warmEntryCache()

@@ -19,19 +19,25 @@ Similar to setlist.fm but focused on East Asian content — Korean, Japanese, En
 
 ## Tech Stack
 
+Versions are deliberately not pinned here: `package.json` (and the
+installed `node_modules`) is the source of truth. When this table and
+the installed packages disagree, trust the packages — e.g. read the
+Next.js guides in `node_modules/next/dist/docs/` before relying on
+remembered App Router APIs.
+
 | Layer | Technology | Notes |
 |---|---|---|
-| Framework | Next.js 14 (App Router) | SSR for SEO |
+| Framework | Next.js (App Router) | SSR for SEO |
 | Language | TypeScript | Strict mode |
 | i18n | next-intl | /[locale]/ routing |
 | Auth | NextAuth.js | Phase 1B |
-| ORM | Prisma 7 | prisma.config.ts pattern |
+| ORM | Prisma | prisma.config.ts pattern |
 | Database | PostgreSQL (Supabase Seoul) | Free tier → Pro at Phase 2 |
 | Search | pg_tsvector → Meilisearch Cloud → self-hosted | Phased progression |
 | Cache | Redis (Upstash Seoul) | Phase 2 |
-| Images | Cloudflare R2 | Phase 2 — no self-hosted images in MVP |
+| Images | Cloudflare R2 | Provisioned: prod bucket on img.opensetlist.com, dev bucket for Preview/local; upload code (`src/lib/imageUpload/`) on feature/redesign only |
 | Hosting | Vercel (frontend) | Free tier |
-| CDN | Cloudflare | Free |
+| DNS / CDN | Cloudflare | DNS since 2026-10-21; Vercel records DNS-only (not proxied, so no Cloudflare CDN); help@ via Email Routing |
 
 ---
 
@@ -40,7 +46,7 @@ Similar to setlist.fm but focused on East Asian content — Korean, Japanese, En
 - `prisma.config.ts` — DB connection lives here, not in schema.prisma
 - `src/lib/prisma.ts` — singleton client with PrismaPg adapter
 - Key: use session pooler (port 5432) for migrations, transaction pooler (port 6543) for runtime
-- 읽기 전용 DB 조회는 `scripts/db-ro.mjs` (세션 풀러, BEGIN READ ONLY)
+- 읽기 전용 DB 조회는 `scripts/db-ro.mjs` (dev 전용, 세션 풀러, BEGIN READ ONLY; ad-hoc `pg` 스크립트 대신)
 - See `memory/prisma_config.md` for full code patterns and commands
 
 ---
@@ -155,7 +161,8 @@ in page metadata only — next-intl's `Link` header is off
 
 ```
 /[locale]/... routing — locale prefix required on all pages
-Locales: ko (launch), ja (Phase 2), en (Phase 3), zh-CN (Phase 3)
+Locales: as configured in src/i18n/routing.ts (`locales`, `defaultLocale`)
+Planned: zh-CN (not yet routed)
 ```
 
 Hard rules:
@@ -250,7 +257,9 @@ What's worth commenting:
 Still skip:
 - Restating what well-named code already says (`// increment i`)
 - References to the current task / PR / fix — those rot fast and
-  belong in the PR description, not the source
+  belong in the PR description, not the source. Approved design packet
+  IDs (`18-v3`, `20-v1`) are the exception: they name the durable wiki
+  packet (`output/redesign/handoffs/`) the code reproduces.
 
 Code reviewers (CodeRabbit and the local review hooks) should NOT flag
 multi-line comment blocks as a style violation in this project.
@@ -282,6 +291,12 @@ Branches:
   dev      — staging. Auto-deploys to Vercel Preview with dev DB.
   feature/* — one branch per feature, merged into dev via PR.
   hotfix/* — emergency fixes, merged into main + dev.
+  feature/redesign — long-lived integration branch for the site redesign.
+             Redesign app task branches start from it and PR back into it;
+             it reaches dev only through one final PR. Schema prerequisites
+             still go feature/* → dev first, then get merged into it.
+             Remove this entry and the feature/redesign filters in
+             .github/workflows/ and .coderabbit.yaml once that final PR merges.
 
 Release flow:
   feature/* → PR → dev → test on Preview → PR → main (Vercel deploys production on this merge) → git tag v*.*.* (triggers migrate-prod + release record)

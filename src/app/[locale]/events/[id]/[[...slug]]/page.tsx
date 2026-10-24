@@ -54,6 +54,10 @@ import { formatVenueStart } from "@/lib/venueTime";
 import { buildEventJsonLd, serializeJsonLd } from "@/lib/seo/eventJsonLd";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { EventBdSection } from "@/components/EventBdSection";
+import { EventHero } from "@/components/event/EventHero";
+import styles from "@/components/event/eventDetail.module.css";
+import { LOGO_EVENT_SELECT, resolveEventLogo } from "@/lib/logoResolution";
+import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
 import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
 import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
@@ -318,6 +322,24 @@ const getEventStatusRow = cachedQuery(
       select: { status: true, startTime: true },
     }),
   { revalidate: CACHE_TTL.eventStatus, tags: (id) => [eventTag(id)] },
+);
+
+// Hero logo inputs (07's `LOGO_EVENT_SELECT`: the event override, its
+// series link and the event artist for the typography colour). A
+// separate narrow read instead of another relation on `fetchEvent`:
+// that query's `relationJoins` shape is tuned for TTFB/egress (see its
+// comments) and the logo is a handful of columns. Cached per event like
+// the other entity reads; logo writers expire it through the shared
+// public-data tag (`revalidatePublicData`), setlist writers through
+// `eventTag`.
+const getEventLogoRow = cachedQuery(
+  "event-logo",
+  (id: bigint) =>
+    prisma.event.findFirst({
+      where: { id, isDeleted: false },
+      select: LOGO_EVENT_SELECT,
+    }),
+  { revalidate: CACHE_TTL.entity, tags: (id) => [eventTag(id)] },
 );
 
 // `status` is part of the key, not just an input to the bypass
@@ -740,6 +762,12 @@ export default async function EventPage({ params }: Props) {
     fanTop3,
     roster,
     liveSeed,
+    logoRow,
+    logoGraph,
+    headerT,
+    detailT,
+    boardT,
+    impressionT,
   ] = await Promise.all([
       getEvent(eventId, locale),
       getTranslations("Event"),
@@ -760,6 +788,14 @@ export default async function EventPage({ params }: Props) {
       ),
       getEventRoster(eventId, locale),
       liveSeedPromise,
+      // A failed logo read degrades to the typography slot rather than
+      // failing the page — the logo is decoration, the page is not.
+      getEventLogoRow(eventId).catch(() => null),
+      getLogoSeriesGraph().catch(() => null),
+      getTranslations("Header"),
+      getTranslations("EventDetail"),
+      getTranslations("Board"),
+      getTranslations("Impression"),
     ]);
   if (!event) notFound();
   // Bare id / wrong or legacy localized slug → 308 to the canonical
@@ -1229,45 +1265,138 @@ export default async function EventPage({ params }: Props) {
     locale,
   });
 
-  // Breadcrumb: always [Home › seriesShort › eventShort] when a series
-  // exists; falls back to [Home › eventShort] otherwise. Operator
-  // confirmed "Home › series › event" as the canonical shape (mockup
-  // `event-page-desktop-mockup-v2.jsx:481-485`); the prior 2-item
-  // shape (series → event) dropped Home and was inconsistent with
-  // every other detail page's breadcrumb. Hrefs are fully
-  // locale-prefixed since `Breadcrumb` uses `next/link`.
+  // Breadcrumb (18-v3 `.crumb`): [Concerts › seriesShort › eventShort]
+  // when a series exists, [Concerts › eventShort] otherwise. The root
+  // is the concert list (the header's 公演/공연/Concerts entry) rather
+  // than Home, matching the approved design and the list → detail path
+  // fans actually take. Hrefs are fully locale-prefixed since
+  // `Breadcrumb` uses `next/link`.
   const breadcrumbItems: BreadcrumbItem[] = [
-    { label: ct("home"), href: `/${locale}` },
+    { label: headerT("events"), href: `/${locale}/events` },
     ...(event.eventSeries && seriesShortName
       ? [
           {
             label: seriesShortName,
-            href: `/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
+            href: entityPath("series", locale, event.eventSeries.id, event.eventSeries.slug),
           } satisfies BreadcrumbItem,
         ]
       : []),
     { label: eventShortName || t("unknownEvent") },
   ];
 
+  // ── Hero (18-v3) ──────────────────────────────────────────────
+  // Logo: 07's resolver over the narrow logo row + cached series graph;
+  // either read failing (null) leaves the typography slot.
+  const heroLogo =
+    logoRow && logoGraph ? resolveEventLogo(logoRow, logoGraph) : null;
+  const heroStart = formatVenueStart(event.startTime, event.country, locale);
+
+  // In-page jump links (18-v3 `.jump`). The first entry is the fan
+  // board while it is mounted (upcoming in the open window, or
+  // completed), otherwise the setlist card — the approved legacy
+  // (board off) state also leads its links with the setlist. Same SSR
+  // gates as the sections themselves, so every link has a target on
+  // first paint. Info and impressions always render; performers only
+  // when the sidebar has a lineup or performed credits.
+  const leadsWithBoard =
+    boardSeed !== null &&
+    ((resolvedStatus === "upcoming" && wishPredictOpen) ||
+      resolvedStatus === "completed");
+  const hasPerformers =
+    (sidebarLineup !== null &&
+      (sidebarLineup.units.length > 0 || sidebarLineup.performers.length > 0)) ||
+    sidebarUnits.length > 0 ||
+    sidebarPerformers.length > 0;
+  // Before the window opens there is nothing to take part in yet and
+  // the setlist is empty, so the approved pre-show page leads with the
+  // planned lineup.
+  const preWindow = resolvedStatus === "upcoming" && !wishPredictOpen;
+  const jumpLinks: Array<{ href: string; label: string }> = [
+    leadsWithBoard
+      ? { href: `#fan-board-${id}`, label: boardT("title") }
+      : preWindow && hasPerformers
+        ? { href: "#event-performers", label: t("performers") }
+        : { href: `#setlist-card-${id}`, label: t("setlist") },
+    { href: "#event-info", label: detailT("infoTitle") },
+    { href: "#event-impressions", label: impressionT("title") },
+    ...(hasPerformers && !(preWindow && !leadsWithBoard)
+      ? [{ href: "#event-performers", label: t("performers") }]
+      : []),
+  ];
+
   return (
-    <main
-      // Fluid width — operator wants the page to flow without a fixed
-      // cap. The inner sidebar+main grid governs natural width via
-      // `lg:grid-cols-[300px_1fr]`. Page padding still applies.
-      className="px-4 py-8 lg:px-8"
-      // Match the slate-tinted page surface every other top-level page
-      // uses (home, events list, artists, series, legal). Without it,
-      // the white EventHeader card has no contrast against the body and
-      // the sticky desktop sidebar reads as "missing".
-      style={{ background: colors.bgPage }}
-    >
+    // Body is a flex column (see the locale layout): `flex-1` lets
+    // `<main>` take the remaining height; the 1200px column inside it
+    // pins `width: 100%` next to its max-width (flex-item rule).
+    <main className="flex-1">
+      <div className={styles.page}>
       {/* Next's metadata API has no JSON-LD slot; an inline script in
           the body is Google's documented equivalent. */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(eventJsonLd) }}
       />
-      <Breadcrumb ariaLabel={ct("breadcrumb")} items={breadcrumbItems} />
+      <div className={styles.crumb}>
+        <Breadcrumb ariaLabel={ct("breadcrumb")} items={breadcrumbItems} />
+      </div>
+
+      <EventHero
+        status={resolvedStatus}
+        // Match the rest of the codebase's badge convention: `LIVE`
+        // for ongoing events (home, event list, artist/member/series
+        // detail all use t("live")), localized status text for
+        // upcoming/completed/cancelled. Without this, the same
+        // ongoing event reads as "LIVE" in the event list but
+        // "진행 중" / "Ongoing" / "進行中" on its own detail page.
+        statusLabel={
+          resolvedStatus === "ongoing"
+            ? t("live")
+            : t(`status.${resolvedStatus}`)
+        }
+        startTimeIso={
+          event.startTime ? new Date(event.startTime).toISOString() : null
+        }
+        startLabel={
+          heroStart ? `${heroStart.date} ${heroStart.time} ${heroStart.zone}` : null
+        }
+        logoUrl={heroLogo?.image?.url ?? null}
+        logoTint={heroLogo?.color ?? null}
+        artTitle={seriesShortName || eventShortName || headerTitle}
+        series={
+          event.eventSeries && seriesFullName
+            ? {
+                href: entityPath(
+                  "series",
+                  locale,
+                  String(event.eventSeries.id),
+                  event.eventSeries.slug,
+                ),
+                name: seriesFullName,
+              }
+            : null
+        }
+        title={headerTitle}
+        dateLabel={event.date ? formatVenueDate(event.date, locale) : null}
+        venueLine={venue}
+      />
+
+      {/* Cancelled: say so before anything else on the page (18-v3
+          `.notice.cancel`); the sections below keep their own cancelled
+          behaviour (no board, locked wishes, no score). */}
+      {resolvedStatus === "cancelled" && (
+        <div role="status" className={`${styles.notice} ${styles.noticeCancel}`}>
+          <strong>{detailT("cancelledTitle")}</strong>
+          {detailT("cancelledBody")}
+        </div>
+      )}
+
+      <nav className={styles.jump} aria-label={detailT("jumpLabel")}>
+        {jumpLinks.map((link) => (
+          <a key={link.href} href={link.href}>
+            {link.label}
+          </a>
+        ))}
+      </nav>
 
       {/*
         Layout grid + every dynamic-state owner now lives inside
@@ -1339,17 +1468,6 @@ export default async function EventPage({ params }: Props) {
         status={resolvedStatus}
         isWishPredictOpen={wishPredictOpen}
         board={boardSeed}
-        // Match the rest of the codebase's badge convention: `LIVE`
-        // for ongoing events (home, event list, artist/member/series
-        // detail all use t("live")), localized status text for
-        // upcoming/completed/cancelled. Without this, the same
-        // ongoing event reads as "LIVE" in the event list but
-        // "진행 중" / "Ongoing" / "進行中" on its own detail page.
-        statusLabel={
-          resolvedStatus === "ongoing"
-            ? t("live")
-            : t(`status.${resolvedStatus}`)
-        }
         date={event.date}
         startTime={event.startTime}
         artist={headerArtist}
@@ -1401,6 +1519,7 @@ export default async function EventPage({ params }: Props) {
         availableSongs={availableSongs}
         unitFilters={unitFilters}
       />
+      </div>
     </main>
   );
 }

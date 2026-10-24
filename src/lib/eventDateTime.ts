@@ -32,7 +32,13 @@ function extractVenueYMD(
 }
 
 function formatMonthName(y: number, m: number, d: number, style: "long" | "short"): string {
-  return new Intl.DateTimeFormat("en-US", { month: style }).format(
+  // The Date is built at UTC midnight, so it must be read back in UTC:
+  // in a UTC-negative zone (an American viewer's browser) the 1st of a
+  // month would otherwise resolve to the previous month's name.
+  return new Intl.DateTimeFormat("en-US", {
+    month: style,
+    timeZone: "UTC",
+  }).format(
     new Date(Date.UTC(y, m - 1, d)),
   );
 }

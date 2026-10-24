@@ -143,3 +143,33 @@ describe("PATCH /api/admin/albums/[id]", () => {
     });
   });
 });
+
+describe("PATCH /api/admin/albums/[id] — cover handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    verifyMock.mockResolvedValue(null);
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: typeof prisma) => unknown) => fn(prisma),
+    );
+    (prisma.album.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: BigInt(42) });
+    (prisma.album.update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: BigInt(42), translations: [] });
+  });
+
+  it("an info edit that omits imageUrl never writes the cover", async () => {
+    const res = await PATCH(jsonRequest("http://x/api/admin/albums/42", baseBody) as never, { params });
+    expect(res.status).toBe(200);
+    const data = (prisma.album.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data;
+    expect("imageUrl" in data).toBe(false);
+  });
+
+  it("imageUrl without expectedImageUrl is a 400 before any write (old form tab)", async () => {
+    const res = await PATCH(
+      jsonRequest("http://x/api/admin/albums/42", { ...baseBody, imageUrl: "https://example.com/a.jpg" }) as never,
+      { params },
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.album.update).not.toHaveBeenCalled();
+  });
+});
+

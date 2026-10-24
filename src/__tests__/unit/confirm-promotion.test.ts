@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/launchFlags", () => ({
   LAUNCH_FLAGS: {
     showSignIn: false as boolean,
-    showSearch: false as boolean,
     confirmDbEnabled: true as boolean, // promotion path requires this
     addItemEnabled: false as boolean,
   },
