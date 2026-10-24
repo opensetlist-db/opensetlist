@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { prepareShareCardFonts } from "@/lib/shareCardFonts";
 import { renderCardToBlob } from "@/lib/shareCard";
 
-vi.mock("html2canvas", () => ({ default: vi.fn() }));
+vi.mock("html2canvas", () => ({ default: vi.fn(async () => ({
+  toBlob: (callback: BlobCallback) => callback(new Blob(["png"], { type: "image/png" })),
+})) }));
 
 function face(family: string, weight: string, unicodeRange: string, fail = false) {
   const result = {
@@ -32,6 +34,7 @@ afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("share image font delivery", () => {
@@ -89,12 +92,36 @@ describe("share image font delivery", () => {
     provideFonts([latin]);
     const target = card("OPEN");
     target.setAttribute("data-share-card", "");
-    await prepareShareCardFonts(target);
-    // Positive control above loads the intended face; removing it makes
+    const canvas = await import("html2canvas");
+    await expect(renderCardToBlob(target)).resolves.toBeInstanceOf(Blob);
+    expect(canvas.default).toHaveBeenCalledOnce();
+    vi.mocked(canvas.default).mockClear();
+    // Positive control above reaches the PNG renderer; removing the face makes
     // this real capture fail instead of silently accepting a fallback.
     provideFonts([]);
     await expect(renderCardToBlob(target)).rejects.toThrow("glyph");
+    expect(canvas.default).not.toHaveBeenCalled();
+  });
+
+  it("releases a stalled font load at the deadline and never starts late canvas work", async () => {
+    const regular = face("DM Sans", "400", "U+0000-00FF");
+    provideFonts([regular]);
+    const target = card("OPEN");
+    target.setAttribute("data-share-card", "");
     const canvas = await import("html2canvas");
+    await renderCardToBlob(target);
+    expect(canvas.default).toHaveBeenCalled();
+    vi.mocked(canvas.default).mockClear();
+    let finish!: () => void;
+    regular.load.mockImplementation(() => new Promise((resolve) => {
+      finish = () => resolve(regular);
+    }));
+    vi.useFakeTimers();
+    const stalled = expect(renderCardToBlob(target)).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(15000);
+    await stalled;
+    finish();
+    await vi.runAllTimersAsync();
     expect(canvas.default).not.toHaveBeenCalled();
   });
 });

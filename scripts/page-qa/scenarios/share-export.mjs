@@ -35,6 +35,8 @@ async function fonts(ctx, page) {
 function seed(id, songs, extra = null) {
   return async ({ ctx, page }) => {
     await ctx.addInitScript(({ id, songs }) => {
+      if (sessionStorage.getItem("c18-seeded")) return;
+      sessionStorage.setItem("c18-seeded", "1");
       localStorage.setItem(`predict-${id}`, JSON.stringify({ eventId: id, songs,
         savedAt: "2026-10-08T00:00:00.000Z", lockedAt: null }));
     }, { id, songs });
@@ -42,14 +44,14 @@ function seed(id, songs, extra = null) {
   };
 }
 
-async function enter(page, loc) {
+async function enter(page, loc, key = "Enter") {
   const m = messages[loc];
   const tab = page.getByRole("tab", { name: m.Setlist.tabPredicted, exact: true });
   if (await tab.count()) await tab.click();
   const entry = page.getByRole("button", { name: /🎯/ }).filter({ hasText: /./ }).last();
   await entry.waitFor();
   await entry.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press(key);
   await page.getByRole("dialog").waitFor();
   return { entry, dialog: page.getByRole("dialog") };
 }
@@ -123,6 +125,44 @@ const scenario = {
           await sharp(output.file).extract({ left: 40, top: output.height - 160, width: 1120, height: 145 })
             .resize({ width: 1680 }).webp({ quality: 90 }).toFile(path.join(exports, `${name}-logo.webp`));
           await h.shot(page, `${name}-modal`);
+          let clipboard = null;
+          let shared = null;
+          if (!h.webkit) {
+            const logoPixels = async (bytes) => sha(await sharp(bytes).extract({ left: 40,
+              top: output.height - 160, width: 1120, height: 145 }).raw().toBuffer());
+            const expectedLogo = await logoPixels(fs.readFileSync(output.file));
+            await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
+            await page.getByRole("button", { name: m.copyImage, exact: true }).click();
+            await page.getByRole("status").getByText(m.imageCopiedToast, { exact: true }).waitFor();
+            const copyBytes = Buffer.from(await page.evaluate(async () => {
+              const items = await navigator.clipboard.read();
+              return Array.from(new Uint8Array(await (await items[0].getType("image/png")).arrayBuffer()));
+            }));
+            const copyFile = path.join(exports, `${name}-clipboard.png`);
+            fs.writeFileSync(copyFile, copyBytes);
+            clipboard = { file: copyFile, bytes: copyBytes.length, sha256: sha(copyBytes) };
+            h.check(`${name}: actual clipboard logo pixels match download`, await logoPixels(copyBytes) === expectedLogo, clipboard.sha256);
+            // API-boundary simulation captures the actual File given to the
+            // native share sheet. This is distinct from real iOS evidence.
+            await page.evaluate(() => {
+              Object.defineProperty(navigator, "share", { configurable: true, value: async (data) => {
+                window.__c18Share = { url: data.url, title: data.title, text: data.text,
+                  bytes: Array.from(new Uint8Array(await data.files[0].arrayBuffer())) };
+              } });
+            });
+            await page.getByRole("button", { name: m.downloadImage, exact: true }).click();
+            await page.waitForFunction(() => window.__c18Share?.bytes?.length > 0);
+            const payload = await page.evaluate(() => window.__c18Share);
+            const sharedBytes = Buffer.from(payload.bytes);
+            const shareFile = path.join(exports, `${name}-share-file.png`);
+            fs.writeFileSync(shareFile, sharedBytes);
+            shared = { file: shareFile, bytes: sharedBytes.length, sha256: sha(sharedBytes),
+              url: payload.url, title: payload.title, text: payload.text, kind: "native API boundary simulation" };
+            h.check(`${name}: shared File logo pixels match download`, await logoPixels(sharedBytes) === expectedLogo, shared.sha256);
+            h.check(`${name}: public URL and mode text retained`, new URL(payload.url).pathname.startsWith(`/${loc}/events/${id}`) &&
+              payload.title.length > 0 && payload.text.length > 0 && !payload.url.includes("localhost"), payload.url);
+            await page.evaluate(() => { delete navigator.share; delete window.__c18Share; });
+          }
           let platform = null;
           if (!h.webkit) {
             platform = await fonts(ctx, page);
@@ -131,7 +171,7 @@ const scenario = {
               logo.fonts.every((font) => font.isCustomFont && font.glyphCount > 0 && /JosefinSans(?:Thin)?-Regular/.test(font.postScriptName)), JSON.stringify(logo));
           } else h.skip(`${name}: CDP glyph proof`, "Windows WebKit has no CDP; actual PNG is still exported");
           evidence.push({ phase, loc, theme, id, url: page.url(), viewport: { width: 390, height: 900 },
-            ...output, style, platform, text, at: new Date().toISOString() });
+            ...output, style, platform, clipboard, shared, text, at: new Date().toISOString() });
           write();
         }
         const responses = await observer.finish();
@@ -154,6 +194,59 @@ const scenario = {
         await ctx.close();
       }, { ms: 180000 });
     }
+
+    for (const loc of locales) for (const width of (h.quick ? [390, 1440] : [320, 375, 390, 430, 768, 1024, 1440])) {
+      await h.section(`controls ${loc} ${width}`, async () => {
+        const { page } = await h.open(`/${loc}/events/109`, { width, beforeNavigate: seed("109", songs) });
+        const { entry, dialog } = await enter(page, loc, width < 700 ? "Space" : "Enter");
+        const action = page.getByRole("button", { name: messages[loc].ShareCard.downloadImage, exact: true });
+        await action.focus();
+        await page.keyboard.press("Shift");
+        const focus = await action.evaluate((el) => {
+          const s = getComputedStyle(el);
+          return { outline: s.outline, offset: s.outlineOffset, radius: s.borderRadius,
+            background: s.backgroundImage, shadow: s.boxShadow, minHeight: s.minHeight };
+        });
+        h.check(`${loc} ${width}: primary geometry/focus`, focus.radius === "8px" &&
+          focus.background === "none" && focus.shadow === "none" && focus.minHeight === "44px" &&
+          focus.outline.includes("3px") && focus.offset === "4px", JSON.stringify(focus));
+        await action.hover();
+        await page.waitForTimeout(160);
+        h.check(`${loc} ${width}: primary hover`, await action.evaluate((el) =>
+          getComputedStyle(el).backgroundColor === "rgb(16, 74, 169)"), "");
+        await page.mouse.down();
+        await page.waitForTimeout(160);
+        h.check(`${loc} ${width}: primary pressed`, await action.evaluate((el) =>
+          getComputedStyle(el).backgroundColor === "rgb(12, 61, 140)"), "");
+        await page.mouse.move(1, 1); await page.mouse.up();
+        await action.evaluate((el) => { el.querySelector("span").textContent += " — ".repeat(2) + el.textContent.repeat(3); });
+        const fits = await dialog.getByRole("button").evaluateAll((els) => els.every((el) => {
+          const r = el.getBoundingClientRect();
+          return r.left >= 0 && r.right <= innerWidth && el.scrollWidth <= el.clientWidth + 1;
+        }));
+        h.check(`${loc} ${width}: long labels fit`, fits, "all modal buttons");
+        await h.shot(page, `controls-${loc}-${width}`);
+        await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "detached" });
+        h.check(`${loc} ${width}: keyboard entry/return`, await entry.evaluate((el) => document.activeElement === el), "");
+      });
+    }
+
+    await h.section("prediction entry 0/1 and picker completion consumer", async () => {
+      const { page } = await h.open("/ko/events/109", { width: 390, beforeNavigate: seed("109", songs.slice(0, 1)) });
+      const { dialog } = await enter(page, "ko");
+      await page.keyboard.press("Escape"); await dialog.waitFor({ state: "detached" });
+      await page.getByRole("button", { name: messages.ko.Predict.add, exact: true }).click();
+      const confirm = page.getByRole("button", { name: messages.ko.Predict.picker.confirmButton.replace("{count}", "1"), exact: true });
+      await confirm.waitFor();
+      h.check("current-dev picker completion uses primary", await confirm.evaluate((el) => getComputedStyle(el).borderRadius === "8px"), "C10 local replacement remains owned by C10");
+      await confirm.click();
+      h.check("picker completion closes picker", await confirm.count() === 0, "");
+      await page.evaluate(() => localStorage.removeItem("predict-109"));
+      await page.reload({ waitUntil: "load" });
+      await page.waitForTimeout(800);
+      h.check("zero predictions hides share after positive one-pick entry", await page.getByRole("button", { name: /🎯/ }).count() === 0, "no DB writes");
+    });
 
     await h.section("PNG clipboard and canvas failure/retry", async () => {
       const { ctx, page } = await h.open("/ko/events/111", { width: 390, beforeNavigate: seed("111", songs) });
@@ -183,6 +276,83 @@ const scenario = {
       await copy.click();
       await page.getByRole("status").getByText(messages.ko.ShareCard.imageCopiedToast, { exact: true }).waitFor();
       h.check("same entry retry succeeds", await copy.isEnabled(), "actual clipboard write after canvas fault");
+    }, { ms: 120000 });
+
+    await h.section("source font and clone-only font failures recover", async () => {
+      for (const cloneOnly of [false, true]) {
+        let blocked = true;
+        let faults = 0;
+        const { page } = await h.open("/ko/events/109", { width: 390, waitForFonts: false,
+          beforeNavigate: seed("109", songs, async ({ page }) => {
+            await page.route(/\.woff2?(?:\?|$)/, async (route) => {
+              if (blocked && (!cloneOnly || route.request().frame() !== page.mainFrame())) {
+                faults++; return route.abort();
+              }
+              return route.continue();
+            });
+          }),
+        });
+        await enter(page, "ko");
+        let downloaded = 0;
+        page.on("download", () => downloaded++);
+        await page.getByRole("button", { name: messages.ko.ShareCard.downloadImage, exact: true }).click();
+        await page.getByRole("status").getByText(messages.ko.ShareCard.imageErrorToast, { exact: true }).waitFor();
+        const label = cloneOnly ? "clone-only" : "source+clone";
+        h.check(`${label}: font fault actually reached`, faults > 0, faults);
+        h.check(`${label}: fallback export rejected`, downloaded === 0, downloaded);
+        await h.shot(page, `font-failure-${label}`);
+        const failedFaces = await page.evaluate(() => [...document.fonts].filter((face) => face.status === "error")
+          .map((face) => ({ family: face.family, weight: face.weight, status: face.status })));
+        blocked = false;
+        const recovered = await save(page, "ko", path.join(exports, `font-retry-${label}.png`));
+        h.check(`${label}: retry creates actual PNG`, recovered.width === 1200 && downloaded > 0, recovered.sha256);
+        evidence.push({ fault: label, faults, failedFaces, recovered }); write();
+      }
+    }, { ms: 180000 });
+
+    await h.section("native share/cancel/fallback and analytics API boundaries", async () => {
+      const { page } = await h.open("/ko/events/109", { width: 390,
+        beforeNavigate: seed("109", songs, async ({ ctx }) => {
+          await ctx.addInitScript(() => {
+            window.__c18Events = []; window.__c18Calls = [];
+            window.gtag = (...args) => window.__c18Events.push(args);
+            window.__c18NativeMode = "success";
+            Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+            Object.defineProperty(navigator, "share", { configurable: true, value: async (data) => {
+              window.__c18Calls.push({ url: data.url, bytes: data.files[0].size,
+                activation: navigator.userActivation?.isActive });
+              if (window.__c18NativeMode === "abort") throw new DOMException("cancelled", "AbortError");
+              if (window.__c18NativeMode === "fail") throw new Error("platform fault");
+            } });
+          });
+        }),
+      });
+      const { dialog } = await enter(page, "ko");
+      const share = page.getByRole("button", { name: messages.ko.ShareCard.shareImage, exact: true });
+      await page.waitForTimeout(2000);
+      await share.click();
+      await page.waitForFunction(() => window.__c18Calls.length === 1);
+      h.check("supported native label and actual File payload", await page.evaluate(() =>
+        window.__c18Calls[0].bytes > 10000 && window.__c18Calls[0].activation), "API simulation; real iOS tested separately");
+      const before = await page.evaluate(() => window.__c18Events.filter((event) => event[1] === "share_card_save").length);
+      await page.evaluate(() => { window.__c18NativeMode = "abort"; });
+      await share.click();
+      await page.waitForFunction(() => window.__c18Calls.length === 2);
+      const after = await page.evaluate(() => window.__c18Events.filter((event) => event[1] === "share_card_save").length);
+      h.check("native cancel stays silent and modal remains usable", before > 0 && before === after && await dialog.isVisible(), `${before}→${after}`);
+      await page.evaluate(() => { window.__c18NativeMode = "fail"; });
+      const fallback = page.waitForEvent("download");
+      await share.click();
+      const file = await fallback; await file.saveAs(path.join(exports, "native-fallback.png"));
+      h.check("native platform failure downloads actual PNG", (await sharp(path.join(exports, "native-fallback.png")).metadata()).width === 1200, "");
+      if (!h.webkit) {
+        await page.evaluate(() => Object.defineProperty(navigator.clipboard, "write", { configurable: true,
+          value: async () => { throw new DOMException("denied", "NotAllowedError"); } }));
+        await page.getByRole("button", { name: messages.ko.ShareCard.copyImage, exact: true }).click();
+        await page.getByRole("status").getByText(messages.ko.ShareCard.imageCopyFailedToast, { exact: true }).waitFor();
+        h.check("clipboard denial preserves failure analytics", await page.evaluate(() => window.__c18Events.some((event) =>
+          event[1] === "share_card_save_failed" && event[2].reason === "clipboard_denied")), "");
+      }
     }, { ms: 120000 });
   },
 };

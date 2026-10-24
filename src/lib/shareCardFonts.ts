@@ -52,7 +52,9 @@ function retryFace(face: FontFace, doc: Document): Promise<FontFace> {
             return `url("${resolved.href}")`;
           },
         );
-        const replacement = new FontFace(face.family, source, {
+        const Font = doc.defaultView?.FontFace;
+        if (!Font) throw new Error("Share font loading unavailable");
+        const replacement = new Font(face.family, source, {
           weight: face.weight, style: face.style, unicodeRange: face.unicodeRange,
         });
         await replacement.load();
