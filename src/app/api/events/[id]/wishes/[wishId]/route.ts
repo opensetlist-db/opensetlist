@@ -7,6 +7,7 @@ import {
   checkBoardWritable,
 } from "@/lib/board/ballot";
 import { deleteWish, isWishIdShape } from "@/lib/board/wishes";
+import { revalidateBoardAggregate } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string; wishId: string }> };
 
@@ -109,7 +110,9 @@ async function deleteBoardWish(req: Request, eventId: bigint, wishId: string) {
   try {
     const control = await checkBoardWritable(eventId);
     if (!control.ok) return ballotJson(control.status, { error: control.code });
-    return ballotJson(200, await deleteWish(eventId, anonId, wishId));
+    const result = await deleteWish(eventId, anonId, wishId);
+    revalidateBoardAggregate(eventId);
+    return ballotJson(200, result);
   } catch (err) {
     return ballotErrorResponse(err);
   }

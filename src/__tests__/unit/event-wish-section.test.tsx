@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { colors } from "@/styles/tokens";
 import { hexToRgbString } from "@/__tests__/utils/color";
 
@@ -71,6 +71,19 @@ afterEach(() => {
 });
 
 describe("EventWishSection — render gates", () => {
+  it("refreshes TOP3 after my removal without a LIVE subscription", async () => {
+    writeWishes("1", [localWish(10, "w1")]);
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response("{}"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ top3: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<EventWishSection eventId="1" locale="ko" startTime={FUTURE}
+      status="upcoming" setlistItems={[]} top3Wishes={[fanEntry(10, 1)]} />);
+    expect(screen.getByText('count:{"count":1}')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("removeAria"));
+    await waitFor(() => expect(screen.queryByText('count:{"count":1}')).toBeNull());
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/events/1/wishes?locale=ko", expect.objectContaining({ cache: "no-store" }));
+  });
+
   it("locked event with no fan top-3 and no my-wishes renders nothing", () => {
     const { container } = render(
       <EventWishSection

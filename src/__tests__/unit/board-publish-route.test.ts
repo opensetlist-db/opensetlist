@@ -4,7 +4,7 @@
 // resolvers mocked: the 400/403/404/409/200 contract checked on the
 // whole set BEFORE the transaction opens, the diff the locked section
 // runs (retained rows untouched, stale rows deleted, new rows
-// inserted), and that the write never calls a revalidate helper.
+// inserted), and that the write expires only the board aggregate.
 // Row-level atomicity (a failure mid-publish leaves the previous set)
 // is proven against the dev database in
 // `src/__tests__/integration/board-picks.test.ts`.
@@ -190,14 +190,14 @@ describe("PUT /board/picks — replace", () => {
     expect(tx.boardPick.createManyAndReturn).not.toHaveBeenCalled();
   });
 
-  it("never calls a revalidate helper", async () => {
+  it("expires only the board aggregate", async () => {
     await publish([p("1", "10")]);
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledExactlyOnceWith(BigInt(107));
     for (const spy of [
       dataCache.revalidatePublicData,
       dataCache.revalidateEventData,
       dataCache.revalidateEventImpressions,
       dataCache.revalidateBoardControl,
-      dataCache.revalidateBoardAggregate,
     ]) {
       expect(vi.mocked(spy)).not.toHaveBeenCalled();
     }

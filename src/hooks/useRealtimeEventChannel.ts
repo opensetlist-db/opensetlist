@@ -397,8 +397,11 @@ export function useRealtimeEventChannel<T>({
   }, [eventId]);
 
   const { gone } = snapshot;
+  // A server snapshot can finish/cancel the show before SSR props change.
+  // Stop the channel and its repair poll as soon as that status is known.
+  const live = enabled && (snapshot.status === null || snapshot.status === "ongoing");
   useEffect(() => {
-    if (!enabled) return;
+    if (!live) return;
     // R3.5: no channel (and no polling) while the tab is hidden.
     if (paused) return;
     // Terminal 404 (`/api/setlist` says the event is missing or was
@@ -780,7 +783,7 @@ export function useRealtimeEventChannel<T>({
       if (channel) void supabase.removeChannel(channel);
       channel = null;
     };
-  }, [eventId, locale, enabled, paused, gone, startTime, createRunner]);
+  }, [eventId, locale, live, paused, gone, startTime, createRunner]);
 
   return snapshot;
 }

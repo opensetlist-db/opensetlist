@@ -30,10 +30,9 @@ import { classifyPreExecutionFailure } from "@/lib/dbErrors";
  * with its own validation inside the callback. It is not a generic
  * ballot framework.
  *
- * Nothing here (or in any caller) may call a cache revalidate helper:
- * every cached read carries the global public-data tag, so a fan write
- * that expired anything would reach the live path. The board aggregate
- * is TTL-only by design.
+ * These transaction helpers do not invalidate caches. Their route
+ * callers expire only the board aggregate after commit; expiring a
+ * shared event/public tag would unnecessarily reach the live path.
  */
 
 export type BallotErrorCode =

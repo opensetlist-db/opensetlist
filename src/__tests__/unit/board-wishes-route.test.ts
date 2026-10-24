@@ -114,13 +114,12 @@ const body = (o: Record<string, unknown> = {}) => ({
   ...o,
 });
 
-function expectNoRevalidate() {
+function expectNoSharedRevalidate() {
   for (const f of [
     dataCache.revalidatePublicData,
     dataCache.revalidateEventData,
     dataCache.revalidateEventImpressions,
     dataCache.revalidateBoardControl,
-    dataCache.revalidateBoardAggregate,
   ]) {
     expect(vi.mocked(f)).not.toHaveBeenCalled();
   }
@@ -259,7 +258,8 @@ describe("POST /wishes on a board event — ballot", () => {
     });
     // The board path never writes through the legacy create.
     expect(plainWish.create).not.toHaveBeenCalled();
-    expectNoRevalidate();
+    expectNoSharedRevalidate();
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledExactlyOnceWith(BigInt(107));
   });
 
   it("the cap counts only THIS anon's rows in THIS group", async () => {
@@ -327,7 +327,8 @@ describe("DELETE /wishes/[wishId] on a board event", () => {
     expect(tx.$executeRaw).toHaveBeenCalled();
     expect(tx.songWish.deleteMany).toHaveBeenCalledWith(ownerOrLegacy(ANON));
     expect(tx.songWish.findFirst).not.toHaveBeenCalled();
-    expectNoRevalidate();
+    expectNoSharedRevalidate();
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledExactlyOnceWith(BigInt(107));
   });
 
   it("another anon's wish → nothing deleted, 403 not_owner", async () => {

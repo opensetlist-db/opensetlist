@@ -146,6 +146,30 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
   // telling us it is reconnecting, not that the channel is dead. The
   // hook keeps the channel (removing it would cancel the rejoin) and
   // polls at the fallback cadence until SUBSCRIBED comes back.
+  it("starts when SSR enters LIVE and releases the channel when the snapshot ends it", async () => {
+    const { result, rerender } = renderHook(({ enabled }) =>
+      useRealtimeEventChannel({
+        eventId: "1", initialItems, initialReactionCounts, initialTop3Wishes,
+        locale: "ko", enabled, startTime: null,
+      }), { initialProps: { enabled: false } },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(channelMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    rerender({ enabled: true });
+    await flushMicrotasks();
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+      items: [], reactionCounts: {}, top3Wishes: [], status: "completed",
+    })));
+    await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
+    expect(result.current.status).toBe("completed");
+    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+    const count = vi.mocked(fetch).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(fetch).toHaveBeenCalledTimes(count);
+  });
+
   it("on CHANNEL_ERROR keeps the channel and polls at the 5 s fallback cadence", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     const { result } = renderHook(() =>

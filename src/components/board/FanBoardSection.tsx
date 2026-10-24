@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 import { absoluteUrl, entityPath } from "@/lib/seo/entityUrl";
-import { BOARD_REFRESH_MS, BOARD_TIMEOUT_MS } from "@/lib/board/config";
+import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { boardFragment, groupIdFromFragment } from "@/lib/board/fragment";
 import { buildBoardCopyText } from "@/lib/board/copyText";
 import {
@@ -203,27 +203,35 @@ export function FanBoardSection({
     [catalog, isFestivalCatalog],
   );
 
-  // The server uses stale-while-revalidate: an expired read can still
-  // return the previous counts while warming the next snapshot. Keep
-  // reading while visible so an open page eventually receives it, even
-  // without another ballot write. Never adjust crowd counts locally.
+  // Reads are event-driven: mount, publish, and my accepted writes.
+  // Invalidate an in-flight read as soon as a write starts. Concurrent
+  // writes share one follow-up read after all settle; response order
+  // can never restore a snapshot from before the latest action.
+  const readSession = useRef<{
+    refresh: () => void;
+    beginWrite: () => (saved: boolean) => void;
+  } | null>(null);
   useEffect(() => {
     let disposed = false;
-    let stopped = false;
-    let attempted = false;
-    let nextRefreshAt = 0;
+    let generation = 0;
+    let writes = 0;
+    let dirty = false;
     let controller: AbortController | null = null;
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    const cancelRead = () => {
+      generation++;
+      clearTimeout(deadline);
+      controller?.abort();
+      controller = null;
+    };
     const refresh = async () => {
-      if (disposed || stopped || controller || document.hidden) return;
-      // An initially completed page still gets its tally, but a page
-      // left open across the start must not poll during the show.
-      if (attempted && Date.now() >= new Date(seed.lockAt).getTime()) return;
-      attempted = true;
-      clearTimeout(refreshTimer);
-      controller = new AbortController();
-      const request = controller;
+      if (disposed) return;
+      if (writes > 0) { dirty = true; return; }
+      dirty = false;
+      cancelRead();
+      const ownGeneration = generation;
+      const request = new AbortController();
+      controller = request;
       deadline = setTimeout(() => request.abort(), BOARD_TIMEOUT_MS);
       try {
         const params = new URLSearchParams({ locale });
@@ -233,13 +241,11 @@ export function FanBoardSection({
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as BoardReadResponse;
-        if (disposed || request.signal.aborted) return;
+        if (disposed || ownGeneration !== generation || request.signal.aborted) return;
         if (!body.enabled || !("groups" in body)) {
-          stopped = true;
           setState({ kind: "hidden" });
           return;
         }
-        stopped = body.locked;
         setState({
           kind: "ready",
           locked: body.locked,
@@ -248,44 +254,55 @@ export function FanBoardSection({
           tally: body.status === "completed" ? body.tally : null,
         });
       } catch {
-        if (!disposed) {
-          // A transient refresh failure must not discard my ballot or
-          // close an open picker. Keep the last snapshot and retry.
+        if (!disposed && ownGeneration === generation) {
+          // A failed read does not undo a committed ballot. Retain the
+          // current board and offer an explicit retry, without polling.
           setState((previous) => previous.kind === "ready"
             ? { ...previous, refreshFailed: true }
             : { kind: "error" });
         }
       } finally {
-        clearTimeout(deadline);
-        controller = null;
-        nextRefreshAt = Date.now() + BOARD_REFRESH_MS;
-        if (!disposed && !stopped && !document.hidden) {
-          refreshTimer = setTimeout(() => void refresh(), BOARD_REFRESH_MS);
+        if (ownGeneration === generation) {
+          clearTimeout(deadline);
+          controller = null;
         }
       }
     };
-    const onVisibility = () => {
-      clearTimeout(refreshTimer);
-      if (document.hidden || stopped) return;
-      // Brief tab switches should not turn cached reads into a burst.
-      // Catch up immediately only after the normal interval elapsed.
-      const remaining = nextRefreshAt - Date.now();
-      if (remaining > 0) {
-        refreshTimer = setTimeout(() => void refresh(), remaining);
-      } else {
-        void refresh();
-      }
+    const session = {
+      refresh: () => { void refresh(); },
+      beginWrite: () => {
+        writes++;
+        // If a previous successful action's read was still running,
+        // it needs a replacement even if this new write is refused.
+        dirty ||= controller !== null;
+        cancelRead();
+        return (saved: boolean) => {
+          writes--;
+          dirty ||= saved;
+          if (!disposed && writes === 0 && dirty) void refresh();
+        };
+      },
     };
-    void refresh();
-    document.addEventListener("visibilitychange", onVisibility);
+    readSession.current = session;
+    session.refresh();
     return () => {
       disposed = true;
-      clearTimeout(refreshTimer);
-      clearTimeout(deadline);
-      controller?.abort();
-      document.removeEventListener("visibilitychange", onVisibility);
+      cancelRead();
+      if (readSession.current === session) readSession.current = null;
     };
-  }, [eventId, locale, seed.lockAt]);
+  }, [eventId, locale, picksRevision]);
+
+  const mutate = async (action: () => Promise<PickOutcome>) => {
+    const complete = readSession.current?.beginWrite();
+    let saved = false;
+    try {
+      const outcome = await action();
+      saved = outcome.ok;
+      return outcome;
+    } finally {
+      complete?.(saved);
+    }
+  };
 
   const groups: readonly { groupId: string; slug: string }[] =
     state.kind === "ready" ? state.groups : seed.chips;
@@ -417,7 +434,7 @@ export function FanBoardSection({
       return;
     }
     report(
-      await ballot.add(kind, group.groupId, songId, pickTitle(song, locale)),
+      await mutate(() => ballot.add(kind, group.groupId, songId, pickTitle(song, locale))),
       group.name,
       kind,
     );
@@ -428,11 +445,11 @@ export function FanBoardSection({
     group: BoardGroupView,
     entry: BallotEntry,
   ) => {
-    report(await ballot.remove(kind, entry), group.name, kind);
+    report(await mutate(() => ballot.remove(kind, entry)), group.name, kind);
   };
 
   const handleRemoveLegacy = async (entry: WishEntry) => {
-    const outcome = await ballot.removeLegacyWish(entry);
+    const outcome = await mutate(() => ballot.removeLegacyWish(entry));
     if (outcome.ok) {
       setToast({ text: t("removedWish"), error: false });
       return;
@@ -557,9 +574,12 @@ export function FanBoardSection({
           </p>
         )}
         <p className={styles.boardLead}>{t("explainer")}</p>
-        {state.kind === "ready" && !locked && (
+        {state.kind === "ready" && state.refreshFailed && !locked && (
           <p role="status" className={styles.ballotNote}>
-            {t(state.refreshFailed ? "refreshError" : "aggregateDelay")}
+            {t("refreshError")}{" "}
+            <button type="button" onClick={() => readSession.current?.refresh()} className="underline">
+              {t("retryRefresh")}
+            </button>
           </p>
         )}
       </div>

@@ -378,16 +378,16 @@ describe("per-group wishes — dev database", () => {
     expect(await rows(null)).toBe(1);
   });
 
-  it("no write ever calls a revalidate helper", async () => {
+  it("writes expire only the board aggregate", async () => {
     const { id } = await (await postWish(ANON_A, songIds[0])).json();
     await postWish(ANON_A, songIds[0]);
     await deleteWish(id, { anonId: ANON_A });
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledWith(eventId);
     for (const f of [
       dataCache.revalidatePublicData,
       dataCache.revalidateEventData,
       dataCache.revalidateEventImpressions,
       dataCache.revalidateBoardControl,
-      dataCache.revalidateBoardAggregate,
     ]) {
       expect(vi.mocked(f)).not.toHaveBeenCalled();
     }
