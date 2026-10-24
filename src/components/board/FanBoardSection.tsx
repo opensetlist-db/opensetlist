@@ -147,6 +147,7 @@ export function FanBoardSection({
   const sectionRef = useRef<HTMLElement>(null);
   const viewed = useRef(new Set<string>());
   const scrolledForHash = useRef(false);
+  const appliedHash = useRef<string | null>(null);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(
     null,
   );
@@ -237,7 +238,7 @@ export function FanBoardSection({
           setState({ kind: "hidden" });
           return;
         }
-        stopped = body.locked || body.status === "completed";
+        stopped = body.locked;
         setState({
           kind: "ready",
           locked: body.locked,
@@ -283,14 +284,19 @@ export function FanBoardSection({
   // (a fan following a second shared link in the same tab).
   useEffect(() => {
     const apply = () => {
-      const id = groupIdFromFragment(window.location.hash, groups);
+      const hash = window.location.hash;
+      const id = groupIdFromFragment(hash, groups);
       if (id) setActiveId(id);
+      // A seed may lag the aggregate, so retry an unresolved initial
+      // fragment once the groups arrive. Refreshing counts must never
+      // reapply a resolved fragment over a fan's later chip selection.
+      if (id || state.kind === "ready") appliedHash.current = hash;
       return id;
     };
-    apply();
+    if (appliedHash.current !== window.location.hash) apply();
     window.addEventListener("hashchange", apply);
     return () => window.removeEventListener("hashchange", apply);
-  }, [groups]);
+  }, [groups, state.kind]);
 
   // A shared link should land ON the board: once the content is there
   // (so the layout won't shift under the scroll), bring it into view.

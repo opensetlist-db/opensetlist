@@ -71,7 +71,7 @@ const READY: BoardReadResponse = {
 const fetchMock = vi.fn();
 
 function respond(body: unknown, status = 200) {
-  fetchMock.mockResolvedValue(
+  fetchMock.mockImplementation(async () =>
     new Response(JSON.stringify(body), {
       status,
       headers: { "Content-Type": "application/json" },
@@ -113,6 +113,7 @@ describe("<FanBoardSection> aggregate freshness", () => {
     await advance(BOARD_REFRESH_MS);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("tab", { name: "蓮ノ空" })).toBeTruthy();
+    expect(screen.getByText("aggregateDelay")).toBeTruthy();
     respond(changed);
     await advance(BOARD_REFRESH_MS);
     expect(screen.getByRole("tab", { name: "Updated group" })).toBeTruthy();
@@ -189,19 +190,43 @@ describe("<FanBoardSection> aggregate freshness", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("stops reading when the show starts and cancels scheduled reads on unmount", async () => {
+  it("preserves a manually selected group after a shared-link load and refresh", async () => {
+    window.location.hash = "#board-aqours";
     respond(READY);
-    const view = start();
+    start();
+    await advance(0);
+    expect(screen.getByRole("tab", { name: "Aqours" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Liella!" }));
+    expect(screen.getByRole("tab", { name: "Liella!" })).toHaveAttribute("aria-selected", "true");
+    await advance(BOARD_REFRESH_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("tab", { name: "Liella!" })).toHaveAttribute("aria-selected", "true");
+    window.location.hash = "#board-hasunosora";
+    fireEvent(window, new Event("hashchange"));
+    expect(screen.getByRole("tab", { name: "蓮ノ空" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("stops reading when the show starts", async () => {
+    respond(READY);
+    start();
     await advance(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     vi.setSystemTime(LOCK);
     await advance(BOARD_REFRESH_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels active polling and visibility reads on unmount before the show", async () => {
+    respond(READY);
+    const view = start();
+    await advance(0);
+    await advance(BOARD_REFRESH_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     view.unmount();
     await advance(BOARD_REFRESH_MS * 2);
     fireEvent(document, new Event("visibilitychange"));
     await advance(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
