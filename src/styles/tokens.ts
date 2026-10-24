@@ -81,6 +81,8 @@ export const colors = {
   // EventArt typography-fallback surface (03 contract card art): neutral
   // blue → lavender → pink wash plus its three text tones (eyebrow,
   // title, caption), all ≥4.5:1 on the wash.
+  // Neutral midtone preserves light and dark details in transparent logos.
+  logoSurface: "#64748b",
   artWash: "linear-gradient(130deg, #eaf1ff, #f1edff 60%, #ffedf5)",
   artEyebrow: "#4f5781",
   artTitle: "#343b72",

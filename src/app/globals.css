@@ -71,6 +71,8 @@
   --accent-pink: #fff0f6;
   /* Surfaces */
   --bg-card: #ffffff;
+  /* Mirrors colors.logoSurface: transparent artwork needs a neutral midtone. */
+  --surface-logo: #64748b;
   /* Borders */
   --border: #dce3ef;
   --border-badge-wish: #eab7cd;
