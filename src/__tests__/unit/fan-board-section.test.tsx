@@ -365,7 +365,9 @@ describe("<FanBoardSection> crowd TOP3", () => {
     const entries = await screen.findAllByTestId("board-top-entry");
     expect(entries[0]).not.toHaveAttribute("data-mine");
     expect(entries[1]).toHaveAttribute("data-mine", "true");
-    expect(entries[1]).toHaveTextContent("mineBadge");
+    expect(
+      within(entries[1]).getByTestId("board-nado").getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("titles link to the bare-id song page; a click is tracked", async () => {

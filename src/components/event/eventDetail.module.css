@@ -35,7 +35,7 @@
 
 .hero {
   display: grid;
-  grid-template-columns: 204px minmax(0, 1fr);
+  grid-template-columns: 288px minmax(0, 1fr);
   column-gap: 32px;
   row-gap: 14px;
   align-items: center;
@@ -43,8 +43,7 @@
 }
 /*
  * The state line is a direct grid child (not inside .heroCopy) so it can
- * take the full width under the 90px slot on phones (18-v3
- * `.event-hero .state-line{grid-column:1/-1}`); above 700px it stays in
+ * take the full width below the logo and title on phones; above 700px it stays in
  * the copy column under the meta line, and the slot spans both rows.
  */
 .heroArt {
@@ -411,7 +410,7 @@ a.groupChip:hover {
     grid-template-columns: 1fr 1fr;
   }
   .hero {
-    grid-template-columns: 156px minmax(0, 1fr);
+    grid-template-columns: 220px minmax(0, 1fr);
     column-gap: 22px;
   }
 }
@@ -424,7 +423,7 @@ a.groupChip:hover {
     margin-bottom: 18px;
   }
   .hero {
-    grid-template-columns: 90px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     column-gap: 14px;
     row-gap: 10px;
     align-items: start;
@@ -768,20 +767,11 @@ a.groupChip:hover {
   margin: 2px 0;
   overflow-wrap: anywhere;
 }
-/* Chip-less rows keep the 18-v3 performer disclosure (see SetlistRow). */
-.creditDetails {
-  margin-top: 8px;
+.performerNames {
+  margin: 5px 0 0;
   font-size: 12px;
+  line-height: 1.6;
   color: var(--text-secondary);
-}
-.creditDetails > summary {
-  min-height: 30px;
-  padding: 3px 0;
-  cursor: pointer;
-  color: var(--primary);
-}
-.creditDetails > p {
-  margin: 2px 0 0;
   overflow-wrap: anywhere;
 }
 .artistTag {
@@ -1009,6 +999,42 @@ a.crowdTitle:hover {
   font-size: 11px;
   font-weight: 700;
   color: var(--primary);
+}
+/* One-tap 「나도」 on a crowd/starter row (n17). Outlined in the
+   ballot's own tone (pink want / blue expect, same tokens as the "my
+   choices" chips); checked = filled like a chosen chip. 28px tall to
+   clear the 24px target-size floor. */
+.nadoButton {
+  flex-shrink: 0;
+  min-height: 28px;
+  padding: 2px 9px;
+  border: 1px solid var(--border-my-choice);
+  border-radius: 999px;
+  background: var(--bg-card);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--text-my-choice);
+}
+.ballotExpect .nadoButton {
+  border-color: var(--border-expect-my-choice);
+  color: var(--text-expect-my-choice);
+}
+.nadoButton[aria-pressed="true"] {
+  background: var(--surface-my-choice);
+}
+.ballotExpect .nadoButton[aria-pressed="true"] {
+  background: var(--surface-expect-my-choice);
+}
+.nadoButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.nadoElsewhere {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 .myChoices {
   margin-top: 10px;

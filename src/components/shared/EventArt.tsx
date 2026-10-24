@@ -15,16 +15,14 @@ import { useImageFallback } from "./useImageFallback";
  *   standard  full card width × 156px (126px under 700px)
  *   compact   96×96 at ≥1100px, 76×120 below (taller than wide so
  *             localized short titles fit; the slot need not be square)
- *   detail    the concert-detail Hero slot (18-v3 `.logo-slot`):
- *             204×182 above 800px, 156×156 at 700–800px, 90×118 under
- *             700px. Same contain + inset rule; the fallback title is
- *             larger than compact (24px / 15px on phones) because the
- *             slot sits beside the page h1, and the caption drops on
- *             phones where the 90px column has no room for it.
+ *   detail    288×160 above 800px, 220×148 at 700–800px, and a full
+ *             row up to 320×140 on phones. Wide marks remain readable
+ *             beside the title on desktop and above it on phones.
  *
- * Logo rendering: `object-fit: contain` inside the contract's 16px safe
- * inset — approved logos are never cropped, stretched or replaced by
- * posters.
+ * Logo rendering: `object-fit: contain` with an 8px safe inset in the
+ * detail slot (16px in cards). A neutral midtone supports both pale and
+ * dark details in transparent artwork. Approved logos are never cropped,
+ * stretched or replaced by posters.
  *
  * Fallback: when `logoUrl` is empty OR the image fails to load, the same
  * region shows typography (eyebrow / short title / caption) on the
@@ -74,7 +72,7 @@ const REGION: Record<EventArtVariant, string> = {
   compact:
     "h-[120px] w-[76px] rounded-lg p-2 min-[1100px]:h-24 min-[1100px]:w-24",
   detail:
-    "h-[118px] w-[90px] rounded-xl p-[9px] min-[700px]:h-[156px] min-[700px]:w-[156px] min-[700px]:rounded-[18px] min-[700px]:p-5 min-[801px]:h-[182px] min-[801px]:w-[204px]",
+    "h-[140px] w-full max-w-[320px] rounded-xl p-3 min-[700px]:h-[148px] min-[700px]:w-[220px] min-[700px]:rounded-[18px] min-[801px]:h-[160px] min-[801px]:w-[288px]",
 };
 
 export function EventArt(props: EventArtProps) {
@@ -103,18 +101,19 @@ function EventArtInner({
       data-testid="event-art"
       data-state={showLogo ? "logo" : "fallback"}
       className={`relative flex shrink-0 items-center justify-center overflow-hidden text-center ${REGION[variant]} ${className}`}
-      // No tint (or an unusable value) → the neutral accent wash rather
-      // than an arbitrary performer colour.
+      // Tint belongs to the typography fallback; artwork keeps a neutral
+      // background so pale lettering does not disappear into the wash.
       style={{
-        background:
-          tint && HEX_COLOR.test(tint)
+        background: showLogo
+          ? colors.logoSurface
+          : tint && HEX_COLOR.test(tint)
             ? `linear-gradient(135deg, ${tint}18, ${colors.accentLavender})`
             : colors.artWash,
       }}
     >
       {/* Two faint rings on the wash (03 mockup `.art:before/:after`).
           The detail slot (18-v3 `.logo-slot`) is drawn without them. */}
-      {variant === "standard" && (
+      {variant === "standard" && !showLogo && (
         <>
           <span
             aria-hidden="true"
@@ -136,7 +135,10 @@ function EventArtInner({
           alt={alt}
           referrerPolicy="no-referrer"
           {...imgProps}
-          className="absolute inset-4 h-[calc(100%-32px)] w-[calc(100%-32px)] object-contain"
+          className={`absolute object-contain ${detail
+            ? "inset-2 h-[calc(100%-16px)] w-[calc(100%-16px)]"
+            : "inset-4 h-[calc(100%-32px)] w-[calc(100%-32px)]"
+          }`}
         />
       ) : (
         <div aria-hidden={alt ? undefined : true} className="relative w-full">

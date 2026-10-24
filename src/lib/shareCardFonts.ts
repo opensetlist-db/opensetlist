@@ -12,12 +12,12 @@ function familyName(value: string): string {
   return value.trim().replace(/^["']|["']$/g, "");
 }
 
-function covers(range: string, point: number): boolean {
-  return range.split(",").some((part) => {
+function parseRanges(range: string): [number, number][] {
+  return range.split(",").map((part) => {
     const bounds = part.trim().replace(/^U\+/i, "").split("-");
     const lower = parseInt(bounds[0].replace(/\?/g, "0"), 16);
     const upper = parseInt((bounds[1] ?? bounds[0]).replace(/\?/g, "F"), 16);
-    return point >= lower && point <= upper;
+    return [lower, upper];
   });
 }
 
@@ -26,6 +26,7 @@ function covers(range: string, point: number): boolean {
 // Concurrent preview/share attempts share one retry, and failed attempts
 // are removed so the next explicit attempt can recover after the network.
 const retries = new WeakMap<FontFace, Promise<FontFace>>();
+const RETRY_TIMEOUT_MS = 10_000;
 
 function retryFace(face: FontFace, doc: Document): Promise<FontFace> {
   const existing = retries.get(face);
@@ -54,10 +55,18 @@ function retryFace(face: FontFace, doc: Document): Promise<FontFace> {
         );
         const Font = doc.defaultView?.FontFace;
         if (!Font) throw new Error("Share font loading unavailable");
-        const replacement = new Font(face.family, source, {
+        // CSS-connected families may include CSS quotes (WebKit). Passing
+        // those quotes to the constructor makes them part of the family name.
+        const replacement = new Font(familyName(face.family), source, {
           weight: face.weight, style: face.style, unicodeRange: face.unicodeRange,
         });
-        await replacement.load();
+        // Some engines leave an aborted FontFace.load() pending. The outer
+        // render deadline releases the UI, but must not leave this shared
+        // retry promise cached forever or every later click would reuse it.
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("Share font unavailable")), RETRY_TIMEOUT_MS);
+          replacement.load().then(() => resolve(), reject).finally(() => clearTimeout(timer));
+        });
         doc.fonts.add(replacement);
         return replacement;
       }
@@ -73,7 +82,19 @@ export async function prepareShareCardFonts(card: HTMLElement): Promise<void> {
   const doc = card.ownerDocument;
   const view = doc.defaultView;
   if (!doc.fonts || !view) throw new Error("Share font loading unavailable");
-  const faces = Array.from(doc.fonts);
+  // A locale stylesheet contains hundreds of subset faces. Index descriptors
+  // and parse coverage once, rather than repeating string/regex work for every
+  // character in every row (and again in html2canvas's cloned document).
+  const faces = new Map<string, { face: FontFace; ranges: [number, number][] }[]>();
+  for (const face of Array.from(doc.fonts)) {
+    const family = familyName(face.family);
+    if (!SHARE_FAMILIES.has(family)) continue;
+    const key = `${family}:${face.weight}:${face.style}`;
+    const entries = faces.get(key) ?? [];
+    entries.push({ face, ranges: parseRanges(face.unicodeRange) });
+    faces.set(key, entries);
+  }
+  const characters = new Map<string, Map<number, FontFace>>();
   const required = new Set<FontFace>();
   const walker = doc.createTreeWalker(card, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -83,17 +104,26 @@ export async function prepareShareCardFonts(card: HTMLElement): Promise<void> {
     const style = view.getComputedStyle(node.parentElement);
     const families = style.fontFamily.split(",").map(familyName)
       .filter((family) => SHARE_FAMILIES.has(family));
+    const candidates = families.map((family) =>
+      faces.get(`${family}:${style.fontWeight}:${style.fontStyle}`) ?? []);
+    const key = `${style.fontFamily}:${style.fontWeight}:${style.fontStyle}`;
+    const matches = characters.get(key) ?? new Map<number, FontFace>();
+    characters.set(key, matches);
     for (const char of new Set(text)) {
       if (/\s/u.test(char)) continue;
       const point = char.codePointAt(0)!;
-      let match: FontFace | undefined;
-      for (const family of families) {
-        match = faces.find((face) => familyName(face.family) === family &&
-          face.weight === style.fontWeight && face.style === style.fontStyle &&
-          covers(face.unicodeRange, point));
+      let match = matches.get(point);
+      if (!match) for (const family of candidates) {
+        const covers = ({ ranges }: { ranges: [number, number][] }) =>
+          ranges.some(([lower, upper]) => point >= lower && point <= upper);
+        // A successful replacement coexists with the original failed CSS
+        // face. Reuse it within its family, preserving CSS family priority.
+        match = family.find((entry) => entry.face.status === "loaded" && covers(entry))?.face ??
+          family.find(covers)?.face;
         if (match) break;
       }
       if (!match) throw new Error("Share font glyph or weight unavailable");
+      matches.set(point, match);
       required.add(match);
     }
   }

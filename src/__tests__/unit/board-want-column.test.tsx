@@ -347,6 +347,7 @@ describe("<FanBoardSection> want column", () => {
       event_id: "107",
       group_id: "1",
       song_id: "10",
+      source: "picker",
     });
     expect(trackEvent).not.toHaveBeenCalledWith("wish_add", expect.anything());
     // Stored in the shared wishlist key, tagged with its group.
@@ -376,6 +377,7 @@ describe("<FanBoardSection> want column", () => {
       event_id: "107",
       group_id: "1",
       song_id: "10",
+      source: "picker",
     });
     expect(stored()).toEqual([]);
   });
@@ -443,7 +445,9 @@ describe("<FanBoardSection> want column", () => {
       expect.stringContaining("submissions(5)"),
     ]);
     expect(entries[1]).toHaveAttribute("data-mine", "true");
-    expect(entries[1]).toHaveTextContent("mineWishBadge");
+    expect(
+      within(entries[1]).getByTestId("board-nado").getAttribute("aria-pressed"),
+    ).toBe("true");
     expect(col.getByTestId("board-early")).toBeTruthy();
     // A wish is not a pick: the expect column shows no highlight.
     expect(expectCol().queryAllByTestId("board-top-entry")).toHaveLength(0);

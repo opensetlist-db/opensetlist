@@ -889,7 +889,7 @@ describe("SetlistRow — per-song performer toggle", () => {
     expect(panel).not.toBeVisible();
   });
 
-  it("chip-less full_group row keeps the 18-v3 disclosure and invents no chip", () => {
+  it("chip-less full_group row shows performers immediately and invents no chip", () => {
     const { container, rerender } = render(
       <SetlistRow
         item={makeItem({ stageType: "unit", artists: [unitCredit], performers: [sayaka] })}
@@ -913,12 +913,22 @@ describe("SetlistRow — per-song performer toggle", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "songPerformers" })).toBeNull();
-    const details = container.querySelector("details")!;
-    expect(details.querySelector("summary")).toHaveTextContent("creditsToggle");
-    expect(details).toHaveTextContent("Sayaka");
+    expect(screen.getByText("Sayaka")).toBeVisible();
+    expect(screen.getByTestId("setlist-performers")).toHaveTextContent("Sayaka");
     // No headliner / stageType chip stands in for the missing credit.
     expect(container.querySelector('a[href*="/artists/"]')).toBeNull();
     expect(screen.queryByText("stageType.full_group")).toBeNull();
+
+    rerender(
+      <SetlistRow
+        item={makeItem({ stageType: "full_group", artists: [], performers: [] })}
+        index={0}
+        reactionCounts={{}}
+        locale="ko"
+        eventId="1"
+      />,
+    );
+    expect(screen.queryByTestId("setlist-performers")).toBeNull();
   });
 
   it("no performers → no toggle, even when the row has a chip", () => {
