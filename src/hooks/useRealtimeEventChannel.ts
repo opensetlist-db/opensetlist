@@ -7,8 +7,10 @@ import { useLiveSnapshot } from "@/hooks/useLiveSnapshot";
 import type { FanTop3Entry, ReactionCountsMap } from "@/lib/types/setlist";
 import {
   nextEventStatusBoundaryDelay,
+  POST_BOUNDARY_BUFFER_MS,
   type ResolvedEventStatus,
 } from "@/lib/eventStatus";
+import { setTimeoutAt } from "@/lib/timeoutAt";
 import {
   HEALTHY_BUDGET_RESET_MS,
   MAX_RECREATE_ATTEMPTS,
@@ -397,6 +399,32 @@ export function useRealtimeEventChannel<T>({
   }, [eventId]);
 
   const { gone } = snapshot;
+  const effectiveStartTime = snapshot.startTime ?? startTime;
+  // A postponed show has no channel or periodic reads. Keep only a wake-up
+  // at its accepted new start time; that request uses the usual acceptance,
+  // jitter and Retry-After rules. A further postponement replaces the timer.
+  // This also works when the tab resumes after the boundary while hidden.
+  useEffect(() => {
+    if (paused || gone || snapshot.status !== "upcoming" || !effectiveStartTime) return;
+    const startMs = snapshot.startTimeLocalMs ?? Date.parse(effectiveStartTime);
+    if (!Number.isFinite(startMs)) return;
+    const runner = createRunner();
+    const scheduler = createLiveScheduler({
+      runFetch: runner.runFetch,
+      periodic: null,
+      initialNotBeforeAt: retryFloorRef.current,
+    });
+    scheduler.start();
+    const cancel = setTimeoutAt(startMs + POST_BOUNDARY_BUFFER_MS,
+      () => scheduler.requestFetch("boundary"));
+    return () => {
+      cancel();
+      retryFloorRef.current = scheduler.getState().notBeforeAt;
+      scheduler.dispose();
+      runner.abort();
+    };
+  }, [eventId, locale, paused, gone, snapshot.status, snapshot.startTimeLocalMs, effectiveStartTime, createRunner]);
+
   // A server snapshot can finish/cancel the show before SSR props change.
   // Stop the channel and its repair poll as soon as that status is known.
   const live = enabled && (snapshot.status === null || snapshot.status === "ongoing");
@@ -495,7 +523,7 @@ export function useRealtimeEventChannel<T>({
     // sufficient.
     let boundaryTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleNextStatusBoundary = () => {
-      const delayMs = nextEventStatusBoundaryDelay(startTime);
+      const delayMs = nextEventStatusBoundaryDelay(effectiveStartTime);
       if (delayMs === null) return;
       boundaryTimer = setTimeout(() => {
         // Every viewer's timer fires at the same startTime — jittered
@@ -783,7 +811,7 @@ export function useRealtimeEventChannel<T>({
       if (channel) void supabase.removeChannel(channel);
       channel = null;
     };
-  }, [eventId, locale, live, paused, gone, startTime, createRunner]);
+  }, [eventId, locale, live, paused, gone, effectiveStartTime, createRunner]);
 
   return snapshot;
 }

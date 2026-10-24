@@ -66,6 +66,10 @@ export interface LiveSnapshotData<T> {
   reactionCounts: ReactionCountsMap;
   top3Wishes: FanTop3Entry[];
   status: ResolvedEventStatus | null;
+  /** Start time from the latest accepted snapshot, including postponements. */
+  startTime: string | null;
+  /** Server start instant projected onto the client clock using servedAt. */
+  startTimeLocalMs: number | null;
   /**
    * Non-null once a snapshot has been applied in this browser. Callers
    * use it as "client data is now authoritative" (LiveEventLayout's
@@ -104,6 +108,7 @@ interface SnapshotBody<T> {
   reactionCounts?: ReactionCountsMap;
   top3Wishes?: FanTop3Entry[];
   status?: ResolvedEventStatus | null;
+  startTime?: unknown;
   rev?: unknown;
   capturedAt?: unknown;
   servedAt?: unknown;
@@ -181,6 +186,8 @@ export function useLiveSnapshot<T>({
   const [top3Wishes, setTop3Wishes] =
     useState<FanTop3Entry[]>(initialTop3Wishes);
   const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
+  const [startTime, setStartTime] = useState<string | null>(null);
+  const [startTimeLocalMs, setStartTimeLocalMs] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [freshness, setFreshness] = useState<Freshness>(INITIAL_FRESHNESS);
   const [rev, setRev] = useState<number | null>(() => seedRev(initialRev));
@@ -249,6 +256,8 @@ export function useLiveSnapshot<T>({
     setReactionCounts(initialReactionCounts);
     setTop3Wishes(initialTop3Wishes);
     setStatus(null);
+    setStartTime(null);
+    setStartTimeLocalMs(null);
     setLastUpdated(null);
     setFreshness(INITIAL_FRESHNESS);
     setRev(seedRev(initialRev));
@@ -315,6 +324,18 @@ export function useLiveSnapshot<T>({
         // correct beats an unintended unlock.
         if ("status" in body) {
           setStatus(body.status ?? null);
+        }
+        // Apply timing under the same revision/generation gate as status.
+        // Old servers or malformed fields must not erase a known schedule.
+        if (typeof body.startTime === "string" && Number.isFinite(Date.parse(body.startTime))) {
+          setStartTime(body.startTime);
+          const serverNow = typeof body.servedAt === "string" ? Date.parse(body.servedAt) : NaN;
+          // A fast client clock must not spend its only boundary read before
+          // the server's start. Network transit can delay this wake-up, never
+          // make it early. A still-upcoming reply recalculates the remaining wait.
+          setStartTimeLocalMs(Number.isFinite(serverNow)
+            ? Date.now() + Date.parse(body.startTime) - serverNow
+            : Date.parse(body.startTime));
         }
         setLastUpdated(pickLastUpdated(body));
         // Compat (no `rev`) responses leave the exposed watermark as is.
@@ -507,6 +528,8 @@ export function useLiveSnapshot<T>({
     reactionCounts,
     top3Wishes,
     status,
+    startTime,
+    startTimeLocalMs,
     lastUpdated,
     freshness,
     rev,
