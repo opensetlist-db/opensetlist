@@ -333,12 +333,15 @@ const scenario = {
           .map((face) => ({ family: face.family, weight: face.weight, status: face.status })));
         blocked = false;
         let recovered;
-        for (let attempt = 1; attempt <= 2 && !recovered; attempt++) {
+        for (let attempt = 1; attempt <= 3 && !recovered; attempt++) {
           const errorToast = page.getByRole("status").getByText(messages.ko.ShareCard.imageErrorToast, { exact: true });
           await errorToast.waitFor({ state: "hidden", timeout: 10000 });
           // An automatic retry may have started while the route was still
           // offline. Its bounded failure must remain visible/retryable; a
           // subsequent click must create a fresh request, without a reload.
+          // WebKit can first reject an old CSS face exposed as unloaded,
+          // then settle the offline replacement before a fresh face loads.
+          // Keep each error/no-output assertion and bound the whole recovery.
           let downloadedFile;
           const nextDownload = new Promise((resolve) => { downloadedFile = resolve; });
           page.on("download", downloadedFile);
@@ -357,7 +360,7 @@ const scenario = {
             }
           } finally { page.off("download", downloadedFile); }
         }
-        if (!recovered) throw new Error(`${label}: no PNG after two recovery attempts`);
+        if (!recovered) throw new Error(`${label}: no PNG after three recovery attempts`);
         h.check(`${label}: retry creates actual PNG`, recovered.width === 1200 && downloaded > 0, recovered.sha256);
         evidence.push({ fault: label, faults, failedFaces, recovered }); write();
       }
