@@ -1,4 +1,5 @@
 import { parseRequiredAnonId } from "@/lib/anonId";
+import { revalidateBoardAggregate } from "@/lib/dataCache";
 import {
   ballotErrorResponse,
   ballotJson,
@@ -41,9 +42,8 @@ type RouteProps = { params: Promise<{ id: string }> };
  * advisory lock (`withBallotLock`), which is what makes the cap hold
  * under concurrent requests.
  *
- * Never calls a cache revalidate helper: the board aggregate is
- * TTL-only, and every cached read carries the global public-data tag
- * the live path shares.
+ * After commit, expire only this event's board aggregate. The caller's
+ * next board read must include its ballot; live snapshots stay cached.
  */
 export async function POST(req: Request, { params }: RouteProps) {
   const eventId = parseDecimalId((await params).id);
@@ -73,6 +73,7 @@ export async function POST(req: Request, { params }: RouteProps) {
     if (!control.ok) return ballotJson(control.status, { error: control.code });
     await validatePickTarget(control.context, groupId, songId);
     const result = await createPick(eventId, anon.value, groupId, songId);
+    revalidateBoardAggregate(eventId);
     return ballotJson(result.created ? 201 : 200, result.pick);
   } catch (err) {
     return ballotErrorResponse(err);
@@ -134,6 +135,7 @@ export async function PUT(req: Request, { params }: RouteProps) {
     await validatePublishTargets(control.context, parsed.picks);
     assertPublishCaps(parsed.picks);
     const picks = await publishPicks(eventId, anon.value, parsed.picks);
+    revalidateBoardAggregate(eventId);
     return ballotJson(200, { picks });
   } catch (err) {
     return ballotErrorResponse(err);

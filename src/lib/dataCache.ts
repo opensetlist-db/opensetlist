@@ -93,9 +93,8 @@ export function eventImpressionsTag(eventId: bigint | number | string): string {
 /**
  * Own tag for the fan board aggregate (n15). Deliberately NOT
  * `eventTag(id)`: board entries must not be expired by — or expire —
- * the event/live entries. Fan board writes never expire it (TTL-only);
- * the one caller is the admin board write when the operator changes
- * starter picks (`revalidateBoardAggregate`).
+ * the event/live entries. Fan ballot and admin starter-pick writes
+ * expire this tag so the next board read sees the committed change.
  */
 export function eventBoardTag(eventId: bigint | number | string): string {
   return `event:${eventId.toString()}:board`;
@@ -416,7 +415,7 @@ export function eventBoardControlTag(eventId: bigint | number | string): string 
  * Expire only the board control row — called by the admin board
  * settings write so the kill switch reaches the next board read
  * instead of one event TTL later. Never called by fan board writes
- * (those are TTL-only by design).
+ * (those expire only the aggregate).
  */
 export function revalidateBoardControl(eventId: bigint | number | string): void {
   expireTags([eventBoardControlTag(eventId)]);
@@ -427,7 +426,8 @@ export function revalidateBoardControl(eventId: bigint | number | string): void 
  * admin board write when starter picks change — the aggregate carries
  * their resolved titles, so expiring only the control row would serve
  * the new control value with the old starters for up to one board TTL.
- * Never called by fan board writes.
+ * Fan ballot writes also expire this tag after commit, so their next
+ * read includes the saved contribution without expiring LIVE data.
  */
 export function revalidateBoardAggregate(eventId: bigint | number | string): void {
   expireTags([eventBoardTag(eventId)]);

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
-import { colors, gradients, rgbaFromHex } from "@/styles/tokens";
+import { colors } from "@/styles/tokens";
+import styles from "./Button.module.css";
 
 /**
  * Single source-of-truth for the two button design tokens introduced
  * by the wishlist / predict polish redesign. `<PrimaryButton>` is the
- * gradient CTA (share / launch) — `<SecondaryButton>` is the
+ * primary CTA (share / picker completion) — `<SecondaryButton>` is the
  * utility-row partner (add-from-search / add-from-past). Five call
  * sites share these variants:
  *
@@ -20,7 +21,7 @@ import { colors, gradients, rgbaFromHex } from "@/styles/tokens";
  *
  * Why two components instead of one variant prop:
  *   - The press / hover affordances are different in kind, not in
- *     degree (primary scales + deepens gradient; secondary flips
+ *     degree (primary deepens its fill; secondary flips
  *     foreground colour) — folding both into a single component
  *     forces branching on every interaction handler.
  *   - Call sites use distinct semantic intent — searching for
@@ -30,13 +31,11 @@ import { colors, gradients, rgbaFromHex } from "@/styles/tokens";
  * Both variants:
  *   - Default `type="button"` so nesting inside a `<form>` never
  *     submits.
- *   - Carry `whiteSpace: "nowrap"` so narrow-viewport labels
- *     truncate instead of wrapping — keeps the two-button row in
- *     Predict from re-flowing on iPhone SE.
- *   - Honour `disabled`: native attribute + `pointer-events: none`
- *     so pressed / hover state can never latch while disabled.
- *   - Style cascade: variant defaults → `className` utilities →
- *     `style` prop (last write wins).
+ *   - Honour native disabled semantics. Primary interaction states
+ *     use CSS so keyboard presses and touch cancellation cannot latch.
+ *   - Primary labels wrap at narrow widths; utility-row secondary
+ *     labels retain their existing single-line layout.
+ *   - Allow layout overrides through className and the style prop.
  */
 
 interface ButtonBaseProps {
@@ -44,6 +43,7 @@ interface ButtonBaseProps {
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
   fullWidth?: boolean;
   disabled?: boolean;
+  busy?: boolean;
   /** Merged AFTER the variant's computed style, so callers can
    *  override flex / width / margin without touching colours. */
   style?: CSSProperties;
@@ -72,62 +72,22 @@ export function PrimaryButton({
   onClick,
   fullWidth = false,
   disabled = false,
+  busy = false,
   style,
   type = "button",
   ariaLabel,
   className,
 }: ButtonBaseProps) {
-  const [pressed, setPressed] = useState(false);
-  const isPressed = !disabled && pressed;
-
-  // Disabled primary: switch to a grayscale ramp rather than alpha-
-  // on-brand. Lower opacity on the brand gradient ghosts the page
-  // background through and reads as "broken" rather than "disabled";
-  // a saturated → grayscale swap is the unambiguous signal.
-  const background = disabled
-    ? "linear-gradient(135deg, #94a3b8, #64748b)"
-    : isPressed
-      ? gradients.brandGradientPressed
-      : colors.brandGradient;
-
-  const boxShadow = disabled
-    ? "none"
-    : isPressed
-      ? `0 1px 3px ${rgbaFromHex(colors.primary, 0.3)}`
-      : `0 2px 8px ${rgbaFromHex(colors.primary, 0.25)}`;
-
   return (
     <button
       type={type}
       onClick={disabled ? undefined : onClick}
-      onPointerDown={() => !disabled && setPressed(true)}
-      onPointerUp={() => setPressed(false)}
-      onPointerLeave={() => setPressed(false)}
-      onPointerCancel={() => setPressed(false)}
       disabled={disabled}
+      aria-busy={busy || undefined}
       aria-label={ariaLabel}
-      className={className}
+      className={[styles.primary, className].filter(Boolean).join(" ")}
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
         width: fullWidth ? "100%" : "auto",
-        padding: "9px 18px",
-        borderRadius: 10,
-        border: "none",
-        background,
-        color: "white",
-        fontSize: 13,
-        fontWeight: 700,
-        letterSpacing: "0.01em",
-        cursor: disabled ? "not-allowed" : "pointer",
-        pointerEvents: disabled ? "none" : "auto",
-        fontFamily: "inherit",
-        whiteSpace: "nowrap",
-        transition: "all 0.12s",
-        transform: isPressed ? "scale(0.97)" : "scale(1)",
-        boxShadow,
         ...style,
       }}
     >

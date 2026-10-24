@@ -42,8 +42,8 @@ import type {
  *     show is ongoing.
  *   - `getBoardAggregateCached` — the per-group columns ("want" from
  *     wishes since per-group wishes, "expect" from picks). Own cache name
- *     and own tag (`event:<id>:board`), ~2 min TTL, never invalidated
- *     by a fan write (only the admin starter-pick save expires it).
+ *     and own tag (`event:<id>:board`), ~2 min TTL. Fan ballot writes
+ *     and admin starter-pick saves expire only this aggregate tag.
  *     Keyed on event + locale + resolved status so the
  *     upcoming → completed transition is a fresh miss: the completed
  *     shape carries the post-show tally (n15).

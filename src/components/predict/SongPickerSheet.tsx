@@ -1,10 +1,12 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { useRef, type RefObject } from "react";
 import { Drawer } from "vaul";
 import { SongPickerContent } from "@/components/predict/SongPickerContent";
 import { colors } from "@/styles/tokens";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
+import styles from "./songPicker.module.css";
 
 interface Props {
   locale: string;
@@ -18,6 +20,9 @@ interface Props {
    *  (`Predict.picker.sheetTitle`); the fan board passes its own per
    *  column, so a wishlist picker isn't headed "add a predicted song". */
   title?: string;
+  /** Explicit trigger also works on Safari, where a touch on a button
+   *  need not make it document.activeElement. */
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }
 
 /**
@@ -46,8 +51,10 @@ export function SongPickerSheet({
   onOpenChange,
   onToggle,
   title,
+  triggerRef,
 }: Props) {
   const t = useTranslations("Predict");
+  const previousFocus = useRef<HTMLElement | null>(null);
 
   return (
     // `closeThreshold={0.5}` requires dragging the sheet half-way
@@ -73,6 +80,22 @@ export function SongPickerSheet({
           }}
         />
         <Drawer.Content
+          onOpenAutoFocus={() => {
+            previousFocus.current = triggerRef?.current ??
+              (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const target = previousFocus.current;
+            if (!target?.isConnected) return;
+            // At the board cap the add button becomes disabled while
+            // the sheet is open. Its focusable parent keeps keyboard
+            // users beside their saved choices instead of on the body.
+            const destination = target instanceof HTMLButtonElement && target.disabled
+              ? target.parentElement
+              : target;
+            destination?.focus({ preventScroll: true });
+          }}
           className="fixed bottom-0 left-0 right-0 z-[210] flex flex-col bg-white outline-none"
           style={{
             // 82vh per the mockup. Earlier dropped to 70vh to make
@@ -135,7 +158,7 @@ export function SongPickerSheet({
               type="button"
               onClick={() => onOpenChange(false)}
               aria-label={t("picker.closeAria")}
-              className="text-gray-500 hover:text-gray-900 text-xl leading-none"
+              className={`${styles.sheetClose} text-gray-500 hover:text-gray-900 text-xl leading-none`}
               style={{
                 background: "transparent",
                 border: "none",

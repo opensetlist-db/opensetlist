@@ -77,6 +77,7 @@ type State =
   | {
       kind: "ready";
       locked: boolean;
+      refreshFailed: boolean;
       groups: BoardGroupView[];
       /** The post-show tally; null before the show. */
       tally: BoardTally | null;
@@ -146,6 +147,7 @@ export function FanBoardSection({
   const sectionRef = useRef<HTMLElement>(null);
   const viewed = useRef(new Set<string>());
   const scrolledForHash = useRef(false);
+  const appliedHash = useRef<string | null>(null);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(
     null,
   );
@@ -201,19 +203,45 @@ export function FanBoardSection({
     [catalog, isFestivalCatalog],
   );
 
-  // Load the aggregate once per mount.
+  // Reads are event-driven: mount, publish, and my accepted writes.
+  // Invalidate an in-flight read as soon as a write starts. Concurrent
+  // writes share one follow-up read after all settle; response order
+  // can never restore a snapshot from before the latest action.
+  const readSession = useRef<{
+    refresh: () => void;
+    beginWrite: () => (saved: boolean) => void;
+  } | null>(null);
   useEffect(() => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), BOARD_TIMEOUT_MS);
-    (async () => {
+    let disposed = false;
+    let generation = 0;
+    let writes = 0;
+    let dirty = false;
+    let controller: AbortController | null = null;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const cancelRead = () => {
+      generation++;
+      clearTimeout(deadline);
+      controller?.abort();
+      controller = null;
+    };
+    const refresh = async () => {
+      if (disposed) return;
+      if (writes > 0) { dirty = true; return; }
+      dirty = false;
+      cancelRead();
+      const ownGeneration = generation;
+      const request = new AbortController();
+      controller = request;
+      deadline = setTimeout(() => request.abort(), BOARD_TIMEOUT_MS);
       try {
         const params = new URLSearchParams({ locale });
         const res = await fetch(`/api/events/${eventId}/board?${params}`, {
-          signal: controller.signal,
+          signal: request.signal,
           cache: "no-store",
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as BoardReadResponse;
+        if (disposed || ownGeneration !== generation || request.signal.aborted) return;
         if (!body.enabled || !("groups" in body)) {
           setState({ kind: "hidden" });
           return;
@@ -221,21 +249,70 @@ export function FanBoardSection({
         setState({
           kind: "ready",
           locked: body.locked,
+          refreshFailed: false,
           groups: body.groups,
           tally: body.status === "completed" ? body.tally : null,
         });
       } catch {
-        // Unmount aborts too; setting state then is a harmless no-op.
-        setState({ kind: "error" });
+        if (!disposed && ownGeneration === generation) {
+          // A failed read does not undo a committed ballot. Retain the
+          // current board and offer an explicit retry, without polling.
+          setState((previous) => previous.kind === "ready"
+            ? { ...previous, refreshFailed: true }
+            : { kind: "error" });
+        }
       } finally {
-        clearTimeout(timer);
+        if (ownGeneration === generation) {
+          clearTimeout(deadline);
+          controller = null;
+        }
       }
-    })();
+    };
+    const session = {
+      refresh: () => { void refresh(); },
+      beginWrite: () => {
+        writes++;
+        // If a previous successful action's read was still running,
+        // it needs a replacement even if this new write is refused.
+        dirty ||= controller !== null;
+        cancelRead();
+        return (saved: boolean) => {
+          writes--;
+          dirty ||= saved;
+          if (!disposed && writes === 0 && dirty) void refresh();
+        };
+      },
+    };
+    readSession.current = session;
+    session.refresh();
     return () => {
-      clearTimeout(timer);
-      controller.abort();
+      disposed = true;
+      cancelRead();
+      if (readSession.current === session) readSession.current = null;
     };
   }, [eventId, locale]);
+
+  // Publishing the Predict ballot can finish while a wish write is
+  // still pending. Keep the same read session so both changes share
+  // its pending-write barrier, rather than dropping that barrier.
+  const previousPicksRevision = useRef(picksRevision);
+  useEffect(() => {
+    if (previousPicksRevision.current === picksRevision) return;
+    previousPicksRevision.current = picksRevision;
+    readSession.current?.refresh();
+  }, [picksRevision]);
+
+  const mutate = async (action: () => Promise<PickOutcome>) => {
+    const complete = readSession.current?.beginWrite();
+    let saved = false;
+    try {
+      const outcome = await action();
+      saved = outcome.ok;
+      return outcome;
+    } finally {
+      complete?.(saved);
+    }
+  };
 
   const groups: readonly { groupId: string; slug: string }[] =
     state.kind === "ready" ? state.groups : seed.chips;
@@ -244,14 +321,19 @@ export function FanBoardSection({
   // (a fan following a second shared link in the same tab).
   useEffect(() => {
     const apply = () => {
-      const id = groupIdFromFragment(window.location.hash, groups);
+      const hash = window.location.hash;
+      const id = groupIdFromFragment(hash, groups);
       if (id) setActiveId(id);
+      // A seed may lag the aggregate, so retry an unresolved initial
+      // fragment once the groups arrive. Refreshing counts must never
+      // reapply a resolved fragment over a fan's later chip selection.
+      if (id || state.kind === "ready") appliedHash.current = hash;
       return id;
     };
-    apply();
+    if (appliedHash.current !== window.location.hash) apply();
     window.addEventListener("hashchange", apply);
     return () => window.removeEventListener("hashchange", apply);
-  }, [groups]);
+  }, [groups, state.kind]);
 
   // A shared link should land ON the board: once the content is there
   // (so the layout won't shift under the scroll), bring it into view.
@@ -362,7 +444,7 @@ export function FanBoardSection({
       return;
     }
     report(
-      await ballot.add(kind, group.groupId, songId, pickTitle(song, locale)),
+      await mutate(() => ballot.add(kind, group.groupId, songId, pickTitle(song, locale))),
       group.name,
       kind,
     );
@@ -373,11 +455,11 @@ export function FanBoardSection({
     group: BoardGroupView,
     entry: BallotEntry,
   ) => {
-    report(await ballot.remove(kind, entry), group.name, kind);
+    report(await mutate(() => ballot.remove(kind, entry)), group.name, kind);
   };
 
   const handleRemoveLegacy = async (entry: WishEntry) => {
-    const outcome = await ballot.removeLegacyWish(entry);
+    const outcome = await mutate(() => ballot.removeLegacyWish(entry));
     if (outcome.ok) {
       setToast({ text: t("removedWish"), error: false });
       return;
@@ -502,6 +584,14 @@ export function FanBoardSection({
           </p>
         )}
         <p className={styles.boardLead}>{t("explainer")}</p>
+        {state.kind === "ready" && state.refreshFailed && !locked && (
+          <p role="status" className={styles.ballotNote}>
+            {t("refreshError")}{" "}
+            <button type="button" onClick={() => readSession.current?.refresh()} className="underline">
+              {t("retryRefresh")}
+            </button>
+          </p>
+        )}
       </div>
 
       <div

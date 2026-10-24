@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardPreview } from "@/components/ShareCardPreview";
+import { PrimaryButton } from "@/components/ui/Button";
 import type { ShareCardMode } from "@/lib/shareCardMode";
 import {
   CARD_CAPTURE_WIDTH_PX,
@@ -53,7 +54,7 @@ import { zIndex, type ShareCardTheme } from "@/styles/tokens";
 function classifyShareCardFailure(
   message: string,
 ): "timeout" | "tainted_canvas" | "oom" | "unknown" {
-  if (message === "canvas.toBlob returned null") return "timeout";
+  if (message === "canvas.toBlob returned null" || message === "Share render timed out") return "timeout";
   if (/tainted/i.test(message)) return "tainted_canvas";
   if (/(memory|OOM|allocation)/i.test(message)) return "oom";
   return "unknown";
@@ -176,6 +177,7 @@ export function ShareCardModal({
   const mounted = useMounted();
   const [theme, setTheme] = useState<ShareCardTheme>("dark");
   const [busy, setBusy] = useState(false);
+  const [rasterizationRetry, setRasterizationRetry] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   // Dedicated capture target rendered off-screen at a hard-coded 600px
@@ -206,6 +208,8 @@ export function ShareCardModal({
   // fixed 600px keeps the two-column geometry consistent across
   // every device.
   const captureRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const currentRasterizationKey = useRef("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   // Pre-rasterized PNG blob, refreshed on modal open + theme change.
   // **Critical for iOS Safari Web Share**: navigator.share requires
@@ -294,8 +298,29 @@ export function ShareCardModal({
     const opener = document.activeElement as HTMLElement | null;
     closeButtonRef.current?.focus();
     return () => {
-      opener?.focus?.();
+      // Other effect cleanups restore the background's inert state.
+      // Focusing before that restoration is ignored by the browser.
+      queueMicrotask(() => opener?.focus?.());
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !dialogRef.current) return;
+    const previous = new Map<HTMLElement, boolean>();
+    // The dialog is nested in the event page, so isolate siblings at
+    // every ancestor level, preserving any pre-existing inert state.
+    let branch: HTMLElement = dialogRef.current;
+    while (branch.parentElement) {
+      for (const sibling of Array.from(branch.parentElement.children)) {
+        if (sibling !== branch && sibling instanceof HTMLElement) {
+          previous.set(sibling, sibling.inert);
+          sibling.inert = true;
+        }
+      }
+      branch = branch.parentElement;
+      if (branch === document.body) break;
+    }
+    return () => previous.forEach((inert, el) => { el.inert = inert; });
   }, [open]);
 
   // Body-scroll lock while the modal is open. Without this, a swipe
@@ -354,11 +379,12 @@ export function ShareCardModal({
     open ? "open" : "closed",
     theme,
     mode,
+    locale,
     seriesName,
     eventTitle,
     dateLine,
-    actualSongs.map((s) => s.id).join(","),
-    predictions.map((p) => p.songId).join(","),
+    JSON.stringify(actualSongs),
+    JSON.stringify(predictions),
     matched,
     total,
     percentage,
@@ -367,6 +393,12 @@ export function ShareCardModal({
     // by id sequence above. Adding it as a separate key field would
     // be redundant.
   ].join("|");
+  useEffect(() => { currentRasterizationKey.current = rasterizationKey; }, [rasterizationKey]);
+  useEffect(() => {
+    // Disabling the focused action can move focus to body. Keep Tab in
+    // the dialog while no enabled control is available during capture.
+    if (busy) dialogRef.current?.focus();
+  }, [busy]);
   const [prevRasterizationKey, setPrevRasterizationKey] = useState(
     rasterizationKey,
   );
@@ -415,7 +447,7 @@ export function ShareCardModal({
       clearTimeout(delay);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rasterizationKey]);
+  }, [rasterizationKey, rasterizationRetry]);
 
   if (!open) return null;
 
@@ -438,6 +470,23 @@ export function ShareCardModal({
     if (e.key === "Escape") {
       e.preventDefault();
       handleClose();
+    }
+    if (e.key === "Tab") {
+      const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], [tabindex="0"]',
+      ) ?? []);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (!first) {
+        e.preventDefault();
+        dialogRef.current?.focus();
+      } else if (e.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   };
 
@@ -486,17 +535,17 @@ export function ShareCardModal({
           : mode === "live"
             ? t("shareTextLive", { matched, total, percentage })
             : t("shareText", { matched, total, percentage });
+      let blob = preRasterizedBlob;
+      if (!blob) {
+        blob = await renderCardToBlob(captureRef.current);
+        if (currentRasterizationKey.current === rasterizationKey) setPreRasterizedBlob(blob);
+      }
       const outcome: ShareOutcome = await shareCard({
         cardEl: captureRef.current,
-        // Pass the pre-rasterized blob (may be null if rasterization
-        // hadn't completed before the user tapped — the helper falls
-        // back to on-demand rasterization in that case). The
-        // "preRasterizedBlob present" path is the iOS Safari user-
-        // gesture preservation route: navigator.share is called
-        // synchronously inside this click handler without an async
-        // hop through canvas.toBlob, so transient activation
-        // survives the call.
-        preRasterizedBlob: preRasterizedBlob ?? undefined,
+        // An already prepared blob reaches navigator.share in the click
+        // turn. An on-demand render is cached too, so a subsequent tap
+        // after transient activation expires can use the same fast path.
+        preRasterizedBlob: blob,
         // Native-share payload — only consulted when the OS sheet
         // path is taken. Title for surfaces that show one (Twitter
         // compose, KakaoTalk caption); text for ones that compose a
@@ -541,7 +590,7 @@ export function ShareCardModal({
         });
         setToast(t("imageErrorToast"));
       }
-    } catch {
+    } catch (error) {
       // Defensive: today's `shareCard()` catches every internal async
       // path and always returns a ShareOutcome rather than throwing.
       // But the dynamic `import("html2canvas")` is the kind of code
@@ -552,9 +601,12 @@ export function ShareCardModal({
       // doesn't lock. CR #295 round 2.
       trackEvent("share_card_save_failed", {
         event_id: String(eventId),
-        reason: "unknown",
+        reason: classifyShareCardFailure(error instanceof Error ? error.message : ""),
       });
       setToast(t("imageErrorToast"));
+      // Re-arm background preparation after a failed user attempt so a
+      // recovered network can supply a synchronous blob on the next tap.
+      setRasterizationRetry((attempt) => attempt + 1);
     } finally {
       setBusy(false);
       refocusCloseButton();
@@ -604,17 +656,19 @@ export function ShareCardModal({
           reason: classifyShareCardFailure(outcome.message),
         });
         setToast(t("imageCopyFailedToast"));
+        setRasterizationRetry((attempt) => attempt + 1);
       }
-    } catch {
+    } catch (error) {
       // Same defensive catch as handleShare — see that branch for
       // the rationale. Failure here is a thrown error from
       // `copyCardToClipboard`, which today always returns a
       // CopyOutcome but might rethrow from a future refactor.
       trackEvent("share_card_save_failed", {
         event_id: String(eventId),
-        reason: "unknown",
+        reason: classifyShareCardFailure(error instanceof Error ? error.message : ""),
       });
       setToast(t("imageCopyFailedToast"));
+      setRasterizationRetry((attempt) => attempt + 1);
     } finally {
       setBusy(false);
       refocusCloseButton();
@@ -628,9 +682,12 @@ export function ShareCardModal({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
+      aria-busy={busy || undefined}
       aria-labelledby="share-card-modal-title"
+      tabIndex={-1}
       onKeyDown={handleKeyDown}
       onClick={handleClose}
       style={{
@@ -793,27 +850,8 @@ export function ShareCardModal({
           />
         </div>
 
-        {/* Action buttons — directly below the preview, side-by-side,
-            flex-1 so each takes equal width, min-h-[44px] for touch-
-            target ergonomics (Apple HIG / Material recommended
-            minimum). Both buttons share the brand gradient bg so
-            they read as a pair of primary actions; the icon glyph +
-            label communicates which intent is which. Shared style
-            hoisted so a future palette change touches one place,
-            not two — CR-flagged duplication. */}
-        {(() => {
-          const actionButtonStyle: React.CSSProperties = {
-            minHeight: 44,
-            background: busy
-              ? "#94a3b8"
-              : "linear-gradient(135deg, #4FC3F7, #0277BD)",
-            color: "white",
-            border: "none",
-            cursor: busy ? "wait" : "pointer",
-          };
-          const actionButtonClass =
-            "flex-1 inline-flex items-center justify-center gap-2 text-sm font-medium rounded-full px-5 cursor-pointer";
-          return (
+        {/* Both export paths use the same primary action contract as
+            the entry and picker completion, including disabled/focus. */}
             <div
               className="flex justify-center gap-2 mt-3"
               style={{
@@ -822,12 +860,12 @@ export function ShareCardModal({
                 marginRight: "auto",
               }}
             >
-              <button
+              <PrimaryButton
                 type="button"
                 onClick={handleShare}
                 disabled={busy}
-                className={actionButtonClass}
-                style={actionButtonStyle}
+                busy={busy}
+                style={{ flex: 1 }}
               >
                 {/* Per-platform label: touch-primary devices route to
                     `navigator.share` (OS share sheet), non-touch to a
@@ -841,22 +879,20 @@ export function ShareCardModal({
                 <span>
                   {isShareCapable ? t("shareImage") : t("downloadImage")}
                 </span>
-              </button>
+              </PrimaryButton>
               {clipboardSupported && (
-                <button
+                <PrimaryButton
                   type="button"
                   onClick={handleCopy}
                   disabled={busy}
-                  className={actionButtonClass}
-                  style={actionButtonStyle}
+                  busy={busy}
+                  style={{ flex: 1 }}
                 >
                   <CopyIcon />
                   <span>{t("copyImage")}</span>
-                </button>
+                </PrimaryButton>
               )}
             </div>
-          );
-        })()}
 
         {/* Toast */}
         {toast && (

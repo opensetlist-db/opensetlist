@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 // The "want" column of the fan board (n15), through the whole block
 // with a mocked board read and mocked wish routes: two columns per
@@ -124,7 +124,8 @@ const CATALOG = [
 ];
 
 const fetchMock = vi.fn();
-type Handler = (url: string, init?: RequestInit) => { status: number; body: unknown };
+type Reply = { status: number; body: unknown };
+type Handler = (url: string, init?: RequestInit) => Reply | Promise<Reply>;
 let handler: Handler;
 
 beforeEach(() => {
@@ -138,7 +139,7 @@ beforeEach(() => {
       : { status: 500, body: {} };
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
-    const r = handler(url, init);
+    const r = await handler(url, init);
     return new Response(JSON.stringify(r.body), {
       status: r.status,
       headers: { "Content-Type": "application/json" },
@@ -148,6 +149,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function renderBlock() {
@@ -177,6 +179,134 @@ function legacyEntry(dbId: string, songId: number, title: string) {
 }
 
 describe("<FanBoardSection> want column", () => {
+  function crowd(count: number): Reply {
+    return { status: 200, body: readBoard({ wishes: {
+      top: count ? [{ songId: "10", title: "残陽", count, available: true }] : [],
+      submissions: count, participants: count, label: count ? "early" : "operator",
+    } }) };
+  }
+
+  it("coalesces concurrent saves and a publish before reading totals", async () => {
+    const commits: Array<() => void> = [];
+    let count = 0;
+    handler = (url, init) => {
+      if (url.includes("/board?")) return crowd(count);
+      if (init?.method === "POST") return new Promise<Reply>((resolve) => {
+        const { songId } = JSON.parse(String(init.body));
+        commits.push(() => {
+          count++;
+          resolve({ status: 201, body: { id: `w${songId}`, songId, groupId: "1" } });
+        });
+      });
+      return { status: 500, body: {} };
+    };
+    renderBlock();
+    fireEvent.click(await screen.findByText("addWish(蓮ノ空)"));
+    fireEvent.click(screen.getByText("pick-10"));
+    fireEvent.click(screen.getByText("pick-11"));
+    expect(commits).toHaveLength(2);
+    await act(async () => { commits[1](); });
+    expect(fetchMock.mock.calls.filter(([url]) => url.includes("/board?"))).toHaveLength(1);
+    await act(async () => { commits[0](); });
+    await waitFor(() => expect(wantCol().getByText("submissions(2)")).toBeTruthy());
+    expect(fetchMock.mock.calls.filter(([url]) => url.includes("/board?"))).toHaveLength(2);
+    expect(stored()).toHaveLength(2);
+  });
+
+  it("does not let a delayed removal aggregate undo a subsequent add", async () => {
+    let finishOldRead!: (response: Reply) => void;
+    let reads = 0;
+    let count = 0;
+    handler = (url, init) => {
+      if (url.includes("/board?")) {
+        reads++;
+        if (reads === 3) return new Promise<Reply>((resolve) => { finishOldRead = resolve; });
+        return crowd(count);
+      }
+      if (init?.method === "POST") {
+        count = 1;
+        return { status: 201, body: { id: "w1", songId: "10", groupId: "1" } };
+      }
+      if (init?.method === "DELETE") { count = 0; return { status: 200, body: { id: "w1" } }; }
+      return { status: 500, body: {} };
+    };
+    renderBlock();
+    fireEvent.click(await screen.findByText("addWish(蓮ノ空)"));
+    fireEvent.click(screen.getByText("pick-10"));
+    await waitFor(() => expect(wantCol().getByText("submissions(1)")).toBeTruthy());
+    fireEvent.click(wantCol().getByLabelText("removeAria(残陽)"));
+    await waitFor(() => expect(reads).toBe(3));
+    fireEvent.click(screen.getByText("pick-10"));
+    await waitFor(() => expect(reads).toBe(4));
+    await act(async () => { finishOldRead(crowd(0)); });
+    expect(stored()).toHaveLength(1);
+    expect(wantCol().getByText("submissions(1)")).toBeTruthy();
+  });
+
+  it("keeps a saved wish when its aggregate read fails, and retries only the read", async () => {
+    let saved = false;
+    let fail = true;
+    handler = (url, init) => {
+      if (url.includes("/board?")) return saved && fail ? { status: 500, body: {} } : crowd(saved ? 1 : 0);
+      if (init?.method === "POST") {
+        saved = true;
+        return { status: 201, body: { id: "w1", songId: "10", groupId: "1" } };
+      }
+      return { status: 500, body: {} };
+    };
+    renderBlock();
+    fireEvent.click(await screen.findByText("addWish(蓮ノ空)"));
+    fireEvent.click(screen.getByText("pick-10"));
+    await screen.findByText("refreshError");
+    expect(stored()).toHaveLength(1);
+    fail = false;
+    fireEvent.click(screen.getByText("retryRefresh"));
+    await waitFor(() => expect(wantCol().getByText("submissions(1)")).toBeTruthy());
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+  });
+
+  it.each(["add", "remove"])("refreshes the crowd count immediately after a wish %s without reloading", async (action) => {
+    let count = action === "remove" ? 1 : 0;
+    if (count) {
+      window.localStorage.setItem("wish-107", JSON.stringify({
+        wishes: [{ ...legacyEntry("w1", 10, "残陽"), groupId: "1" }],
+      }));
+    }
+    handler = (url, init) => {
+      if (url.startsWith("/api/events/107/board?")) {
+        return { status: 200, body: readBoard({ wishes: {
+          top: count ? [{ songId: "10", title: "残陽", count, available: true }] : [],
+          submissions: count, participants: count, label: count ? "early" : "operator",
+        } }) };
+      }
+      if (url === "/api/events/107/wishes" && init?.method === "POST") {
+        count = 1;
+        return { status: 201, body: { id: "w1", groupId: "1", songId: "10", createdAt: "2026-10-24T00:00:00.000Z" } };
+      }
+      if (url === "/api/events/107/wishes/w1" && init?.method === "DELETE") {
+        count = 0;
+        return { status: 200, body: { id: "w1" } };
+      }
+      return { status: 500, body: {} };
+    };
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-10-24T00:00:00Z");
+    renderBlock();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(wantCol().queryAllByTestId("board-top-entry")).toHaveLength(count);
+    if (action === "add") {
+      fireEvent.click(screen.getByText("addWish(蓮ノ空)"));
+      fireEvent.click(within(screen.getByTestId("picker")).getByText("pick-10"));
+    } else {
+      fireEvent.click(wantCol().getByLabelText("removeAria(残陽)"));
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(stored()).toHaveLength(count);
+    // Saving triggers a server aggregate read; no polling interval or
+    // locally invented +/-1 is needed for my contribution to appear.
+    expect(wantCol().queryAllByTestId("board-top-entry")).toHaveLength(count);
+  });
+
   it("renders want and expect side by side, want first, with the explainer", async () => {
     renderBlock();
     const want = await screen.findByTestId("board-col-want");

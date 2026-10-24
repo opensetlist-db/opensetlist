@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 import { SongMatchBadge } from "@/components/SongMatchBadge";
@@ -156,6 +156,32 @@ export function EventWishSection({
   // use this list's slots if the board is later switched off.
   const legacyCount = myWishes.filter((w) => !w.groupId).length;
 
+  // Pre-show pages do not subscribe to LIVE. Read the authoritative
+  // TOP3 after my own save, independently of the personal-list write.
+  const [ownTop3, setOwnTop3] = useState<{ key: string; entries: FanTop3Entry[] } | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const refreshGeneration = useRef(0);
+  useEffect(() => () => { refreshGeneration.current++; }, [eventId, locale, status]);
+  const refreshWishes = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
+    try {
+      const params = new URLSearchParams({ locale });
+      const response = await fetch(`/api/events/${eventId}/wishes?${params}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!response.ok) throw new Error("Wishlist aggregate unavailable");
+      const body = await response.json() as { top3: FanTop3Entry[] };
+      if (generation !== refreshGeneration.current) return;
+      setOwnTop3({ key: `${eventId}:${locale}`, entries: body.top3 });
+      setRefreshFailed(false);
+    } catch {
+      if (generation === refreshGeneration.current) setRefreshFailed(true);
+    }
+  }, [eventId, locale]);
+  const displayedTop3 = status === "upcoming" && ownTop3?.key === `${eventId}:${locale}`
+    ? ownTop3.entries : top3Wishes;
+
   const [searchOpen, setSearchOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
@@ -181,6 +207,7 @@ export function EventWishSection({
         setSearchOpen(false);
         return;
       }
+      refreshGeneration.current++;
       setPending(true);
       const snapshot = myWishes;
       // Optimistic add with sentinel dbId — replaced on POST success.
@@ -224,6 +251,7 @@ export function EventWishSection({
           event_id: String(eventId),
           song_id: String(song.id),
         });
+        void refreshWishes();
       } catch {
         // Rollback. Optimistic UI flips back to the snapshot; nothing
         // persisted to localStorage so refresh would also show the
@@ -233,7 +261,7 @@ export function EventWishSection({
         setPending(false);
       }
     },
-    [eventId, myWishes, pending, isLocked, legacyCount],
+    [eventId, myWishes, pending, isLocked, legacyCount, refreshWishes],
   );
 
   const handleRemove = useCallback(
@@ -244,6 +272,7 @@ export function EventWishSection({
       // Sentinel-id rows never made it to the server — strip
       // locally without a DELETE call.
       if (entry.dbId === "__pending__") return;
+      refreshGeneration.current++;
       setPending(true);
       const snapshot = myWishes;
       const next = snapshot.filter((w) => w.dbId !== entry.dbId);
@@ -265,6 +294,7 @@ export function EventWishSection({
           event_id: String(eventId),
           song_id: String(entry.songId),
         });
+        void refreshWishes();
       } catch {
         setMyWishes(snapshot);
         writeWishes(eventId, snapshot);
@@ -272,7 +302,7 @@ export function EventWishSection({
         setPending(false);
       }
     },
-    [eventId, myWishes, pending, isLocked],
+    [eventId, myWishes, pending, isLocked, refreshWishes],
   );
 
   // Render-mode gate: locked + no data → render nothing. This is
@@ -281,7 +311,7 @@ export function EventWishSection({
   // client read from localStorage adds rows. SSR always renders the
   // section structurally; only post-hydration locked-with-zero-data
   // collapses it.
-  if (mounted && isLocked && top3Wishes.length === 0 && myWishes.length === 0) {
+  if (mounted && isLocked && displayedTop3.length === 0 && myWishes.length === 0) {
     return null;
   }
 
@@ -308,6 +338,14 @@ export function EventWishSection({
           describes (add/remove) are gone, so the copy is too. */}
       {!isLocked && <p className={styles.boardLead}>{t("description")}</p>}
 
+      {!isLocked && refreshFailed && (
+        <p role="status" className={styles.ballotNote}>
+          {t("refreshError")}{" "}
+          <button type="button" disabled={pending} onClick={() => void refreshWishes()} className="underline">
+            {t("retryRefresh")}
+          </button>
+        </p>
+      )}
       <div className={styles.wishStack}>
           {/* 내 선택 */}
           <div>
@@ -416,9 +454,9 @@ export function EventWishSection({
               order; the medal emoji they replace said the same. */}
           <div>
             <h3 className={styles.wishSubhead}>{t("fanTop3")}</h3>
-            {top3Wishes.length > 0 && (
+            {displayedTop3.length > 0 && (
             <ol className={styles.crowdList}>
-            {top3Wishes.map((entry, i) => {
+            {displayedTop3.map((entry, i) => {
               const display = displayOriginalTitle(
                 {
                   originalTitle: entry.song.originalTitle,

@@ -649,6 +649,8 @@
     "empty": "아직 아무도 고르지 않았어요. 첫 번째로 골라 보세요!",
     "loading": "보드를 불러오는 중…",
     "loadError": "보드를 불러오지 못했어요",
+    "refreshError": "선택은 저장됐지만 집계를 갱신하지 못했어요.",
+    "retryRefresh": "다시 시도",
     "mine": "내 예상곡",
     "counter": "{count}/{max}",
     "add": "+ {group} 예상곡 추가",
@@ -701,6 +703,8 @@
     "pickerTitleWish": "{group} 희망곡 추가"
   },
   "Wishlist": {
+    "refreshError": "선택은 저장됐지만 집계를 갱신하지 못했어요.",
+    "retryRefresh": "다시 시도",
     "title": "이번 공연에서 듣고 싶은 곡",
     "lockedTitle": "모두의 희망곡",
     "description": "공연 시작 전까지 곡을 추가해 주세요. 최대 3곡까지 선택할 수 있습니다.",

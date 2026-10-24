@@ -115,7 +115,6 @@ function revalidateSpies() {
     dataCache.revalidateEventData,
     dataCache.revalidateEventImpressions,
     dataCache.revalidateBoardControl,
-    dataCache.revalidateBoardAggregate,
   ].map((f) => vi.mocked(f));
 }
 
@@ -475,7 +474,7 @@ describe("GET /board/mine", () => {
 });
 
 describe("isolation", () => {
-  it("no write path ever calls a revalidate helper", async () => {
+  it("writes expire only the board aggregate", async () => {
     await POST(postReq(body()), params());
     tx.boardPick.findUnique.mockResolvedValue({
       id: "old-id",
@@ -488,6 +487,8 @@ describe("isolation", () => {
     await POST(postReq(body()), params());
     await DELETE(delReq({ anonId: ANON }), delParams());
     for (const spy of revalidateSpies()) expect(spy).not.toHaveBeenCalled();
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledTimes(3);
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenLastCalledWith(BigInt(107));
   });
 });
 

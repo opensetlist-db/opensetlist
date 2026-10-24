@@ -370,16 +370,16 @@ describe("board picks — dev database", () => {
     expect(missing.status).toBe(400);
   });
 
-  it("no write ever calls a revalidate helper", async () => {
+  it("writes expire only the board aggregate", async () => {
     const { id } = await (await postPick(ANON_A, songIds[0])).json();
     await postPick(ANON_A, songIds[0]);
     await deletePick(ANON_A, id);
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledWith(eventId);
     for (const f of [
       dataCache.revalidatePublicData,
       dataCache.revalidateEventData,
       dataCache.revalidateEventImpressions,
       dataCache.revalidateBoardControl,
-      dataCache.revalidateBoardAggregate,
     ]) {
       expect(vi.mocked(f)).not.toHaveBeenCalled();
     }
@@ -549,15 +549,15 @@ describe("board publish — dev database", () => {
     expect(await ballotRows(ANON_A)).toEqual(before);
   });
 
-  it("never calls a revalidate helper", async () => {
+  it("publish expires only the board aggregate", async () => {
     await publish(ANON_A, [{ songId: songIds[0] }]);
     await publish(ANON_A, []);
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledWith(eventId);
     for (const f of [
       dataCache.revalidatePublicData,
       dataCache.revalidateEventData,
       dataCache.revalidateEventImpressions,
       dataCache.revalidateBoardControl,
-      dataCache.revalidateBoardAggregate,
     ]) {
       expect(vi.mocked(f)).not.toHaveBeenCalled();
     }

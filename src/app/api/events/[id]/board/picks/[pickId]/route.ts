@@ -1,4 +1,5 @@
 import { parseRequiredAnonId } from "@/lib/anonId";
+import { revalidateBoardAggregate } from "@/lib/dataCache";
 import {
   ballotErrorResponse,
   ballotJson,
@@ -26,8 +27,8 @@ type RouteProps = { params: Promise<{ id: string; pickId: string }> };
  *   403 board disabled; at or after start time; another anon's pick
  *   503 database busy before the write started
  *
- * A pick whose song was soft-deleted stays removable. Never calls a
- * cache revalidate helper (see the create route).
+ * A pick whose song was soft-deleted stays removable. Only the board
+ * aggregate is expired after commit (see the create route).
  */
 export async function DELETE(req: Request, { params }: RouteProps) {
   const { id, pickId } = await params;
@@ -52,7 +53,9 @@ export async function DELETE(req: Request, { params }: RouteProps) {
   try {
     const control = await checkBoardWritable(eventId);
     if (!control.ok) return ballotJson(control.status, { error: control.code });
-    return ballotJson(200, await deletePick(eventId, anon.value, pickId));
+    const result = await deletePick(eventId, anon.value, pickId);
+    revalidateBoardAggregate(eventId);
+    return ballotJson(200, result);
   } catch (err) {
     return ballotErrorResponse(err);
   }

@@ -33,6 +33,8 @@
  * instead of going through a download intermediate.
  */
 
+import { prepareShareCardFonts } from "@/lib/shareCardFonts";
+
 export type ShareOutcome =
   | { kind: "downloaded" }
   | { kind: "shared" }
@@ -203,10 +205,23 @@ function applyCaptureShifts(clonedRoot: HTMLElement): void {
  * on iOS Safari. See `copyCardToClipboard` below for the use site.
  */
 export function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
-  return (async () => {
+  let expired = false;
+  const checkDeadline = () => {
+    if (expired) throw new Error("Share render timed out");
+  };
+  const render = async () => {
+    if (cardEl.hasAttribute("data-share-card")) {
+      await prepareShareCardFonts(cardEl);
+    }
+    checkDeadline();
+    await Promise.all(Array.from(cardEl.querySelectorAll("img"), async (img) => {
+      await img.decode();
+      if (!img.naturalWidth) throw new Error("Share image unavailable");
+    }));
     // Dynamic import keeps html2canvas out of the main bundle.
     // The package's default export is the function we want.
     const mod = await import("html2canvas");
+    checkDeadline();
     const html2canvas = mod.default;
     const canvas = await html2canvas(cardEl, {
       scale: 2, // ~1200px output for retina + Twitter quality
@@ -224,10 +239,23 @@ export function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
       // attributes on the targeted elements in ShareCardPreview
       // act as stable selectors; the px amounts are empirical from
       // operator iPhone + Windows desktop capture iterations.
-      onclone: (_doc, clonedRoot) => {
-        applyCaptureShifts(clonedRoot);
+      onclone: async (doc, clonedRoot) => {
+        try {
+          checkDeadline();
+          // html2canvas loads fonts in a separate document. A ready
+          // source page does not prove this clone's requests succeeded.
+          if (clonedRoot.hasAttribute("data-share-card")) {
+            await prepareShareCardFonts(clonedRoot);
+          }
+          checkDeadline();
+          applyCaptureShifts(clonedRoot);
+        } catch (error) {
+          doc.defaultView?.frameElement?.remove();
+          throw error;
+        }
       },
     });
+    checkDeadline();
 
     const blob = await new Promise<Blob | null>((resolve) => {
       let settled = false;
@@ -249,7 +277,16 @@ export function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
       throw new Error("canvas.toBlob returned null");
     }
     return blob;
-  })();
+  };
+  // Bound font loading, image decoding and html2canvas as well as toBlob.
+  // A network/renderer stall must release the modal's busy state for retry.
+  return new Promise<Blob>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      expired = true;
+      reject(new Error("Share render timed out"));
+    }, 15_000);
+    render().then(resolve, reject).finally(() => clearTimeout(timer));
+  });
 }
 
 /**
