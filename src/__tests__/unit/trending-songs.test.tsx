@@ -1,11 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import {
   TrendingSongs,
   type TrendingSong,
 } from "@/components/TrendingSongs";
-import { colors } from "@/styles/tokens";
-import { hexToRgbString } from "@/__tests__/utils/color";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
@@ -83,34 +81,47 @@ describe("TrendingSongs", () => {
     expect(screen.getAllByText("🩷")).toHaveLength(2);
   });
 
-  it("uses the trending tokens for background and border", () => {
-    const { container } = render(<TrendingSongs songs={sample} />);
-    const section = container.querySelector("section");
-    expect(section?.style.background).toBe(hexToRgbString(colors.trendingBg));
-    // Border color appears in computed `border` style
-    expect(section?.style.border).toContain(
-      hexToRgbString(colors.trendingBorder),
-    );
+  it("is a titled section with an ordered top-3 list in the given order", () => {
+    // trending-v1: an <ol> carries the rank (medals are decorative), the
+    // heading names the section, and the TOP 3 pill is decoration too.
+    render(<TrendingSongs songs={sample} />);
+    const section = screen.getByRole("region", { name: "trending" });
+    expect(within(section).getByRole("heading", { level: 2, name: "trending" })).toBeInTheDocument();
+    const list = within(section).getByRole("list");
+    expect(list.tagName).toBe("OL");
+    const items = within(list).getAllByRole("listitem");
+    expect(items.map((li) => li.textContent?.match(/(First|Second|Third) Song/)?.[0])).toEqual([
+      "First Song",
+      "Second Song",
+      "Third Song",
+    ]);
+    expect(screen.getByText("trendingTop")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("uses responsive flex utilities so mobile stacks vertically and desktop lays out 3-across", () => {
-    const { container } = render(<TrendingSongs songs={sample} />);
-    const ul = container.querySelector("ul");
-    // Tailwind class names live on the element regardless of viewport;
-    // the actual layout switch is media-query driven. Asserting both
-    // mobile (column flex with 9px gap) and desktop (row flex with
-    // 32px / lg:gap-8 gap) classes are wired confirms the responsive
-    // intent.
-    expect(ul?.className).toContain("flex-col");
-    expect(ul?.className).toContain("gap-y-[9px]");
-    expect(ul?.className).toContain("lg:flex-row");
-    expect(ul?.className).toContain("lg:gap-x-8");
+  it("drops the TOP 3 pill with the list on the empty fallback", () => {
+    const { rerender } = render(<TrendingSongs songs={sample} />);
+    // Positive control: the populated card shows the pill.
+    expect(screen.getByText("trendingTop")).toBeInTheDocument();
+    rerender(<TrendingSongs songs={[]} />);
+    expect(screen.queryByText("trendingTop")).toBeNull();
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.getByText("trendingEmpty")).toBeInTheDocument();
   });
 
-  it("renders the localized sub-title beside the original when both are provided", () => {
-    // Mirrors `<SetlistRow>`'s SongTitleBlock — original (main) is the
-    // primary slot, the localized title sits next to it as a muted
-    // sub line. This is the cross-surface consistency contract.
+  it("keeps the canonical reaction order inside a song", () => {
+    render(<TrendingSongs songs={sample} />);
+    const first = screen.getAllByRole("listitem")[0];
+    expect(within(first).getAllByRole("img").map((el) => el.getAttribute("aria-label"))).toEqual([
+      "waiting 2",
+      "best 6",
+      "surprise 1",
+      "moved 1",
+    ]);
+  });
+
+  it("puts the localized title on its own line under the original", () => {
+    // trending-v1: original first, translation as a separate muted line
+    // (no longer a span inside one truncated line).
     const songs: TrendingSong[] = [
       {
         setlistItemId: "1",
@@ -122,11 +133,13 @@ describe("TrendingSongs", () => {
       },
     ];
     render(<TrendingSongs songs={songs} />);
-    expect(screen.getByText("オリジナル")).toBeInTheDocument();
-    expect(screen.getByText("오리지널")).toBeInTheDocument();
+    const original = screen.getByText("オリジナル");
+    const sub = screen.getByText("오리지널");
+    expect(original.contains(sub)).toBe(false);
+    expect(original.nextElementSibling).toBe(sub);
   });
 
-  it("renders the variantLabel in parentheses when present", () => {
+  it("renders the variantLabel in parentheses on its own line", () => {
     const songs: TrendingSong[] = [
       {
         setlistItemId: "1",
@@ -138,8 +151,10 @@ describe("TrendingSongs", () => {
       },
     ];
     render(<TrendingSongs songs={songs} />);
-    expect(screen.getByText("Dream Believers")).toBeInTheDocument();
-    expect(screen.getByText("(SAKURA Ver.)")).toBeInTheDocument();
+    const original = screen.getByText("Dream Believers");
+    const variant = screen.getByText("(SAKURA Ver.)");
+    expect(original.contains(variant)).toBe(false);
+    expect(original.nextElementSibling).toBe(variant);
   });
 
   it("hides medal and reaction emojis from assistive tech (decorative)", () => {

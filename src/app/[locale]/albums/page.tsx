@@ -1,36 +1,59 @@
 import { getTranslations } from "next-intl/server";
 import { staticAlternates } from "@/lib/seo/entityUrl";
 import type { Metadata } from "next";
+import { redirect } from "@/i18n/navigation";
 import {
-  getAlbums,
+  ALBUMS_PER_PAGE,
+  getAlbumsPage,
   groupAlbumsByYear,
   getAlbumArtistFilters,
+  parseAlbumPageParam,
+  albumPageParamValue,
+  albumListQuery,
 } from "@/lib/albums";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
-import { AlbumCard } from "@/components/AlbumCard";
+import { AlbumListRow } from "@/components/albums/AlbumListRow";
 import { AlbumArtistFilter } from "@/components/albums/AlbumArtistFilter";
+import {
+  AlbumPagination,
+  ALBUM_RESULTS_ID,
+} from "@/components/albums/AlbumPagination";
 import { displayOriginalName } from "@/lib/display";
-import { colors } from "@/styles/tokens";
+import styles from "@/components/albums/albumList.module.css";
 
 /*
- * `/[locale]/albums` — top-level album discovery list (b10b; Sprint B2
- * QA pass tweaks).
+ * `/[locale]/albums` — top-level album discovery list, laid out from the
+ * approved redesign packet 26-v1 (CSS in albumList.module.css).
  *
- * Albums grouped by release year (desc), rendered as single-column
- * `AlbumCard` list rows at every breakpoint (the QA pass dropped the
- * former desktop 4-col grid — desktop now matches mobile). A top-level
- * artist filter (`?artist=`) narrows the catalog.
+ * Albums grouped by release year (desc, undated last), one white panel
+ * of full-width rows per year, single column at every width. A
+ * top-level artist filter (`?artist=`) narrows the catalog to that
+ * artist and its direct sub-units. No sorting or type filter — the
+ * packet keeps the existing catalog behaviour.
  *
- * Frame mirrors src/app/[locale]/artists/page.tsx: `<main flex-1>`
- * carries the full-width page background, the inner `mx-auto` div holds
- * the reading-comfort column. `main` being the flex child (not the
- * mx-auto div) is what avoids the flex-column mx-auto width-shrink bug
- * (see the album-detail width-parity fix, PR #480).
+ * Pagination (consistency v3 §7.5): 20 albums per page, fetched with a
+ * bounded query plus a count over the same filter (`getAlbumsPage`), so
+ * the HTML carries one page, never the whole catalog. Year sections are
+ * built from the current page only, and their count reads "N on this
+ * page". URL rules, applied with a 307 redirect so the address bar
+ * always shows the page actually rendered:
+ *   - page 1 has no `?page=`; `?page=1`, malformed values (`abc`, `0`,
+ *     `-2`, `1.5`), a repeated param and leading zeros redirect to the
+ *     canonical spelling (malformed → page 1);
+ *   - a page past the end redirects to the last page; with no results
+ *     at all, to the bare list (the empty panel);
+ *   - the `?artist=` filter is kept on every page link, and changing it
+ *     (filter chips carry no `page`) starts again at page 1. An unknown
+ *     or repeated `?artist=` renders as before (unknown → all, repeated
+ *     → first) and is normalised the same way, so the address never
+ *     names a filter the page isn't showing.
+ * The redirect is temporary: the last page moves as the catalog grows.
+ *
+ * Body is a flex column: `<main>` takes the remaining height
+ * (`flex-1`) and `.page` pins `width: 100%` next to its max-width so the
+ * column tracks the viewport, not its content (PR #480). The page
+ * background comes from the 06 shell's body colour.
  */
-
-// Single-column rows read better in a narrower column — match the
-// /artists list width (was 1100 for the now-removed 4-col grid).
-const PAGE_MAX_WIDTH = 960;
 
 export async function generateMetadata({
   params,
@@ -39,7 +62,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "Album" });
-  // `?artist=` filter variants consolidate onto the unfiltered list.
+  // `?artist=` filter and `?page=` variants consolidate onto the
+  // unfiltered first page, the same rule as the concert list's
+  // `?filter=` / `?pastPage=`: list pages are navigation, and every album
+  // they lead to has its own canonical URL in the sitemap.
   return { title: t("title"), alternates: staticAlternates(locale, "/albums") };
 }
 
@@ -48,7 +74,10 @@ export default async function AlbumsPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ artist?: string | string[] }>;
+  searchParams: Promise<{
+    artist?: string | string[];
+    page?: string | string[];
+  }>;
 }) {
   const { locale } = await params;
   const sp = await searchParams;
@@ -65,111 +94,112 @@ export default async function AlbumsPage({
       ? rawArtist
       : null;
 
-  const albums = await getAlbums(
+  const requestedPage = parseAlbumPageParam(sp.page);
+  const { albums, total, totalPages } = await getAlbumsPage(
     locale,
     activeArtist ? BigInt(activeArtist) : undefined,
+    requestedPage,
   );
+
+  // Past the end → last page (bare list when there are no results).
+  const page = Math.min(requestedPage, Math.max(totalPages, 1));
+  if (
+    sp.page !== albumPageParamValue(page) ||
+    (sp.artist ?? null) !== activeArtist
+  ) {
+    // `redirect` throws, so nothing below runs for a non-canonical URL.
+    // The query is rebuilt from validated values only.
+    redirect({
+      href: { pathname: "/albums", query: albumListQuery(activeArtist, page) },
+      locale,
+    });
+  }
+
   const groups = groupAlbumsByYear(albums);
+  const first = (page - 1) * ALBUMS_PER_PAGE + 1;
 
   return (
-    <main className="flex-1" style={{ background: colors.bgPage }}>
-      <div
-        className="mx-auto"
-        style={{ maxWidth: PAGE_MAX_WIDTH, padding: "24px 0 48px" }}
-      >
-        <header style={{ padding: "0 16px 16px" }}>
-          <h1
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: colors.textPrimary,
-              margin: 0,
-            }}
-          >
-            {t("title")}
-          </h1>
+    <main className="flex-1">
+      <div className={styles.page}>
+        <header className={styles.heading}>
+          <h1 className={styles.title}>{t("title")}</h1>
         </header>
 
         <AlbumArtistFilter active={activeArtist} options={artistFilters} />
 
         {albums.length === 0 ? (
-          <p
-            style={{
-              fontSize: 13,
-              color: colors.textMuted,
-              textAlign: "center",
-              padding: "48px 16px",
-            }}
-          >
-            {t("noAlbums")}
-          </p>
-        ) : (
-          <div
-            style={{
-              padding: "0 16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 24,
-            }}
-          >
-            {groups.map((group) => (
-              <section key={group.year ?? "undated"}>
-                {/* Year header: label + divider rule + count chip. */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: colors.textPrimary,
-                    }}
-                  >
-                    {group.year ?? t("undatedYear")}
-                  </span>
-                  <div
-                    style={{ flex: 1, height: 1, background: colors.border }}
-                  />
-                  <span style={{ fontSize: 11, color: colors.textMuted }}>
-                    {t("yearAlbumCount", { count: group.albums.length })}
-                  </span>
-                </div>
-
-                {/* One white rounded container per year with `divide-y`
-                    separators between the rows — at every breakpoint (the
-                    desktop grid was removed in the QA pass). The arbitrary
-                    `divide-[#f1f5f9]` is the `colors.borderLight` hex (a
-                    divide color can't be expressed inline). */}
-                <div className="overflow-hidden rounded-2xl bg-white shadow-sm divide-y divide-[#f1f5f9]">
-                  {group.albums.map((album) => {
-                    const primaryArtist = album.artists[0]?.artist ?? null;
-                    const artistName = primaryArtist
-                      ? displayOriginalName(
-                          primaryArtist,
-                          primaryArtist.translations,
-                          locale,
-                        ).main
-                      : undefined;
-                    return (
-                      <AlbumCard
-                        key={`${album.id}`}
-                        variant="list"
-                        album={album}
-                        locale={locale}
-                        artistName={artistName}
-                        activeBonusCount={countActiveBonuses(album.listings)}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+          <div className={styles.empty}>
+            <span className={styles.emptyNote} aria-hidden="true">
+              ♫
+            </span>
+            <p className={styles.emptyText}>{t("noAlbums")}</p>
           </div>
+        ) : (
+          <>
+            {/* Results summary; the pager links land here
+                (`#album-results`). tabIndex -1 makes it a focusable
+                fragment target, so keyboard and screen-reader users
+                continue from the summary of the new page. */}
+            <p id={ALBUM_RESULTS_ID} tabIndex={-1} className={styles.summary}>
+              {t("pagination.summary", {
+                total,
+                start: first,
+                end: first + albums.length - 1,
+                perPage: ALBUMS_PER_PAGE,
+                page,
+                totalPages,
+              })}
+            </p>
+            {groups.map((group) => {
+              const headingId = `album-year-${group.year ?? "undated"}`;
+              return (
+                <section
+                  key={group.year ?? "undated"}
+                  className={styles.yearGroup}
+                  aria-labelledby={headingId}
+                >
+                  {/* Year + divider rule + count; the rule is the
+                      heading's ::after, between the two. */}
+                  <div className={styles.yearHeading}>
+                    <h2 id={headingId} className={styles.yearTitle}>
+                      {group.year ?? t("undatedYear")}
+                    </h2>
+                    <span className={styles.yearCount}>
+                      {t("yearPageCount", { count: group.albums.length })}
+                    </span>
+                  </div>
+
+                  <ul className={styles.rows}>
+                    {group.albums.map((album) => {
+                      const primaryArtist = album.artists[0]?.artist ?? null;
+                      const artistName = primaryArtist
+                        ? displayOriginalName(
+                            primaryArtist,
+                            primaryArtist.translations,
+                            locale,
+                          ).main
+                        : undefined;
+                      return (
+                        <li key={`${album.id}`}>
+                          <AlbumListRow
+                            album={album}
+                            locale={locale}
+                            artistName={artistName}
+                            activeBonusCount={countActiveBonuses(album.listings)}
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              );
+            })}
+            <AlbumPagination
+              page={page}
+              totalPages={totalPages}
+              artist={activeArtist}
+            />
+          </>
         )}
       </div>
     </main>

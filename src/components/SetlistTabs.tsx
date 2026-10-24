@@ -144,8 +144,9 @@ export function SetlistTabs({
     <div
       role="tablist"
       aria-label={labels.tablistAriaLabel}
-      className="flex"
-      style={{ borderBottom: `1px solid ${colors.borderLight}` }}
+      // 18-v3 `.subnav`: wrapping chip row above the list, inside the
+      // setlist card's padding (the card no longer has a header rule).
+      className="mb-[18px] flex flex-wrap gap-2"
       onKeyDown={handleKeyDown}
     >
       {showActualTab && (
@@ -213,19 +214,15 @@ function TabButton({
       // ArrowLeft/Right while the tablist is focused.
       tabIndex={active ? 0 : -1}
       onClick={onClick}
-      // flex-1 + center alignment matches the mockup's tab strip
-      // shape — each tab fills the available width equally and the
-      // active tab gets a 2px primary-color underline. Inactive
-      // tabs render in `textMuted` for visual de-emphasis.
-      className="flex-1 px-3 py-2.5 text-center text-xs font-medium transition-colors lg:py-3 lg:text-sm"
+      // 18-v3 `.subnav button`: 44px chips; the selected one is solid
+      // violet with white text (the setlist card's lavender family),
+      // the other a pale chip with a 3:1 control border. Selection is
+      // also carried by `aria-selected`, never by colour alone.
+      className="min-h-[44px] rounded-lg border px-3.5 py-[9px] text-[13px] font-medium transition-colors"
       style={{
-        color: active ? colors.primary : colors.textMuted,
-        // Negative margin so the active tab's underline overlaps
-        // the tablist's bottom border, replacing it cleanly.
-        borderBottom: active
-          ? `2px solid ${colors.primary}`
-          : "2px solid transparent",
-        marginBottom: -1,
+        color: active ? colors.bgCard : colors.textPrimary,
+        background: active ? colors.setlistTabActive : colors.setlistTabIdleBg,
+        borderColor: active ? colors.setlistTabActive : colors.setlistTabIdleBorder,
       }}
     >
       {label}

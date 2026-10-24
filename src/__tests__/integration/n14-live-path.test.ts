@@ -56,7 +56,6 @@ vi.mock("@/lib/dataCache", async (importOriginal) => ({
 vi.mock("@/lib/launchFlags", () => ({
   LAUNCH_FLAGS: {
     showSignIn: false,
-    showSearch: false,
     confirmDbEnabled: true,
     addItemEnabled: true,
   },

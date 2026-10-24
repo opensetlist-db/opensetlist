@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useTranslations } from "next-intl";
 import { displayOriginalTitle } from "@/lib/display";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
+import styles from "@/components/event/eventDetail.module.css";
 import { colors, zIndex } from "@/styles/tokens";
 
 import { DIMMED_ROW_OPACITY } from "@/components/predict-row-style";
@@ -86,32 +87,20 @@ export function PredictSongRow({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "7px 14px",
-        borderBottom: `0.5px solid ${colors.borderLight}`,
         opacity: isDimmed ? DIMMED_ROW_OPACITY : 1,
-        // While dragging, lift the row visually + above siblings.
-        // Reuses the `sticky` z-index token (= 10) since both
-        // consumers want "above default flow, well below modals".
+        // While dragging, lift the row above siblings. Reuses the
+        // `sticky` z-index token (= 10) since both consumers want
+        // "above default flow, well below modals".
         zIndex: isDragging ? zIndex.sticky : "auto",
-        background: isDragging ? colors.bgCard : "transparent",
         boxShadow: isDragging ? "0 1px 4px rgba(0,0,0,0.08)" : undefined,
       }}
+      // 18-v3 `.prediction-list li`: a white card row with a lavender
+      // rank chip; rows outside the counted rank get the muted wash
+      // on top of the existing dimming.
+      className={`${styles.predictRow} ${isDimmed ? styles.predictRowOut : ""}`}
     >
       {/* Rank number */}
-      <span
-        className="font-mono text-xs"
-        style={{
-          color: colors.textMuted,
-          width: 18,
-          textAlign: "right",
-          flexShrink: 0,
-        }}
-      >
-        {rank}
-      </span>
+      <span className={styles.predictRank}>{rank}</span>
 
       {/* Drag handle — only when unlocked. The grip glyph (⠿) is
           common in drag UI but use the visually similar Braille
@@ -123,17 +112,9 @@ export function PredictSongRow({
           aria-label={t("dragHandleAria")}
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing touch-none"
-          style={{
-            border: "none",
-            background: "transparent",
-            padding: 0,
-            color: colors.textMuted,
-            fontSize: 12,
-            flexShrink: 0,
-            // Touch devices: prevent the browser from intercepting
-            // the drag as a scroll gesture.
-          }}
+          // `touch-none`: touch devices must not take the drag as a
+          // scroll gesture.
+          className={`${styles.predictTool} cursor-grab active:cursor-grabbing touch-none`}
         >
           ⠿
         </button>
@@ -141,7 +122,7 @@ export function PredictSongRow({
 
       {/* Song title */}
       <span
-        className="text-[13px] flex-1 truncate min-w-0"
+        className={styles.predictTitle}
         style={
           isMatched
             ? {
@@ -150,17 +131,12 @@ export function PredictSongRow({
                 borderRadius: 4,
                 padding: "1px 5px",
               }
-            : { color: colors.textPrimary }
+            : undefined
         }
       >
         {display.main}
         {display.sub && (
-          <span
-            className="ml-1 text-[11px]"
-            style={{ color: colors.textMuted }}
-          >
-            {display.sub}
-          </span>
+          <span className={styles.songSub}> {display.sub}</span>
         )}
       </span>
 
@@ -170,14 +146,7 @@ export function PredictSongRow({
           type="button"
           onClick={onRemove}
           aria-label={t("removeAria")}
-          className="text-[11px] cursor-pointer"
-          style={{
-            border: "none",
-            background: "transparent",
-            color: colors.textMuted,
-            padding: 0,
-            flexShrink: 0,
-          }}
+          className={styles.predictTool}
         >
           ✕
         </button>

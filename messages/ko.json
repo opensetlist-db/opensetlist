@@ -2,21 +2,30 @@
   "Home": {
     "title": "오픈세트리스트",
     "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
-    "ongoingTitle": "🔴 지금 진행 중",
-    "ongoingSubtitle": "실시간 세트리스트 업데이트 중",
-    "upcomingTitle": "다가오는 공연",
-    "recentTitle": "최근 공연",
-    "viewAllSchedule": "전체 일정 보기 ›",
-    "viewAllEvents": "전체 이벤트 보기 ›",
-    "songCountOngoing": "{count, plural, other {🎵 #곡 진행 중}}",
-    "songCount": "{count, plural, other {🎵 #곡}}",
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, other {#시간 남음}}",
     "minutesLeft": "{minutes, plural, other {#분 남음}}",
     "wishOpen": "세트리스트 예상 가능",
-    "noEvents": "곧 공연 정보가 업데이트됩니다.",
-    "noUpcoming": "앞으로 30일 이내 예정된 공연이 없어요.",
-    "noRecent": "최근 30일 이내 진행된 공연이 없어요."
+    "liveEyebrow": "LIVE NOW",
+    "liveTitle": "지금 공연 중",
+    "upcomingEyebrow": "LIVE DISCOVERY",
+    "upcomingTitle": "다가오는 공연",
+    "allConcerts": "모든 이벤트",
+    "railHint": "옆으로 넘겨 다음 공연을 만나보세요 →",
+    "pastEyebrow": "SETLIST ARCHIVE",
+    "recentTitle": "최근 공연",
+    "archiveTitle": "지난 세트리스트에서",
+    "recentNote": "최근 30일 동안 열린 공연 중 세트리스트가 있는 공연입니다.",
+    "archiveNote": "최근 30일 공연의 세트리스트가 없어, 이전 공연을 보여드립니다.",
+    "emptyUpcoming": "현재 등록된 예정 공연이 없습니다.",
+    "emptyPast": "아직 곡이 등록된 세트리스트가 없습니다.",
+    "browse": "이벤트 찾아보기",
+    "liveBadge": "공연 중",
+    "scheduled": "공연 예정 · {label}",
+    "setlistSongs": "{count, plural, other {#곡의 세트리스트}}",
+    "setlistWaiting": "세트리스트 업데이트를 기다리고 있어요",
+    "viewSetlist": "세트리스트 보기",
+    "pastLink": "지난 세트리스트"
   },
   "Common": {
     "notFound": "페이지를 찾을 수 없습니다.",
@@ -98,7 +107,14 @@
     "ungroupedNoCategorySection": "분류 미정",
     "showOtherUnits": "기타 유닛 보기 ({count})",
     "hideOtherUnits": "기타 유닛 숨기기",
-    "songCount": "🎵 {count}"
+    "songCount": "🎵 {count}",
+    "tabsAriaLabel": "아티스트 정보",
+    "viewAllAlbums": "앨범 전체 보기",
+    "viewAllHistory": "공연 이력 전체 보기",
+    "historyColumns": {
+      "dateStatus": "날짜·상태",
+      "event": "공연"
+    }
   },
   "Song": {
     "title": "곡",
@@ -121,6 +137,8 @@
     "baseVariant": "기본",
     "recentPerformances": "공연 이력",
     "performanceCount": "{count}회 공연",
+    "kindBadge": "곡",
+    "statsPerformances": "공연",
     "statsTours": "투어",
     "releaseYearLabel": "발매",
     "albumLabel": "수록",
@@ -152,7 +170,14 @@
     "noAlbums": "표시할 앨범이 없습니다",
     "filterAll": "전체",
     "artistFilterAria": "아티스트 필터",
-    "yearAlbumCount": "{count}개",
+    "yearPageCount": "이 페이지 {count}개",
+    "pagination": {
+      "aria": "앨범 페이지",
+      "prev": "이전",
+      "next": "다음",
+      "pageLabel": "페이지 {page}",
+      "summary": "전체 {total}개 중 {start}–{end}개 · 페이지당 {perPage}개 · {page} / {totalPages}"
+    },
     "undatedYear": "발매일 미정",
     "albumActiveBonuses": "매장특전 {count}건",
     "albumActiveBonusesBadge": "특전 {count}",
@@ -167,16 +192,12 @@
     "tab": {
       "bonus": "구입",
       "tracks": "수록곡",
-      "events": "관련 공연",
-      "withCount": "{label} ({count})"
+      "events": "관련 공연"
     },
     "stats": {
       "trackCount": "{count, plural, other {#곡}}",
       "bonusCount": "{count, plural, other {특전 #}}",
-      "endedBonusCount": "{count, plural, other {종료 #}}",
       "listingCount": "{count, plural, other {매장 #}}",
-      "totalBonusCount": "{count, plural, other {총 #개}}",
-      "activeBonusCount": "{count, plural, other {활성 #}}",
       "bonusSectionLabel": "매장특전"
     },
     "breadcrumb": {
@@ -207,6 +228,11 @@
       },
       "buy": "구매하기",
       "showEnded": "{count, plural, other {종료된 매장 보기 (#)}}",
+      "summary": {
+        "total": "전체 {count}",
+        "current": "현재 {count}",
+        "ended": "종료 {count}"
+      },
       "empty": "등록된 매장 정보가 없습니다."
     },
     "tracks": {
@@ -241,6 +267,9 @@
     "performanceHistory": "공연 이력",
     "noPerformances": "공연 기록이 없습니다.",
     "unknown": "이름 없는 멤버",
+    "eyebrow": "멤버",
+    "viewAllSongs": "곡 전체 보기",
+    "viewAllHistory": "공연 이력 전체 보기",
     "tabOverview": "개요",
     "tabSongs": "곡 ({count})",
     "tabHistory": "공연 이력 ({count})",
@@ -261,8 +290,6 @@
   },
   "Event": {
     "title": "이벤트",
-    "allEvents": "이벤트 목록",
-    "subtitle": "공연 세트리스트와 반응을 확인하세요",
     "ongoing": "지금 공연 중",
     "upcoming": "예정된 이벤트",
     "past": "지난 이벤트",
@@ -276,14 +303,12 @@
       "upcoming": "예정",
       "completed": "종료"
     },
-    "emptyFilterState": "해당하는 공연이 없어요",
     "eventCount": "{count, plural, other {#개 공연}}",
     "songCount": "{count, plural, other {🎵 #}}",
     "tableHeader": {
       "date": "날짜",
       "status": "상태",
       "name": "공연명",
-      "venue": "장소",
       "songs": "곡 수"
     },
     "setlist": "세트리스트",
@@ -305,11 +330,6 @@
     "iconLabelReactions": "반응",
     "songsValue": "{count, plural, other {#곡}}",
     "itemsLabel": "{count, plural, other {#개 항목}}",
-    "tapToAddReaction": "탭해서 반응 추가",
-    "colPosition": "#",
-    "colSong": "곡",
-    "colPerformers": "출연",
-    "colReactions": "반응",
     "unitsLabel": "유닛",
     "performersLabel": "출연진",
     "guestLabel": "게스트",
@@ -342,6 +362,47 @@
       "detailsCta": "앨범 상세 보기 →"
     }
   },
+  "EventDetail": {
+    "jumpLabel": "페이지 안 이동",
+    "infoTitle": "이벤트 정보",
+    "factDate": "날짜",
+    "factStart": "시작",
+    "sameSeriesTitle": "같은 시리즈",
+    "viewSeries": "시리즈 보기",
+    "creditsToggle": "출연 크레딧",
+    "songPerformers": "이 곡의 출연 멤버",
+    "liveNotice": "실시간으로 업데이트 중",
+    "cancelledTitle": "공연 취소",
+    "cancelledBody": "취소된 공연입니다. 희망곡·예상곡을 새로 저장하거나 수정할 수 없어요.",
+    "opensTitle": "참여가 열리는 날",
+    "opensBody": "희망곡과 예상 세트리스트는 아래 시각부터 참여할 수 있어요."
+  },
+  "EventList": {
+    "eyebrow": "EVENTS & SETLISTS",
+    "title": "이벤트 목록",
+    "subtitle": "공연을 찾고, 라이브의 기록을 만나보세요.",
+    "filterLabel": "이벤트 필터",
+    "activeHeading": "진행 중·예정 이벤트",
+    "pastHeading": "지난 이벤트",
+    "seriesType": {
+      "concert_tour": "투어",
+      "festival": "페스티벌"
+    },
+    "eventCount": "{count, plural, other {# 공연}}",
+    "songCount": "{count, plural, other {# 곡}}",
+    "status": {
+      "upcoming": "예정",
+      "completed": "종료",
+      "cancelled": "취소"
+    },
+    "collapseGroup": "{title} 접기",
+    "expandGroup": "{title} 펼치기",
+    "empty": "해당하는 공연이 없어요",
+    "viewAll": "전체 이벤트 보기",
+    "prev": "이전",
+    "next": "다음",
+    "pageStatus": "{current} / {total}"
+  },
   "EventDateTime": {
     "localTime": "현지 시각"
   },
@@ -355,6 +416,7 @@
       "standalone": "단독 공연"
     },
     "organizer": "주최",
+    "artistLabel": "아티스트",
     "events": "이벤트 목록",
     "noEvents": "등록된 이벤트가 없습니다.",
     "unknownSeries": "이름 없는 시리즈",
@@ -391,7 +453,8 @@
     "surprise": "깜짝",
     "moved": "감동",
     "trending": "이번 공연 화제의 곡",
-    "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!"
+    "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!",
+    "trendingTop": "TOP 3"
   },
   "Setlist": {
     "tabActual": "실제 세트리스트",
@@ -481,13 +544,26 @@
     "shareTextLive": "공연 진행 중 — 현재까지 {total}곡 중 {matched}곡 적중 ({percentage}%)",
     "shareTextPrediction": "내 예상 세트리스트 — {count}곡",
     "close": "닫기",
-    "scoreLabel": "예상 적중률",
-    "scoreMatchedOf": "{total}곡 중 {matched}곡 적중",
-    "scorePredicted": "{count}곡 예상",
-    "predictionLabel": "예상 세트리스트",
-    "predictionCount": "{count}곡",
-    "liveBadge": "LIVE",
-    "encore": "Encore"
+    "encore": "Encore",
+    "eyebrow": "MY SETLIST / {index}",
+    "pillPrediction": "PREDICTION",
+    "pillLive": "LIVE",
+    "pillFinal": "FINAL",
+    "titlePrediction": "나의 예상 세트리스트",
+    "titleLive": "지금까지의 적중",
+    "titleFinal": "나의 최종 결과",
+    "predictedUnit": "곡 예상",
+    "basisLive": "현재 등록된 {count}곡 기준",
+    "basisFinal": "최종 등록된 {count}곡 기준",
+    "notePrediction": "이 공연을 기다리며 골라 본 나만의 예상입니다.",
+    "noteLive": "{time} 기준 · 저장 시점의 결과",
+    "noteFinal": "순서와 무관한 곡 적중 · 등록 목록 정정 시 결과가 달라질 수 있어요",
+    "orderPrediction": "나의 예상 순서",
+    "orderActual": "실제 곡 순서",
+    "tracks": "{count} TRACKS",
+    "legendHit": "예상 적중",
+    "legendMiss": "예상에 없던 곡",
+    "noResult": "등록된 곡이 없어 결과를 계산할 수 없어요."
   },
   "Confirm": {
     "confirmAria": "정확함",
@@ -674,17 +750,81 @@
     "albums": "앨범",
     "signIn": "로그인",
     "openMenu": "메뉴 열기",
-    "closeMenu": "메뉴 닫기"
+    "closeMenu": "메뉴 닫기",
+    "mainNav": "메인 메뉴",
+    "search": "검색",
+    "searchPlaceholder": "이벤트·아티스트·곡·앨범 검색",
+    "skipToContent": "본문으로 이동"
+  },
+  "Search": {
+    "title": "검색",
+    "subtitle": "이벤트, 아티스트, 앨범, 곡 검색",
+    "metaTitle": "“{q}” 검색 결과",
+    "inputLabel": "사이트 검색",
+    "placeholder": "이벤트·아티스트·곡·앨범 검색",
+    "submit": "검색",
+    "clear": "검색어 지우기",
+    "formLabel": "콘텐츠 검색",
+    "typesLabel": "검색 유형",
+    "all": "전체",
+    "events": "이벤트",
+    "artists": "아티스트",
+    "songs": "곡",
+    "albums": "앨범",
+    "results": "검색 결과 · “{q}”",
+    "more": "{type} · 더 보기",
+    "noGroup": "일치하는 결과가 없습니다.",
+    "emptyTitle": "찾고 싶은 이름을 입력해 주세요",
+    "emptyBody": "이벤트명, 아티스트명, 곡명, 앨범명으로 찾을 수 있어요.",
+    "noneTitle": "일치하는 결과를 찾지 못했어요",
+    "noneBody": "이름의 일부나 다른 언어로 등록된 이름으로 다시 검색해 보세요.",
+    "errorTitle": "검색 결과를 불러오지 못했어요",
+    "errorBody": "입력한 검색어는 그대로 있어요. 잠시 후 다시 시도해 주세요.",
+    "retry": "다시 시도",
+    "longTitle": "검색어가 너무 길어요",
+    "longBody": "{max}자 이내로 줄여서 검색해 주세요.",
+    "edit": "검색어 수정",
+    "rangeTitle": "이 페이지에는 결과가 없어요",
+    "rangeBody": "첫 페이지로 돌아가 결과를 확인해 주세요.",
+    "first": "첫 페이지로",
+    "prev": "이전",
+    "next": "다음",
+    "page": "페이지 {page}",
+    "pagination": "검색 결과 페이지 이동",
+    "matched": "일치한 이름",
+    "base": "기본 버전",
+    "variant": "다른 버전",
+    "artistType": {
+      "solo": "솔로",
+      "group": "그룹",
+      "unit": "유닛"
+    },
+    "albumType": {
+      "single": "싱글",
+      "album": "앨범",
+      "ep": "EP",
+      "live_album": "라이브 앨범",
+      "soundtrack": "사운드트랙"
+    }
   },
   "Hero": {
+    "eyebrow": "OPENSETLIST",
     "heading": "모두가 이어가는 공연의 이야기",
-    "searchPlaceholder": "아티스트, 이벤트, 곡 검색..."
+    "lead": "공연을 찾고, 세트리스트를 만나세요. 함께 쌓아가는 라이브의 기록.",
+    "browse": "이벤트 찾아보기",
+    "pastSetlists": "지난 세트리스트",
+    "caption": "가상의 공연장 이미지"
   },
   "Footer": {
     "privacy": "개인정보처리방침",
     "terms": "이용약관",
     "contact": "문의",
-    "copyright": "© {year} OpenSetlist"
+    "copyright": "© {year} OpenSetlist",
+    "unofficial": "팬이 만드는 비공식 사이트입니다. 출연자·주최자·권리자와 관계가 없습니다.",
+    "navLabel": "사이트 정보"
+  },
+  "SharedImage": {
+    "noImage": "이미지 없음"
   },
   "legal": {
     "privacyTitle": "개인정보처리방침",

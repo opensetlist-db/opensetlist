@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 import { SongMatchBadge } from "@/components/SongMatchBadge";
-import { SecondaryButton } from "@/components/ui/Button";
 import { displayOriginalTitle } from "@/lib/display";
 import { useMounted } from "@/hooks/useMounted";
 import { setTimeoutAt } from "@/lib/timeoutAt";
@@ -14,8 +13,8 @@ import type { FanTop3Entry } from "@/lib/types/setlist";
 import type { SongMatchInputItem } from "@/lib/songMatch";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";
+import styles from "@/components/event/eventDetail.module.css";
 
-const MEDALS = ["🥇", "🥈", "🥉"];
 const MAX_WISHES = 3;
 
 interface Props {
@@ -291,58 +290,31 @@ export function EventWishSection({
   const titleText = isLocked ? t("lockedTitle") : t("title");
 
   return (
+    // 18-v3 wishlist panel: the participation panel's gradient while
+    // wishes are open (pre-show), the pink "locked wishes" panel once
+    // the show has started. One column — my wishes, then the fans'
+    // TOP3 — at every width.
     <section
-      className="mb-2.5 overflow-hidden rounded-[14px]"
-      style={{
-        background: colors.wishlistBg,
-        border: `0.5px solid ${colors.wishlistBorder}`,
-      }}
+      id="event-wishlist"
+      aria-labelledby={`wishlist-title-${eventId}`}
+      className={`${styles.panel} ${isLocked ? styles.lockedWishPanel : styles.participatePanel}`}
     >
-      {/* Title bar: 🌸 + label. The pre-show "최대 3곡" hint that
-          used to sit right-aligned here moved into the description
-          strip below so the rules ("add before start", "max 3") read
-          as one sentence rather than a split label + badge. */}
-      <div
-        className="flex items-center px-3.5 pt-2.5 pb-2"
-        style={{ borderBottom: `0.5px solid ${colors.wishlistBorder}` }}
-      >
-        <span
-          className="text-[13px] font-medium"
-          style={{ color: colors.wishlistText }}
-        >
-          🌸 {titleText}
-        </span>
-      </div>
+      <h2 id={`wishlist-title-${eventId}`} className={styles.panelTitle}>
+        {titleText}
+      </h2>
 
-      {/* Description strip: instructional copy for first-time visitors.
-          Pre-show only — once startTime lands and `isLocked` flips, the
-          actions it describes (add/remove) are gone, so the copy is too.
-          Border-bottom uses `wishlistBorder` (same token as the title bar
-          border directly above) so the section reads as one chrome block;
-          row-internal dividers in the grid below use `wishlistRowDivider`. */}
-      {!isLocked && (
-        <div
-          className="px-3.5 pt-2 pb-1 text-[11px]"
-          style={{
-            color: colors.wishlistMuted,
-            borderBottom: `0.5px solid ${colors.wishlistBorder}`,
-          }}
-        >
-          {t("description")}
-        </div>
-      )}
+      {/* Instructional copy for first-time visitors. Pre-show only —
+          once startTime lands and `isLocked` flips, the actions it
+          describes (add/remove) are gone, so the copy is too. */}
+      {!isLocked && <p className={styles.boardLead}>{t("description")}</p>}
 
-      <div className="px-3.5 py-2.5">
-        <div className="grid grid-cols-2 gap-2.5 lg:gap-4">
+      <div className={styles.wishStack}>
           {/* 내 선택 */}
           <div>
-            <div
-              className="text-[10px] font-medium uppercase tracking-wider mb-1.5"
-              style={{ color: colors.textMuted }}
-            >
-              {t("myList")}
-            </div>
-            {myWishes.map((entry, i) => {
+            <h3 className={styles.wishSubhead}>{t("myList")}</h3>
+            {myWishes.length > 0 && (
+            <ul className={styles.crowdList}>
+            {myWishes.map((entry) => {
               const display = displayOriginalTitle(
                 {
                   originalTitle: entry.song.originalTitle,
@@ -353,44 +325,19 @@ export function EventWishSection({
                 locale,
               );
               return (
-                <div
+                <li
                   key={entry.dbId === "__pending__" ? `pending-${entry.songId}` : entry.dbId}
-                  className="flex items-center gap-1.5 py-1"
-                  style={{
-                    borderBottom:
-                      i < myWishes.length - 1
-                        ? `0.5px solid ${colors.wishlistRowDivider}`
-                        : "none",
-                  }}
+                  className={styles.crowdItem}
                 >
-                  {!isLocked && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(entry)}
-                      disabled={pending}
-                      aria-label={t("removeAria")}
-                      className="flex-shrink-0 inline-flex items-center justify-center rounded-full"
-                      style={{
-                        width: 15,
-                        height: 15,
-                        background: colors.wishlistRowDivider,
-                        color: colors.wishlistMuted,
-                        fontSize: 9,
-                        cursor: pending ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      ✕
-                    </button>
-                  )}
-                  <span className="flex-1 text-xs truncate min-w-0">
+                  <span className={styles.crowdTitle}>
                     <SongMatchBadge
                       songId={entry.songId}
                       setlistItems={setlistItems}
                       // Pre-show: no actual setlist yet, suppress the
                       // highlight so my-list reads as "candidate songs"
-                      // rather than "winners". Mirrors the right-column
-                      // (모두의 희망곡) gate. Once `isLocked` flips at
-                      // startTime, both columns light up matched rows.
+                      // rather than "winners". Mirrors the fans' TOP3
+                      // gate. Once `isLocked` flips at startTime, both
+                      // lists light up matched rows.
                       disabled={!isLocked}
                     >
                       <span style={{ color: colors.textPrimary }}>
@@ -398,17 +345,25 @@ export function EventWishSection({
                       </span>
                     </SongMatchBadge>
                     {display.sub && (
-                      <span
-                        className="ml-1 text-[11px]"
-                        style={{ color: colors.textMuted }}
-                      >
-                        {display.sub}
-                      </span>
+                      <span className={styles.songSub}> {display.sub}</span>
                     )}
                   </span>
-                </div>
+                  {!isLocked && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(entry)}
+                      disabled={pending}
+                      aria-label={t("removeAria")}
+                      className={`${styles.myChoiceRemove} disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </li>
               );
             })}
+            </ul>
+            )}
             {canAddMore && (
               <div className="pt-1">
                 {searchOpen ? (
@@ -436,40 +391,33 @@ export function EventWishSection({
                     <button
                       type="button"
                       onClick={() => setSearchOpen(false)}
-                      className="mt-1 text-[11px]"
-                      style={{ color: colors.textMuted }}
+                      className="mt-1 min-h-[36px] text-[12px]"
+                      style={{ color: colors.textSecondary }}
                     >
                       {t("cancel")}
                     </button>
                   </div>
                 ) : (
-                  // Full-width SecondaryButton variant, matched
-                  // across `<AddItemButton>`, `<PredictedSetlist>`'s
-                  // two-button row, and this wishlist add — the
-                  // unified utility-row style introduced by the
-                  // wishlist-button-polish mockup. The Share CTA
-                  // (in `<ShareCardButton>`) is the only PrimaryButton
-                  // partner; everything that opens an inline search
-                  // or sheet uses secondary.
-                  <SecondaryButton
+                  // 18-v3 `.button.primary`: the add action opens the
+                  // inline song search.
+                  <button
+                    type="button"
                     onClick={() => setSearchOpen(true)}
-                    fullWidth
+                    className={styles.primaryButton}
                   >
                     {t("add")}
-                  </SecondaryButton>
+                  </button>
                 )}
               </div>
             )}
           </div>
 
-          {/* 팬 TOP3 */}
+          {/* 팬 TOP3 — rank badges (gold / silver / bronze) carry the
+              order; the medal emoji they replace said the same. */}
           <div>
-            <div
-              className="text-[10px] font-medium uppercase tracking-wider mb-1.5"
-              style={{ color: colors.textMuted }}
-            >
-              {t("fanTop3")}
-            </div>
+            <h3 className={styles.wishSubhead}>{t("fanTop3")}</h3>
+            {top3Wishes.length > 0 && (
+            <ol className={styles.crowdList}>
             {top3Wishes.map((entry, i) => {
               const display = displayOriginalTitle(
                 {
@@ -481,20 +429,9 @@ export function EventWishSection({
                 locale,
               );
               return (
-                <div
-                  key={entry.song.id}
-                  className="flex items-center gap-1.5 py-1"
-                  style={{
-                    borderBottom:
-                      i < top3Wishes.length - 1
-                        ? `0.5px solid ${colors.wishlistRowDivider}`
-                        : "none",
-                  }}
-                >
-                  <span className="flex-shrink-0 text-[13px]">
-                    {MEDALS[i] ?? ""}
-                  </span>
-                  <span className="flex-1 text-xs truncate min-w-0">
+                <li key={entry.song.id} className={styles.crowdItem}>
+                  <span className={styles.rank}>{i + 1}</span>
+                  <span className={styles.crowdTitle}>
                     <SongMatchBadge
                       songId={entry.song.id}
                       setlistItems={setlistItems}
@@ -508,25 +445,18 @@ export function EventWishSection({
                       </span>
                     </SongMatchBadge>
                     {display.sub && (
-                      <span
-                        className="ml-1 text-[11px]"
-                        style={{ color: colors.textMuted }}
-                      >
-                        {display.sub}
-                      </span>
+                      <span className={styles.songSub}> {display.sub}</span>
                     )}
                   </span>
-                  <span
-                    className="flex-shrink-0 text-[11px]"
-                    style={{ color: colors.textMuted }}
-                  >
+                  <span className={styles.crowdCount}>
                     {t("count", { count: entry.count })}
                   </span>
-                </div>
+                </li>
               );
             })}
+            </ol>
+            )}
           </div>
-        </div>
       </div>
     </section>
   );

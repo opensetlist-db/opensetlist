@@ -1,10 +1,13 @@
 name: Semgrep
 
+# feature/redesign is the long-lived integration branch for the site
+# redesign: app task PRs target it and it reaches dev only through one
+# final PR, so its PRs and pushes need the same gates as dev's.
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, feature/redesign]
   push:
-    branches: [main, dev]
+    branches: [main, dev, feature/redesign]
   schedule:
     # Weekly Monday 00:00 KST = 15:00 UTC Sunday — catches newly released rules.
     - cron: "0 15 * * 0"

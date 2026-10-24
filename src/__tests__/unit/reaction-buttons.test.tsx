@@ -129,7 +129,9 @@ describe("ReactionButtons", () => {
   });
 
   it("renders the three visual states correctly (zero+unselected dashed, hasCount+unselected solid gray, mine blue)", () => {
-    // Zero count, not mine → dashed border, white bg, opacity 0.4
+    // Zero count, not mine → dashed border, white bg, emoji dimmed.
+    // Only the emoji fades (18-v3): the border and focus ring stay at
+    // full strength.
     const { rerender } = render(
       <ReactionButtons
         setlistItemId="1"
@@ -141,7 +143,9 @@ describe("ReactionButtons", () => {
     let fireButton = screen.getByTitle("best");
     expect(fireButton.style.border).toContain("dashed");
     expect(fireButton.style.background).toBe("white");
-    expect(Number(fireButton.style.opacity)).toBeLessThan(1);
+    expect(fireButton.style.opacity).toBe("");
+    const emoji = () => fireButton.querySelector("span") as HTMLElement;
+    expect(Number(emoji().style.opacity)).toBeLessThan(1);
 
     // Has count, not mine → solid gray border, white bg, opacity 1
     rerender(
@@ -156,7 +160,7 @@ describe("ReactionButtons", () => {
     expect(fireButton.style.border).toContain("solid");
     expect(fireButton.style.border).not.toContain("dashed");
     expect(fireButton.style.background).toBe("white");
-    expect(Number(fireButton.style.opacity)).toBe(1);
+    expect(Number(emoji().style.opacity)).toBe(1);
   });
 
   it("flips visual state to 'mine' immediately on tap, before the POST resolves (optimistic)", async () => {

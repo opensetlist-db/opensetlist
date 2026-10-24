@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
 import { parseReleaseYear } from "@/lib/utils";
-import { colors, radius, shadows } from "@/styles/tokens";
+import { colors, radius } from "@/styles/tokens";
 import { entityPath } from "@/lib/seo/entityUrl";
 
 /*
@@ -18,11 +18,8 @@ import { entityPath } from "@/lib/seo/entityUrl";
  *   discography / 최신 앨범 preview (single-column list of these rows).
  *   Mockup reference: song-page-v2-mockup.jsx lines 127–201.
  *
- * list variant (b10b): full-width store/catalog row for the
- *   `/[locale]/albums` list page — cover-left + type pill + artist
- *   label + title + sub + year + chevron. Same horizontal shape as
- *   mini, sized larger; the year-section wrapper supplies the white
- *   container + dividers.
+ * The `/[locale]/albums` catalog row is a separate component,
+ * `components/albums/AlbumListRow` (26-v1 layout).
  *
  * (A `hero` vertical-card variant existed for the Artist "최신 앨범"
  * highlight but was removed in the Sprint B2 QA pass — the artist page
@@ -33,10 +30,6 @@ import { entityPath } from "@/lib/seo/entityUrl";
  * (which works in both server and client trees).
  */
 
-// Two variants: `mini` (compact row, Song + Artist surfaces) and `list`
-// (the /albums catalog row). The open string union + discriminated props
-// keep each render block self-contained.
-export type AlbumCardVariant = "mini" | "list";
 
 // Per-AlbumType pill styling. Mirrors the mockup's ALBUM_TYPE_LABEL
 // map (lines 96–102) but uses semantic tokens from
@@ -79,14 +72,6 @@ export type AlbumCardAlbum = {
     artist: {
       color: string | null;
       translations: Array<{ locale: string; name: string }>;
-      // Artist-name fields — OPTIONAL so the b08 song-page payload
-      // (`SongAlbumsAlbum`, which selects only color + translations)
-      // still satisfies this type. Only the `list` variant reads them,
-      // and only via the caller-supplied `artistName` prop (resolved
-      // upstream by `getAlbums`); mini/hero never touch them.
-      originalName?: string | null;
-      originalShortName?: string | null;
-      originalLanguage?: string;
     };
   }>;
 };
@@ -119,36 +104,8 @@ interface MiniProps {
   activeBonusCount?: number;
 }
 
-interface ListProps {
-  variant: "list";
-  album: AlbumCardAlbum;
-  locale: string;
-  /**
-   * Pre-resolved artist label (e.g. `displayOriginalName(...).main`).
-   * Passed in by the list page rather than resolved here so AlbumCard
-   * doesn't have to depend on the optional artist-name fields being
-   * present. Rendered as a plain text pill — NOT a nested link, since
-   * the whole card is already an album link.
-   */
-  artistName?: string;
-  /**
-   * Count of active bonuses on this album (same formula as `mini` /
-   * `hero` — `countActiveBonuses(listings)`). Renders the green 特典 N
-   * badge when > 0.
-   */
-  activeBonusCount?: number;
-}
-
-type Props = MiniProps | ListProps;
-
-export async function AlbumCard(props: Props) {
-  if (props.variant === "mini") {
-    return await MiniVariant(props);
-  }
-  if (props.variant === "list") {
-    return await ListVariant(props);
-  }
-  return null;
+export async function AlbumCard(props: MiniProps) {
+  return await MiniVariant(props);
 }
 
 async function MiniVariant({
@@ -372,170 +329,6 @@ async function MiniVariant({
       >
         ›
       </span>
-    </Link>
-  );
-}
-
-async function ListVariant({
-  album,
-  locale,
-  artistName,
-  activeBonusCount = 0,
-}: ListProps) {
-  // Album namespace only — type pill + active-bonus badge both resolve
-  // here (the badge keys moved out of `Song` in PR #486).
-  const albumT = await getTranslations({ locale, namespace: "Album" });
-
-  const titleParts = displayOriginalTitle(album, album.translations, locale);
-  const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
-
-  const releaseYear = parseReleaseYear(album.releaseDate);
-
-  const primaryArtist = album.artists[0]?.artist ?? null;
-  const fallbackColor = primaryArtist?.color ?? colors.primary;
-  const albumHref = entityPath("albums", locale, album.id, album.slug);
-
-  // Shared sub-elements rendered in both the mobile-row and desktop-card
-  // layouts so they can't drift apart.
-  const typePill = (
-    <span
-      style={{
-        fontSize: 9,
-        fontWeight: 700,
-        color: pillStyle.color,
-        background: pillStyle.bg,
-        borderRadius: 8,
-        padding: "1px 5px",
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
-      }}
-    >
-      {albumT(`type.${album.type}`)}
-    </span>
-  );
-  const artistPill = artistName ? (
-    <span
-      style={{
-        fontSize: 9,
-        fontWeight: 600,
-        color: colors.textSubtle,
-        background: colors.bgSubtle,
-        borderRadius: 8,
-        padding: "1px 5px",
-        maxWidth: 140,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {artistName}
-    </span>
-  ) : null;
-  const bonusBadge =
-    activeBonusCount > 0 ? (
-      <span
-        aria-label={albumT("albumActiveBonuses", { count: activeBonusCount })}
-        style={{
-          fontSize: 9,
-          fontWeight: 700,
-          color: colors.bonusActiveText,
-          background: colors.bonusActiveBg,
-          borderRadius: 8,
-          padding: "1px 5px",
-        }}
-      >
-        {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
-      </span>
-    ) : null;
-
-  const coverImg = album.imageUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={album.imageUrl}
-      alt=""
-      referrerPolicy="no-referrer"
-      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-    />
-  ) : (
-    <span aria-hidden="true">💿</span>
-  );
-
-  return (
-    // A single horizontal row at every breakpoint. The Sprint B2 QA
-    // pass unified the /albums list to rows on desktop too (the former
-    // 4-col grid card was dropped), so there's no longer a separate
-    // desktop layout. Borderless — the year-section wrapper supplies
-    // the white container + `divide-y` separators, so the row carries
-    // no border of its own.
-    <Link
-      href={albumHref}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "12px 16px",
-        textDecoration: "none",
-        color: "inherit",
-      }}
-    >
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 10,
-            flexShrink: 0,
-            background: album.imageUrl
-              ? "transparent"
-              : `linear-gradient(135deg, ${fallbackColor}30, ${fallbackColor}60)`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 22,
-            overflow: "hidden",
-            boxShadow: shadows.imageThumbnail,
-          }}
-        >
-          {coverImg}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              marginBottom: 4,
-              flexWrap: "wrap",
-            }}
-          >
-            {typePill}
-            {artistPill}
-            {bonusBadge}
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: colors.primary,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              marginBottom: 2,
-            }}
-          >
-            {titleParts.main}
-          </div>
-          <div style={{ fontSize: 11, color: colors.textMuted }}>
-            {[titleParts.sub, releaseYear !== null ? String(releaseYear) : null]
-              .filter(Boolean)
-              .join(" · ")}
-          </div>
-        </div>
-        <span
-          style={{ fontSize: 14, color: colors.borderSubtle, flexShrink: 0 }}
-          aria-hidden="true"
-        >
-          ›
-        </span>
     </Link>
   );
 }

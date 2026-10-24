@@ -30,8 +30,10 @@ a developer's machine. Write date tests against that zone, never by
 reading the host's. `tz-pin.test.ts` fails if the pin stops taking effect.
 
 `npm run lint` is ESLint plus `npm run lint:css` (stylelint over
-`src/**/*.module.css`, `stylelint.config.mjs`: hex colour literals
-warn). `npm run lint:dead` (knip, `knip.config.ts`) lists files nothing
+`src/**/*.module.css`, `stylelint.config.mjs`: hex colour literals fail
+in the 11 palette-only modules listed in its override; other modules
+warn, and `src/app/globals.css` remains exempt for palette definitions).
+`npm run lint:dead` (knip, `knip.config.ts`) lists files nothing
 imports and exports nothing uses; CI does not fail on it
 (`continue-on-error`).
 
@@ -85,6 +87,15 @@ know what each suite leaves behind:
 | `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
 | `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
+| `logo-resolution.test.ts` | **writes** | three series + two events keyed `logo-itest-<ts>-*`, `ImageAsset` rows keyed `itest/logo-itest-<ts>/…`, plus one admin `PUT /api/admin/event-series/[id]` and one `PUT /api/admin/events/[id]` on its own fixtures; creates its own coloured artist `logo-itest-<ts>-artist`; `afterAll` deletes them and asserts none are left |
+| `image-upload-service.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/upload-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `album-cover.test.ts` | **writes** | one album with slug `cover-itest-<ts>`, `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/cover-itest-<ts>/`; re-imports that one slug through the CSV importer; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `series-logo-route.test.ts` | **writes** | parent/child series (+ a soft-deleted one) and one event, all named `series-logo-itest-<ts> …`, through the admin handlers; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/series-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `event-logo-route.test.ts` | **writes** | parent/child series and events (one soft-deleted) named `event-logo-itest-<ts> …` through the admin handlers, with a fake poster URL; `ImageAsset` rows whose `publicUrl` starts `https://images.test.invalid/event-logo-itest-<ts>/`; storage is in-memory (no R2); `afterAll` deletes them and asserts none left |
+| `global-search.test.ts` | **writes** | songs (one variant, one soft-deleted), artists, an album and events whose slug starts `srchitest<ts>`, plus their translations and one `SongArtist`; search reads only; `afterAll` deletes them and asserts none are left |
+| `home-events.test.ts` | **writes** | one song and events dated 2099 whose slug starts `home-itest<ts>`, with setlist items (+ `SetlistItemSong`) on some; home queries read with a 2099 reference instant so real events stay out of the windows; `afterAll` deletes them and asserts none are left |
+| `album-list-pagination.test.ts` | **writes** | read-only paging of the whole album catalog and every artist chip against a raw-SQL ordering; then 5 artists (2 deleted sub-units) and 29 albums dated 2099 or undated whose slug starts `c07itest<ts>`, with `AlbumArtist` links; `beforeAll` purges earlier `c07itest` leftovers, `afterAll` deletes them and asserts none are left |
+| `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
 
 Every `*.test.ts` here needs a row, and every row a file:
@@ -142,6 +153,8 @@ the skip count.
 | `album-cross-links.spec.ts` | GET only | `E2E_MULTI_ALBUM_SONG_ID`, `E2E_DISCOGRAPHY_ARTIST_ID`, `E2E_BD_SERIES_ID` |
 | `bonus-scrape.spec.ts` | GET only | `E2E_BONUS_ALBUM_ID` |
 | `event-bd-section.spec.ts` | GET only | `E2E_BD_EVENT_ID`, `E2E_PLAIN_EVENT_ID` |
+| `home.spec.ts` | GET only | none — asserts roles, landmarks and URLs, so any dev catalog state passes |
+| `search.spec.ts` | GET only | a catalog where `a` matches >20 songs (any seeded dev DB) |
 | `seo-canonical.spec.ts` | GET only | events in the sitemap |
 | `setlist-unknown-song.spec.ts` | **writes** | `E2E_UNKNOWN_SONG_EVENT_ID`, `E2E_MULTI_ALBUM_SONG_ID`, `ADMIN_PASSWORD` |
 

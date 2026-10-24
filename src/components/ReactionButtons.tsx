@@ -10,7 +10,7 @@ import {
   REACTION_ACTIVE_BG,
   REACTION_ACTIVE_COLOR,
 } from "@/components/reaction-style";
-import { colors, radius } from "@/styles/tokens";
+import { colors } from "@/styles/tokens";
 
 const EMPTY_REACTIONS: Record<string, string> = {};
 
@@ -30,8 +30,9 @@ const REACTION_TIMEOUT_MS = 10_000;
 
 // Three-state palette (mockup §3-3); the active pair lives in
 // `reaction-style.ts` so tests share the source of truth.
-const REACTION_BORDER_SOLID = colors.border;
-const REACTION_BORDER_DASHED = colors.borderDashed;
+// 18-v3 reaction borders: solid with a count, dashed at 0.
+const REACTION_BORDER_SOLID = colors.reactionBorder;
+const REACTION_BORDER_DASHED = colors.reactionBorderEmpty;
 const REACTION_COUNT_INACTIVE_COLOR = colors.textSecondary;
 
 // Mirrors the durations in globals.css `@keyframes emoji-activate` /
@@ -412,7 +413,9 @@ export function ReactionButtons({
   };
 
   return (
-    <div className="mt-1 flex flex-wrap gap-1.5">
+    // One line beside the title from 1100px (18-v3 desktop row); wraps
+    // under the title on narrower screens if it has to.
+    <div className="flex flex-wrap gap-1.5 min-[1100px]:flex-nowrap">
       {REACTION_TYPES.map(({ type, emoji }) => {
         const isActive = !!myReactions[type];
         const count = counts[type] ?? 0;
@@ -505,8 +508,13 @@ function ReactionButton({
         display: "inline-flex",
         alignItems: "center",
         gap: 4,
-        borderRadius: radius.button,
-        padding: "4px 10px",
+        justifyContent: "center",
+        // 18-v3: 60px minimum so the four buttons line up as columns
+        // down the setlist; the count slot inside keeps digit widths.
+        minWidth: 60,
+        borderRadius: 7,
+        padding: "4px 8px",
+        whiteSpace: "nowrap",
         border: isActive
           ? `1.5px solid ${REACTION_ACTIVE_COLOR}`
           : hasAny
@@ -514,13 +522,14 @@ function ReactionButton({
             : `1.5px dashed ${REACTION_BORDER_DASHED}`,
         background: isActive ? REACTION_ACTIVE_BG : "white",
         cursor: isDisabled ? "default" : "pointer",
-        opacity: isActive || hasAny ? 1 : 0.4,
         transition:
-          "background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease, transform 0.07s ease",
+          "background 0.18s ease, border-color 0.18s ease, transform 0.07s ease",
         WebkitTapHighlightColor: "transparent",
-        outline: "none",
       }}
-      className="active:scale-[0.91]"
+      // 36px tall from 1100px, 40px (a bigger touch target) below.
+      // The focus ring is the global 3px :focus-visible outline — the
+      // old `outline: none` hid it.
+      className="min-h-[40px] active:scale-[0.91] min-[1100px]:min-h-[36px]"
     >
       <span
         style={{
@@ -528,6 +537,10 @@ function ReactionButton({
           lineHeight: 1,
           display: "inline-block",
           animation: emojiAnimation,
+          // 18-v3: an empty (count 0) button dims only its emoji. The
+          // old whole-button opacity 0.4 also faded the dashed border
+          // and the focus ring.
+          opacity: isActive || hasAny ? 1 : 0.5,
         }}
       >
         {emoji}
@@ -539,17 +552,10 @@ function ReactionButton({
           widths equal across 0-9, and right-align pins the rightmost
           digit to the same x in every button — the visually salient
           anchor when a column of counts is meant to read like a
-          leaderboard. `minWidth: 18` fits two digits cleanly inside
-          the 280px setlist reactions column (each button is
-          ~63–65px on Windows / Segoe UI Emoji where emoji glyphs
-          render wider than macOS Apple Color Emoji; 4 × 65 + 3 ×
-          6px gaps ≅ 278px, with a small buffer in the column).
-          Going wider here (e.g. 22 to fit three digits) re-introduces
-          the wrap onto a second line. Three-digit counts will stretch
-          their own button by a few px and visibly drift in that one
-          row, which is acceptable for the rare case at Phase 1A
-          scale — column-fit beats absolute alignment when push comes
-          to shove. See `setlistLayout.ts` for the 260 → 280 history. */}
+          leaderboard. `minWidth: 18` holds two digits; the button's
+          60px minimum absorbs a third, and the desktop reactions
+          column is `max-content`, so four-digit counts widen the
+          column instead of wrapping (18-v3 checked 0/12/128/1248). */}
       <span
         key={animKey}
         style={{

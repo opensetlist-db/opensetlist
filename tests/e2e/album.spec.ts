@@ -44,12 +44,14 @@ function requireSample(id: string | null, envVar: string): asserts id is string 
   );
 }
 
+// Tabs are links (`?tab=` re-renders the page server-side), with the
+// current one marked aria-current="page".
 function tabButtons(page: Page): Locator {
-  return page.locator(`${TAB_NAV_SELECTOR} button`);
+  return page.locator(`${TAB_NAV_SELECTOR} a`);
 }
 
 function activeTab(page: Page): Locator {
-  return page.locator(`${TAB_NAV_SELECTOR} button[aria-current="page"]`);
+  return page.locator(`${TAB_NAV_SELECTOR} a[aria-current="page"]`);
 }
 
 test.describe("Album detail page — type-aware render", () => {
@@ -148,10 +150,12 @@ test.describe("Album detail page — metadata", () => {
     expect(ogResp.headers()["content-type"] ?? "").toMatch(/image\//);
   });
 
-  test("canonical link points to the slug-less numeric URL", async ({
+  test("canonical link points to the DB-slug URL the bare id redirects to", async ({
     page,
   }) => {
     requireSample(albumId, "E2E_ALBUM_ID");
+    // The bare id 308s to `/ko/albums/{id}/{album.slug}` (CLAUDE.md URL
+    // Strategy); the canonical must name that same landing path.
     await page.goto(`/ko/albums/${albumId}`);
     const canonical = await page
       .locator('link[rel="canonical"]')
@@ -165,6 +169,8 @@ test.describe("Album detail page — metadata", () => {
     const canonicalPath = canonical!.startsWith("/")
       ? canonical!
       : new URL(canonical!).pathname;
-    expect(canonicalPath).toBe(`/ko/albums/${albumId}`);
+    const landing = new URL(page.url()).pathname;
+    expect(landing.startsWith(`/ko/albums/${albumId}/`)).toBe(true);
+    expect(canonicalPath).toBe(landing);
   });
 });

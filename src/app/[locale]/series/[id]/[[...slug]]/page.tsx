@@ -1,24 +1,16 @@
-import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-// `Link` from `next/link`, not the i18n Link: every href here comes
-// from `entityPath` / `eventHref`, which already carry the locale
-// prefix. The i18n Link would prepend it again (`/ko/ko/events/...`).
+// Every link on this page is a locale-prefixed canonical path from
+// `entityPath` / `eventHref`, so the plain `next/link` is the right one
+// (the i18n Link would prefix the locale a second time).
 import Link from "next/link";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug, entityPath } from "@/lib/seo/entityUrl";
-import { prisma } from "@/lib/prisma";
 import {
-  CACHE_TTL,
-  cachedQuery,
-  joinIdKey,
-  splitIdKey,
-} from "@/lib/dataCache";
-import {
-  serializeBigInt,
-  formatDate,
-  HISTORY_ROW_DATE_FORMAT,
-} from "@/lib/utils";
+  entityAlternates,
+  entityPath,
+  enforceCanonicalSlug,
+} from "@/lib/seo/entityUrl";
+import { formatDate } from "@/lib/utils";
 import {
   displayNameWithFallback,
   displayOriginalName,
@@ -27,31 +19,43 @@ import {
 } from "@/lib/display";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
-import {
-  groupByCity,
-  type SeriesEventInput,
-  type Leg,
-} from "@/lib/seriesGrouping";
+import { groupByCity, type SeriesEventInput } from "@/lib/seriesGrouping";
 import { getSeriesStats } from "@/lib/seriesStats";
-import { formatDateRange } from "@/lib/dateRange";
-import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
-import { InfoCard } from "@/components/InfoCard";
-import { TabBar } from "@/components/TabBar";
-import { SectionLabel } from "@/components/SectionLabel";
-import { SeriesBdAlbumsSection } from "@/components/SeriesBdAlbumsSection";
-import { StatsSubLabel } from "@/components/StatsSubLabel";
-import { StatusBadge } from "@/components/StatusBadge";
-import { CountCell } from "@/components/CountCell";
 import {
-  LegCard,
-  type PreparedLeg,
-  type PreparedLegEvent,
-} from "@/components/series/LegCard";
-import { colors, gradients, layout, radius, shadows } from "@/styles/tokens";
+  getScheduleSongCount,
+  getSeriesDetail,
+  getSeriesUnits,
+  getSongAppearances,
+  type SongAppearance,
+  type SongRowHydrated,
+} from "@/lib/seriesDetail";
+import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import {
+  SeriesIdentity,
+  type LangText,
+  type SeriesMeta,
+} from "@/components/series/detail/SeriesIdentity";
+import { SeriesTabs } from "@/components/series/detail/SeriesTabs";
+import { SeriesAside } from "@/components/series/detail/SeriesAside";
+import {
+  SeriesLegGroup,
+  type SeriesLeg,
+} from "@/components/series/detail/SeriesLegGroup";
+import {
+  SeriesSongsPanel,
+  type SeriesSongRow,
+} from "@/components/series/detail/SeriesSongsPanel";
+import { SeriesStatusPill } from "@/components/series/detail/SeriesStatusPill";
+import { SeriesBdSection } from "@/components/series/detail/SeriesBdSection";
+import {
+  SERIES_DATE_FORMAT,
+  formatSeriesDateRange,
+} from "@/components/series/detail/seriesDate";
+import styles from "@/components/series/detail/seriesDetail.module.css";
 
 type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
-  searchParams: Promise<{ tab?: string | string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const TABS = ["schedule", "songs"] as const;
@@ -62,209 +66,42 @@ function resolveTab(value: string | string[] | undefined): TabKey {
   return TABS.includes(v as TabKey) ? (v as TabKey) : "schedule";
 }
 
-async function fetchEventSeries(id: bigint) {
-  const series = await prisma.eventSeries.findFirst({
-    where: { id, isDeleted: false },
-    include: {
-      translations: true,
-      artist: { include: { translations: true } },
-      parentSeries: { include: { translations: true } },
-      childSeries: {
-        where: { isDeleted: false },
-        include: { translations: true },
-        orderBy: { createdAt: "asc" },
-      },
-      events: {
-        where: { isDeleted: false },
-        include: { translations: true },
-        orderBy: [{ date: "asc" }, { startTime: "asc" }],
-      },
-    },
-  });
-  // Returns the raw Prisma row — NOT `serializeBigInt(series)` — so that
-  // BigInt IDs (parentSeries / childSeries / events) survive intact for
-  // link construction. `serializeBigInt` narrows BigInt to JS `number`,
-  // which loses bits for autoincrementing IDs > 2^53. `eventHref()`
-  // accepts both `number | bigint` and template-literal interpolation
-  // (`${id}`) renders BigInt as the exact digit string. Server
-  // components can render BigInt-typed values directly without
-  // hydration-payload concerns since this page has no client-state
-  // bridge that would JSON-serialize the row.
-  return series;
-}
-
-// The raw-BigInt return survives the data cache unchanged — the cache
-// codec revives bigint and Date values (see `encodeCacheValue`).
-// `react.cache` dedups the metadata + page calls within a request.
-const getEventSeries = cache(
-  cachedQuery("series-detail", fetchEventSeries, {
-    revalidate: CACHE_TTL.entity,
-  }),
-);
-
-/**
- * Aggregate song appearance counts across the series's completed
- * events. Two queries: groupBy gets the (songId, count) tuples, then a
- * findMany hydrates the song shapes (with translations + primary
- * artist) for the rows the page actually renders. Phase 1A scale
- * (~60 events) — profile before optimizing.
- */
-async function fetchSongAppearances(completedEventIds: bigint[]) {
-  if (completedEventIds.length === 0)
-    return [] as Array<{
-      songId: string;
-      count: number;
-      song: SongRowHydrated | null;
-    }>;
-  const counts = await prisma.setlistItemSong.groupBy({
-    by: ["songId"],
-    where: {
-      setlistItem: {
-        eventId: { in: completedEventIds },
-        isDeleted: false,
-      },
-      // Exclude soft-deleted songs at the aggregation step so the
-      // hydration query below has fewer ids to fetch and the
-      // post-hydrate `visibleSongAppearances` filter is a true
-      // race-condition safety net rather than a primary filter.
-      // Mirrors the schedule-tab `scheduleSongCount` query.
-      song: { isDeleted: false },
-    },
-    _count: { songId: true },
-    orderBy: { _count: { songId: "desc" } },
-  });
-
-  const songIds = counts.map((c) => c.songId);
-  const songs = await prisma.song.findMany({
-    where: { id: { in: songIds }, isDeleted: false },
-    include: {
-      translations: true,
-      artists: {
-        where: { role: "primary" },
-        include: { artist: { include: { translations: true } } },
-        take: 1,
-      },
-    },
-  });
-
-  // Build the lookup map keyed off the RAW BigInt rows. `String(BigInt)`
-  // is exact for any magnitude; `String(serializedNumber)` would lose
-  // bits for IDs > 2^53 because `serializeBigInt` narrows to JS
-  // `number` first. Both `c.songId` (groupBy result) and `s.id` (raw
-  // row) are BigInt at this point, so the keys match by construction.
-  const rawById = new Map(songs.map((s) => [String(s.id), s] as const));
-
-  return counts.map((c) => {
-    const raw = rawById.get(String(c.songId));
-    return {
-      songId: String(c.songId),
-      count: c._count.songId,
-      // Per-row serialize: cheap (small song counts at Phase 1A scale)
-      // and keeps the lookup key precision-safe.
-      song: raw ? (serializeBigInt(raw) as unknown as SongRowHydrated) : null,
-    };
-  });
-}
-
-type SongRowHydrated = {
-  id: number;
-  // Required for the song-detail href on each row in the songs tab —
-  // takes the viewer to the song detail page. Returned by the
-  // findMany at line 125 by default (base columns aren't stripped
-  // unless explicitly omitted).
-  slug: string;
-  originalTitle: string;
-  originalLanguage: string;
-  variantLabel: string | null;
-  translations: Array<{
-    locale: string;
-    title: string;
-    variantLabel: string | null;
-  }>;
-  artists: Array<{
-    artist: {
-      id: number;
-      type: string;
-      originalName: string | null;
-      originalShortName: string | null;
-      originalLanguage: string;
-      translations: Array<{
-        locale: string;
-        name: string;
-        shortName: string | null;
-      }>;
-    };
-  }>;
+type NamedTranslation = {
+  locale: string;
+  name: string;
+  shortName?: string | null;
 };
 
 /**
- * Distinct unit-type artists that have performed any song in this
- * series. Source: SetlistItemArtist (per-song artist credit) ∩
- * `Artist.type === "unit"`. Maps to the mockup's "참여 유닛" list —
- * units actually surface once their first set appears.
+ * The `lang` of a name picked by `displayNameWithFallback` /
+ * `displayOriginalName`'s `main`: the viewer's locale when that
+ * locale's row supplied it, otherwise the entity's original language
+ * (the strict fallback never borrows a third locale). Screen readers
+ * and the JP font fallback both key off it.
  */
-async function fetchSeriesUnits(allEventIds: bigint[]) {
-  if (allEventIds.length === 0) return [];
-  const links = await prisma.setlistItemArtist.findMany({
-    where: {
-      setlistItem: { eventId: { in: allEventIds }, isDeleted: false },
-      artist: { type: "unit", isDeleted: false },
-    },
-    select: { artistId: true },
-    distinct: ["artistId"],
-  });
-  if (links.length === 0) return [];
-  const units = await prisma.artist.findMany({
-    where: { id: { in: links.map((l) => l.artistId) }, isDeleted: false },
-    include: { translations: true },
-  });
-  // Return raw Prisma rows (BigInt id intact). Units are consumed only
-  // by this server component — they never cross the server→client
-  // boundary — so there is no reason to narrow `id` to a JS number and
-  // risk precision loss for autoincrement IDs > 2^53. Mirrors the
-  // raw-row return policy of `getEventSeries`.
-  return units;
+function nameLang(
+  item: { originalLanguage: string },
+  translations: readonly NamedTranslation[],
+  locale: string,
+  mode: "short" | "full" = "full",
+): string {
+  const row = translations.find((t) => t.locale === locale);
+  const fromRow = mode === "short" ? row?.shortName || row?.name : row?.name;
+  return fromRow ? locale : item.originalLanguage;
 }
 
-// Cached per event-id set (joined into the key — see `joinIdKey`).
-// The sets are derived from the cached series row + the request clock,
-// so the key changes exactly when an event completes or the series'
-// event list changes.
-const getSongAppearancesCached = cachedQuery(
-  "series-song-appearances",
-  (completedEventIdsKey: string) =>
-    fetchSongAppearances(splitIdKey(completedEventIdsKey)),
-  { revalidate: CACHE_TTL.entity },
-);
-
-const getSeriesUnitsCached = cachedQuery(
-  "series-units",
-  (allEventIdsKey: string) => fetchSeriesUnits(splitIdKey(allEventIdsKey)),
-  { revalidate: CACHE_TTL.entity },
-);
-
-// Schedule-tab label count: distinct visible songs across the
-// completed events. Same filter as `fetchSongAppearances`' groupBy.
-const getScheduleSongCountCached = cachedQuery(
-  "series-schedule-song-count",
-  (completedEventIdsKey: string) =>
-    prisma.setlistItemSong
-      .groupBy({
-        by: ["songId"],
-        // Only count songs that are still visible: a soft-deleted
-        // song (`song.isDeleted = true`) wouldn't render in the
-        // songs tab, so it shouldn't inflate the tab-label count.
-        where: {
-          setlistItem: {
-            eventId: { in: splitIdKey(completedEventIdsKey) },
-            isDeleted: false,
-          },
-          song: { isDeleted: false },
-        },
-      })
-      .then((rows) => rows.length),
-  { revalidate: CACHE_TTL.entity },
-);
+/** Same rule for a secondary field (city, venue, description, …). */
+function fieldLang(
+  item: { originalLanguage: string },
+  translations: readonly ({ locale: string } & Record<string, unknown>)[],
+  locale: string,
+  field: string,
+): string {
+  const value = translations.find((t) => t.locale === locale)?.[field];
+  return typeof value === "string" && value.length > 0
+    ? locale
+    : item.originalLanguage;
+}
 
 export async function generateMetadata({
   params,
@@ -272,8 +109,9 @@ export async function generateMetadata({
   const { locale, id } = await params;
   const metaT = await getTranslations({ locale, namespace: "Meta" });
   if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
-  const series = await getEventSeries(BigInt(id));
-  if (!series) return { title: metaT("notFound") };
+  const detail = await getSeriesDetail(BigInt(id));
+  if (!detail) return { title: metaT("notFound") };
+  const { series } = detail;
   const seriesName = displayNameWithFallback(
     series,
     series.translations,
@@ -316,68 +154,57 @@ export default async function EventSeriesPage({
   const activeTab = resolveTab(sp.tab);
 
   if (!/^\d+$/.test(id)) notFound();
-  const seriesId = BigInt(id);
-  const series = await getEventSeries(seriesId);
-  if (!series) notFound();
+  const detail = await getSeriesDetail(BigInt(id));
+  if (!detail) notFound();
+  const { series, logo } = detail;
+  // Bare id, wrong / renamed slug or extra segments → 308 to the
+  // canonical `/series/<id>/<db slug>`, query preserved.
   enforceCanonicalSlug("series", locale, id, series.slug, slug, sp);
 
-  const t = await getTranslations("EventSeries");
-  const ct = await getTranslations("Common");
-  const evT = await getTranslations("Event");
-  const aT = await getTranslations("Artist");
+  const t = await getTranslations({ locale, namespace: "EventSeries" });
+  const ct = await getTranslations({ locale, namespace: "Common" });
+  const evT = await getTranslations({ locale, namespace: "Event" });
+  const aT = await getTranslations({ locale, namespace: "Artist" });
 
-  // Pin one reference instant so every getEventStatus() call within
-  // this render uses the same `now`. Otherwise an event near a
-  // boundary could be classified inconsistently between sections.
+  // One reference instant for every getEventStatus() call in this
+  // render, so an event near a boundary can't be classified differently
+  // between the banner, the stats and the city groups.
   const referenceNow = new Date();
 
-  // ── Display strings ─────────────────────────────────────
-  const { main: seriesMain, sub: seriesSub } = displayOriginalName(
-    series,
-    series.translations,
-    locale,
-  );
-  const description = resolveLocalizedField(
-    series,
-    series.translations,
-    locale,
-    "description",
-    "originalDescription",
-  );
-  const artistName = series.artist
-    ? displayNameWithFallback(
-        series.artist,
-        series.artist.translations,
-        locale,
-      )
-    : null;
-  // Multi-artist series (artistId null) show the organizer instead.
-  // Localized like `description`: viewer-locale row, else the parent's
-  // original-language `organizerName`.
-  const organizerName = resolveLocalizedField(
-    series,
-    series.translations,
-    locale,
-    "organizerName",
-    "organizerName",
-  );
-  // Breadcrumb parent + leaf use short variants (project rule);
-  // `seriesMain` keeps the full form for the page H1 below.
-  const parentName = series.parentSeries
-    ? displayNameWithFallback(
-        series.parentSeries,
-        series.parentSeries.translations,
-        locale,
-        "short",
-      )
-    : null;
-  const seriesBreadcrumbName =
-    displayNameWithFallback(series, series.translations, locale, "short") ||
-    t("unknownSeries");
+  // `series` is the RAW Prisma row (bigint ids, Date timestamps).
+  // `SeriesEventInput` unions the raw and serialized shapes, so the
+  // cast only widens; one cast site keeps the rest clean.
+  const events = series.events as unknown as SeriesEventInput[];
+  const stats = getSeriesStats(events, locale, referenceNow);
+  const legs = groupByCity(events, locale, referenceNow);
 
-  // Status labels used by both LegCard and inline badges. `ongoing`
-  // uses `Event.live` ("LIVE") to match the home + events-list
-  // convention; the others use the per-status localized text.
+  const completedEventIds = events
+    .filter((e) => getEventStatus(e, referenceNow) === "completed")
+    .map((e) => BigInt(e.id));
+  const allEventIds = events.map((e) => BigInt(e.id));
+
+  // All three reads run in parallel. The songs tab hydrates the full
+  // rows and counts them; the schedule tab only needs the cheap distinct
+  // count for the tab label and the metric.
+  const [songAppearances, units, scheduleSongCount] = await Promise.all([
+    activeTab === "songs"
+      ? getSongAppearances(completedEventIds)
+      : Promise.resolve([] as SongAppearance[]),
+    getSeriesUnits(allEventIds),
+    activeTab === "songs"
+      ? Promise.resolve(0)
+      : getScheduleSongCount(completedEventIds),
+  ]);
+
+  // Drop rows whose song was soft-deleted between the groupBy and the
+  // hydrate query (rare race), so the count and the list agree.
+  const visibleSongs = songAppearances.filter(
+    (row): row is SongAppearance & { song: SongRowHydrated } =>
+      row.song !== null,
+  );
+  const uniqueSongCount =
+    activeTab === "songs" ? visibleSongs.length : scheduleSongCount;
+
   const statusLabels: Record<ResolvedEventStatus, string> = {
     ongoing: evT("live"),
     upcoming: evT("status.upcoming"),
@@ -385,718 +212,360 @@ export default async function EventSeriesPage({
     cancelled: evT("status.cancelled"),
   };
 
-  // ── Stats + legs ─────────────────────────────────────────
-  // `series` is the RAW Prisma row (no `serializeBigInt`), so `id` is
-  // `bigint` and `startTime`/`date` are `Date`. `SeriesEventInput`
-  // unions both raw and post-serialize shapes (`bigint | number |
-  // string` for id, `Date | string` for the timestamps), so the cast
-  // is structurally safe — it just tells TS to pick the wider union
-  // even though Prisma's emitted type is narrower. Single cast site
-  // here keeps downstream usage clean.
-  const events = series.events as unknown as SeriesEventInput[];
-
-  const stats = getSeriesStats(events, locale, referenceNow);
-  const legs: Leg[] = groupByCity(events, locale, referenceNow);
-
-  // ── Server-side aggregations (songs + units) ─────────────
-  const completedEventIds = events
-    .filter((e) => getEventStatus(e, referenceNow) === "completed")
-    .map((e) => BigInt(e.id));
-  const allEventIds = events.map((e) => BigInt(e.id));
-
-  // All three queries fly in parallel. On the songs tab,
-  // `getSongAppearances` already returns the hydrated rows AND the
-  // count is `songAppearances.length` so the cheap-count groupBy is
-  // skipped. On the schedule tab, the cheap groupBy runs alongside
-  // `getSeriesUnits` instead of serially after the await.
-  const [songAppearances, units, scheduleSongCount] = await Promise.all([
-    activeTab === "songs"
-      ? getSongAppearancesCached(joinIdKey(completedEventIds))
-      : Promise.resolve(
-          [] as Array<{
-            songId: string;
-            count: number;
-            song: SongRowHydrated | null;
-          }>,
-        ),
-    getSeriesUnitsCached(joinIdKey(allEventIds)),
-    activeTab === "songs"
-      ? Promise.resolve(0)
-      : getScheduleSongCountCached(joinIdKey(completedEventIds)),
-  ]);
-
-  // Drop rows whose song was soft-deleted between the groupBy and the
-  // hydrate query (rare race). Hoisted so the empty-state branch,
-  // `<ul>` map, and `isLast` computation in the songs tab all agree
-  // on the same length — otherwise the empty branch could open while
-  // we render zero items, or the last visible row could keep its
-  // bottom border because `isLast` is checked against the unfiltered
-  // length.
-  const visibleSongAppearances = songAppearances.filter(
-    (row): row is typeof row & { song: SongRowHydrated } => row.song !== null,
+  // ── Identity ────────────────────────────────────────────
+  const { main: seriesMain, sub: seriesSub } = displayOriginalName(
+    series,
+    series.translations,
+    locale,
   );
-  const uniqueSongCount =
-    activeTab === "songs" ? visibleSongAppearances.length : scheduleSongCount;
+  const title: LangText = seriesMain
+    ? { text: seriesMain, lang: nameLang(series, series.translations, locale) }
+    : { text: t("unknownSeries"), lang: locale };
+  const subtitle: LangText | null = seriesSub
+    ? { text: seriesSub, lang: series.originalLanguage }
+    : null;
+  const descriptionText = resolveLocalizedField(
+    series,
+    series.translations,
+    locale,
+    "description",
+    "originalDescription",
+  );
+  const description: LangText | null = descriptionText
+    ? {
+        text: descriptionText,
+        lang: fieldLang(series, series.translations, locale, "description"),
+      }
+    : null;
+
+  // Representative artist (canonical link) or, for a multi-artist
+  // series (artistId null), the localized organizer as plain text.
+  let meta: SeriesMeta | null = null;
+  if (series.artist) {
+    meta = {
+      kind: "artist",
+      label: t("artistLabel"),
+      href: entityPath(
+        "artists",
+        locale,
+        series.artist.id,
+        series.artist.slug,
+      ),
+      name: {
+        text:
+          displayNameWithFallback(
+            series.artist,
+            series.artist.translations,
+            locale,
+          ) || aT("unknown"),
+        lang: nameLang(series.artist, series.artist.translations, locale),
+      },
+    };
+  } else {
+    const organizer = resolveLocalizedField(
+      series,
+      series.translations,
+      locale,
+      "organizerName",
+      "organizerName",
+    );
+    if (organizer) {
+      meta = {
+        kind: "organizer",
+        label: t("organizer"),
+        name: {
+          text: organizer,
+          lang: fieldLang(series, series.translations, locale, "organizerName"),
+        },
+      };
+    }
+  }
+
+  const metrics = [
+    {
+      label: t("statsTotalEvents"),
+      value: t("statsTotalEventsValue", { count: stats.total }),
+    },
+    {
+      label: t("statsTotalCities"),
+      value: t("statsTotalCitiesValue", { count: stats.totalCities }),
+    },
+    {
+      label: t("statsSongs"),
+      value: t("statsSongsValue", { count: uniqueSongCount }),
+    },
+    {
+      label: t("statsUnits"),
+      value: t("statsUnitsValue", { count: units.length }),
+    },
+  ];
+
+  // ── Breadcrumb: home / optional parent / current (short names) ──
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: ct("home"), href: `/${locale}` },
+  ];
+  if (series.parentSeries) {
+    breadcrumbItems.push({
+      label:
+        displayNameWithFallback(
+          series.parentSeries,
+          series.parentSeries.translations,
+          locale,
+          "short",
+        ) || t("unknownSeries"),
+      href: entityPath(
+        "series",
+        locale,
+        series.parentSeries.id,
+        series.parentSeries.slug,
+      ),
+    });
+  }
+  breadcrumbItems.push({
+    label:
+      displayNameWithFallback(series, series.translations, locale, "short") ||
+      t("unknownSeries"),
+  });
+
+  // ── City groups ──────────────────────────────────────────
+  const preparedLegs: SeriesLeg[] = legs.map((leg, i) => {
+    const first = leg.events[0];
+    const legEvents = leg.events.map((ev) => {
+      const status = getEventStatus(ev, referenceNow);
+      // Row date prefers the calendar `date`; the group's range below
+      // uses startTime (existing behaviour, kept by 32-v1 even where
+      // the two disagree in real data — dev series 1, event 3).
+      const rowDate = ev.date ?? ev.startTime;
+      const name = displayNameWithFallback(
+        ev,
+        ev.translations,
+        locale,
+        "short",
+      );
+      return {
+        id: String(ev.id),
+        href: eventHref(locale, ev.id, ev.slug),
+        status,
+        statusLabel: statusLabels[status],
+        dateTime: new Date(rowDate).toISOString(),
+        formattedDate: formatDate(rowDate, locale, SERIES_DATE_FORMAT),
+        name: name
+          ? { text: name, lang: nameLang(ev, ev.translations, locale, "short") }
+          : { text: evT("unknownEvent"), lang: locale },
+      };
+    });
+    // Roll-up: ongoing > upcoming > completed; an all-cancelled group
+    // shows no header pill (each row still carries "취소").
+    const rollup = (["ongoing", "upcoming", "completed"] as const).find((s) =>
+      legEvents.some((e) => e.status === s),
+    );
+    return {
+      key: `${leg.city}-${i}`,
+      city: leg.city
+        ? { text: leg.city, lang: fieldLang(first, first.translations, locale, "city") }
+        : { text: t("unknownCity"), lang: locale },
+      venue: leg.venue
+        ? {
+            text: leg.venue,
+            lang: fieldLang(first, first.translations, locale, "venue"),
+          }
+        : null,
+      dateRangeLabel: formatSeriesDateRange(
+        leg.dateRange.start,
+        leg.dateRange.end,
+        locale,
+      ),
+      status: rollup ? { status: rollup, label: statusLabels[rollup] } : null,
+      countLabel: t("eventCountInLeg", { count: leg.events.length }),
+      events: legEvents,
+    };
+  });
+
+  // ── LIVE banner: first ongoing event in query (date) order ──
+  const firstOngoing =
+    events.find((e) => getEventStatus(e, referenceNow) === "ongoing") ?? null;
+
+  // ── Songs tab rows ───────────────────────────────────────
+  const songRows: SeriesSongRow[] = visibleSongs.map((row) => {
+    const song = row.song;
+    const display = displayOriginalTitle(song, song.translations, locale);
+    const variantFromLocale = song.translations.find(
+      (tr) => tr.locale === locale,
+    )?.variantLabel;
+    const primary = song.artists[0]?.artist;
+    const artistName = primary
+      ? displayNameWithFallback(primary, primary.translations, locale)
+      : "";
+    return {
+      key: row.songId,
+      href: entityPath("songs", locale, row.songId, song.slug),
+      title: { text: display.main, lang: song.originalLanguage },
+      variant: display.variant
+        ? {
+            text: display.variant,
+            lang: variantFromLocale ? locale : song.originalLanguage,
+          }
+        : null,
+      translated: display.sub ? { text: display.sub, lang: locale } : null,
+      artist:
+        primary && artistName
+          ? {
+              text: artistName,
+              lang: nameLang(primary, primary.translations, locale),
+            }
+          : null,
+      count: row.count,
+      countUnit: t("songAppearancesUnit", { count: row.count }),
+    };
+  });
 
   const tabs = [
-    { key: "schedule", label: t("tabSchedule") },
+    { key: "schedule" as const, label: t("tabSchedule") },
     {
-      key: "songs",
+      key: "songs" as const,
       label: t("tabSongs", { count: uniqueSongCount }),
     },
   ];
 
-  // ── Prepare legs for LegCard ─────────────────────────────
-  const preparedLegs: PreparedLeg[] = legs.map((leg) => {
-    const dateRangeLabel = formatDateRange(
-      leg.dateRange.start,
-      leg.dateRange.end,
-      locale,
-      HISTORY_ROW_DATE_FORMAT,
-    );
-    // Renamed to avoid shadowing the outer `events` (post-serialize
-    // tour-level array) — accidentally referencing the outer name
-    // inside this mapper would silently yield the wrong array.
-    const preparedEvents: PreparedLegEvent[] = leg.events.map((ev) => {
-      const status = getEventStatus(ev, referenceNow);
-      const evName =
-        displayNameWithFallback(ev, ev.translations, locale, "short") ||
-        evT("unknownEvent");
-      return {
-        // String at the server→client boundary: `LegCard` is a client
-        // component and Next.js can't serialize BigInt props. `String(
-        // BigInt)` is precision-safe; `eventHref` accepts the raw
-        // BigInt directly so href construction stays exact.
-        id: String(ev.id),
-        href: eventHref(locale, ev.id, ev.slug),
-        status,
-        formattedDate: formatDate(ev.date ?? ev.startTime, locale, HISTORY_ROW_DATE_FORMAT),
-        name: evName,
-        // Song count rendered only on completed events per task §4-3
-        // / mockup. Unfortunately we don't have per-event setlist counts
-        // pre-computed here; defer to omitting until a future PR adds
-        // `_count.setlistItems` to the events query (the events-list
-        // helper does this via getEventsListGrouped — series has its
-        // own query).
-        songCountLabel: null,
-      };
-    });
-    // Roll-up: pick the most salient status across the leg's events.
-    // ongoing > upcoming > completed > cancelled. A leg with one
-    // completed Day.1 + one upcoming Day.2 reads as "upcoming" — the
-    // viewer cares about the next show, not the past one.
-    const statuses = preparedEvents.map((e) => e.status);
-    const legStatus: ResolvedEventStatus = statuses.includes("ongoing")
-      ? "ongoing"
-      : statuses.includes("upcoming")
-        ? "upcoming"
-        : statuses.includes("completed")
-          ? "completed"
-          : "cancelled";
-    return {
-      city: leg.city,
-      venue: leg.venue,
-      dateRangeLabel,
-      legStatus,
-      events: preparedEvents,
-    };
-  });
-
-  // ── LIVE banner: pick first-by-date ongoing event ────────
-  const ongoingEvents = events.filter(
-    (e) => getEventStatus(e, referenceNow) === "ongoing",
-  );
-  const firstOngoing = ongoingEvents.length > 0 ? ongoingEvents[0] : null;
-  const liveBannerHref = firstOngoing
-    ? eventHref(locale, firstOngoing.id, firstOngoing.slug)
-    : null;
-
-  // ── Tour progress percentage ─────────────────────────────
-  const progressPct =
-    stats.total > 0
-      ? Math.round((stats.completed / stats.total) * 100)
-      : 0;
-
   return (
-    <main
-      className="flex-1"
-      style={{ background: colors.bgPage }}
-    >
-      <div className="mx-auto max-w-[480px] px-4 lg:max-w-[1100px] lg:px-10">
-        <Breadcrumb
-          ariaLabel={ct("breadcrumb")}
-          items={[
-            { label: ct("home"), href: `/${locale}` },
-            ...(series.parentSeries
-              ? [
-                  {
-                    label: parentName || t("unknownSeries"),
-                    href: entityPath("series", locale, series.parentSeries.id, series.parentSeries.slug),
-                  } satisfies BreadcrumbItem,
-                ]
-              : []),
-            { label: seriesBreadcrumbName },
-          ]}
-        />
+    // `<main>` is the skip-link target. `.page` pins width: 100% next to
+    // max-width + auto margins (body is a flex column; see the album
+    // page's note on the same wrapper).
+    <main className={styles.page}>
+      <div className={styles.breadcrumb}>
+        <Breadcrumb ariaLabel={ct("breadcrumb")} items={breadcrumbItems} />
+      </div>
 
-        {/* See artist-page comment on the same wrapper — `grid-cols-1`
-            on mobile clamps the implicit track to viewport so nowrap
-            text inside cards can't push the grid wider than the
-            screen. */}
-        <div
-          className="grid grid-cols-1 lg:grid-cols-[280px_1fr] lg:gap-7"
-          style={{ alignItems: "start", paddingBottom: 60 }}
-        >
-          {/* Sidebar */}
-          <div
-            className="lg:sticky"
-            style={{
-              top: layout.navHeight.desktop + 16,
-              marginBottom: 12,
-            }}
-          >
-            {/* `series.artist` is a raw Prisma row (BigInt id) — passing
-                it through is safe because `InfoCard` is a server
-                component (no `"use client"` directive in
-                `src/components/InfoCard.tsx`). No server→client
-                boundary is crossed here, so Next.js never has to
-                serialize the BigInt. */}
-            <InfoCard artist={series.artist}>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  color: colors.primary,
-                  background: colors.primaryBg,
-                  borderRadius: 10,
-                  padding: "2px 8px",
-                  textTransform: "uppercase",
-                }}
-              >
-                {t(`type.${series.type}`)}
-              </span>
-              {(artistName || organizerName) && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: colors.textSubtle,
-                    marginTop: 10,
-                    marginBottom: 6,
-                  }}
+      <SeriesIdentity
+        logo={logo}
+        typeLabel={t(`type.${series.type}`)}
+        title={title}
+        subtitle={subtitle}
+        meta={meta}
+        description={description}
+        metrics={metrics}
+      />
+
+      <SeriesTabs
+        tabs={tabs}
+        active={activeTab}
+        basePath={entityPath("series", locale, series.id, series.slug)}
+        searchParams={sp}
+        ariaLabel={ct("tabsAriaLabel")}
+      />
+
+      <div className={styles.layout}>
+        <div className={styles.main}>
+          {activeTab === "schedule" ? (
+            <>
+              {firstOngoing ? (
+                <Link
+                  href={eventHref(locale, firstOngoing.id, firstOngoing.slug)}
+                  className={styles.liveBanner}
                 >
-                  {artistName ?? organizerName}
-                </div>
-              )}
-              <h1
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: colors.textPrimary,
-                  lineHeight: 1.4,
-                  marginBottom: 12,
-                }}
-              >
-                {seriesMain || t("unknownSeries")}
-                {seriesSub && (
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: 12,
-                      fontWeight: 400,
-                      color: colors.textMuted,
-                      marginTop: 4,
-                    }}
-                  >
-                    {seriesSub}
+                  <SeriesStatusPill
+                    status="ongoing"
+                    label={statusLabels.ongoing}
+                  />
+                  <span>
+                    <strong>{t("liveBannerTitle")}</strong>
+                    <small>{t("liveBannerCta")}</small>
                   </span>
-                )}
-              </h1>
-              {description && (
-                <p
-                  style={{
-                    fontSize: 13,
-                    color: colors.textSecondary,
-                    lineHeight: 1.7,
-                    marginBottom: 18,
-                    paddingBottom: 18,
-                    borderBottom: `1px solid ${colors.borderLight}`,
-                  }}
+                </Link>
+              ) : null}
+
+              {series.childSeries.length > 0 ? (
+                <section
+                  className={`${styles.panel} ${styles.children}`}
+                  aria-labelledby="series-children-title"
                 >
-                  {description}
-                </p>
-              )}
-
-              {/* Tour progress bar */}
-              {stats.total > 0 && (
-                <div style={{ marginBottom: 18 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 6,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: colors.textMuted,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                      }}
-                    >
-                      {t("tourProgressLabel")}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: colors.primary,
-                      }}
-                    >
-                      {t("tourProgress", {
-                        completed: stats.completed,
-                        total: stats.total,
-                      })}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      height: 6,
-                      background: colors.borderLight,
-                      borderRadius: 10,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${progressPct}%`,
-                        height: "100%",
-                        background: gradients.progressBar,
-                        borderRadius: 10,
-                        transition: "width 0.5s ease",
-                      }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginTop: 6,
-                    }}
-                  >
-                    <span
-                      style={{ fontSize: 10, color: colors.textMuted }}
-                    >
-                      {t("tourCompletedLabel", { count: stats.completed })}
-                    </span>
-                    {stats.ongoing > 0 && (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: colors.live,
-                          fontWeight: 700,
-                        }}
-                      >
-                        ● {t("tourOngoingLabel")}
-                      </span>
-                    )}
-                    <span
-                      style={{ fontSize: 10, color: colors.textMuted }}
-                    >
-                      {t("tourUpcomingLabel", { count: stats.upcoming })}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Stats grid 2×2 */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                }}
-              >
-                {[
-                  {
-                    label: t("statsTotalEvents"),
-                    value: t("statsTotalEventsValue", { count: stats.total }),
-                  },
-                  {
-                    label: t("statsTotalCities"),
-                    value: t("statsTotalCitiesValue", {
-                      count: stats.totalCities,
-                    }),
-                  },
-                  {
-                    label: t("statsSongs"),
-                    value: t("statsSongsValue", { count: uniqueSongCount }),
-                  },
-                  {
-                    label: t("statsUnits"),
-                    value: t("statsUnitsValue", { count: units.length }),
-                  },
-                ].map((s) => (
-                  <div
-                    key={s.label}
-                    style={{
-                      background: colors.bgSubtle,
-                      borderRadius: 10,
-                      padding: "10px 12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 16,
-                        fontWeight: 700,
-                        color: colors.textPrimary,
-                      }}
-                    >
-                      {s.value}
-                    </div>
-                    <StatsSubLabel style={{ marginTop: 1 }}>
-                      {s.label}
-                    </StatsSubLabel>
-                  </div>
-                ))}
-              </div>
-
-              {/* Participating units */}
-              {units.length > 0 && (
-                <div style={{ marginTop: 18 }}>
-                  <SectionLabel noBorder>{t("unitsLabel")}</SectionLabel>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 6,
-                    }}
-                  >
-                    {units.map((u) => {
-                      const unitName =
-                        displayNameWithFallback(u, u.translations, locale) ||
-                        aT("unknown");
-                      const unitColor = u.color ?? colors.textSubtle;
-                      return (
-                        <span
-                          key={String(u.id)}
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: unitColor,
-                            background: `${unitColor}15`,
-                            border: `1px solid ${unitColor}30`,
-                            borderRadius: 20,
-                            padding: "3px 10px",
-                          }}
+                  <h2 id="series-children-title">{t("childSeriesLabel")}</h2>
+                  <ul>
+                    {series.childSeries.map((child) => (
+                      <li key={String(child.id)}>
+                        <Link
+                          href={entityPath(
+                            "series",
+                            locale,
+                            child.id,
+                            child.slug,
+                          )}
+                          lang={nameLang(child, child.translations, locale)}
                         >
-                          {unitName}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </InfoCard>
-          </div>
-
-          {/* Main column */}
-          <div>
-            <TabBar
-              tabs={tabs}
-              active={activeTab}
-              ariaLabel={ct("tabsAriaLabel")}
-            />
-
-            {activeTab === "schedule" && (
-              <>
-                {firstOngoing && liveBannerHref && (
-                  <Link
-                    href={liveBannerHref}
-                    className="mb-3 flex items-center gap-3"
-                    style={{
-                      background: gradients.liveBanner,
-                      borderRadius: radius.cardSm,
-                      padding: "14px 16px",
-                      textDecoration: "none",
-                    }}
-                  >
-                    <StatusBadge
-                      status="ongoing"
-                      label={statusLabels.ongoing}
-                      size="sm"
-                    />
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "white",
-                        }}
-                      >
-                        {t("liveBannerTitle")}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: colors.onDarkMuted,
-                          marginTop: 2,
-                        }}
-                      >
-                        {t("liveBannerCta")}
-                      </div>
-                    </div>
-                  </Link>
-                )}
-
-                {series.childSeries.length > 0 && (
-                  <section
-                    style={{
-                      background: colors.bgCard,
-                      borderRadius: radius.card,
-                      padding: "16px 20px",
-                      marginBottom: 12,
-                      boxShadow: shadows.card,
-                    }}
-                  >
-                    <SectionLabel>{t("childSeriesLabel")}</SectionLabel>
-                    <ul style={{ paddingLeft: 0, listStyle: "none" }}>
-                      {series.childSeries.map((child) => {
-                        const childName =
-                          displayNameWithFallback(
+                          {displayNameWithFallback(
                             child,
                             child.translations,
                             locale,
-                          ) || t("unknownSeries");
-                        return (
-                          <li key={String(child.id)} style={{ marginBottom: 4 }}>
-                            <Link
-                              href={entityPath("series", locale, child.id, child.slug)}
-                              style={{
-                                fontSize: 13,
-                                color: colors.primary,
-                                textDecoration: "none",
-                              }}
-                            >
-                              {childName}
-                            </Link>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </section>
-                )}
+                          ) || t("unknownSeries")}{" "}
+                          <span aria-hidden="true">›</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
 
-                {/* "투어 BD 목록" catalog (b09). Self-fetching server
-                    component — fans the series' events out to their
-                    bdAlbumId set and renders null when there are none. */}
-                <SeriesBdAlbumsSection seriesId={series.id} locale={locale} />
+              <SeriesBdSection seriesId={series.id} locale={locale} />
 
-                {preparedLegs.length === 0 ? (
-                  <p
-                    style={{
-                      fontSize: 13,
-                      color: colors.textMuted,
-                      textAlign: "center",
-                      padding: "32px 0",
-                    }}
-                  >
-                    {t("noEvents")}
-                  </p>
-                ) : (
-                  preparedLegs.map((leg, i) => (
-                    <LegCard
-                      key={`${leg.city}-${i}`}
-                      leg={leg}
-                      statusLabels={statusLabels}
-                      eventCountLabel={t("eventCountInLeg", {
-                        count: leg.events.length,
-                      })}
-                      unknownCityLabel={t("unknownCity")}
-                    />
-                  ))
-                )}
-              </>
-            )}
-
-            {activeTab === "songs" && (
-              <section
-                style={{
-                  background: colors.bgCard,
-                  borderRadius: radius.card,
-                  boxShadow: shadows.card,
-                  overflow: "hidden",
-                }}
-              >
-                {visibleSongAppearances.length === 0 ? (
-                  <p
-                    style={{
-                      fontSize: 13,
-                      color: colors.textMuted,
-                      textAlign: "center",
-                      padding: "24px 16px",
-                    }}
-                  >
-                    {t("songsEmpty")}
-                  </p>
-                ) : (
-                  <>
-                    {/* Basis header — "완료 공연 기준 — N공연에서 등장한 곡".
-                        Wrapped in its own padding box so the label sits
-                        inset from the card edge while the row list below
-                        keeps full-width borders. */}
-                    <div style={{ padding: "16px 16px 0" }}>
-                      <SectionLabel noBorder>
-                        {t("songsBasisLabel", { count: stats.completed })}
-                      </SectionLabel>
-                    </div>
-                    <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
-                      {visibleSongAppearances.map((row, i) => {
-                        const titleDisplay = displayOriginalTitle(
-                          row.song,
-                          row.song.translations,
-                          locale,
-                        );
-                        const primaryArtist = row.song.artists[0]?.artist;
-                        const unitName = primaryArtist
-                          ? displayNameWithFallback(
-                              primaryArtist,
-                              primaryArtist.translations,
-                              locale,
-                            )
-                          : null;
-                        const isLast = i === visibleSongAppearances.length - 1;
-                        return (
-                          <li
-                            key={row.songId}
-                            style={{
-                              borderBottom: isLast
-                                ? "none"
-                                : `1px solid ${colors.borderFaint}`,
-                            }}
-                          >
-                            {/* Whole-row link to song detail. The chevron
-                                on the right was visible signage suggesting
-                                this row was clickable, but the previous
-                                static <li> didn't act on it. Wrapping in a
-                                Link closes the discoverability gap.
-                                `row-hover-bg` matches the hover/focus
-                                treatment on every other clickable list
-                                row in the codebase. */}
-                            <Link
-                              href={entityPath("songs", locale, row.songId, row.song.slug)}
-                              className="row-hover-bg"
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                // 10px gap + 10px/20px padding matches the
-                                // artist + member list row spacing — same
-                                // bullet-row-inside-a-card visual shape.
-                                gap: 10,
-                                padding: "10px 20px",
-                                textDecoration: "none",
-                                color: "inherit",
-                              }}
-                            >
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div
-                                  style={{
-                                    fontSize: 13,
-                                    fontWeight: 600,
-                                    color: colors.textPrimary,
-                                  }}
-                                >
-                                  {titleDisplay.main}
-                                  {titleDisplay.variant && (
-                                    <span
-                                      style={{
-                                        fontSize: 11,
-                                        color: colors.textMuted,
-                                        marginLeft: 6,
-                                      }}
-                                    >
-                                      {titleDisplay.variant}
-                                    </span>
-                                  )}
-                                </div>
-                                {titleDisplay.sub && (
-                                  <div
-                                    style={{
-                                      fontSize: 11,
-                                      color: colors.textMuted,
-                                      marginTop: 2,
-                                    }}
-                                  >
-                                    {titleDisplay.sub}
-                                  </div>
-                                )}
-                                {unitName && (
-                                  <span
-                                    style={{
-                                      fontSize: 11,
-                                      color: colors.textSecondary,
-                                      background: colors.borderLight,
-                                      borderRadius: 10,
-                                      padding: "1px 7px",
-                                      display: "inline-block",
-                                      marginTop: 3,
-                                    }}
-                                  >
-                                    {unitName}
-                                  </span>
-                                )}
-                              </div>
-                              <CountCell
-                                count={row.count}
-                                unit={t("songAppearancesUnit", {
-                                  count: row.count,
-                                })}
-                              />
-                              <span
-                                aria-hidden="true"
-                                style={{
-                                  fontSize: 13,
-                                  color: colors.borderSubtle,
-                                  flexShrink: 0,
-                                }}
-                              >
-                                ›
-                              </span>
-                            </Link>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    {/* Footer divider — top border separates the
-                        explanatory caption from the last row. Mockup
-                        styles the divider with the lighter borderLight
-                        token (vs. row borderFaint) so it reads as a
-                        section break, not a row separator. */}
-                    <div
-                      style={{
-                        padding: "14px 16px",
-                        borderTop: `1px solid ${colors.borderLight}`,
-                        textAlign: "center",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 12,
-                          color: colors.textMuted,
-                        }}
-                      >
-                        {t("songsFooter")}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </section>
-            )}
-          </div>
+              {preparedLegs.length === 0 ? (
+                <div className={`${styles.panel} ${styles.empty}`}>
+                  {t("noEvents")}
+                </div>
+              ) : (
+                preparedLegs.map((leg) => (
+                  <SeriesLegGroup key={leg.key} leg={leg} />
+                ))
+              )}
+            </>
+          ) : (
+            <SeriesSongsPanel
+              basisLabel={t("songsBasisLabel", { count: stats.completed })}
+              rows={songRows}
+              footer={t("songsFooter")}
+              emptyLabel={t("songsEmpty")}
+            />
+          )}
         </div>
+
+        <SeriesAside
+          progress={
+            stats.total > 0
+              ? {
+                  title: t("tourProgressLabel"),
+                  value: t("tourProgress", {
+                    completed: stats.completed,
+                    total: stats.total,
+                  }),
+                  completed: stats.completed,
+                  total: stats.total,
+                  completedLabel: t("tourCompletedLabel", {
+                    count: stats.completed,
+                  }),
+                  upcomingLabel: t("tourUpcomingLabel", {
+                    count: stats.upcoming,
+                  }),
+                  ongoing:
+                    stats.ongoing > 0
+                      ? { pill: statusLabels.ongoing, label: t("tourOngoingLabel") }
+                      : null,
+                }
+              : null
+          }
+          units={
+            units.length > 0
+              ? {
+                  title: t("unitsLabel"),
+                  names: units.map((u) => ({
+                    key: String(u.id),
+                    text:
+                      displayNameWithFallback(u, u.translations, locale) ||
+                      aT("unknown"),
+                    lang: nameLang(u, u.translations, locale),
+                  })),
+                }
+              : null
+          }
+        />
       </div>
     </main>
   );

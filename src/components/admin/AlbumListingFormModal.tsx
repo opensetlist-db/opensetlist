@@ -216,7 +216,7 @@ export default function AlbumListingFormModal({
             placeholder="https://www.amazon.co.jp/dp/... (제휴 파라미터 그대로 붙여넣기)"
           />
           {/* Early-warn before submit when the input parses to something
-              other than an http(s) URL — the public ListingCard /
+              other than an http(s) URL — the public purchase card /
               ListingsClient table both gate the anchor render on
               isSafeExternalUrl, so an unsafe URL saves cleanly but
               never becomes a clickable link. Showing the warning at

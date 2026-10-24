@@ -26,7 +26,7 @@ import type { BigIntStringified } from "@/lib/utils";
 import { STORE_REGEXES } from "@/lib/storeKeys";
 
 // BigIntStringified-wrapped because every caller in the b03 chain
-// (`AlbumBonusTab` → `ListingCard` / `EndedListingToggle`) receives
+// (`AlbumPurchasePanel` on the album page) receives
 // listings via page.tsx's `serializeBigIntAsString(album)` JSON
 // boundary — `id` / `albumId` arrive as `string`, lifecycle date
 // columns arrive as ISO strings. The Prisma-generated `Model` types
@@ -102,12 +102,12 @@ export function isEndedListing(listing: { status: string }): boolean {
 
 // Count of "active" bonuses across an album's store listings — the
 // number rendered in the green 特典 N badge on AlbumCard and the
-// "현재 특전" stat chip on AlbumInfoCard. A bonus counts as active
+// "현재" count in the album page's purchase summary. A bonus counts as active
 // when its listing is not `ended` (sold_out + unknown collapse into
 // active per isEndedListing's 2-state mapping — they're still buyable,
 // just unconfirmed). Extracted here, next to isEndedListing, so the
-// Song page sidebar (songAlbums), the Album detail sidebar
-// (AlbumInfoCard), and the b09 Artist/Series/Related album surfaces
+// Song page sidebar (songAlbums), the Album detail tab dot
+// (album page), and the b09 Artist/Series/Related album surfaces
 // all read the same number — the "tab badge says 5, sidebar says 4"
 // divergence earlier Album work hit came from this formula being
 // copy-pasted into each call site.

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  compareListRows,
   isArtistsListFilter,
   synthesizeUngroupedSections,
   type ArtistRowData,
@@ -132,5 +133,39 @@ describe("synthesizeUngroupedSections", () => {
     );
     expect(sections[0].category).toBeNull();
     expect(sections[0].id).toBe("synthetic:ungrouped:none");
+  });
+});
+
+describe("compareListRows", () => {
+  const named = (id: number, originalName: string | null, hasOngoing = false) => ({
+    ...row(id, { hasOngoing }),
+    originalName,
+  });
+
+  it("orders by originalName regardless of input order", () => {
+    const rows = [named(3, "Liella!"), named(1, "Aqours"), named(2, "GKSS")];
+    expect(rows.sort(compareListRows).map((r) => r.id)).toEqual([1, 2, 3]);
+  });
+
+  it("pins artists with an ongoing show above the alphabetical rest", () => {
+    const rows = [named(1, "Aqours"), named(2, "Saint Snow", true), named(3, "GKSS")];
+    expect(rows.sort(compareListRows).map((r) => r.id)).toEqual([2, 1, 3]);
+  });
+
+  it("breaks equal or missing names by id", () => {
+    const rows = [named(9, null), named(4, null), named(7, "Same"), named(5, "Same")];
+    expect(rows.sort(compareListRows).map((r) => r.id)).toEqual([4, 9, 5, 7]);
+  });
+});
+
+describe("synthesizeUngroupedSections row order", () => {
+  it("sorts rows inside a bucket with compareListRows", () => {
+    const b = { ...row(2), originalName: "Beta" };
+    const a = { ...row(5), originalName: "Alpha" };
+    const sections = synthesizeUngroupedSections(
+      [input("animegame", b), input("animegame", a)],
+      "all",
+    );
+    expect(sections[0].artists.map((r) => r.id)).toEqual([5, 2]);
   });
 });

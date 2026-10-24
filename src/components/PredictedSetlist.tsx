@@ -20,13 +20,13 @@ import {
 import { useMounted } from "@/hooks/useMounted";
 import { setTimeoutAt } from "@/lib/timeoutAt";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
+import styles from "@/components/event/eventDetail.module.css";
 import { PredictSongRow, type PredictRowState } from "@/components/PredictSongRow";
 import { ShareCardButton } from "@/components/ShareCardButton";
 import {
   CopyPastSetlistSheet,
   type CopyApplyMeta,
 } from "@/components/CopyPastSetlistSheet";
-import { SecondaryButton } from "@/components/ui/Button";
 import { SongPickerContent } from "@/components/predict/SongPickerContent";
 import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
@@ -47,23 +47,13 @@ import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { colors } from "@/styles/tokens";
 
 /**
- * Desktop right-column picker width. Matches `event-page-desktop-v2-
- * mockup.jsx`'s `gridTemplateColumns: "1fr 360px"` — narrow enough
- * that the 1fr left column keeps comfortable prediction-row width
- * at 1024px viewport but wide enough to fit the picker's unit
- * filter chips on one row in most locales.
+ * Desktop picker column width. 18-v3 `.predict-layout` draws the
+ * inline picker at 240px; the live picker also carries the unit chips,
+ * the result count and the sort toggle, which need more room than the
+ * mockup's sample list, so the column keeps the wider 280px and the
+ * editor (`minmax(0, 1fr)`) takes the rest.
  */
-const DESKTOP_PICKER_COL_PX = 360;
-
-/**
- * Floor for the 2-col grid wrapper. Without a `minHeight`, an event
- * with zero predictions + an empty actual setlist collapses the
- * predict surface to ~120px on desktop — picker panel still
- * renders but the left column shows as a near-empty row, breaking
- * the visual symmetry. 520px keeps both columns at a usable height
- * even for the empty case. Mockup default.
- */
-const DESKTOP_PICKER_MIN_HEIGHT_PX = 520;
+const DESKTOP_PICKER_COL_PX = 280;
 
 interface Props {
   eventId: string;
@@ -527,59 +517,36 @@ export function PredictedSetlist({
     availableSongs.length > 0;
 
   return (
+    // 18-v3 `.predict-layout`: the editor beside an always-visible
+    // lavender picker panel when the desktop picker applies, otherwise
+    // one column (the picker opens as a sheet).
     <div
+      className={isDesktopPicker ? styles.predictLayout : undefined}
       style={
         isDesktopPicker
-          ? {
-              display: "grid",
-              gridTemplateColumns: `1fr ${DESKTOP_PICKER_COL_PX}px`,
-              minHeight: DESKTOP_PICKER_MIN_HEIGHT_PX,
-            }
+          ? { gridTemplateColumns: `minmax(0, 1fr) ${DESKTOP_PICKER_COL_PX}px` }
           : undefined
       }
     >
-      <div
-        style={
-          isDesktopPicker
-            ? {
-                borderRight: `1px solid ${colors.borderLight}`,
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 0,
-              }
-            : undefined
-        }
-      >
-      {/* Top status strip — mirrors mockup-wish-predict.jsx PredictTab top bar */}
-      <div
-        className="flex items-center justify-between"
-        style={{
-          padding: "7px 14px",
-          background: colors.bgSubtle,
-          borderBottom: `0.5px solid ${colors.borderLight}`,
-        }}
-      >
-        <span
-          className="text-[11px]"
-          style={{ color: colors.textSecondary }}
-        >
-          {isPreShow && t("preShowHint", { count: predictions.length })}
-          {isDuringShow && t("duringHint", { count: predictions.length })}
-          {status === "completed" && t("afterHint")}
-        </span>
-        {(isDuringShow || status === "completed") && total > 0 && (
-          <span
-            className="text-xs font-medium"
-            style={{ color: colors.primary }}
-          >
+      <div className={styles.predictEditor}>
+      {/* Status line: the pre/during/after hint, and once matching
+          applies the score as the 18-v3 lavender result strip. */}
+      <p className={styles.predictHint}>
+        {isPreShow && t("preShowHint", { count: predictions.length })}
+        {isDuringShow && t("duringHint", { count: predictions.length })}
+        {status === "completed" && t("afterHint")}
+      </p>
+      {(isDuringShow || status === "completed") && total > 0 && (
+        <div className={styles.resultStrip}>
+          <strong>
             {t("finalScore", {
               matched: score.matched,
               total: score.total,
               pct: score.percentage,
             })}
-          </span>
-        )}
-      </div>
+          </strong>
+        </div>
+      )}
 
       {/* Instructional description: explains the prediction rules
           (no cap on entries, but only the top-N matches against the
@@ -587,33 +554,14 @@ export function PredictedSetlist({
           once `isLocked` flips, the user can no longer edit, so the
           rules copy retires alongside the editor. Visual treatment
           mirrors the during-show legend strip further down. */}
-      {isPreShow && (
-        <div
-          className="text-[11px]"
-          style={{
-            padding: "6px 14px",
-            color: colors.textMuted,
-            background: colors.bgSubtle,
-            borderBottom: `0.5px solid ${colors.borderLight}`,
-          }}
-        >
-          {t("description")}
-        </div>
-      )}
+      {isPreShow && <p className={styles.predictNote}>{t("description")}</p>}
 
       {/* Two-mode bridge strip (n15), pre-show only: the outcome of
           the board import that opened this tab, the provisional-order
           label, and the switch back to the board. Hidden as a whole
           when none applies, so non-board events render as before. */}
       {isPreShow && (onBackToBoard || showBridgeNotice || showProvisional || boardGroups) && (
-          <div
-            className="text-[11px]"
-            style={{
-              padding: "6px 14px",
-              color: colors.textSecondary,
-              borderBottom: `0.5px solid ${colors.borderLight}`,
-            }}
-          >
+          <div className={styles.predictBridge}>
             {/* No role="status" here: this node mounts with its text
                 (the builder remounts per tap), which screen readers
                 often skip. `<SetlistSection>` keeps the announcing live
@@ -648,10 +596,9 @@ export function PredictedSetlist({
                 <button
                   type="button"
                   onClick={onBackToBoard}
-                  className="underline"
-                  style={{ color: colors.primary }}
+                  className={styles.textButton}
                 >
-                  🎪 {t("toBoard")}
+                  {t("toBoard")}
                 </button>
               )}
               {canPublish && !proposalOpen && (
@@ -661,10 +608,9 @@ export function PredictedSetlist({
                     setPublishedCount(null);
                     setProposalOpen(true);
                   }}
-                  className="underline"
-                  style={{ color: colors.primary }}
+                  className={styles.textButton}
                 >
-                  📌 {t("toBoardPublish")}
+                  {t("toBoardPublish")}
                 </button>
               )}
             </div>
@@ -696,6 +642,7 @@ export function PredictedSetlist({
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+          <div className={styles.predictList}>
           {predictions.map((entry, idx) => {
             const rank = idx + 1;
             const state = rowState(rank, entry.songId);
@@ -716,25 +663,16 @@ export function PredictedSetlist({
               </div>
             );
           })}
+          </div>
         </SortableContext>
       </DndContext>
 
       {/* During-show legend */}
       {isDuringShow && predictions.length > 0 && (
-        <div
-          className="text-[11px]"
-          style={{
-            padding: "6px 14px",
-            color: colors.textMuted,
-            background: colors.bgSubtle,
-            borderTop: `0.5px solid ${colors.borderLight}`,
-          }}
-        >
-          {t("legendLine")}
-        </div>
+        <p className={styles.predictNote}>{t("legendLine")}</p>
       )}
 
-      {/* Action row (pre-show only). Mobile shape: two SecondaryButtons
+      {/* Action row (pre-show only). Mobile shape: two secondary buttons
           side-by-side — picker trigger + copy-from-past trigger.
           Desktop with a populated picker: only copy-from-past
           (the picker itself is the always-visible right column,
@@ -743,28 +681,23 @@ export function PredictedSetlist({
           catalog): same as mobile shape, just without the picker
           trigger since `showPicker` is false. */}
       {isPreShow && (
-        <div
-          style={{
-            borderTop: `0.5px solid ${colors.borderLight}`,
-            padding: "8px 14px 0",
-            display: "flex",
-            gap: 8,
-          }}
-        >
+        <div className={styles.predictActions}>
           {showPicker && !isDesktopPicker && (
-            <SecondaryButton
+            <button
+              type="button"
               onClick={() => setPickerOpen(true)}
-              style={{ flex: 1 }}
+              className={styles.secondaryButton}
             >
               {t("add")}
-            </SecondaryButton>
+            </button>
           )}
-          <SecondaryButton
+          <button
+            type="button"
             onClick={() => setCopyOpen(true)}
-            style={{ flex: 1 }}
+            className={styles.secondaryButton}
           >
             {t("copyFromPast")}
-          </SecondaryButton>
+          </button>
         </div>
       )}
 
@@ -810,7 +743,10 @@ export function PredictedSetlist({
       />
       </div>
       {isDesktopPicker && (
-        <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        // Fixed-height lavender panel: the catalog list scrolls inside
+        // it, so a festival catalog of hundreds of songs no longer
+        // stretches the page to the list's full height.
+        <div className={styles.inlinePicker}>
           <SongPickerContent
             songs={availableSongs}
             selectedIds={selectedIds}
@@ -832,19 +768,8 @@ function DuringShowDivider({
   t: ReturnType<typeof useTranslations<"Predict">>;
 }) {
   return (
-    <div
-      className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider"
-      style={{
-        padding: "6px 14px",
-        background: colors.predictDividerBg,
-        borderTop: `2px solid ${colors.warning}`,
-        borderBottom: `2px solid ${colors.warning}`,
-        color: colors.predictDividerText,
-      }}
-    >
-      <div className="flex-1" />
-      <span style={{ whiteSpace: "nowrap" }}>{t("dividerLabel", { count })}</span>
-      <div className="flex-1" />
-    </div>
+    // 18-v3 `.progress-divider`: where the actual setlist has got to,
+    // a blue rule with its label (was an amber band).
+    <div className={styles.progressDivider}>{t("dividerLabel", { count })}</div>
   );
 }

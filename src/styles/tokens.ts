@@ -4,27 +4,42 @@
  * `shared-components-handoff.md` §1.
  *
  * Use `as const` so consumers get literal-typed values (e.g.
- * `typeof colors.primary` is `"#0277BD"`, not `string`) — this lets
+ * `typeof colors.primary` is `"#165DCC"`, not `string`) — this lets
  * `<StatusBadge size="sm" | "md">` style switches type-narrow correctly
  * when keyed off a token.
  */
 
 export const colors = {
-  // Brand
-  primary: "#0277BD",
+  // Brand. Values from the approved redesign common contract (ticket 03,
+  // packet 03-v1.1 — `wiki/output/redesign/handoffs/03/v1.1/design-contract.md`).
+  // Swapped site-wide in one place so every page picks up the new
+  // palette without per-page rewrites; page layouts change only in their
+  // own redesign tickets. `primaryLight` and the two gradients keep the
+  // original symbol-derived hues on purpose: they paint the brand mark
+  // and existing hero surfaces, and the contract does not restate them.
+  primary: "#165DCC",
+  // Interaction states for primary buttons/links (white text on all three
+  // passes 4.5:1 — measured in the 03 packet's qa-report.json).
+  primaryHover: "#104AA9",
+  primaryPressed: "#0C3D8C",
   primaryLight: "#4FC3F7",
-  primaryBg: "#e8f4fd",
-  primaryBorder: "#bfdbfe",
+  primaryBg: "#EAF2FF",
+  primaryBorder: "#D2E1FA",
   brandGradient: "linear-gradient(135deg, #4FC3F7, #0277BD)",
   // CTA-emphasis gradient (purple terminal — used for "join the live"
   // / share buttons in mockups, not the regular primary).
   darkGradient: "linear-gradient(135deg, #4FC3F7, #7B1FA2)",
 
   // Text
-  textPrimary: "#0f172a",
-  textSecondary: "#475569",
-  textMuted: "#94a3b8",
-  textSubtle: "#64748b",
+  // Main / secondary text per the 03 contract. `textSecondary` and
+  // `textSubtle` collapse onto the contract's single secondary tone
+  // (#52617A, 4.5:1+ on white and on bgPage). `textMuted` was #94a3b8
+  // (≈2.6:1 on white — below body-text contrast); it now takes the
+  // contract's disabled/meta tone so captions stay readable.
+  textPrimary: "#172445",
+  textSecondary: "#52617A",
+  textMuted: "#67758B",
+  textSubtle: "#52617A",
   // On-dark text variants for surfaces that sit on a dark gradient
   // (e.g. the series-page LIVE banner). These read as alpha-blended
   // white because the dark backgrounds vary per surface — a static
@@ -36,20 +51,42 @@ export const colors = {
   onDarkMuted: "rgba(255,255,255,0.5)",
 
   // Backgrounds
-  bgPage: "#f0f4f8",
+  bgPage: "#F7F9FD",
   bgCard: "#ffffff",
   bgSubtle: "#f8fafc",
   bgFaint: "#fafbfc",
 
-  // Deeper navy used as the mid-stop on the LIVE-banner gradient and
-  // the home `LiveHeroCard` mid-stop. Sits between `textPrimary`
+  // Deeper navy used as the mid-stop on the LIVE-banner gradient. Sits between `textPrimary`
   // (#0f172a, near-black) and `primary` (#0277BD, brand blue) on the
   // hue ramp; without it the gradient jumps too abruptly between the
   // two endpoints.
   navyDeep: "#1e3a5f",
 
-  // Borders
-  border: "#e2e8f0",
+  // Borders. `border` is the decorative hairline; `borderStrong` is the
+  // functional boundary (inputs, secondary buttons) that must reach 3:1
+  // against the surface so the control edge is perceivable.
+  border: "#DCE3EF",
+  borderStrong: "#7C8BA3",
+
+  // Keyboard focus ring (3px, 4px offset on light surfaces — applied
+  // globally via `:focus-visible` in globals.css).
+  focus: "#174FAF",
+
+  // Supporting pastel accents from the 03 contract. Backgrounds only —
+  // never used as text colour.
+  accentPink: "#FFF0F6",
+  accentLavender: "#F0EDFF",
+  accentBlue: "#EAF2FF",
+
+  // EventArt typography-fallback surface (03 contract card art): neutral
+  // blue → lavender → pink wash plus its three text tones (eyebrow,
+  // title, caption), all ≥4.5:1 on the wash.
+  artWash: "linear-gradient(130deg, #eaf1ff, #f1edff 60%, #ffedf5)",
+  artEyebrow: "#4f5781",
+  artTitle: "#343b72",
+  artCaption: "#575474",
+  // Album-cover fallback fill.
+  coverFallbackBg: "#f2f4f9",
   borderLight: "#f1f5f9",
   borderFaint: "#f8fafc",
   // Slightly darker than `border` — used for the dashed empty-state
@@ -62,15 +99,26 @@ export const colors = {
   // `border` without becoming text-weight gray.
   borderSubtle: "#cbd5e1",
 
-  // Card-hover wash for primary-themed surfaces (UpcomingCard).
+  // Card-hover wash for primary-themed surfaces.
   // Lighter than `primaryBg` so resting cards on a white page lift
   // without flashing a bright brand tint on hover.
-  primaryHoverBg: "#f0f7ff",
+  primaryHoverBg: "#EDF4FF",
+  // Pressed wash for the same quiet surfaces (nav links, locale and icon
+  // buttons). Paired with `primaryHoverBg`; both are mirrored as CSS
+  // variables in globals.css for the `.shell-interactive` class.
+  primaryPressedBg: "#DAE7FF",
 
-  // Event status palette (consumed by <StatusBadge>)
-  live: "#dc2626",
-  liveBg: "#fef2f2",
-  liveBorder: "#fecaca",
+  // LIVE foreground/dot/surface/border from consistency-03-v3. Keep the
+  // separate dot role: its saturated coral is an indicator, while the
+  // darker foreground keeps small badge labels readable. The dark pair
+  // is for the existing dark share theme, not a site-wide dark mode.
+  // CSS consumers use the matching --status-live-* variables.
+  live: "#B9322A",
+  liveDot: "#E5473B",
+  liveBg: "#FFF1EE",
+  liveBorder: "#F2B8AE",
+  liveDark: "#FFD3C9",
+  liveDarkBg: "#482C2B",
 
   // Confirm-row disagree button (Phase 1B/1C). Active state for
   // the ✕ button in `<NumberSlot>` when the viewer has voted
@@ -83,10 +131,8 @@ export const colors = {
   disagreeBg: "#fff1f2",
   disagreeText: "#9f1239",
 
-  // Error feedback (validation + submission failures). Same red as `live`
-  // today, but semantically distinct: a future brand shift moving live to
-  // orange (rare but possible per CR) shouldn't recolor error text. Keep
-  // both hexes here so the divergence is one-line easy if it happens.
+  // Error feedback stays separate from LIVE status so status palette
+  // changes do not recolor validation or submission failures.
   error: "#dc2626",
 
   // Predicted Setlist during-show divider (Phase 1B Stage C).
@@ -112,6 +158,29 @@ export const colors = {
   completed: "#64748b",
   completedBg: "#f8fafc",
   completedBorder: "#e2e8f0",
+  cancelledBg: "#fafafa",
+  cancelledBorder: "#e5e7eb",
+
+  // Concert-list palette (approved packet 16-v1, all text pairs ≥4.5:1
+  // in its contrast.json). Separate from the status family above, which
+  // the detail/home surfaces still use until their own page tickets.
+  listCompletedBg: "#EEF1F6",
+  listCancelledText: "#9D2450",
+  // Solid raspberry LIVE pill with white text (14-v1.3 home contract).
+  listLive: "#AD1B57",
+  listGroupWash: "linear-gradient(110deg, #F2F5FF, #FFF7FB)",
+  listLiveGroupBg: "#E9E3FF",
+
+  // Concert-detail palette (approved packet 18-v3 color-v3.css). Page-
+  // scoped like the list palette above; the CSS module carries the rest
+  // of the page's pastels, these are the ones set from components.
+  setlistTabActive: "#5B3CA1", // selected setlist/prediction chip, white text
+  setlistTabIdleBg: "#F4F6FA",
+  setlistTabIdleBorder: "#AAB8CF",
+  reactionBorder: "#C1CBDA", // reaction button with a count
+  reactionBorderEmpty: "#AAB8CF", // dashed, count 0
+  impressionField: "#A79BBF", // 한줄감상 textarea border
+  impressionCardBorder: "#DCD1EF", // other viewers' impression cards
 
   // Trending TOP3 card (consumed by <TrendingSongs>)
   trendingBg: "#fffbeb",
@@ -161,59 +230,12 @@ export const colors = {
 } as const;
 
 /*
- * Share Card design tokens (Phase 1B Stage C).
- *
- * Two themes — dark + light — picked from
- * `raw/mockups/mockup-share-card.jsx`. The card is a 600px-wide
- * standalone surface captured to PNG via html2canvas; the tokens
- * are intentionally distinct from the rest of the app so a future
- * brand tweak doesn't accidentally repaint shared images already
- * floating around social media.
- *
- * Exposed as a separate `shareCardColors` object (rather than
- * nested under `colors`) so consumers explicitly opt in
- * (`import { shareCardColors } from "@/styles/tokens"`) — the
- * card's blue palette overlaps with `colors.primary` family but
- * the alpha-glow + rgba accents would be confusing as
- * top-level entries on the main `colors` object.
+ * Share-card theme switch. The card's palettes live with the card
+ * (`ShareCardPreview.tsx`, approved packet 18-share-v1): the exported
+ * image is its own surface, and keeping its colours out of the app
+ * tokens means a site palette change can't repaint shared images.
  */
 export type ShareCardTheme = "dark" | "light";
-
-export interface ShareCardPalette {
-  cardBg: string;
-  /** "1px solid #d0e8f8" for light; "none" for dark. */
-  cardBorder: string;
-  /** Top accent bar gradient (light only); empty string for dark. */
-  topBar: string;
-  /** Radial overlay gradient (dark only); empty string for light. */
-  radialOverlay: string;
-  series: string;
-  title: string;
-  date: string;
-  bannerBg: string;
-  /** "1px solid #b5d4f4" for light; "1px solid rgba(79,195,247,0.2)" for dark. */
-  bannerBorder: string;
-  /** "0 1px 8px rgba(2,119,189,0.06)" for light; "none" for dark. */
-  bannerShadow: string;
-  scoreMain: string;
-  scorePct: string;
-  scoreSub: string;
-  scoreLabel: string;
-  scoreFrac: string;
-  scorePred: string;
-  missColor: string;
-  numColor: string;
-  hitRowBg: string;
-  hitDot: string;
-  hitDotGlow: string;
-  hitUnderline: string;
-  hitText: string;
-  encLine: string;
-  encLabel: string;
-  footerBorder: string;
-  footerBrand: string;
-  footerUrl: string;
-}
 
 /*
  * z-index layering tokens. Centralizes the magic numbers that
@@ -240,95 +262,13 @@ export const zIndex = {
   modal: 200,
   /** Toast / snackbar / inline announcement above modals. */
   toast: 300,
-} as const;
-
-export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
-  dark: {
-    cardBg:        "#0a1628",
-    cardBorder:    "none",
-    // Same gradient as light mode — operator preference for visual
-    // consistency between dark + light theme captures. The light-blue
-    // → brand-blue gradient reads well against the dark navy bg
-    // (high contrast) and against the light-bg card (gentle accent).
-    topBar:        "linear-gradient(90deg, #4FC3F7, #0277BD)",
-    // Two ellipses at opposite corners, transparent past 55% to
-    // keep the card readable under the score banner + setlist rows.
-    radialOverlay:
-      "radial-gradient(ellipse at 15% 0%, rgba(79,195,247,0.12) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(2,119,189,0.15) 0%, transparent 55%)",
-    series:        "#4FC3F7",
-    title:         "#e8f4fd",
-    // Operator-spotted on the captured iPhone PNG: a stack of muted
-    // text values (date, scoreSub, scorePred, numColor, encLabel,
-    // footerBrand, footerUrl) sat at hexes like `#1e3a56`/`#2a4464`
-    // /`#3a5a7a` against the `#0a1628` background — contrast ratios
-    // of 2–4:1, below WCAG AA's 4.5:1 for body text. Bumped to a
-    // family of brighter blue-greys (`#6a8aaa`, `#8aacc8`) that
-    // keep the muted aesthetic but reach 5.5–8.4:1 contrast.
-    date:          "#6a8aaa",
-    bannerBg:      "rgba(79,195,247,0.08)",
-    bannerBorder:  "1px solid rgba(79,195,247,0.2)",
-    bannerShadow:  "none",
-    scoreMain:     "#e8f4fd",
-    scorePct:      "#4FC3F7",
-    scoreSub:      "#6a8aaa",
-    scoreLabel:    "#4FC3F7",
-    scoreFrac:     "#4FC3F7",
-    scorePred:     "#8aacc8",
-    missColor:     "#7a9ab8",
-    numColor:      "#6a8aaa",
-    hitRowBg:      "rgba(79,195,247,0.07)",
-    hitDot:        "#4FC3F7",
-    hitDotGlow:    "0 0 5px rgba(79,195,247,0.9)",
-    hitUnderline:  "rgba(79,195,247,0.5)",
-    hitText:       "#e8f4fd",
-    encLine:       "rgba(79,195,247,0.1)",
-    encLabel:      "#6a8aaa",
-    footerBorder:  "rgba(79,195,247,0.1)",
-    footerBrand:   "#8aacc8",
-    footerUrl:     "#8aacc8",
-  },
-  light: {
-    cardBg:        "#f8fbff",
-    cardBorder:    "1px solid #d0e8f8",
-    topBar:        "linear-gradient(90deg, #4FC3F7, #0277BD)",
-    radialOverlay: "",
-    series:        "#0277BD",
-    title:         "#0c1a2e",
-    // Operator-spotted on the captured light-theme PNG: rank
-    // numbers, the score-banner "predicted count" line, the encore
-    // divider label, the footer brand + URL, and the date line all
-    // sat at hexes between `#b5cfe8` and `#8aacc8` against the
-    // `#f8fbff` card background — contrast ratios of 1.5–2.7:1, well
-    // below WCAG AA's 4.5:1 for body text. The same fix shape as
-    // dark mode: collapse the muted family to a single readable
-    // tone (`#5a8ab0`, same as `missColor` already in use for song
-    // titles) that hits ~5.5:1 contrast. Visual hierarchy now lives
-    // entirely between bright accents (`#0277BD`) and muted
-    // (`#5a8ab0`); we accept losing the tertiary-lightness step
-    // that was indistinguishable from background anyway.
-    date:          "#5a8ab0",
-    bannerBg:      "white",
-    bannerBorder:  "1px solid #b5d4f4",
-    bannerShadow:  "0 1px 8px rgba(2,119,189,0.06)",
-    scoreMain:     "#0c1a2e",
-    scorePct:      "#0277BD",
-    scoreSub:      "#5a8ab0",
-    scoreLabel:    "#0277BD",
-    scoreFrac:     "#0277BD",
-    scorePred:     "#5a8ab0",
-    missColor:     "#5a8ab0",
-    numColor:      "#5a8ab0",
-    hitRowBg:      "#eef7ff",
-    hitDot:        "#0277BD",
-    hitDotGlow:    "none",
-    hitUnderline:  "rgba(2,119,189,0.4)",
-    hitText:       "#0c1a2e",
-    encLine:       "#d0e8f8",
-    encLabel:      "#5a8ab0",
-    footerBorder:  "#d0e8f8",
-    footerBrand:   "#5a8ab0",
-    footerUrl:     "#5a8ab0",
-  },
+  /**
+   * Site header (and its menu dropdown, which lives in the header's
+   * stacking context). Above page sticky chrome so a sticky sidebar in
+   * the 1024–1099px band cannot paint over the open menu; below the
+   * floating dropdown/modal layers.
+   */
+  header: 50,
 } as const;
 
 /*
@@ -384,11 +324,34 @@ export const unitFallbackPalette = [
   "#A3A3A3", // 16 neutral-400 — soft gray
 ] as const;
 
+/*
+ * Search result accents from the approved 12-v1.2 design (ticket 13).
+ * Inks are the readable foregrounds on the 03 pastel accent washes
+ * (all ≥ 5.6:1 on their backgrounds); they are role accents, not artist
+ * colours. Search-only for now — a page ticket that needs the same role
+ * should reuse these rather than add near-duplicates.
+ */
+export const searchColors = {
+  artistInk: "#80344F", // artist icon chip + initial avatar, on accentPink
+  songInk: "#594392", // song icon chip, on accentLavender
+  variantInk: "#58417D", // version chip text, on accentLavender
+  baseChipBg: "#EEF3F9", // "base version" chip, with textSecondary
+  dayChipBg: "#EDF3FF", // concert "Day.N" chip
+  dayChipInk: "#2457A6",
+  matchedInk: "#53527D", // "matched name" line
+  errorBorder: "#DAA6B7", // error state panel
+  errorBg: "#FFF9FB",
+  errorInk: "#80344F", // error state icon, on accentPink
+} as const;
+
 export const shadows = {
-  card: "0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(2,119,189,0.06)",
+  // 03 contract card shadow (navy-tinted, low alpha) and its hover lift.
+  card: "0 5px 18px #233C6810",
+  cardHover: "0 8px 24px #233C681B",
   nav: "0 1px 3px rgba(0,0,0,0.04)",
   // Heavier brand-color glow for the LIVE hero card on the home page.
-  // Same brand RGB as `card` (rgba of `colors.primary` #0277BD) but at
+  // Original brand blue (#0277BD, the pre-redesign primary — kept here
+  // because the home LIVE hero has not been redesigned yet) at
   // a deeper alpha + larger blur for a "lifted off the page" feel.
   heroLive: "0 8px 32px rgba(2,119,189,0.25)",
   // Neutral lift used by small image thumbnails (album covers, etc.)
@@ -400,9 +363,9 @@ export const shadows = {
 
 export const radius = {
   // Card-radius scale, in ascending order. `card` is the regular size
-  // (most surfaces); `cardSm` is the compact card variant used by the
-  // home `UpcomingCard`; `cardLg` is the hero treatment for surfaces
-  // that need more prominence than a regular card (home `LiveHeroCard`).
+  // (most surfaces); `cardSm` is the compact card variant; `cardLg` is
+  // the hero treatment for surfaces that need more prominence than a
+  // regular card.
   cardSm: 14,
   card: 16,
   cardLg: 20,
@@ -419,16 +382,24 @@ export const radius = {
 
 export const breakpoint = {
   desktop: 1024,
+  // Header-only threshold from the 03 contract: the full desktop header
+  // (four links + search field + three native locale labels) needs
+  // ~1100px. Page layouts (sidebars, grids) keep `desktop` (1024) — this
+  // value moves only the Nav between its desktop and menu forms.
+  nav: 1100,
 } as const;
 
 /*
- * Layout-scale constants. `navHeight` is the sticky `<Nav>` height
- * (mobile/desktop) — surfaces below the nav that need to clear it
- * (sticky sidebars, anchor-link `scroll-margin-top`) derive from
- * here so a future nav-height change propagates to all consumers.
+ * Layout-scale constants. `navHeight` is the `<Nav>` header height per
+ * width band (03 contract): mobile <700px = 64, tablet 700–1099 = 68,
+ * desktop ≥1100 (`breakpoint.nav`) = 80. The header is NOT sticky (it
+ * never was — the 02 baseline and the approved mockup both scroll it
+ * away), so these are clearances for sticky sidebars and anchor
+ * `scroll-margin-top`, which keep a header-sized gap. Mirrored by the
+ * `--legal-anchor-offset` values in globals.css.
  */
 export const layout = {
-  navHeight: { mobile: 52, desktop: 56 },
+  navHeight: { mobile: 64, tablet: 68, desktop: 80 },
 } as const;
 
 // Border-width scale. `emphasis` is the slightly heavier stroke used on
@@ -442,8 +413,8 @@ export const borderWidth = {
 /*
  * Motion shorthands. Currently a single entry — the LIVE-status pulse
  * shared by `<StatusBadge status="ongoing">` (the `● LIVE` dot in
- * row-shaped surfaces) and `<LiveHeroCard>` (the dot inside the dark
- * gradient hero). Both must agree on the keyframe + cadence so a
+ * row-shaped surfaces) and the home ongoing card's LIVE capsule
+ * (`CompactEventCard`). Both must agree on the keyframe + cadence so a
  * design tweak doesn't fall out of sync between surfaces.
  */
 export const motion = {
@@ -453,8 +424,8 @@ export const motion = {
 /*
  * Composite gradients beyond `colors.brandGradient` /
  * `colors.darkGradient`. `liveBanner` is the dark-navy ramp used by
- * the series-page LIVE banner — same `textPrimary` → deeper-navy
- * `#1e3a5f` arc that the home `LiveHeroCard` mid-stop already pins.
+ * the series-page LIVE banner — the `textPrimary` → deeper-navy
+ * `#1e3a5f` arc (`colors.navyDeep`).
  *
  * `progressBar` is the horizontal (90deg) brand ramp used by the
  * series-page tour-progress fill. Distinct from `colors.brandGradient`

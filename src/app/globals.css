@@ -10,32 +10,256 @@
 @source not "../../tests";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Page surface + main text from the approved redesign contract (03-v1.1).
+     `--background` mirrors `colors.bgPage`, `--foreground` mirrors
+     `colors.textPrimary` in src/styles/tokens.ts — keep in lockstep. */
+  --background: #f7f9fd;
+  --foreground: #172445;
+  /* Keyboard focus ring colour; mirrors `colors.focus`. */
+  --focus-ring: #174faf;
+  /* Quiet-surface interaction states; mirror `colors.primaryHover`,
+     `primaryPressed`, `primaryHoverBg`, `primaryPressedBg`. */
+  --primary-hover: #104aa9;
+  --primary-pressed: #0c3d8c;
+  --primary-hover-bg: #edf4ff;
+  --primary-pressed-bg: #dae7ff;
+  /* Body font stack. DM Sans first so Latin text and digits share one
+     face across locales; then the CJK face matching the page language,
+     so Han characters take Japanese glyph forms on ja/en and Korean
+     forms on ko (the two Noto families draw some shared ideographs
+     differently). All faces are self-hosted via @fontsource. */
+  --font-body: 'DM Sans', 'Noto Sans JP', 'Noto Sans KR', sans-serif;
+  /* LIVE semantic roles (consistency-03-v3). Match colors.live* in
+     tokens.ts; page-specific card surfaces retain their own contracts. */
+  --status-live-text: #b9322a;
+  --status-live-dot: #e5473b;
+  --status-live-surface: #fff1ee;
+  --status-live-border: #f2b8ae;
+  --status-live-dark-text: #ffd3c9;
+  --status-live-dark-surface: #482c2b;
+  /* Bright LIVE cards (consistency-03-v3), distinct from the badge. */
+  --surface-live-card: #fff8f6;
+  --border-live-card: #f0c4bc;
+  --shadow-live-card: #17244506;
+  /* Concert detail (consistency-03-v3): the neutral "updating live"
+     notice and the per-song performer toggle's hover pair. */
+  --surface-notice-neutral: #f7f9fc;
+  --surface-credit-toggle-hover: #eeefff;
+  --text-credit-toggle-hover: #5156a6;
+  /* Trending songs card (trending-v1): faint amber wash, amber top
+     rule, item dividers and the TOP 3 pill. */
+  --surface-trending-start: #fffaf0;
+  --border-trending: #e4d6bd;
+  --accent-trending: #d8b77d;
+  --border-trending-divider: #eee5d6;
+  --text-trending-pill: #86530f;
+  --surface-trending-pill: #fff4de;
+  --border-trending-pill: #e6ce9f;
   /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
      so a palette change is one edit, not a grep across components.
      Consumed by `.row-hover-bg:hover` below; available as a Tailwind
      arbitrary-value `bg-[var(--bg-subtle)]` if needed elsewhere. */
   --bg-subtle: #f8fafc;
+
+  /* Approved CSS-module palette aliases. Values match the existing declarations exactly. */
+  /* Accents */
+  --accent-impressions-panel: #a18bdf;
+  --accent-info-panel: #7399eb;
+  --accent-lavender: #f0edff;
+  --accent-participate-panel: #e968a6;
+  --accent-performers-panel: #f0a56b;
+  --accent-pink: #fff0f6;
+  /* Surfaces */
+  --bg-card: #ffffff;
+  /* Borders */
+  --border: #dce3ef;
+  --border-badge-wish: #eab7cd;
+  --border-ballot-expect: #b9d9f7;
+  --border-card-hover: #a8bce5;
+  --border-expect-my-choice: #9bc7ef;
+  --border-expect-my-choices: #c0d8ed;
+  --border-group-chip: #bdc5d4;
+  --border-group-event-row: #e9edf5;
+  --border-identity: #b6cbed;
+  --border-impressions-panel: #ddd2f1;
+  --border-inline-picker: #ded4f3;
+  --border-list: #e8ecf3;
+  --border-live-badge: #ffb9d8;
+  --border-live-banner: #283766;
+  --border-live-day: #a39fc1;
+  --border-live-notice: #efbcd5;
+  --border-locked-wish-panel: #efc5da;
+  --border-member: #e3e8f2;
+  --border-my-choice: #efaacb;
+  --border-my-choices: #ddc9da;
+  --border-note: #a4b9d8;
+  --border-notice: #cadcf6;
+  --border-notice-cancel: #d3d8e1;
+  --border-participate-panel: #cfdcef;
+  --border-predict-row: #ded6ee;
+  --border-result-strip: #d3c3f2;
+  --border-row-divider: #e0e5f0;
+  --border-rows: #e8edf5;
+  --border-secondary: #8b99b0;
+  --border-setlist-panel: #d9d1ee;
+  --border-strong: #7c8ba3;
+  --border-unit-link: #b8cbe7;
+  /* Day chips */
+  --day-chip-bg: #edf3ff;
+  --day-chip-ink: #2457a6;
+  /* Gradients */
+  --gradient-ballot: #ffe3f0;
+  --gradient-ballot-expect-end: #f2f8ff;
+  --gradient-ballot-expect-start: #dcedff;
+  --gradient-ballot-soft-highlight: #fff6fa;
+  --gradient-cover-lavender: #f1ecff;
+  --gradient-feedback-lavender: #f4efff;
+  --gradient-group-heading-pink: #fff7fb;
+  --gradient-heading-lavender: #f1edff;
+  --gradient-heading-pink: #fff5f9;
+  --gradient-identity-lavender: #f1efff;
+  --gradient-identity-pink: #fff1f6;
+  --gradient-identity-pink-faint: #fff4f9;
+  --gradient-identity-pink-soft: #fff3f7;
+  --gradient-live-banner-end: #315e9c;
+  --gradient-live-card-end: #525b80;
+  --gradient-live-card-hover-end: #48507a;
+  --gradient-live-card-hover-start: #363a5a;
+  --gradient-live-card-start: #3e4266;
+  --gradient-participation-blue: #f2f7ff;
+  --gradient-setlist-lavender: #f8f5ff;
+  --gradient-summary-lavender: #f5f2ff;
+  --gradient-tour-progress-end: #a980ca;
+  --gradient-tour-progress-start: #3a75d4;
+  /* Primary */
+  --primary: #165dcc;
+  --primary-bg: #eaf2ff;
+  --primary-border: #d2e1fa;
+  /* Reactions */
+  --reaction-border: #c1cbda;
+  /* Setlist */
+  --setlist-tab-active: #5b3ca1;
+  --setlist-tab-idle-bg: #f4f6fa;
+  --setlist-tab-idle-border: #aab8cf;
+  /* Shadows */
+  --shadow-avatar: #ffffff9e;
+  --shadow-ballot: #ee92bc;
+  --shadow-ballot-expect: #91c8f6;
+  --shadow-card: #233c6810;
+  --shadow-card-hover: #233c681b;
+  --shadow-live-hover: #33344f1a;
+  --shadow-panel: #49639809;
+  --shadow-rows: #17244504;
+  --shadow-section-faint: #233c6805;
+  --shadow-surface: #233c680a;
+  --shadow-surface-soft: #233c6808;
+  /* Status */
+  --status-cancelled-surface: #fff2e4;
+  --status-cancelled-text: #8b4a0c;
+  --status-live-compact-surface: #b42150;
+  --status-ongoing-soft-surface: #fff0f3;
+  --status-ongoing-solid-surface: #ac204b;
+  --status-ongoing-text: #a91d45;
+  --status-upcoming-surface: #eaf8f0;
+  --status-upcoming-text: #176547;
+  /* Surfaces */
+  --surface-bonus-dot: #a91d67;
+  --surface-button-glass: #ffffffee;
+  --surface-crowd-item: #ffffffc9;
+  --surface-early-tag: #fff6e9;
+  --surface-encore: #e8ddff;
+  --surface-event-status: #edf1f8;
+  --surface-expect-my-choice: #cce8ff;
+  --surface-facts: #edf0f5;
+  --surface-filter-hover: #134fae;
+  --surface-group-head-synthetic: #edf2fa;
+  --surface-group-summary: #fcfdff;
+  --surface-group-toggle: #edf2fb;
+  --surface-hero: #0e133d;
+  --surface-hero-caption: #0b1538;
+  --surface-inline-picker: #f0ebfc;
+  --surface-interactive-row-hover: #f3f7ff;
+  --surface-list-row-hover: #f0f5ff;
+  --surface-live-badge: #d12c74;
+  --surface-live-banner-hover: #213b68;
+  --surface-live-day: #494e73;
+  --surface-locked-wish-panel: #fff0f7;
+  --surface-metrics: #ffffffb3;
+  --surface-more-hover: #f2f6ff;
+  --surface-my-choice: #ffd2e8;
+  --surface-my-choice-remove-hover: #ffffff80;
+  --surface-note-hover: #f1f6ff;
+  --surface-notice-cancel: #f0f1f5;
+  --surface-predict-rank: #e9e2fb;
+  --surface-predict-row-out: #f4f2f8;
+  --surface-progress: #e4eaf5;
+  --surface-rank-bronze: #f7d9c7;
+  --surface-rank-gold: #ffe5a2;
+  --surface-rank-silver: #e1e9f3;
+  --surface-result-strip: #ece4ff;
+  --surface-song-num: #e9eef8;
+  --surface-store-ended: #f5f6fa;
+  --surface-store-ended-status: #e7eaf0;
+  --surface-toc-hover: #edf3fe;
+  --surface-track-row-plain: #fafbfd;
+  --surface-unit-chip: #f0f3f8;
+  --surface-unit-link: #f0f5fd;
+  /* Text */
+  --text-arrow: #6b7e9c;
+  --text-badge-wish: #a61d55;
+  --text-bonus-label: #9b205c;
+  --text-cover-note: #637a9e;
+  --text-early-tag: #67502e;
+  --text-expect-my-choice: #164c93;
+  --text-glyph-black: #000000;
+  --text-hero-caption: #f4f6ff;
+  --text-hero-eyebrow: #d7e5ff;
+  --text-hero-lead: #f0f3ff;
+  --text-kind-badge: #244f92;
+  --text-live: #f0eefa;
+  --text-live-banner-small: #e0eaff;
+  --text-muted: #67758b;
+  --text-my-choice: #8b1452;
+  --text-notice-cancel: #394557;
+  --text-rank-bronze: #79472c;
+  --text-rank-gold: #694200;
+  --text-rank-silver: #47566d;
+  --text-secondary: #52617a;
+  --text-song-num: #485b7d;
+  --text-type-live-album: #6545a1;
+  --text-type-single: #1e5294;
+  --text-unit-tags: #414365;
+  --text-variant-pill: #71409d;
+  --text-wish-panel-title: #b41463;
   /* Anchor-jump offset for `scroll-margin-top` on legal section
-     headings. Mobile = `layout.navHeight.mobile` (52) + 24 breathing
-     room; desktop overrides below. Keep in lockstep with
-     `layout.navHeight` in `src/styles/tokens.ts`. */
-  --legal-anchor-offset: 76px;
+     headings: header height + 24 breathing room per header band.
+     Mobile = `layout.navHeight.mobile` (64) + 24; the wider bands
+     override below. Keep in lockstep with `layout.navHeight` and
+     `breakpoint.nav` in `src/styles/tokens.ts`. */
+  --legal-anchor-offset: 88px;
 }
-@media (min-width: 1024px) {
+html:lang(ko) {
+  --font-body: 'DM Sans', 'Noto Sans KR', 'Noto Sans JP', sans-serif;
+}
+@media (min-width: 700px) {
   :root {
-    /* Desktop = `layout.navHeight.desktop` (56) + 24 breathing room. */
-    --legal-anchor-offset: 80px;
+    /* Tablet = `layout.navHeight.tablet` (68) + 24. */
+    --legal-anchor-offset: 92px;
+  }
+}
+@media (min-width: 1100px) {
+  :root {
+    /* Desktop = `layout.navHeight.desktop` (80) + 24. */
+    --legal-anchor-offset: 104px;
   }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Noto Sans KR Variable', sans-serif;
-  --font-josefin: 'Josefin Sans', 'Noto Sans KR Variable', sans-serif;
-  --font-dm-sans: 'DM Sans', 'Noto Sans KR Variable', sans-serif;
+  --font-sans: var(--font-body);
+  --font-josefin: 'Josefin Sans', var(--font-body);
+  --font-dm-sans: var(--font-body);
 }
 
 
@@ -64,7 +288,85 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
+  /* 03 contract body size: 15px, 14px under 700px. Only text that does
+     not set its own size inherits this; Tailwind's rem utilities are
+     unaffected (they resolve against <html>). */
+  font-size: 15px;
+}
+@media (max-width: 699px) {
+  body {
+    font-size: 14px;
+  }
+}
+
+/*
+ * Shared keyboard focus treatment (03 contract): 3px ring, 4px offset,
+ * shown only for keyboard focus. In the base layer so a component that
+ * needs a different ring (e.g. white-on-dark Hero buttons) overrides it
+ * with a utility or inline style.
+ */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 4px;
+  }
+}
+
+/*
+ * Hover / pressed treatment for the quiet header controls (inactive nav
+ * links, locale buttons, icon buttons): pale-blue wash + darker blue text.
+ * One class so the four interaction colours live in exactly one place.
+ */
+.shell-interactive:hover {
+  background: var(--primary-hover-bg);
+  color: var(--primary-hover);
+}
+.shell-interactive:active {
+  background: var(--primary-pressed-bg);
+  color: var(--primary-pressed);
+}
+
+/*
+ * "Skip to content" link rendered first in <body>. Off-screen until it
+ * receives keyboard focus, then pinned top-left above the header.
+ */
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 400;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--foreground);
+  font-weight: 700;
+  box-shadow: 0 5px 18px #233c6820;
+}
+.skip-link:focus {
+  top: 12px;
+}
+/* The skip link focuses the page <main> programmatically; the landmark
+   itself needs no ring around the whole page. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/*
+ * Reduced motion (spec story 48): drop transitions and keyframe
+ * animations — the LIVE pulse, reaction pops and menu transitions all
+ * stop. Static state (colour, the LIVE dot itself) still shows.
+ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 /*
