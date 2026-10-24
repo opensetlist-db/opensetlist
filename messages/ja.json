@@ -1,4 +1,9 @@
 {
+  "EventShareCard": {
+    "prediction": "セットリスト予想",
+    "live": "セットリスト速報",
+    "setlist": "セットリスト公開"
+  },
   "Home": {
     "title": "OpenSetlist",
     "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",

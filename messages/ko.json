@@ -1,4 +1,9 @@
 {
+  "EventShareCard": {
+    "prediction": "세트리스트 예상",
+    "live": "실황 세트리스트",
+    "setlist": "공개 세트리스트"
+  },
   "Home": {
     "title": "오픈세트리스트",
     "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",

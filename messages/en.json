@@ -1,4 +1,9 @@
 {
+  "EventShareCard": {
+    "prediction": "Setlist predictions",
+    "live": "Live setlist",
+    "setlist": "Published setlist"
+  },
   "Home": {
     "title": "OpenSetlist",
     "description": "Open setlist database for live events (JP/EN/KR)",
