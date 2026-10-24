@@ -60,14 +60,30 @@ describe("share image font delivery", () => {
     const latin = face("DM Sans", "400", "U+0000-00FF");
     const bold = face("DM Sans", "700", "U+0000-00FF");
     const korean = face("Noto Sans KR", "400", "U+AC??");
-    const fallback = face("Noto Sans KR", "400", "U+0000-00FF", true);
+    const fallback = face("Noto Sans KR", "400", "U+0000-00FF");
+    fallback.status = "loaded";
     provideFonts([fallback, korean, bold, latin]);
     const target = card("O각");
     target.append(card("O", "700"));
     await prepareShareCardFonts(target);
     expect([latin.status, korean.status, bold.status]).toEqual(["loaded", "loaded", "loaded"]);
+    expect(latin.load).toHaveBeenCalledOnce();
     // The declared Latin family above supplies O; the available Korean Latin
     // subset must not replace it just because it precedes it in FontFaceSet.
+  });
+
+  it("reuses a loaded replacement before the original failed face within the same family", async () => {
+    const broken = face("DM Sans", "400", "U+0-FF", true);
+    broken.status = "error";
+    provideFonts([broken]);
+    const target = card("OPEN");
+    await expect(prepareShareCardFonts(target)).rejects.toThrow("font unavailable");
+    const recovered = face("DM Sans", "400", "U+0-FF");
+    recovered.status = "loaded";
+    provideFonts([broken, recovered]);
+    await prepareShareCardFonts(target);
+    expect(recovered.load).toHaveBeenCalledOnce();
+    expect(recovered.status).toBe("loaded");
   });
 
   it("does not pass a failed font load as a successful fallback image", async () => {

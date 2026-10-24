@@ -98,7 +98,7 @@ const scenario = {
         let observer;
         const { ctx, page } = await h.open(`/${loc}/events/${id}`, { width: 390,
           beforeNavigate: seed(id, songs, async ({ page }) => {
-            const responses = new Map();
+            const responses = [];
             // Record bytes at the delivery boundary. html2canvas removes
             // its cloned iframe, invalidating response.body's CDP ids;
             // route.fetch retains the actual bytes fulfilled to each frame.
@@ -106,19 +106,19 @@ const scenario = {
               try {
                 const response = await route.fetch({ maxRetries: 2 });
                 const bytes = await response.body();
-                responses.set(response.url(), { url: response.url(), status: response.status(),
-                  bytes: bytes.length, sha256: sha(bytes) });
                 await route.fulfill({ response, body: bytes });
+                responses.push({ url: response.url(), status: response.status(),
+                  bytes: bytes.length, sha256: sha(bytes) });
               } catch (error) {
                 // Closing a discarded capture iframe/context can abort an
                 // in-flight request. Keep active delivery failures in the
                 // evidence instead of rejecting an unhandled route promise.
                 const url = route.request().url();
-                if (!responses.has(url)) responses.set(url, { url, status: 0, error: String(error) });
+                responses.push({ url, status: 0, error: String(error) });
                 await route.abort().catch(() => {});
               }
             });
-            observer = { finish: async () => [...responses.values()] };
+            observer = { finish: async () => [...responses] };
           }),
         });
         const { entry, dialog } = await enter(page, loc);

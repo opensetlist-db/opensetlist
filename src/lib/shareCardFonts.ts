@@ -104,7 +104,7 @@ export async function prepareShareCardFonts(card: HTMLElement): Promise<void> {
     const style = view.getComputedStyle(node.parentElement);
     const families = style.fontFamily.split(",").map(familyName)
       .filter((family) => SHARE_FAMILIES.has(family));
-    const candidates = families.flatMap((family) =>
+    const candidates = families.map((family) =>
       faces.get(`${family}:${style.fontWeight}:${style.fontStyle}`) ?? []);
     const key = `${style.fontFamily}:${style.fontWeight}:${style.fontStyle}`;
     const matches = characters.get(key) ?? new Map<number, FontFace>();
@@ -112,8 +112,16 @@ export async function prepareShareCardFonts(card: HTMLElement): Promise<void> {
     for (const char of new Set(text)) {
       if (/\s/u.test(char)) continue;
       const point = char.codePointAt(0)!;
-      const match = matches.get(point) ?? candidates.find(({ ranges }) =>
-        ranges.some(([lower, upper]) => point >= lower && point <= upper))?.face;
+      let match = matches.get(point);
+      if (!match) for (const family of candidates) {
+        const covers = ({ ranges }: { ranges: [number, number][] }) =>
+          ranges.some(([lower, upper]) => point >= lower && point <= upper);
+        // A successful replacement coexists with the original failed CSS
+        // face. Reuse it within its family, preserving CSS family priority.
+        match = family.find((entry) => entry.face.status === "loaded" && covers(entry))?.face ??
+          family.find(covers)?.face;
+        if (match) break;
+      }
       if (!match) throw new Error("Share font glyph or weight unavailable");
       matches.set(point, match);
       required.add(match);
