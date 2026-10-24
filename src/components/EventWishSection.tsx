@@ -251,7 +251,7 @@ export function EventWishSection({
           event_id: String(eventId),
           song_id: String(song.id),
         });
-        await refreshWishes();
+        void refreshWishes();
       } catch {
         // Rollback. Optimistic UI flips back to the snapshot; nothing
         // persisted to localStorage so refresh would also show the
@@ -272,6 +272,7 @@ export function EventWishSection({
       // Sentinel-id rows never made it to the server — strip
       // locally without a DELETE call.
       if (entry.dbId === "__pending__") return;
+      refreshGeneration.current++;
       setPending(true);
       const snapshot = myWishes;
       const next = snapshot.filter((w) => w.dbId !== entry.dbId);
@@ -293,7 +294,7 @@ export function EventWishSection({
           event_id: String(eventId),
           song_id: String(entry.songId),
         });
-        await refreshWishes();
+        void refreshWishes();
       } catch {
         setMyWishes(snapshot);
         writeWishes(eventId, snapshot);

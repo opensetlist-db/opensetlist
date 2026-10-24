@@ -290,7 +290,17 @@ export function FanBoardSection({
       cancelRead();
       if (readSession.current === session) readSession.current = null;
     };
-  }, [eventId, locale, picksRevision]);
+  }, [eventId, locale]);
+
+  // Publishing the Predict ballot can finish while a wish write is
+  // still pending. Keep the same read session so both changes share
+  // its pending-write barrier, rather than dropping that barrier.
+  const previousPicksRevision = useRef(picksRevision);
+  useEffect(() => {
+    if (previousPicksRevision.current === picksRevision) return;
+    previousPicksRevision.current = picksRevision;
+    readSession.current?.refresh();
+  }, [picksRevision]);
 
   const mutate = async (action: () => Promise<PickOutcome>) => {
     const complete = readSession.current?.beginWrite();

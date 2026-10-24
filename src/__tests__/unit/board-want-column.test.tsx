@@ -186,7 +186,7 @@ describe("<FanBoardSection> want column", () => {
     } }) };
   }
 
-  it("coalesces concurrent saves and waits for both commits before reading totals", async () => {
+  it("coalesces concurrent saves and a publish before reading totals", async () => {
     const commits: Array<() => void> = [];
     let count = 0;
     handler = (url, init) => {
@@ -213,28 +213,34 @@ describe("<FanBoardSection> want column", () => {
     expect(stored()).toHaveLength(2);
   });
 
-  it("does not let a delayed add aggregate undo the subsequent removal", async () => {
+  it("does not let a delayed removal aggregate undo a subsequent add", async () => {
     let finishOldRead!: (response: Reply) => void;
     let reads = 0;
+    let count = 0;
     handler = (url, init) => {
       if (url.includes("/board?")) {
         reads++;
-        if (reads === 2) return new Promise<Reply>((resolve) => { finishOldRead = resolve; });
-        return crowd(0);
+        if (reads === 3) return new Promise<Reply>((resolve) => { finishOldRead = resolve; });
+        return crowd(count);
       }
-      if (init?.method === "POST") return { status: 201, body: { id: "w1", songId: "10", groupId: "1" } };
-      if (init?.method === "DELETE") return { status: 200, body: { id: "w1" } };
+      if (init?.method === "POST") {
+        count = 1;
+        return { status: 201, body: { id: "w1", songId: "10", groupId: "1" } };
+      }
+      if (init?.method === "DELETE") { count = 0; return { status: 200, body: { id: "w1" } }; }
       return { status: 500, body: {} };
     };
     renderBlock();
     fireEvent.click(await screen.findByText("addWish(蓮ノ空)"));
     fireEvent.click(screen.getByText("pick-10"));
-    await waitFor(() => expect(reads).toBe(2));
+    await waitFor(() => expect(wantCol().getByText("submissions(1)")).toBeTruthy());
     fireEvent.click(wantCol().getByLabelText("removeAria(残陽)"));
     await waitFor(() => expect(reads).toBe(3));
-    await act(async () => { finishOldRead(crowd(1)); });
-    expect(stored()).toHaveLength(0);
-    expect(wantCol().queryAllByTestId("board-top-entry")).toHaveLength(0);
+    fireEvent.click(screen.getByText("pick-10"));
+    await waitFor(() => expect(reads).toBe(4));
+    await act(async () => { finishOldRead(crowd(0)); });
+    expect(stored()).toHaveLength(1);
+    expect(wantCol().getByText("submissions(1)")).toBeTruthy();
   });
 
   it("keeps a saved wish when its aggregate read fails, and retries only the read", async () => {
@@ -287,6 +293,7 @@ describe("<FanBoardSection> want column", () => {
     vi.setSystemTime("2026-10-24T00:00:00Z");
     renderBlock();
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(wantCol().queryAllByTestId("board-top-entry")).toHaveLength(count);
     if (action === "add") {
       fireEvent.click(screen.getByText("addWish(蓮ノ空)"));
       fireEvent.click(within(screen.getByTestId("picker")).getByText("pick-10"));
