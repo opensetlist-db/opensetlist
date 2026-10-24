@@ -35,7 +35,7 @@
 
 .hero {
   display: grid;
-  grid-template-columns: 204px minmax(0, 1fr);
+  grid-template-columns: 288px minmax(0, 1fr);
   column-gap: 32px;
   row-gap: 14px;
   align-items: center;
@@ -43,8 +43,7 @@
 }
 /*
  * The state line is a direct grid child (not inside .heroCopy) so it can
- * take the full width under the 90px slot on phones (18-v3
- * `.event-hero .state-line{grid-column:1/-1}`); above 700px it stays in
+ * take the full width below the logo and title on phones; above 700px it stays in
  * the copy column under the meta line, and the slot spans both rows.
  */
 .heroArt {
@@ -411,7 +410,7 @@ a.groupChip:hover {
     grid-template-columns: 1fr 1fr;
   }
   .hero {
-    grid-template-columns: 156px minmax(0, 1fr);
+    grid-template-columns: 220px minmax(0, 1fr);
     column-gap: 22px;
   }
 }
@@ -424,7 +423,7 @@ a.groupChip:hover {
     margin-bottom: 18px;
   }
   .hero {
-    grid-template-columns: 90px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     column-gap: 14px;
     row-gap: 10px;
     align-items: start;

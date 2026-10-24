@@ -48,19 +48,23 @@
   box-shadow: 0 5px 18px var(--shadow-surface);
 }
 
-/* Approved managed logo: reserved 240×100 box, never stretched. */
+/* Keep intrinsic image dimensions out of grid track sizing: square or
+   tall artwork must fit the reserved box instead of expanding and clipping. */
 .logoSlot {
-  display: grid;
-  place-items: center;
-  width: 240px;
-  height: 100px;
-  margin-bottom: 20px;
+  position: relative;
+  width: 320px;
+  max-width: 100%;
+  height: 160px;
+  margin-bottom: 16px;
   overflow: hidden;
   border-radius: 10px;
+  background: var(--surface-logo);
 }
 .logoSlot img {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 8px;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
   object-fit: contain;
 }
 
@@ -791,8 +795,7 @@
     font-size: 11px;
   }
   .logoSlot {
-    width: 100%;
-    max-width: 240px;
+    height: 140px;
   }
   .tabs {
     gap: 0;

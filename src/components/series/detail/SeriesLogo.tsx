@@ -16,7 +16,7 @@ import styles from "./seriesDetail.module.css";
  *
  * Decorative (`alt=""`): the H1 always prints the series name, so a
  * text alternative would read the title twice. `width`/`height` carry
- * the intrinsic size for layout; CSS fits it into the reserved 240×100
+ * the intrinsic size for layout; CSS fits it into the reserved responsive
  * box with `contain`, never distorting it. `key={src}` resets the
  * failure state when the URL changes (useImageFallback contract).
  */
