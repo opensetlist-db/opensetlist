@@ -117,11 +117,11 @@ function readDisplay() {
         panelNames: panel?.querySelector("p")?.textContent.trim() ?? "",
       };
     }),
-    detailsRows: card ? card.querySelectorAll('li details[class*="__creditDetails"]').length : 0,
     inlinePerformers: card ? [...card.querySelectorAll('[data-testid="setlist-performers"]')].map((p) => ({
       text: p.textContent.trim(),
       visible: p.checkVisibility(),
       clipped: p.scrollWidth > p.clientWidth + 1,
+      directParagraph: p.tagName === "P" && p.parentElement.className.includes("__songBody"),
     })) : [],
     chiplessDetailsBesideChips: card
       ? [...card.querySelectorAll('li details[class*="__creditDetails"]')].filter((d) => d.closest("li").querySelector('[class*="__creditLine"]')).length
@@ -272,7 +272,7 @@ const scenario = {
         check(name(`title ${want}px`), d.title.size === want, String(d.title.size));
         check(name("no LIVE rule / notice"), !d.heroRule.includes(" 3px ") && d.notice === null, d.heroRule);
         check(name("chip-less performer names immediately visible"), d.inlinePerformers.length > 0 && d.inlinePerformers.every((p) => p.text && p.visible && !p.clipped), JSON.stringify(d.inlinePerformers));
-        check(name("no legacy performer disclosure"), d.detailsRows === 0, String(d.detailsRows));
+        check(name("performers are direct row text"), d.inlinePerformers.length > 0 && d.inlinePerformers.every((p) => p.directParagraph), String(d.inlinePerformers.length));
         check(name("roster: one grid"), !!d.roster && d.roster.more === 0 && d.roster.cards === d.roster.count, JSON.stringify(d.roster && { cards: d.roster.cards, count: d.roster.count }));
         const tr = await page.evaluate(readTrending);
         if (tr) checkTrending(tr, { width, name, check, loc });
