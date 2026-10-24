@@ -336,6 +336,7 @@ describe("<FanBoardSection> one-tap 나도 on rows", () => {
                 { songId: "10", title: "残陽", count: 5 },
                 { songId: "11", title: "ハナムスビ", count: 2 },
               ]),
+              expects: crowd(ZANYO),
             }),
           }
         : { status: 500, body: {} };
@@ -350,10 +351,38 @@ describe("<FanBoardSection> one-tap 나도 on rows", () => {
     fireEvent.click(blocked);
     expect(posts()).toHaveLength(0);
     expect(within(mine).getByTestId("board-nado")).toHaveProperty("disabled", false);
-    // The expect column has its own cap: nothing there is full.
+    // The expect column has its own cap: the same song is addable there.
+    expect(expectCol().getByTestId("board-nado")).toHaveProperty("disabled", false);
     expect(expectCol().queryByTestId("board-row-cap")).toBeNull();
   });
 
+  it("at 3/3, a song mine under another group says where, not why the cap", async () => {
+    storeWishes([
+      { dbId: "w1", songId: 11, title: "ハナムスビ", groupId: "1" },
+      { dbId: "w2", songId: 12, title: "Dream Believers", groupId: "1" },
+      { dbId: "w3", songId: 13, title: "Special Thanks", groupId: "1" },
+      { dbId: "w9", songId: 10, title: "残陽", groupId: "2" },
+    ]);
+    handler = (url) =>
+      url.includes("/board?")
+        ? { status: 200, body: readBoard({ wishes: crowd(ZANYO) }) }
+        : { status: 500, body: {} };
+    renderBlock();
+    await waitFor(() => expect(wantCol().getByTestId("board-nado-elsewhere")).toBeTruthy());
+    expect(wantCol().getByTestId("board-nado-elsewhere").textContent).toBe(
+      "pickedElsewhere(Liella!)",
+    );
+    // No cap-disabled row is left, so no cap note either; the counter
+    // proves the column did load at 3/3.
+    expect(
+      within(wantCol().getByTestId("board-my-wishes")).getByTestId("board-pick-counter").textContent,
+    ).toBe("counter(3,3)");
+    expect(wantCol().queryByTestId("board-row-cap")).toBeNull();
+  });
+
+  // The client-side half (no request at 3/3) is the test above; this
+  // is the server half as the row sees it: a 409 the local state could
+  // not predict (another tab filled the cap) reads like the picker's.
   it("surfaces a server 409 cap refusal the same way the picker does", async () => {
     handler = (url, init) => {
       if (url.includes("/board?")) return { status: 200, body: readBoard({ wishes: crowd(ZANYO) }) };

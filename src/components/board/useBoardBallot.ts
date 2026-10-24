@@ -294,7 +294,7 @@ export function useBoardBallot({
       groupId: string,
       songId: string,
       title: string,
-      source: BallotSource = "picker",
+      source: BallotSource,
     ): Promise<PickOutcome> => {
       const anonId = getAnonId();
       // No storage → no stable id → the server would refuse anyway, and
@@ -342,7 +342,7 @@ export function useBoardBallot({
     async (
       kind: BallotKind,
       entry: BallotEntry,
-      source: BallotSource = "picker",
+      source: BallotSource,
     ): Promise<PickOutcome> => {
       const anonId = getAnonId();
       if (!anonId) return { ok: false, reason: "invalid_anon_id" };

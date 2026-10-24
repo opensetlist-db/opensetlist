@@ -648,10 +648,11 @@ export function FanBoardSection({
                     (p) => p.songId === songId && p.groupId !== active.groupId,
                   );
                   if (!other) return null;
-                  return (
-                    state.groups.find((g) => g.groupId === other.groupId)?.name ??
-                    ""
-                  );
+                  // A group the board no longer lists has no name to
+                  // show: fall through to the add path, whose local
+                  // group-conflict check answers with the picker's toast.
+                  const otherGroup = state.groups.find((g) => g.groupId === other.groupId);
+                  return otherGroup ? otherGroup.name : null;
                 };
                 return (
                   <div
@@ -675,6 +676,7 @@ export function FanBoardSection({
                         locked
                           ? null
                           : {
+                              cap: capOf(kind),
                               atCap: mine.length >= capOf(kind),
                               pending: pendingOf(kind),
                               elsewhereOf,
@@ -789,6 +791,8 @@ export function FanBoardSection({
 /** What a row needs to offer one-tap 「나도」 (n17). Null = locked: the
  *  rows render read-only. */
 type RowActions = {
+  /** The per-group cap of this column. */
+  cap: number;
   /** My entries in this group and column already fill the cap. */
   atCap: boolean;
   /** Song ids with a write in flight in this column. */
@@ -807,18 +811,22 @@ const NADO = {
 
 /**
  * The 「나도」 button on one crowd or starter row (n17): agree with the
- * song without opening the picker. State precedence, first match wins
- * (the order is the ticket's, and each step explains why):
+ * song without opening the picker. State precedence, first match wins:
  *   1. locked              → the parent passes no `actions`; nothing here.
  *   2. mine in this group  → checked; tapping removes. Allowed even at
  *                            3/3 and even if the song was deleted since,
  *                            so a fan can always undo their own vote.
- *   3. write in flight     → disabled, so a double tap can't fire twice.
- *   4. song unavailable    → no add (the server would refuse it).
- *   5. cap reached         → disabled; the column note says why.
- *   6. mine under another group → "X에서 선택됨", no button: a vote
+ *   3. song unavailable    → no add (the server would refuse it).
+ *   4. mine under another group → "X에서 선택됨", no button: a vote
  *                            counts under one group, and moving it
  *                            silently would change another group's tally.
+ *                            Ahead of the cap on purpose: at 3/3 the cap
+ *                            note ("remove one to change") would mislead,
+ *                            since removing one here still can't add it.
+ *   5. cap reached         → disabled; the column note says why.
+ *   6. otherwise           → add; disabled while a write for the song is
+ *                            in flight, so a double tap can't fire twice
+ *                            (a pending remove is covered by step 2).
  * The button never navigates — the title stays the song link.
  */
 function NadoButton({
@@ -841,66 +849,35 @@ function NadoButton({
   t: ReturnType<typeof useTranslations<"Board">>;
 }) {
   if (!actions) return null;
+  if (!mine) {
+    if (!available) return null;
+    const elsewhere = actions.elsewhereOf(songId);
+    if (elsewhere !== null) {
+      return (
+        <span data-testid="board-nado-elsewhere" className={styles.nadoElsewhere}>
+          {t("pickedElsewhere", { group: elsewhere })}
+        </span>
+      );
+    }
+  }
   const copy = NADO[kind];
   const pending = actions.pending.has(songId);
-  const label = t(copy.label);
-  const aria = t(copy.aria, { title });
-  if (mine) {
-    return (
-      <button
-        type="button"
-        data-testid="board-nado"
-        aria-pressed="true"
-        aria-label={aria}
-        disabled={pending}
-        aria-busy={pending || undefined}
-        onClick={() => actions.onRemove(songId)}
-        className={styles.nadoButton}
-      >
-        <span aria-hidden="true">✓ </span>
-        {label}
-      </button>
-    );
-  }
-  if (!available) return null;
-  // Checked before "elsewhere": a cap-full group refuses the add either
-  // way, and the disabled button keeps the row layout the same as its
-  // neighbours'.
-  if (!pending && actions.atCap) {
-    return (
-      <button
-        type="button"
-        data-testid="board-nado"
-        aria-pressed="false"
-        aria-label={aria}
-        disabled
-        aria-describedby={capNoteId}
-        className={styles.nadoButton}
-      >
-        {label}
-      </button>
-    );
-  }
-  const elsewhere = actions.elsewhereOf(songId);
-  if (elsewhere !== null) {
-    return (
-      <span data-testid="board-nado-elsewhere" className={styles.nadoElsewhere}>
-        {t("pickedElsewhere", { group: elsewhere })}
-      </span>
-    );
-  }
+  // A cap-full group refuses adds only; my own rows stay removable.
+  const capped = !mine && !pending && actions.atCap;
   return (
     <button
       type="button"
       data-testid="board-nado"
-      aria-pressed="false"
-      aria-label={aria}
-      disabled={pending}
+      aria-pressed={mine}
+      aria-label={t(copy.aria, { title })}
+      disabled={pending || capped}
       aria-busy={pending || undefined}
-      onClick={() => actions.onAdd(songId, title)}
+      aria-describedby={capped ? capNoteId : undefined}
+      onClick={() => (mine ? actions.onRemove(songId) : actions.onAdd(songId, title))}
       className={styles.nadoButton}
     >
-      {label}
+      {mine && <span aria-hidden="true">✓ </span>}
+      {t(copy.label)}
     </button>
   );
 }
@@ -1093,13 +1070,19 @@ function ColumnPanel({
           <p className={styles.ballotNote}>{t("empty")}</p>
         ))}
       {/* Why the row buttons are greyed out: shown only when at least
-          one visible row has one (an available song that isn't mine). */}
+          one visible row has a cap-disabled button (an available song
+          that is mine neither here nor under another group). */}
       {rowActions?.atCap &&
         (label !== "operator"
-          ? entries.some((e) => e.available && !mySongIds.has(e.songId))
-          : showStarters && group.starters.some((s) => !mySongIds.has(s.songId))) && (
+          ? entries.filter((e) => e.available).map((e) => e.songId)
+          : showStarters
+            ? group.starters.map((s) => s.songId)
+            : []
+        ).some(
+          (id) => !mySongIds.has(id) && rowActions.elsewhereOf(id) === null,
+        ) && (
           <p id={capNoteId} data-testid="board-row-cap" className={styles.ballotNote}>
-            {t("rowCapNote", { max: kind === "pick" ? BOARD_PICKS_PER_GROUP : BOARD_WISHES_PER_GROUP })}
+            {t("rowCapNote", { max: rowActions.cap })}
           </p>
         )}
     </div>
