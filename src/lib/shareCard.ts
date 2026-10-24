@@ -33,6 +33,8 @@
  * instead of going through a download intermediate.
  */
 
+import { prepareShareCardFonts } from "@/lib/shareCardFonts";
+
 export type ShareOutcome =
   | { kind: "downloaded" }
   | { kind: "shared" }
@@ -203,7 +205,14 @@ function applyCaptureShifts(clonedRoot: HTMLElement): void {
  * on iOS Safari. See `copyCardToClipboard` below for the use site.
  */
 export function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
-  return (async () => {
+  const render = async () => {
+    if (cardEl.hasAttribute("data-share-card")) {
+      await prepareShareCardFonts(cardEl);
+    }
+    await Promise.all(Array.from(cardEl.querySelectorAll("img"), async (img) => {
+      await img.decode();
+      if (!img.naturalWidth) throw new Error("Share image unavailable");
+    }));
     // Dynamic import keeps html2canvas out of the main bundle.
     // The package's default export is the function we want.
     const mod = await import("html2canvas");
@@ -249,7 +258,13 @@ export function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
       throw new Error("canvas.toBlob returned null");
     }
     return blob;
-  })();
+  };
+  // Bound font loading, image decoding and html2canvas as well as toBlob.
+  // A network/renderer stall must release the modal's busy state for retry.
+  return new Promise<Blob>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Share render timed out")), 15_000);
+    render().then(resolve, reject).finally(() => clearTimeout(timer));
+  });
 }
 
 /**

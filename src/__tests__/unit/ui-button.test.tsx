@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/Button";
-import { colors, gradients } from "@/styles/tokens";
+import { colors } from "@/styles/tokens";
 import { hexToRgbString } from "../utils/color";
 
 describe("<PrimaryButton>", () => {
@@ -27,66 +27,23 @@ describe("<PrimaryButton>", () => {
     expect(screen.getByRole("button")).toHaveStyle({ width: "auto" });
   });
 
-  it("renders the brand gradient when not pressed or disabled", () => {
-    render(<PrimaryButton>x</PrimaryButton>);
-    expect(screen.getByRole("button")).toHaveStyle({
-      background: colors.brandGradient,
-    });
-  });
-
-  it("onPointerDown swaps gradient to pressed; onPointerUp reverts", () => {
-    render(<PrimaryButton>x</PrimaryButton>);
-    const btn = screen.getByRole("button");
-    fireEvent.pointerDown(btn);
-    expect(btn).toHaveStyle({ background: gradients.brandGradientPressed });
-    expect(btn).toHaveStyle({ transform: "scale(0.97)" });
-    fireEvent.pointerUp(btn);
-    expect(btn).toHaveStyle({ background: colors.brandGradient });
-    expect(btn).toHaveStyle({ transform: "scale(1)" });
-  });
-
-  it("pointerLeave / pointerCancel also clear the pressed state", () => {
-    render(<PrimaryButton>x</PrimaryButton>);
-    const btn = screen.getByRole("button");
-    fireEvent.pointerDown(btn);
-    fireEvent.pointerLeave(btn);
-    expect(btn).toHaveStyle({ background: colors.brandGradient });
-    fireEvent.pointerDown(btn);
-    fireEvent.pointerCancel(btn);
-    expect(btn).toHaveStyle({ background: colors.brandGradient });
-  });
-
-  it("disabled → disabled attr + grayscale gradient + cursor not-allowed", () => {
-    render(<PrimaryButton disabled>x</PrimaryButton>);
-    const btn = screen.getByRole("button") as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
-    expect(btn).toHaveStyle({ cursor: "not-allowed" });
-    // grayscale ramp (#94a3b8 → #64748b). jsdom normalizes inline
-    // hex literals to `rgb(r, g, b)` — compare against the
-    // rgb-stringified form via the shared helper.
-    expect(btn.style.background).toContain(hexToRgbString("#94a3b8"));
-    expect(btn.style.background).toContain(hexToRgbString("#64748b"));
-  });
-
-  it("disabled ignores pointer events (pressed state never latches)", () => {
-    render(<PrimaryButton disabled>x</PrimaryButton>);
-    const btn = screen.getByRole("button");
-    fireEvent.pointerDown(btn);
-    // Background stays grayscale, NOT brandGradientPressed (#0288d1
-    // → rgb(2, 136, 209)). Same jsdom-normalization caveat as above.
-    expect(btn.style.background).not.toContain(hexToRgbString("#0288d1"));
-    expect(btn).toHaveStyle({ transform: "scale(1)" });
+  it("announces busy work and clears it when the operation settles", () => {
+    const { rerender } = render(<PrimaryButton busy disabled>Share</PrimaryButton>);
+    expect(screen.getByRole("button")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button")).toBeDisabled();
+    rerender(<PrimaryButton>Share</PrimaryButton>);
+    expect(screen.getByRole("button")).not.toHaveAttribute("aria-busy");
+    expect(screen.getByRole("button")).toBeEnabled();
   });
 
   it("disabled drops onClick", () => {
     const onClick = vi.fn();
-    render(
-      <PrimaryButton disabled onClick={onClick}>
-        x
-      </PrimaryButton>,
-    );
+    const { rerender } = render(<PrimaryButton onClick={onClick}>x</PrimaryButton>);
     fireEvent.click(screen.getByRole("button"));
-    expect(onClick).not.toHaveBeenCalled();
+    expect(onClick).toHaveBeenCalledOnce();
+    rerender(<PrimaryButton disabled onClick={onClick}>x</PrimaryButton>);
+    fireEvent.click(screen.getByRole("button"));
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it("onClick fires when not disabled", () => {

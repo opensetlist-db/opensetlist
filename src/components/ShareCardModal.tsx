@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardPreview } from "@/components/ShareCardPreview";
+import { PrimaryButton } from "@/components/ui/Button";
 import type { ShareCardMode } from "@/lib/shareCardMode";
 import {
   CARD_CAPTURE_WIDTH_PX,
@@ -206,6 +207,7 @@ export function ShareCardModal({
   // fixed 600px keeps the two-column geometry consistent across
   // every device.
   const captureRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   // Pre-rasterized PNG blob, refreshed on modal open + theme change.
   // **Critical for iOS Safari Web Share**: navigator.share requires
@@ -294,8 +296,29 @@ export function ShareCardModal({
     const opener = document.activeElement as HTMLElement | null;
     closeButtonRef.current?.focus();
     return () => {
-      opener?.focus?.();
+      // Other effect cleanups restore the background's inert state.
+      // Focusing before that restoration is ignored by the browser.
+      queueMicrotask(() => opener?.focus?.());
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !dialogRef.current) return;
+    const previous = new Map<HTMLElement, boolean>();
+    // The dialog is nested in the event page, so isolate siblings at
+    // every ancestor level, preserving any pre-existing inert state.
+    let branch: HTMLElement = dialogRef.current;
+    while (branch.parentElement) {
+      for (const sibling of Array.from(branch.parentElement.children)) {
+        if (sibling !== branch && sibling instanceof HTMLElement) {
+          previous.set(sibling, sibling.inert);
+          sibling.inert = true;
+        }
+      }
+      branch = branch.parentElement;
+      if (branch === document.body) break;
+    }
+    return () => previous.forEach((inert, el) => { el.inert = inert; });
   }, [open]);
 
   // Body-scroll lock while the modal is open. Without this, a swipe
@@ -354,11 +377,12 @@ export function ShareCardModal({
     open ? "open" : "closed",
     theme,
     mode,
+    locale,
     seriesName,
     eventTitle,
     dateLine,
-    actualSongs.map((s) => s.id).join(","),
-    predictions.map((p) => p.songId).join(","),
+    JSON.stringify(actualSongs),
+    JSON.stringify(predictions),
     matched,
     total,
     percentage,
@@ -438,6 +462,23 @@ export function ShareCardModal({
     if (e.key === "Escape") {
       e.preventDefault();
       handleClose();
+    }
+    if (e.key === "Tab") {
+      const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], [tabindex="0"]',
+      ) ?? []);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (!first) {
+        e.preventDefault();
+        dialogRef.current?.focus();
+      } else if (e.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   };
 
@@ -628,9 +669,12 @@ export function ShareCardModal({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
+      aria-busy={busy || undefined}
       aria-labelledby="share-card-modal-title"
+      tabIndex={-1}
       onKeyDown={handleKeyDown}
       onClick={handleClose}
       style={{
@@ -793,27 +837,8 @@ export function ShareCardModal({
           />
         </div>
 
-        {/* Action buttons — directly below the preview, side-by-side,
-            flex-1 so each takes equal width, min-h-[44px] for touch-
-            target ergonomics (Apple HIG / Material recommended
-            minimum). Both buttons share the brand gradient bg so
-            they read as a pair of primary actions; the icon glyph +
-            label communicates which intent is which. Shared style
-            hoisted so a future palette change touches one place,
-            not two — CR-flagged duplication. */}
-        {(() => {
-          const actionButtonStyle: React.CSSProperties = {
-            minHeight: 44,
-            background: busy
-              ? "#94a3b8"
-              : "linear-gradient(135deg, #4FC3F7, #0277BD)",
-            color: "white",
-            border: "none",
-            cursor: busy ? "wait" : "pointer",
-          };
-          const actionButtonClass =
-            "flex-1 inline-flex items-center justify-center gap-2 text-sm font-medium rounded-full px-5 cursor-pointer";
-          return (
+        {/* Both export paths use the same primary action contract as
+            the entry and picker completion, including disabled/focus. */}
             <div
               className="flex justify-center gap-2 mt-3"
               style={{
@@ -822,12 +847,12 @@ export function ShareCardModal({
                 marginRight: "auto",
               }}
             >
-              <button
+              <PrimaryButton
                 type="button"
                 onClick={handleShare}
                 disabled={busy}
-                className={actionButtonClass}
-                style={actionButtonStyle}
+                busy={busy}
+                style={{ flex: 1 }}
               >
                 {/* Per-platform label: touch-primary devices route to
                     `navigator.share` (OS share sheet), non-touch to a
@@ -841,22 +866,20 @@ export function ShareCardModal({
                 <span>
                   {isShareCapable ? t("shareImage") : t("downloadImage")}
                 </span>
-              </button>
+              </PrimaryButton>
               {clipboardSupported && (
-                <button
+                <PrimaryButton
                   type="button"
                   onClick={handleCopy}
                   disabled={busy}
-                  className={actionButtonClass}
-                  style={actionButtonStyle}
+                  busy={busy}
+                  style={{ flex: 1 }}
                 >
                   <CopyIcon />
                   <span>{t("copyImage")}</span>
-                </button>
+                </PrimaryButton>
               )}
             </div>
-          );
-        })()}
 
         {/* Toast */}
         {toast && (

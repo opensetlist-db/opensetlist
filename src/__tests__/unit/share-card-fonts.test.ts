@@ -1,0 +1,100 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { prepareShareCardFonts } from "@/lib/shareCardFonts";
+import { renderCardToBlob } from "@/lib/shareCard";
+
+vi.mock("html2canvas", () => ({ default: vi.fn() }));
+
+function face(family: string, weight: string, unicodeRange: string, fail = false) {
+  const result = {
+    family, weight, unicodeRange, style: "normal", status: "unloaded",
+    load: vi.fn(async () => {
+      result.status = fail ? "error" : "loaded";
+      if (fail) throw new Error("offline");
+      return result;
+    }),
+  };
+  return result;
+}
+
+function card(text: string, weight = "400") {
+  const el = document.createElement("div");
+  el.style.cssText = `font-family: 'DM Sans', 'Noto Sans KR', sans-serif; font-weight: ${weight}; font-style: normal`;
+  el.textContent = text;
+  document.body.append(el);
+  return el;
+}
+
+function provideFonts(faces: unknown[]) {
+  Object.defineProperty(document, "fonts", { configurable: true, get: () => new Set(faces) });
+}
+
+afterEach(() => {
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("share image font delivery", () => {
+  it("loads both Latin and Korean faces used by mixed text before allowing capture", async () => {
+    const latin = face("DM Sans", "400", "U+0000-00FF");
+    const korean = face("Noto Sans KR", "400", "U+AC00-D7A3");
+    provideFonts([latin, korean]);
+    await prepareShareCardFonts(card("OPEN 곡"));
+    expect(latin.load).toHaveBeenCalledOnce();
+    expect(korean.load).toHaveBeenCalledOnce();
+    expect([latin.status, korean.status]).toEqual(["loaded", "loaded"]);
+  });
+
+  it("rejects missing glyphs and synthetic weights even if a different face is available", async () => {
+    const regular = face("DM Sans", "400", "U+0000-00FF");
+    provideFonts([regular]);
+    await expect(prepareShareCardFonts(card("OPEN"))).resolves.toBeUndefined();
+    await expect(prepareShareCardFonts(card("OPEN", "600"))).rejects.toThrow("weight unavailable");
+    await expect(prepareShareCardFonts(card("곡"))).rejects.toThrow("glyph");
+  });
+
+  it("does not pass a failed font load as a successful fallback image", async () => {
+    const broken = face("DM Sans", "400", "U+0000-00FF", true);
+    provideFonts([broken]);
+    await expect(prepareShareCardFonts(card("OPEN"))).rejects.toThrow("offline");
+    expect(broken.load).toHaveBeenCalledOnce();
+  });
+
+  it("retries an errored CSS face from its original self-hosted source", async () => {
+    const broken = face("DM Sans", "400", "U+0-FF", true);
+    provideFonts([broken]);
+    const target = card("OPEN");
+    await expect(prepareShareCardFonts(target)).rejects.toThrow("offline");
+    const replacement = face("DM Sans", "400", "U+0-FF");
+    const constructor = vi.fn(function () { return replacement; });
+    vi.stubGlobal("FontFace", constructor);
+    // jsdom discards font-face src/unicode-range descriptors. Supply the
+    // browser CSSOM boundary; actual stylesheet recovery runs in page QA.
+    const declarations: Record<string, string> = {
+      "font-family": '"DM Sans"', "font-weight": "400", "font-style": "normal",
+      "unicode-range": "U+0-FF", src: 'url("/font.woff2")',
+    };
+    vi.spyOn(document, "styleSheets", "get").mockReturnValue([{
+      href: null, cssRules: [{ type: CSSRule.FONT_FACE_RULE, style: {
+        getPropertyValue: (key: string) => declarations[key] ?? "",
+      } }],
+    }] as unknown as StyleSheetList);
+    await expect(prepareShareCardFonts(target)).resolves.toBeUndefined();
+    expect(constructor).toHaveBeenCalledOnce();
+    expect(replacement.load).toHaveBeenCalledOnce();
+  });
+
+  it("stops the actual PNG pipeline before canvas when required fonts cannot load", async () => {
+    const latin = face("DM Sans", "400", "U+0000-00FF");
+    provideFonts([latin]);
+    const target = card("OPEN");
+    target.setAttribute("data-share-card", "");
+    await prepareShareCardFonts(target);
+    // Positive control above loads the intended face; removing it makes
+    // this real capture fail instead of silently accepting a fallback.
+    provideFonts([]);
+    await expect(renderCardToBlob(target)).rejects.toThrow("glyph");
+    const canvas = await import("html2canvas");
+    expect(canvas.default).not.toHaveBeenCalled();
+  });
+});

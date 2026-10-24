@@ -24,7 +24,7 @@ function captureShift(key: CaptureShiftKey) {
 }
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
-import type { ShareCardTheme } from "@/styles/tokens";
+import { colors, type ShareCardTheme } from "@/styles/tokens";
 
 
 /*
@@ -103,8 +103,10 @@ function paletteFor(theme: ShareCardTheme, mode: ShareCardMode): CardPalette {
 const RIBBON =
   "linear-gradient(90deg, #e9a7c7 0 28%, #9dcaf1 28% 62%, #bfa8ec 62% 100%)";
 
-/** The LIVE pill keeps its raspberry on both themes (badge, not ink). */
-const LIVE_PILL = { color: "#b4144f", background: "#fff0f5" };
+const LIVE_PILL = {
+  light: { color: colors.live, background: colors.liveBg },
+  dark: { color: colors.liveDark, background: colors.liveDarkBg },
+};
 
 /**
  * Pixel footprint reserved on the right of the header's top line for
@@ -255,6 +257,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
     return (
       <div
         ref={ref}
+        data-share-card=""
         style={{
           width: CARD_CAPTURE_WIDTH_PX,
           background: P.surface,
@@ -262,13 +265,11 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
           border: `1px solid ${P.line}`,
           borderRadius: 16,
           overflow: "hidden",
-          // Latin-first fallback chain so ASCII renders with the
-          // system Latin font's metrics and CJK falls through to Noto.
-          // With a CJK font first, html2canvas on iOS Safari fell back
-          // wholesale to Hiragino and rendered ASCII spaces at
-          // full-width metrics in the saved PNG.
-          fontFamily:
-            "system-ui, -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Pretendard', 'Noto Sans KR', sans-serif",
+          // The same self-hosted Latin-first, locale-specific stack as
+          // the site. The capture pipeline waits for these exact faces.
+          fontFamily: "var(--font-body)",
+          fontWeight: 400,
+          fontSynthesis: "none",
           position: "relative",
         }}
       >
@@ -305,7 +306,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 padding: "4px 10px",
                 borderRadius: 30,
                 ...(isLive
-                  ? { ...LIVE_PILL, border: "1px solid transparent" }
+                  ? { ...LIVE_PILL[theme], border: "1px solid transparent" }
                   : { color: P.accent, border: `1px solid ${P.accent}` }),
               }}
             >
@@ -473,13 +474,12 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
             style={{
               fontFamily: "'Josefin Sans', sans-serif",
               fontSize: 24,
-              fontWeight: 600,
-              letterSpacing: "-1px",
+              fontWeight: 400,
+              letterSpacing: "0.02em",
               lineHeight: 1.5,
             }}
           >
-            {BRAND_WORDMARK[0]}
-            <span style={{ color: P.accent }}>{BRAND_WORDMARK[1]}</span>
+            {BRAND_NAME.toUpperCase()}
           </span>
           <span style={{ fontSize: 12, color: P.muted }}>{BRAND_URL_DISPLAY}</span>
         </div>
@@ -487,9 +487,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
     );
   },
 );
-
-/** "OpenSetlist" split for the two-tone wordmark (Open + accent Setlist). */
-const BRAND_WORDMARK = [BRAND_NAME.slice(0, 4), BRAND_NAME.slice(4)] as const;
 
 function isHit(item: LiveSetlistItem, predictions: PredictionEntry[]): boolean {
   // Same matcher as the score (`calcShareCardScore` → `isSongMatched`):
