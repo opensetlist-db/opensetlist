@@ -198,7 +198,6 @@ interface Props {
  */
 export function LiveEventLayout({
   eventId,
-  isOngoing,
   locale,
   unknownArtistLabel,
   unknownPerformerLabel,
@@ -237,13 +236,10 @@ export function LiveEventLayout({
   unitFilters,
   bdSection,
 }: Props) {
-  // Stays enabled for ongoing AND upcoming events: the wishlist fan
-  // TOP-3 needs to update pre-show as more fans submit wishes (per
-  // task spec) — since n14 that refresh rides the 20 s ± 4 s repair
-  // poll (the SongWish push is gone). Setlist + reactions are stable
-  // pre-show (admins enter songs as the show runs). Stays off for
-  // completed/cancelled events.
-  const isActive = status === "ongoing" || status === "upcoming";
+  // Pre/post-show participation uses on-demand reads. EventStatusTicker
+  // refreshes the server props at the start boundary, which enables this
+  // subscription without keeping a channel or repair poll open beforehand.
+  const isActive = status === "ongoing";
 
   // Coerce startTime to a stable ISO string for the realtime hook's
   // boundary scheduler. The hook's effect deps include startTime,
@@ -397,7 +393,7 @@ export function LiveEventLayout({
           initialTrendingSongs={initialTrendingSongs}
           startTime={startTime}
           unknownSongLabel={unknownSongLabel}
-          isOngoing={isOngoing}
+          isOngoing={effectiveStatus === "ongoing"}
           locale={locale}
           status={effectiveStatus}
           // A 404 from `/api/setlist` (event soft-deleted or missing)
@@ -465,7 +461,7 @@ export function LiveEventLayout({
           initialImpressions={initialImpressions}
           initialNextCursor={initialImpressionsNextCursor}
           initialTotalCount={initialImpressionsTotalCount}
-          isOngoing={isOngoing}
+          isOngoing={effectiveStatus === "ongoing"}
         />
       </div>
 

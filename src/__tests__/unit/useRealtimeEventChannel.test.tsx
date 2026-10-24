@@ -146,6 +146,123 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
   // telling us it is reconnecting, not that the channel is dead. The
   // hook keeps the channel (removing it would cancel the rejoin) and
   // polls at the fallback cadence until SUBSCRIBED comes back.
+  it("starts when SSR enters LIVE and releases the channel when the snapshot ends it", async () => {
+    const { result, rerender } = renderHook(({ enabled }) =>
+      useRealtimeEventChannel({
+        eventId: "1", initialItems, initialReactionCounts, initialTop3Wishes,
+        locale: "ko", enabled, startTime: null,
+      }), { initialProps: { enabled: false } },
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(channelMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    rerender({ enabled: true });
+    await flushMicrotasks();
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+      items: [], reactionCounts: {}, top3Wishes: [], status: "completed",
+    })));
+    await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
+    expect(result.current.status).toBe("completed");
+    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+    const count = vi.mocked(fetch).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(fetch).toHaveBeenCalledTimes(count);
+  });
+
+  it("waits without LIVE or polling after postponement, then reconnects at the revised start", async () => {
+    vi.setSystemTime(new Date("2026-10-24T08:00:00Z"));
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const delayedStart = "2026-10-24T08:02:00Z";
+    const { result } = renderHook(() => useRealtimeEventChannel({
+      eventId: "1", initialItems, initialReactionCounts, initialTop3Wishes,
+      locale: "ko", enabled: true, startTime: "2026-10-24T07:59:00Z",
+    }));
+    await flushMicrotasks();
+    expect(result.current.status).toBe("ongoing");
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+      items: [], status: "upcoming", startTime: delayedStart,
+    })));
+    await act(async () => { await vi.advanceTimersByTimeAsync(21_000); });
+    expect(result.current.status).toBe("upcoming");
+    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+    const reads = vi.mocked(fetch).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(98_000); });
+    expect(fetch).toHaveBeenCalledTimes(reads);
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({
+      items: [], status: "ongoing", startTime: delayedStart,
+    })));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(result.current.status).toBe("ongoing");
+    expect(channelMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("replaces a postponed boundary, catches up after hiding, and cancels on unmount", async () => {
+    vi.setSystemTime(new Date("2026-10-24T08:00:00Z"));
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    let nextStart = "2026-10-24T08:01:00Z";
+    let nextStatus = "upcoming";
+    vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({
+      items: [], status: nextStatus, startTime: nextStart,
+    })));
+    const { result, unmount } = renderHook(() => useRealtimeEventChannel({
+      eventId: "1", initialItems, initialReactionCounts, initialTop3Wishes,
+      locale: "ko", enabled: true, startTime: "2026-10-24T07:59:00Z",
+    }));
+    await flushMicrotasks();
+    nextStart = "2026-10-24T08:02:00Z";
+    await act(async () => { await vi.advanceTimersByTimeAsync(64_000); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    act(() => setDocumentHidden(true));
+    nextStatus = "ongoing";
+    await act(async () => { await vi.advanceTimersByTimeAsync(65_000); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    act(() => setDocumentHidden(false));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(result.current.status).toBe("ongoing");
+    expect(channelMock).toHaveBeenCalledTimes(2);
+    nextStatus = "upcoming";
+    nextStart = "2026-10-24T08:05:00Z";
+    await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
+    expect(result.current.status).toBe("upcoming");
+    const reads = vi.mocked(fetch).mock.calls.length;
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    expect(fetch).toHaveBeenCalledTimes(reads);
+  });
+
+  it("uses server time and rearms when the boundary still reports the same upcoming start", async () => {
+    // This browser is an hour fast; the timer must use the server's remaining wait.
+    vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const start = "2026-10-24T08:01:00Z";
+    let servedAt = "2026-10-24T08:00:00Z";
+    let status = "upcoming";
+    vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({
+      items: [], status, startTime: start, servedAt,
+    })));
+    const { result } = renderHook(() => useRealtimeEventChannel({
+      eventId: "1", initialItems, initialReactionCounts, initialTop3Wishes,
+      locale: "ko", enabled: true, startTime: "2026-10-24T07:59:00Z",
+    }));
+    await flushMicrotasks();
+    await act(async () => { await vi.advanceTimersByTimeAsync(61_000); });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    // A corrected server clock can leave the same advertised start in the future.
+    servedAt = "2026-10-24T08:00:55Z";
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(result.current.status).toBe("upcoming");
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    status = "ongoing";
+    servedAt = "2026-10-24T08:01:03Z";
+    await act(async () => { await vi.advanceTimersByTimeAsync(8_000); });
+    expect(result.current.status).toBe("ongoing");
+    expect(channelMock).toHaveBeenCalledTimes(2);
+  });
+
   it("on CHANNEL_ERROR keeps the channel and polls at the 5 s fallback cadence", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     const { result } = renderHook(() =>

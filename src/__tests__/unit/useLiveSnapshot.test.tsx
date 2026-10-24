@@ -102,6 +102,23 @@ describe("useLiveSnapshot runner — R2 hint contract", () => {
     ]);
   });
 
+  it("accepts schedule changes with the snapshot and rejects stale or invalid timing", async () => {
+    const hook = mount(5);
+    const read = async (rev: number, startTime?: string) => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({
+        items: [], status: "upcoming", rev, capturedAt: T1, startTime,
+      })));
+      await run(hook, generic);
+    };
+    await read(6, "2026-11-14T09:00:00Z");
+    expect(hook.result.current.data.startTime).toBe("2026-11-14T09:00:00Z");
+    await read(5, "2026-11-14T08:00:00Z");
+    expect(hook.result.current.data.startTime).toBe("2026-11-14T09:00:00Z");
+    await read(7, "invalid");
+    await read(8);
+    expect(hook.result.current.data.startTime).toBe("2026-11-14T09:00:00Z");
+  });
+
   it("a request without a descriptor is the plain maintenance request", async () => {
     fetchMock.mockResolvedValue(response(5, "satisfied"));
     const hook = mount(5);

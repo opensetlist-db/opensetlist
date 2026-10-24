@@ -649,6 +649,8 @@
     "empty": "まだ誰も選んでいません。最初の一曲を選んでみよう！",
     "loading": "ボードを読み込み中…",
     "loadError": "ボードを読み込めませんでした",
+    "refreshError": "選択は保存されましたが、集計を更新できませんでした。",
+    "retryRefresh": "再試行",
     "mine": "自分の予想曲",
     "counter": "{count}/{max}",
     "add": "+ {group}の予想曲を追加",
@@ -701,6 +703,8 @@
     "pickerTitleWish": "{group}の希望曲を追加"
   },
   "Wishlist": {
+    "refreshError": "選択は保存されましたが、集計を更新できませんでした。",
+    "retryRefresh": "再試行",
     "title": "この公演で聴きたい曲",
     "lockedTitle": "みんなの希望曲",
     "description": "公演開始までに曲を追加してください。最大3曲まで選択できます。",

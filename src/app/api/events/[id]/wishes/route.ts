@@ -10,6 +10,7 @@ import {
 import { parseDecimalId } from "@/lib/board/ids";
 import { validatePickTarget } from "@/lib/board/picks";
 import { createWish } from "@/lib/board/wishes";
+import { revalidateBoardAggregate } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -46,9 +47,9 @@ type RouteProps = { params: Promise<{ id: string }> };
  * The table is shared, so the cap can only hold if THIS endpoint
  * enforces it — a separate board endpoint would leave this one open.
  * Events without the flag keep the contract above unchanged; the only
- * difference on that path is the one extra flag read below. Neither
- * path calls a cache revalidate helper (the board aggregate is
- * TTL-only, and the overall TOP-3 never was invalidated by a wish).
+ * difference on that path is the one extra flag read below. Board
+ * writes expire only the board aggregate after commit, so the caller
+ * can immediately read its contribution without invalidating LIVE.
  */
 
 export async function GET(req: NextRequest, { params }: RouteProps) {
@@ -182,6 +183,7 @@ async function postBoardWish(eventId: bigint, body: unknown) {
     if (!control.ok) return ballotJson(control.status, { error: control.code });
     await validatePickTarget(control.context, groupId, songId);
     const result = await createWish(eventId, anon.value, groupId, songId);
+    revalidateBoardAggregate(eventId);
     return ballotJson(result.created ? 201 : 200, result.wish);
   } catch (err) {
     return ballotErrorResponse(err);
