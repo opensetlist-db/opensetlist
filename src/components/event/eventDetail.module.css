@@ -1001,6 +1001,42 @@ a.crowdTitle:hover {
   font-weight: 700;
   color: var(--primary);
 }
+/* One-tap 「나도」 on a crowd/starter row (n17). Outlined in the
+   ballot's own tone (pink want / blue expect, same tokens as the "my
+   choices" chips); checked = filled like a chosen chip. 28px tall to
+   clear the 24px target-size floor. */
+.nadoButton {
+  flex-shrink: 0;
+  min-height: 28px;
+  padding: 2px 9px;
+  border: 1px solid var(--border-my-choice);
+  border-radius: 999px;
+  background: var(--bg-card);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--text-my-choice);
+}
+.ballotExpect .nadoButton {
+  border-color: var(--border-expect-my-choice);
+  color: var(--text-expect-my-choice);
+}
+.nadoButton[aria-pressed="true"] {
+  background: var(--surface-my-choice);
+}
+.ballotExpect .nadoButton[aria-pressed="true"] {
+  background: var(--surface-expect-my-choice);
+}
+.nadoButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.nadoElsewhere {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
 .myChoices {
   margin-top: 10px;
   padding-top: 14px;

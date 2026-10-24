@@ -700,7 +700,13 @@
     "tallyNotPlayed": "未披露",
     "minePlayed": "披露",
     "pickerTitle": "{group}の予想曲を追加",
-    "pickerTitleWish": "{group}の希望曲を追加"
+    "pickerTitleWish": "{group}の希望曲を追加",
+    "nadoWish": "私も聴きたい",
+    "nadoExpect": "私も来ると思う",
+    "nadoWishAria": "{title}：私も聴きたい",
+    "nadoExpectAria": "{title}：私も来ると思う",
+    "rowCapNote": "{max}曲のうち1曲を外すと選び直せます",
+    "pickedElsewhere": "{group}で選択済み"
   },
   "Wishlist": {
     "refreshError": "選択は保存されましたが、集計を更新できませんでした。",

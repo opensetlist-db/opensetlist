@@ -700,7 +700,13 @@
     "tallyNotPlayed": "Not played",
     "minePlayed": "Played",
     "pickerTitle": "Add a prediction for {group}",
-    "pickerTitleWish": "Add to my {group} wishlist"
+    "pickerTitleWish": "Add to my {group} wishlist",
+    "nadoWish": "Me too",
+    "nadoExpect": "Me too",
+    "nadoWishAria": "{title}: I want this too",
+    "nadoExpectAria": "{title}: I expect this too",
+    "rowCapNote": "Remove one of your {max} songs to change",
+    "pickedElsewhere": "Picked under {group}"
   },
   "Wishlist": {
     "refreshError": "Your selection was saved, but the totals could not be refreshed.",

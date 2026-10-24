@@ -36,6 +36,7 @@ import {
   useBoardBallot,
   type BallotEntry,
   type BallotKind,
+  type BallotSource,
   type PickOutcome,
 } from "@/components/board/useBoardBallot";
 import { pickFailureKey } from "@/lib/board/ballotClient";
@@ -423,12 +424,16 @@ export function FanBoardSection({
     });
   };
 
+  // One add path for the picker and the row 「나도」 button (n17): the
+  // same local refusals, the same route, the same toasts — only the
+  // title source and the analytics `source` differ.
   const handleAdd = async (
     kind: BallotKind,
     group: BoardGroupView,
-    song: AvailableSong,
+    songId: string,
+    title: string,
+    source: BallotSource,
   ) => {
-    const songId = String(song.songId);
     const list = listOf(kind);
     // Two refusals the client can see coming — answered locally with the
     // same message the server would send, without a request.
@@ -444,7 +449,7 @@ export function FanBoardSection({
       return;
     }
     report(
-      await mutate(() => ballot.add(kind, group.groupId, songId, pickTitle(song, locale))),
+      await mutate(() => ballot.add(kind, group.groupId, songId, title, source)),
       group.name,
       kind,
     );
@@ -454,8 +459,9 @@ export function FanBoardSection({
     kind: BallotKind,
     group: BoardGroupView,
     entry: BallotEntry,
+    source: BallotSource,
   ) => {
-    report(await mutate(() => ballot.remove(kind, entry)), group.name, kind);
+    report(await mutate(() => ballot.remove(kind, entry, source)), group.name, kind);
   };
 
   const handleRemoveLegacy = async (entry: WishEntry) => {
@@ -634,6 +640,19 @@ export function FanBoardSection({
                 const mine = listOf(kind).filter(
                   (p) => p.groupId === active.groupId,
                 );
+                // The same song under another group of this column:
+                // its name, so the row can say where it counts instead
+                // of offering an add the server would refuse.
+                const elsewhereOf = (songId: string) => {
+                  const other = listOf(kind).find(
+                    (p) => p.songId === songId && p.groupId !== active.groupId,
+                  );
+                  if (!other) return null;
+                  return (
+                    state.groups.find((g) => g.groupId === other.groupId)?.name ??
+                    ""
+                  );
+                };
                 return (
                   <div
                     key={kind}
@@ -650,6 +669,23 @@ export function FanBoardSection({
                       // Only expected songs are graded; wishes are not
                       // predictions.
                       graded={kind === "pick" ? gradedOf(active.groupId) : null}
+                      // Locked (or result mode, which is always locked):
+                      // no row mutations at all.
+                      rowActions={
+                        locked
+                          ? null
+                          : {
+                              atCap: mine.length >= capOf(kind),
+                              pending: pendingOf(kind),
+                              elsewhereOf,
+                              onAdd: (songId, title) =>
+                                void handleAdd(kind, active, songId, title, "row"),
+                              onRemove: (songId) => {
+                                const entry = mine.find((p) => p.songId === songId);
+                                if (entry) void handleRemove(kind, active, entry, "row");
+                              },
+                            }
+                      }
                     />
                     <BoardMyPicks
                       key={kind + "-" + active.groupId}
@@ -662,8 +698,16 @@ export function FanBoardSection({
                       locked={locked}
                       playedSongIds={kind === "pick" ? playedIds : null}
                       pending={pendingOf(kind)}
-                      onAdd={(song) => void handleAdd(kind, active, song)}
-                      onRemove={(entry) => void handleRemove(kind, active, entry)}
+                      onAdd={(song) =>
+                        void handleAdd(
+                          kind,
+                          active,
+                          String(song.songId),
+                          pickTitle(song, locale),
+                          "picker",
+                        )
+                      }
+                      onRemove={(entry) => void handleRemove(kind, active, entry, "picker")}
                     />
                   </div>
                 );
@@ -742,6 +786,125 @@ export function FanBoardSection({
   );
 }
 
+/** What a row needs to offer one-tap 「나도」 (n17). Null = locked: the
+ *  rows render read-only. */
+type RowActions = {
+  /** My entries in this group and column already fill the cap. */
+  atCap: boolean;
+  /** Song ids with a write in flight in this column. */
+  pending: ReadonlySet<string>;
+  /** The group name a song is already mine under in this column, or
+   *  null when it is not mine elsewhere. */
+  elsewhereOf: (songId: string) => string | null;
+  onAdd: (songId: string, title: string) => void;
+  onRemove: (songId: string) => void;
+};
+
+const NADO = {
+  wish: { label: "nadoWish", aria: "nadoWishAria" },
+  pick: { label: "nadoExpect", aria: "nadoExpectAria" },
+} as const;
+
+/**
+ * The 「나도」 button on one crowd or starter row (n17): agree with the
+ * song without opening the picker. State precedence, first match wins
+ * (the order is the ticket's, and each step explains why):
+ *   1. locked              → the parent passes no `actions`; nothing here.
+ *   2. mine in this group  → checked; tapping removes. Allowed even at
+ *                            3/3 and even if the song was deleted since,
+ *                            so a fan can always undo their own vote.
+ *   3. write in flight     → disabled, so a double tap can't fire twice.
+ *   4. song unavailable    → no add (the server would refuse it).
+ *   5. cap reached         → disabled; the column note says why.
+ *   6. mine under another group → "X에서 선택됨", no button: a vote
+ *                            counts under one group, and moving it
+ *                            silently would change another group's tally.
+ * The button never navigates — the title stays the song link.
+ */
+function NadoButton({
+  kind,
+  songId,
+  title,
+  available,
+  mine,
+  actions,
+  capNoteId,
+  t,
+}: {
+  kind: BallotKind;
+  songId: string;
+  title: string;
+  available: boolean;
+  mine: boolean;
+  actions: RowActions | null;
+  capNoteId: string;
+  t: ReturnType<typeof useTranslations<"Board">>;
+}) {
+  if (!actions) return null;
+  const copy = NADO[kind];
+  const pending = actions.pending.has(songId);
+  const label = t(copy.label);
+  const aria = t(copy.aria, { title });
+  if (mine) {
+    return (
+      <button
+        type="button"
+        data-testid="board-nado"
+        aria-pressed="true"
+        aria-label={aria}
+        disabled={pending}
+        aria-busy={pending || undefined}
+        onClick={() => actions.onRemove(songId)}
+        className={styles.nadoButton}
+      >
+        <span aria-hidden="true">✓ </span>
+        {label}
+      </button>
+    );
+  }
+  if (!available) return null;
+  // Checked before "elsewhere": a cap-full group refuses the add either
+  // way, and the disabled button keeps the row layout the same as its
+  // neighbours'.
+  if (!pending && actions.atCap) {
+    return (
+      <button
+        type="button"
+        data-testid="board-nado"
+        aria-pressed="false"
+        aria-label={aria}
+        disabled
+        aria-describedby={capNoteId}
+        className={styles.nadoButton}
+      >
+        {label}
+      </button>
+    );
+  }
+  const elsewhere = actions.elsewhereOf(songId);
+  if (elsewhere !== null) {
+    return (
+      <span data-testid="board-nado-elsewhere" className={styles.nadoElsewhere}>
+        {t("pickedElsewhere", { group: elsewhere })}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-testid="board-nado"
+      aria-pressed="false"
+      aria-label={aria}
+      disabled={pending}
+      aria-busy={pending || undefined}
+      onClick={() => actions.onAdd(songId, title)}
+      className={styles.nadoButton}
+    >
+      {label}
+    </button>
+  );
+}
+
 function ColumnPanel({
   eventId,
   group,
@@ -750,6 +913,7 @@ function ColumnPanel({
   t,
   mySongIds,
   graded = null,
+  rowActions = null,
 }: {
   eventId: string;
   group: BoardGroupView;
@@ -762,8 +926,23 @@ function ColumnPanel({
   /** Result mode (n15): this group's graded shortlist, which then
    *  replaces the crowd TOP3. Null = not graded. */
   graded?: BoardGroupTally | null;
+  /** One-tap 「나도」 on each row (n17); null while locked. */
+  rowActions?: RowActions | null;
 }) {
   const meta = COLUMN[kind];
+  const capNoteId = `board-row-cap-${kind}-${group.groupId}`;
+  const nado = (songId: string, title: string, available: boolean) => (
+    <NadoButton
+      kind={kind}
+      songId={songId}
+      title={title}
+      available={available}
+      mine={mySongIds.has(songId)}
+      actions={rowActions}
+      capNoteId={capNoteId}
+      t={t}
+    />
+  );
   const column = group[meta.field];
   const label = column.label;
   // A graded shortlist exists only when picks existed at the lock, so
@@ -860,12 +1039,17 @@ function ColumnPanel({
                   )}
                 </span>
               )}
-              {mySongIds.has(e.songId) && (
+              {/* While the board is open the checked 「나도」 button says
+                  "mine"; a second badge would squeeze the title to a few
+                  characters per line on a phone. Locked, the badge is the
+                  only marker left. */}
+              {!rowActions && mySongIds.has(e.songId) && (
                 <span className={styles.crowdMine}>{mineBadge}</span>
               )}
               <span className={styles.crowdCount}>
                 {t("submissions", { count: e.count })}
               </span>
+              {nado(e.songId, e.title, e.available)}
             </li>
           ))}
         </ol>
@@ -897,6 +1081,9 @@ function ColumnPanel({
                     {s.title}
                   </Link>
                   <span className={styles.crowdTag}>{t("operatorPick")}</span>
+                  {/* Starters come from the live catalog, so they are
+                      always available. */}
+                  {nado(s.songId, s.title, true)}
                 </li>
               ))}
             </ol>
@@ -905,6 +1092,16 @@ function ColumnPanel({
         ) : (
           <p className={styles.ballotNote}>{t("empty")}</p>
         ))}
+      {/* Why the row buttons are greyed out: shown only when at least
+          one visible row has one (an available song that isn't mine). */}
+      {rowActions?.atCap &&
+        (label !== "operator"
+          ? entries.some((e) => e.available && !mySongIds.has(e.songId))
+          : showStarters && group.starters.some((s) => !mySongIds.has(s.songId))) && (
+          <p id={capNoteId} data-testid="board-row-cap" className={styles.ballotNote}>
+            {t("rowCapNote", { max: kind === "pick" ? BOARD_PICKS_PER_GROUP : BOARD_WISHES_PER_GROUP })}
+          </p>
+        )}
     </div>
   );
 }

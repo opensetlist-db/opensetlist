@@ -277,6 +277,7 @@ describe("<FanBoardSection> my picks", () => {
       event_id: "107",
       group_id: "1",
       song_id: "10",
+      source: "picker",
     });
     expect(JSON.parse(window.localStorage.getItem("board-107")!).picks[0]).toMatchObject({
       id: "p-new",
@@ -373,6 +374,7 @@ describe("<FanBoardSection> my picks", () => {
       event_id: "107",
       group_id: "1",
       song_id: "10",
+      source: "picker",
     });
   });
 
@@ -406,7 +408,11 @@ describe("<FanBoardSection> my picks", () => {
     const entries = await screen.findAllByTestId("board-top-entry");
     expect(entries[0].getAttribute("data-mine")).toBe("true");
     expect(entries[1].getAttribute("data-mine")).toBeNull();
-    expect(within(entries[0]).getByText("mineBadge")).toBeTruthy();
+    // Open board: the checked 「나도」 button marks it (no badge).
+    expect(
+      within(entries[0]).getByTestId("board-nado").getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(within(entries[0]).queryByText("mineBadge")).toBeNull();
   });
 
   it("restores from /board/mine when nothing is stored locally", async () => {
