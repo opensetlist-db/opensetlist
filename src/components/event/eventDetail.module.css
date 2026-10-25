@@ -1156,14 +1156,6 @@ a.crowdTitle:hover {
   gap: 10px 16px;
   padding-top: 18px;
 }
-/* Full-width first line of the strip (flex-basis 100% breaks the row),
-   so the link and the buttons below keep their space-between layout. */
-.bridgeNote {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
 .bridgeLink {
   font-size: 13px;
   color: var(--text-secondary);

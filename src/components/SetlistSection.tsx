@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { ActualSetlist } from "@/components/ActualSetlist";
 import { PredictedSetlist } from "@/components/PredictedSetlist";
 import { SetlistTabs, type SetlistTab } from "@/components/SetlistTabs";
+import styles from "@/components/event/eventDetail.module.css";
 import { useMounted } from "@/hooks/useMounted";
 import { hasPredictions as readHasPredictions } from "@/lib/predictionsStorage";
 import type {
@@ -13,7 +14,6 @@ import type {
 } from "@/lib/types/setlist";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
-import type { BuilderRequest } from "@/lib/board/toPredictions";
 import type { BoardChip } from "@/lib/board/types";
 
 interface Props {
@@ -82,14 +82,6 @@ interface Props {
   availableSongs: AvailableSong[];
   /** Filter chip set (server-derived). Empty array hides the picker. */
   unitFilters: UnitFilter[];
-  /**
-   * Latest "go to full setlist mode" tap from the board (n15), or
-   * null. Each new `seq` opens the Predicted tab and remounts the
-   * builder so it re-reads the list the board import just wrote.
-   */
-  builderRequest?: BuilderRequest | null;
-  /** The builder's "back to board" switch; absent → no switch. */
-  onBackToBoard?: () => void;
   /** Board groups for the builder's "put on the board" (n15);
    *  absent → no publish. */
   boardGroups?: readonly BoardChip[];
@@ -97,31 +89,32 @@ interface Props {
 }
 
 /**
- * Tab-aware wrapper for the SETLIST surface body. Sits inside
- * `<LiveSetlist>`'s white card, BELOW the existing card header
- * (per task `wiki/output/task-week2-setlistsection-tab-refactor.md`
- * decision table — preserves the SETLIST h2 + LIVE pill + count
- * subtitle in all states; mockup shows tabs replacing the header,
- * but the user picked "tabs sit below" to keep the LIVE pill
- * visible).
+ * Tab-aware body of the "Setlist" card. Sits inside `<LiveSetlist>`'s
+ * card, below its header (title is always "Setlist"; the LIVE notice
+ * and counts stay visible in every state).
  *
- * Visibility:
- *   - !hasPredictions, !hasActual              → predict-only (entry point for first-time visitors on upcoming events)
- *   - !hasPredictions,  hasActual              → only `<ActualSetlist>` (no tab strip — Phase 1A byte-equiv)
- *   - hasPredictions,  !hasActual              → only `<PredictedSetlist>` (Predicted tab only)
- *   - hasPredictions,   hasActual              → tab strip + body for active tab
+ * The actual setlist is the card's default content and needs no
+ * heading of its own. The predicted setlist is something the viewer
+ * opts into, so the tab strip (Predicted / Actual) appears only once
+ * they have:
  *
- * `hasPredictions` is a client-only signal (localStorage); SSR +
- * first client render see `false`. CodeRabbit caught a Major bug
- * on PR #281: pre-Stage-C, the no-predictions + no-actual path
- * dropped to `emptyFallback` ("no setlist yet") with no entry into
- * the Predicted UI — a first-time visitor on an upcoming event
- * could never start predicting. Stage C ships the predict writer,
- * so the gate now treats "no actuals (i.e. pre-show)" as a
- * standing invitation to predict; the Predict tab is always
- * available there. During/post-show events without predictions
- * still hide the Predict tab (no value: actuals are immutable
- * past startTime, so there's nothing left to predict).
+ *   - upcoming, window open, not participated → the actual body (the
+ *     "filled in live from …" note) plus a "Make a setlist prediction"
+ *     button. Pressing it opens the tabs on Predicted.
+ *   - upcoming, window open, participated (a stored list, or the button
+ *     pressed this visit) → tabs, Predicted selected first: before the
+ *     show the actual tab only holds the "filled in live" note.
+ *   - ongoing / completed / cancelled, participated → tabs, Actual
+ *     selected first (what is being played is the point now); the
+ *     viewer can switch to their prediction and its score.
+ *   - anything else → the actual body alone, no tabs.
+ *
+ * "Participated" for a stored list is a client-only signal
+ * (localStorage); SSR and the first client render see `false`, so the
+ * server markup is always the no-tab shape and the tabs appear after
+ * hydration. Outside the window the Predict tab stays hidden even when
+ * a list is stored ("keep the data, don't surface the tab": an event
+ * whose date moved back after the viewer predicted).
  */
 export function SetlistSection({
   eventId,
@@ -139,107 +132,47 @@ export function SetlistSection({
   availableSongs,
   unitFilters,
   eventArtistId,
-  builderRequest = null,
-  onBackToBoard,
   boardGroups,
   onBoardPublished,
 }: Props) {
   const t = useTranslations("Setlist");
-  const tPredict = useTranslations("Predict");
   const mounted = useMounted();
 
-  // Hydrate `hasPredictions` AFTER mount so SSR + first client
-  // render produce matching HTML (false). INTENTIONAL — this is
-  // the project's canonical pattern, see:
-  //   - src/hooks/useMounted.ts:9-18 (docstring explicitly calls
-  //     this the "canonical React 18+ replacement" for the
-  //     useState+useEffect mount pattern)
-  //   - src/components/ReactionButtons.tsx:184-191 (same mounted
-  //     gate + render-time setState for localStorage hydration)
-  //   - src/components/EventWishSection.tsx:65-72 (same pattern,
-  //     also for a localStorage-backed init)
-  // Switching to useEffect would trip `react-hooks/set-state-in-
-  // effect`, the rule `useMounted` exists to avoid. `npm run lint`
-  // is clean as-is. Code reviewers (CodeRabbit / commit-time hook /
-  // prepush hook) sometimes flag this — it is the established
-  // pattern, not a violation.
+  // Hydrate the stored-list flag AFTER mount so SSR + first client
+  // render produce matching HTML (false). The project's canonical
+  // render-time pattern (src/hooks/useMounted.ts), not an effect —
+  // `react-hooks/set-state-in-effect` is what `useMounted` exists to
+  // avoid. Reviewers sometimes flag this; it is intentional.
   const [storedHasPredictions, setStoredHasPredictions] = useState(false);
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+  // "Make a setlist prediction" pressed on this visit. Keyed by event
+  // so a client-side navigation to another event starts closed again.
+  const [startedFor, setStartedFor] = useState<string | null>(null);
+  // The viewer's own tab choice; null = the status default below.
+  const [chosenTab, setChosenTab] = useState<{
+    eventId: string;
+    tab: SetlistTab;
+  } | null>(null);
   if (mounted && hydratedKey !== eventId) {
     setHydratedKey(eventId);
     setStoredHasPredictions(readHasPredictions(eventId));
   }
 
   const hasActual = items.length > 0;
-  // Predict tab visibility, two-branch gate:
-  //   - status === "upcoming": show only when the event is inside
-  //     the D-7 open window. The first-time-visitor entry path
-  //     (CR #281, Major) survives unchanged within the window;
-  //     pre-D-7 the tab is hidden even if localStorage already has
-  //     stored predictions for this event (per
-  //     `task-week2-d7-open-gate.md` — "Keep the data, just don't
-  //     surface the tab"; rare but possible if the event date moved
-  //     backward after the user predicted).
-  //   - status !== "upcoming" (ongoing/completed/cancelled):
-  //     `storedHasPredictions` alone — the D-7 gate is a pre-show
-  //     concept, post-show events should still surface a viewer's
-  //     own predictions (live-score divider during, share card
-  //     after). A viewer who never predicted sees no tab post-show
-  //     either — predicting "what was already played" has no value.
-  const hasPredictions =
-    status === "upcoming" ? isWishPredictOpen : storedHasPredictions;
-  // Default to actual when both tabs are visible (case 2) — the
-  // viewer's mental model in a during/post-show event is "what's
-  // actually playing", not "what I predicted earlier". When only
-  // the Predicted tab exists (case 1, pre-show), force the active
-  // tab to "predicted" so the body matches the visible tab.
-  const [activeTab, setActiveTab] = useState<SetlistTab>("actual");
-  // A board → builder request switches to the Predicted tab once per
-  // tap. Render-time adjustment (same pattern as the hydration above),
-  // not an effect: the tab must already read "predicted" on the commit
-  // the parent scrolls after.
-  const requestSeq = builderRequest?.seq ?? 0;
-  const [seenRequestSeq, setSeenRequestSeq] = useState(requestSeq);
-  if (requestSeq !== seenRequestSeq) {
-    setSeenRequestSeq(requestSeq);
-    if (requestSeq > 0) setActiveTab("predicted");
-  }
-  // Compute the rendered active-tab key separately so a state mismatch
-  // (e.g. activeTab="actual" but hasActual=false) renders the right
-  // body without forcing the user-driven activeTab state to chase
-  // the hasActual / hasPredictions props.
-  //
-  // Three-branch fallback (in order):
-  //   1. !hasPredictions          → force "actual" (defensive against
-  //                                  stale `activeTab="predicted"` on
-  //                                  cross-event navigation; CR caught
-  //                                  this. Without the guard, navigating
-  //                                  from event A — where the user
-  //                                  clicked the Predicted tab —
-  //                                  to event B with no predictions
-  //                                  would render <PredictedSetlist>
-  //                                  body while <SetlistTabs hasPredictions=
-  //                                  false> renders no tab strip,
-  //                                  producing an orphan body.
-  //                                  The `key={eventId}` on
-  //                                  <PredictedSetlist> resets ITS
-  //                                  internal state but doesn't reach
-  //                                  <SetlistSection>'s own activeTab.)
-  //   2. !hasActual && hasPredictions → force "predicted" (case 1
-  //                                  pre-show — Predicted-only).
-  //   3. otherwise                 → activeTab (user-driven).
-  const renderedTab: SetlistTab = !hasPredictions
+  const canPredictNow = status === "upcoming" && isWishPredictOpen;
+  const started = startedFor === eventId;
+  const showTabs = canPredictNow
+    ? storedHasPredictions || started
+    : status !== "upcoming" && storedHasPredictions;
+  const defaultTab: SetlistTab = canPredictNow ? "predicted" : "actual";
+  const renderedTab: SetlistTab = !showTabs
     ? "actual"
-    : !hasActual
-      ? "predicted"
-      : activeTab;
+    : chosenTab?.eventId === eventId
+      ? chosenTab.tab
+      : defaultTab;
 
-  // WAI-ARIA tabs pattern needs paired tab/panel ids so each tab's
-  // `aria-controls` resolves to its panel and each panel's
-  // `aria-labelledby` resolves back to its tab. Computed via
-  // `useId()` UNCONDITIONALLY (Rules of Hooks — must run before
-  // any early return) and threaded into both `<SetlistTabs>` and
-  // the panel-wrapping `<div role="tabpanel">` below.
+  // WAI-ARIA tabs pattern needs paired tab/panel ids. `useId()` runs
+  // unconditionally (Rules of Hooks).
   const baseId = useId();
   const tabIds = {
     actual: `${baseId}-tab-actual`,
@@ -249,71 +182,60 @@ export function SetlistSection({
     actual: `${baseId}-panel-actual`,
     predicted: `${baseId}-panel-predicted`,
   };
-  const renderedPanelId =
-    renderedTab === "actual" ? panelIds.actual : panelIds.predicted;
-  const renderedTabId =
-    renderedTab === "actual" ? tabIds.actual : tabIds.predicted;
 
-  // Empty everywhere: no actual rows, no predictions. Show the
-  // caller's fallback (historically the `<p>noSetlist</p>` from
-  // `<LiveSetlist>`). No tab strip, no body wrapper — keeps the
-  // pre-refactor render byte-equivalent for events without either.
-  // Early return lives AFTER `useId` to satisfy Rules of Hooks.
-  if (!hasPredictions && !hasActual) {
-    return <>{emptyFallback}</>;
-  }
-
-  // Body for the rendered tab. Wrapper depends on whether tabs
-  // are visible:
-  //   - hasPredictions: wrap in <div role="tabpanel"> with
-  //     aria-labelledby pointing at the matching tab id (WAI-ARIA
-  //     tabs pattern requires the panel + tab pair).
-  //   - !hasPredictions: NO wrapper at all. The Phase 1A path
-  //     (no tabs in the DOM) must not advertise an orphaned
-  //     `role="tabpanel"` whose `aria-labelledby` points at a
-  //     non-existent tab id — that's both a screen-reader bug
-  //     and a byte-equivalence regression. CodeRabbit caught this
-  //     on PR #280's first fix-up round.
-  // Filter to song-type rows that ALSO have a song picked. MC /
-  // video / interval items are skipped per task spec — they aren't
-  // songs a user could have predicted — and admin-created
-  // placeholder rows (`type: "song"` but no song row in `it.songs`
-  // yet because the operator hasn't filled it in) are ALSO excluded
-  // here. Without the `songs.length > 0` half, those placeholders
-  // would inflate `total` in `calcPredictScore` and shift the
-  // during-show divider past the actual matched count. CR #281
-  // caught this. The full `items` list still feeds `<ActualSetlist>`
-  // (which renders placeholder + non-song rows).
+  // Song-type rows that also have a song picked. MC / video / interval
+  // items aren't songs a viewer could have predicted, and admin-created
+  // placeholder rows (`type: "song"`, no song yet) would inflate `total`
+  // in `calcPredictScore` and shift the during-show divider. The full
+  // `items` list still feeds `<ActualSetlist>`.
   const actualSongs = items.filter(
     (it) => it.type === "song" && it.songs.length > 0,
   );
 
+  const actualBody = hasActual ? (
+    <ActualSetlist
+      items={items}
+      reactionCounts={reactionCounts}
+      snapshotCapturedAt={snapshotCapturedAt}
+      locale={locale}
+      eventId={eventId}
+      status={status}
+      eventArtistId={eventArtistId}
+    />
+  ) : (
+    emptyFallback
+  );
+
+  if (!showTabs) {
+    return (
+      <>
+        {actualBody}
+        {canPredictNow && (
+          <button
+            type="button"
+            data-testid="predict-start"
+            onClick={() => {
+              setStartedFor(eventId);
+              setChosenTab({ eventId, tab: "predicted" });
+            }}
+            className={styles.secondaryButton}
+          >
+            {t("startPredict")}
+          </button>
+        )}
+      </>
+    );
+  }
+
   const body =
     renderedTab === "actual" ? (
-      <ActualSetlist
-        items={items}
-        reactionCounts={reactionCounts}
-        snapshotCapturedAt={snapshotCapturedAt}
-        locale={locale}
-        eventId={eventId}
-        status={status}
-        eventArtistId={eventArtistId}
-      />
+      actualBody
     ) : (
-      // `key={eventId}` forces a remount on event navigation so
-      // `<PredictedSetlist>`'s `scheduledLocked` (initialized once
-      // via `useState` lazy init from the previous event's
-      // startTime) doesn't leak into the new event with a stale
-      // lock decision. Also re-fires the localStorage
-      // `predict-{eventId}` hydration for the new event. Same
-      // rationale as the matching `key={eventId}` on
-      // `<EventWishSection>` in `<LiveSetlist>`. CR #291 caught
-      // both call sites.
-      // The request seq joins the key: the board import writes storage
-      // behind the builder's back, and the builder reads storage only
-      // on mount.
+      // `key={eventId}` remounts on event navigation so the builder's
+      // lock decision and its localStorage read never leak from the
+      // previous event.
       <PredictedSetlist
-        key={`${eventId}:${requestSeq}`}
+        key={eventId}
         eventId={eventId}
         locale={locale}
         startTime={startTime}
@@ -324,35 +246,16 @@ export function SetlistSection({
         dateLine={dateLine}
         availableSongs={availableSongs}
         unitFilters={unitFilters}
-        bridgeOutcome={builderRequest?.outcome ?? null}
-        onBackToBoard={onBackToBoard}
         boardGroups={boardGroups}
         onBoardPublished={onBoardPublished}
       />
     );
 
-  // Screen-reader announcement of the board import's outcome. Lives
-  // here, not in the builder, because the builder remounts per request
-  // and a live region created together with its text is often not
-  // announced; this one stays mounted and only its text changes.
-  const bridgeOutcome = builderRequest?.outcome;
-  const bridgeAnnouncement =
-    bridgeOutcome?.kind === "imported"
-      ? tPredict("bridgeImported", { count: bridgeOutcome.count })
-      : bridgeOutcome?.kind === "kept"
-        ? tPredict("bridgeKept")
-        : "";
-
   return (
     <>
-      <p role="status" className="sr-only" data-testid="predict-bridge-status">
-        {bridgeAnnouncement}
-      </p>
       <SetlistTabs
-        hasPredictions={hasPredictions}
-        hasActual={hasActual}
         activeTab={renderedTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => setChosenTab({ eventId, tab })}
         labels={{
           actual: t("tabActual"),
           predicted: t("tabPredicted"),
@@ -361,17 +264,15 @@ export function SetlistSection({
         tabIds={tabIds}
         panelIds={panelIds}
       />
-      {hasPredictions ? (
-        <div
-          role="tabpanel"
-          id={renderedPanelId}
-          aria-labelledby={renderedTabId}
-        >
-          {body}
-        </div>
-      ) : (
-        body
-      )}
+      <div
+        role="tabpanel"
+        id={renderedTab === "actual" ? panelIds.actual : panelIds.predicted}
+        aria-labelledby={
+          renderedTab === "actual" ? tabIds.actual : tabIds.predicted
+        }
+      >
+        {body}
+      </div>
     </>
   );
 }

@@ -206,14 +206,16 @@ describe("<FanBoardSection>", () => {
     expect(screen.getByRole("tab", { name: "蓮ノ空" }).getAttribute("aria-selected")).toBe("true");
   });
 
-  it("the header is one short open-until line — no as-of stamp, no clock time", async () => {
+  it("the header is one short save-note line — no as-of stamp, no clock time", async () => {
     respond(READY);
     renderBlock();
     await screen.findAllByText("残陽");
     const line = screen.getByRole("heading", { level: 2 }).nextElementSibling;
     // The mock renders `key(args)` when a message gets arguments, so an
-    // exact "openUntil" also proves no `{time}` is passed any more.
-    expect(line?.textContent).toBe("openUntil");
+    // exact "saveNote" also proves no `{time}` is passed. It already says
+    // "until the show starts", so there is no separate open-until line.
+    expect(line?.textContent).toBe("saveNote");
+    expect(screen.queryByText("openUntil")).toBeNull();
     expect(screen.queryByText(/asOf/)).toBeNull();
   });
 

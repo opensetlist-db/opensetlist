@@ -8,10 +8,6 @@ import { absoluteUrl, entityPath } from "@/lib/seo/entityUrl";
 import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { boardFragment, groupIdFromFragment } from "@/lib/board/fragment";
 import { buildBoardCopyText } from "@/lib/board/copyText";
-import {
-  importBoardPicksToPredictions,
-  type BoardToBuilderOutcome,
-} from "@/lib/board/toPredictions";
 import type {
   BoardBlockSeed,
   BoardGroupTally,
@@ -118,7 +114,6 @@ export function FanBoardSection({
   seed,
   catalog = NO_CATALOG,
   anchorId,
-  onOpenFullSetlist,
   picksRevision = 0,
 }: {
   eventId: string;
@@ -128,14 +123,10 @@ export function FanBoardSection({
    *  carries its `festivalGroupIds`). Empty when the page has none —
    *  then the add control is hidden. */
   catalog?: readonly AvailableSong[];
-  /** Element id for the block, so the Predict tab's "back to board"
-   *  switch can scroll here. Must not start with `board-` (see
-   *  `fragment.ts`: the group fragment matches no element on purpose). */
+  /** Element id for the block, so a publish from the Predict tab can
+   *  scroll back here. Must not start with `board-` (see `fragment.ts`:
+   *  the group fragment matches no element on purpose). */
   anchorId?: string;
-  /** "Go to full setlist mode" (n15). Passed only while the Predict
-   *  tab exists (upcoming, inside the D-7 window); without it the
-   *  button is not rendered. Called after the import ran. */
-  onOpenFullSetlist?: (outcome: BoardToBuilderOutcome) => void;
   /** Bumped by `<LiveSetlist>` after the Predict tab published a ballot
    *  (n15), so "my picks" re-read the local copy it wrote. */
   picksRevision?: number;
@@ -538,25 +529,6 @@ export function FanBoardSection({
     });
   };
 
-  // "Go to full setlist mode" (n15). The import uses the same
-  // availability-folded picks as the copy text, so a song the fan sees
-  // as unavailable here never lands in the builder. Synchronous
-  // localStorage work, then the parent switches to the Predict tab.
-  const handleOpenFullSetlist = () => {
-    if (state.kind !== "ready" || !onOpenFullSetlist) return;
-    const outcome = importBoardPicksToPredictions({
-      eventId,
-      picks: copyablePicks,
-      groupOrder: state.groups.map((g) => g.groupId),
-      catalog,
-    });
-    trackEvent("board_to_builder", {
-      event_id: eventId,
-      imported_count: outcome.kind === "imported" ? outcome.count : 0,
-    });
-    onOpenFullSetlist(outcome);
-  };
-
   return (
     // 18-v3 `#participate`: the page's lead panel pre-show. Pink lead
     // bar on the heading, then one wrapping row of group chips (tinted
@@ -573,25 +545,18 @@ export function FanBoardSection({
         <h2 id={`board-title-${eventId}`} className={styles.panelTitle}>
           {t("title")}
         </h2>
+        {/* One short status line. Open: how participation is kept, next
+            to the inputs rather than only in the privacy policy — no
+            account, each add/remove is saved as it happens, and the
+            ballot is tied to this browser's anonymous id (pickStorage +
+            `/board/mine`), so it is editable here until the show starts
+            and nowhere else. It already says "until the show starts",
+            so no separate "open until" line. Locked: closed. No
+            aggregation timestamp — the response still carries `asOf`
+            (cache evidence); the UI just doesn't print it. */}
         {state.kind === "ready" && (
-          // One short status line: open until the show starts, or
-          // closed. No aggregation timestamp and no clock time — the
-          // board is a light pre-show game, and a "{time} as of" stamp
-          // next to a zoned show time read as noise on a phone header.
-          // The response still carries `asOf` (cache evidence); the
-          // UI just doesn't print it.
-          <p className={styles.boardStatus}>
-            {locked ? t("closed") : t("openUntil")}
-          </p>
-        )}
-        {state.kind === "ready" && !locked && (
-          // How participation is kept, next to the inputs rather than
-          // only in the privacy policy: no account, each add/remove is
-          // saved as it happens, and the ballot is tied to this
-          // browser's anonymous id (pickStorage + `/board/mine`), so it
-          // is editable here until the show starts and nowhere else.
           <p data-testid="board-save-note" className={styles.boardStatus}>
-            {t("saveNote")}
+            {locked ? t("closed") : t("saveNote")}
           </p>
         )}
         {tally && tally.size > 0 && (
@@ -737,17 +702,6 @@ export function FanBoardSection({
             )}
             {/* 18-v3 `.bridge-strip`: the way on from the board. */}
             <div className={styles.bridgeStrip}>
-              {/* The two ways to predict, in one sentence: the board's
-                  3-per-group picks vs the ordered full setlist that is
-                  scored. Without it a first-time fan asks whether the
-                  songs picked above must be entered again below (they
-                  can be carried over; nothing syncs on its own). Shown
-                  with the button it explains. */}
-              {onOpenFullSetlist && !locked && (
-                <p data-testid="board-modes-note" className={styles.bridgeNote}>
-                  {t("modesNote")}
-                </p>
-              )}
               {/* "Explore this group" — the private alternative to a
                   public "skipped" stat: a fan who doesn't know the group
                   gets a way in, and nobody else learns they skipped it. */}
@@ -774,20 +728,6 @@ export function FanBoardSection({
                 >
                   {t("copy")}
                 </button>
-                {/* Enabled at zero picks too: it is also the plain mode
-                    switch into the builder. Hidden once the board locks —
-                    the builder locks at the same instant. Expected songs
-                    only: wishes (the other column) never enter the
-                    draft. */}
-                {onOpenFullSetlist && !locked && (
-                  <button
-                    type="button"
-                    onClick={handleOpenFullSetlist}
-                    className={styles.secondaryButton}
-                  >
-                    {t("toFullSetlist")}
-                  </button>
-                )}
               </div>
             </div>
           </>

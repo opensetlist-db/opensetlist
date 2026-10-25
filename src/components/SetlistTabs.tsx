@@ -6,8 +6,6 @@ import { colors } from "@/styles/tokens";
 export type SetlistTab = "actual" | "predicted";
 
 interface Props {
-  hasPredictions: boolean;
-  hasActual: boolean;
   activeTab: SetlistTab;
   onTabChange: (tab: SetlistTab) => void;
   /**
@@ -42,21 +40,14 @@ interface Props {
 }
 
 /**
- * Tab strip for `<SetlistSection>` per the visibility matrix in
- * `wiki/output/task-week2-setlistsection-tab-refactor.md`:
- *
- *   - !hasPredictions                → null (cases 3+4)
- *   - hasPredictions && !hasActual   → Predicted-only (case 1)
- *   - hasPredictions &&  hasActual   → Both tabs, default Actual (case 2)
- *
- * The "no tabs" return is the load-bearing constraint: events
- * without predictions must render byte-equivalent to the
- * pre-refactor page, so the parent can render the actual setlist
- * directly without any tab chrome.
+ * Predicted / Actual tab strip for `<SetlistSection>`. The parent
+ * mounts it only once the viewer has a prediction (or has started
+ * one); without it the card shows the actual setlist with no tab
+ * chrome. Both tabs are always present — before the show the Actual
+ * tab holds the "filled in live from …" note — so switching never
+ * makes a tab appear or vanish.
  */
 export function SetlistTabs({
-  hasPredictions,
-  hasActual,
   activeTab,
   onTabChange,
   labels,
@@ -72,37 +63,14 @@ export function SetlistTabs({
   // button keeps focus). Without the explicit `.focus()`, the user
   // who just pressed ArrowRight stays focused on the now-inactive
   // tab (tabIndex=-1), which breaks Tab navigation entirely.
-  // useRef runs UNCONDITIONALLY (Rules of Hooks — must run before
-  // any early return).
   const tabButtonRefs = useRef<Partial<Record<SetlistTab, HTMLButtonElement>>>(
     {},
   );
 
-  // Cases 3 + 4 — no predictions, no tabs. Phase 1A byte-equiv path.
-  if (!hasPredictions) return null;
-
-  const showActualTab = hasActual;
-  // Ordered list of visible tabs — drives both render order AND
-  // the keyboard-nav cycling order. Without `showActualTab` (case 1
-  // pre-show), the array shrinks to just `["predicted"]` so arrow
-  // keys are no-ops.
-  const visibleTabs: SetlistTab[] = showActualTab
-    ? ["actual", "predicted"]
-    : ["predicted"];
-
-  // Defensive normalization. The parent (`<SetlistSection>`) already
-  // forces `activeTab="predicted"` when `hasActual` is false (see
-  // its `renderedTab` derivation), so this clamp is a no-op for the
-  // canonical caller. But if a future consumer threads an
-  // out-of-range `activeTab` (e.g. caller forgets the matrix and
-  // passes a stale `"actual"` while `hasActual=false`), the
-  // `aria-selected` flag and roving `tabIndex` would otherwise mark
-  // the only-visible Predicted tab as inactive (selected=false,
-  // tabIndex=-1) and the keyboard nav `visibleTabs.indexOf(activeTab)`
-  // would return -1 and produce nonsense indices. Clamping here
-  // keeps the component self-contained against that contract drift.
-  const effectiveActiveTab: SetlistTab =
-    showActualTab ? activeTab : "predicted";
+  // Render order AND keyboard-nav cycling order: the viewer's own
+  // prediction first, then the actual setlist.
+  const visibleTabs: SetlistTab[] = ["predicted", "actual"];
+  const effectiveActiveTab = activeTab;
 
   // WAI-ARIA tabs keyboard pattern: ArrowLeft/Right cycle (with
   // wrap-around), Home/End jump to first/last. Active tab gets
@@ -110,7 +78,6 @@ export function SetlistTabs({
   // (skipped by Tab key but reachable via arrow keys when the
   // tablist itself is focused).
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (visibleTabs.length < 2) return;
     let nextTab: SetlistTab | null = null;
     if (e.key === "ArrowLeft") {
       const idx = visibleTabs.indexOf(effectiveActiveTab);
@@ -149,19 +116,6 @@ export function SetlistTabs({
       className="mb-[18px] flex flex-wrap gap-2"
       onKeyDown={handleKeyDown}
     >
-      {showActualTab && (
-        <TabButton
-          id={tabIds.actual}
-          panelId={panelIds.actual}
-          active={effectiveActiveTab === "actual"}
-          onClick={() => onTabChange("actual")}
-          label={labels.actual}
-          buttonRef={(el) => {
-            if (el) tabButtonRefs.current.actual = el;
-            else delete tabButtonRefs.current.actual;
-          }}
-        />
-      )}
       <TabButton
         id={tabIds.predicted}
         panelId={panelIds.predicted}
@@ -172,6 +126,17 @@ export function SetlistTabs({
         buttonRef={(el) => {
           if (el) tabButtonRefs.current.predicted = el;
           else delete tabButtonRefs.current.predicted;
+        }}
+      />
+      <TabButton
+        id={tabIds.actual}
+        panelId={panelIds.actual}
+        active={effectiveActiveTab === "actual"}
+        onClick={() => onTabChange("actual")}
+        label={labels.actual}
+        buttonRef={(el) => {
+          if (el) tabButtonRefs.current.actual = el;
+          else delete tabButtonRefs.current.actual;
         }}
       />
     </div>

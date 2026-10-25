@@ -147,8 +147,8 @@ export function readPredictionEntries(eventId: string): PredictionEntry[] {
  *
  * `provisional` (see `StoredShape`) is carried over from the stored
  * list unless the caller says otherwise: adding or removing a song
- * leaves a board-imported order just as unarranged as it was, so only
- * the callers that set or settle the order (the board import, a
+ * leaves a wish-imported order just as unarranged as it was, so only
+ * the callers that set or settle the order (the wish import, a
  * reorder, a copy-from-past replace) pass it. A write of zero songs
  * always clears it.
  */

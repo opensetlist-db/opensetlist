@@ -600,7 +600,7 @@ describe("<FanBoardSection> want column", () => {
     expect(screen.queryByLabelText("removeAria(ハナムスビ)")).toBeNull();
   });
 
-  it("shows the save note while the board is open and drops it once locked", async () => {
+  it("the status line is the save note while open and 'closed' once locked", async () => {
     handler = (url) =>
       url.startsWith("/api/events/107/board?")
         ? { status: 200, body: readBoard() }
@@ -615,9 +615,8 @@ describe("<FanBoardSection> want column", () => {
         ? { status: 200, body: readBoard({ locked: true }) }
         : { status: 500, body: {} };
     renderBlock();
-    // Positive control: the locked board did render its columns.
     await screen.findByTestId("board-col-want");
-    expect(screen.queryByTestId("board-save-note")).toBeNull();
+    expect(screen.getByTestId("board-save-note").textContent).toBe("closed");
   });
 });
 

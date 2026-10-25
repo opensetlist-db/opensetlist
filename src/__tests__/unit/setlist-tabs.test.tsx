@@ -10,58 +10,10 @@ const LABELS = {
 const TAB_IDS = { actual: "tab-a", predicted: "tab-p" };
 const PANEL_IDS = { actual: "panel-a", predicted: "panel-p" };
 
-describe("SetlistTabs visibility matrix", () => {
-  it("case 3+4: no predictions → renders nothing", () => {
-    const { container } = render(
-      <SetlistTabs
-        hasPredictions={false}
-        hasActual={true}
-        activeTab="actual"
-        onTabChange={vi.fn()}
-        labels={LABELS}
-        tabIds={TAB_IDS}
-        panelIds={PANEL_IDS}
-      />,
-    );
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("case 3+4: no predictions + no actual → still renders nothing", () => {
-    const { container } = render(
-      <SetlistTabs
-        hasPredictions={false}
-        hasActual={false}
-        activeTab="actual"
-        onTabChange={vi.fn()}
-        labels={LABELS}
-        tabIds={TAB_IDS}
-        panelIds={PANEL_IDS}
-      />,
-    );
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("case 1: predictions + no actual → predicted tab only (actual hidden)", () => {
+describe("SetlistTabs layout", () => {
+  it("always renders both tabs, Predicted first", () => {
     render(
       <SetlistTabs
-        hasPredictions={true}
-        hasActual={false}
-        activeTab="predicted"
-        onTabChange={vi.fn()}
-        labels={LABELS}
-        tabIds={TAB_IDS}
-        panelIds={PANEL_IDS}
-      />,
-    );
-    expect(screen.queryByText("ACTUAL")).toBeNull();
-    expect(screen.getByText("PREDICTED")).toBeTruthy();
-  });
-
-  it("case 2: predictions + actual → both tabs render", () => {
-    render(
-      <SetlistTabs
-        hasPredictions={true}
-        hasActual={true}
         activeTab="actual"
         onTabChange={vi.fn()}
         labels={LABELS}
@@ -69,8 +21,9 @@ describe("SetlistTabs visibility matrix", () => {
         panelIds={PANEL_IDS}
       />,
     );
-    expect(screen.getByText("ACTUAL")).toBeTruthy();
-    expect(screen.getByText("PREDICTED")).toBeTruthy();
+    expect(
+      screen.getAllByRole("tab").map((el) => el.textContent),
+    ).toEqual(["PREDICTED", "ACTUAL"]);
   });
 });
 
@@ -78,8 +31,6 @@ describe("SetlistTabs interaction", () => {
   it("active tab carries aria-selected=true; inactive carries false", () => {
     render(
       <SetlistTabs
-        hasPredictions={true}
-        hasActual={true}
         activeTab="predicted"
         onTabChange={vi.fn()}
         labels={LABELS}
@@ -97,8 +48,6 @@ describe("SetlistTabs interaction", () => {
     const onTabChange = vi.fn();
     render(
       <SetlistTabs
-        hasPredictions={true}
-        hasActual={true}
         activeTab="actual"
         onTabChange={onTabChange}
         labels={LABELS}
@@ -115,8 +64,6 @@ describe("SetlistTabs interaction", () => {
   it("predictedBadge is rendered next to the Predicted label when provided", () => {
     render(
       <SetlistTabs
-        hasPredictions={true}
-        hasActual={true}
         activeTab="actual"
         onTabChange={vi.fn()}
         labels={LABELS}
@@ -138,8 +85,6 @@ describe("SetlistTabs WAI-ARIA + keyboard navigation", () => {
     const onTabChange = vi.fn();
     const utils = render(
       <SetlistTabs
-        hasPredictions={true}
-        hasActual={true}
         activeTab={activeTab}
         onTabChange={onTabChange}
         labels={LABELS}
@@ -174,7 +119,8 @@ describe("SetlistTabs WAI-ARIA + keyboard navigation", () => {
     expect(predictedTab.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("ArrowRight on active tab cycles to the next tab", () => {
+  it("ArrowRight on active tab cycles to the next tab (with wrap-around)", () => {
+    // From "actual" (the last tab), ArrowRight wraps to "predicted".
     const { onTabChange } = renderBoth("actual");
     fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" });
     expect(onTabChange).toHaveBeenCalledWith("predicted");
@@ -182,28 +128,29 @@ describe("SetlistTabs WAI-ARIA + keyboard navigation", () => {
 
   it("ArrowLeft on active tab cycles to the previous tab (with wrap-around)", () => {
     const { onTabChange } = renderBoth("actual");
-    // From "actual" (idx 0), ArrowLeft wraps to last → "predicted".
+    // From "actual" (idx 1), ArrowLeft goes to "predicted" (idx 0).
     fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowLeft" });
     expect(onTabChange).toHaveBeenCalledWith("predicted");
   });
 
   it("Home jumps to the first tab when activeTab is the last", () => {
-    const { onTabChange } = renderBoth("predicted");
-    fireEvent.keyDown(screen.getByRole("tablist"), { key: "Home" });
-    expect(onTabChange).toHaveBeenCalledWith("actual");
-  });
-
-  it("End jumps to the last tab when activeTab is the first", () => {
-    // Separate render so activeTab starts as "actual"; the parent
-    // would re-render with the new activeTab in production, but the
-    // test mock just records the call.
     const { onTabChange } = renderBoth("actual");
-    fireEvent.keyDown(screen.getByRole("tablist"), { key: "End" });
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "Home" });
     expect(onTabChange).toHaveBeenCalledWith("predicted");
   });
 
+  it("End jumps to the last tab when activeTab is the first", () => {
+    // Separate render so activeTab starts as "predicted"; the parent
+    // would re-render with the new activeTab in production, but the
+    // test mock just records the call.
+    const { onTabChange } = renderBoth("predicted");
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "End" });
+    expect(onTabChange).toHaveBeenCalledWith("actual");
+  });
+
   it("Home/End on the already-first/last tab is a no-op (skip when nextTab === activeTab)", () => {
-    const { onTabChange } = renderBoth("actual");
+    // Positive control: Home from the last tab does move (test above).
+    const { onTabChange } = renderBoth("predicted");
     fireEvent.keyDown(screen.getByRole("tablist"), { key: "Home" });
     expect(onTabChange).not.toHaveBeenCalled();
   });
@@ -216,14 +163,10 @@ describe("SetlistTabs WAI-ARIA + keyboard navigation", () => {
     // flush is enough here.
     const { rerender } = render(
       <SetlistTabs
-        hasPredictions={true}
-        hasActual={true}
         activeTab="actual"
         onTabChange={(next) => {
           rerender(
             <SetlistTabs
-              hasPredictions={true}
-              hasActual={true}
               activeTab={next}
               onTabChange={() => {}}
               labels={LABELS}
@@ -245,23 +188,5 @@ describe("SetlistTabs WAI-ARIA + keyboard navigation", () => {
     await new Promise((r) => requestAnimationFrame(() => r(undefined)));
     const predictedTab = screen.getByRole("tab", { name: /PREDICTED/ });
     expect(document.activeElement).toBe(predictedTab);
-  });
-
-  it("ArrowKey is a no-op when only one tab is visible (case 1, predicted-only)", () => {
-    const onTabChange = vi.fn();
-    render(
-      <SetlistTabs
-        hasPredictions={true}
-        hasActual={false}
-        activeTab="predicted"
-        onTabChange={onTabChange}
-        labels={LABELS}
-        tabIds={TAB_IDS}
-        panelIds={PANEL_IDS}
-      />,
-    );
-    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowLeft" });
-    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" });
-    expect(onTabChange).not.toHaveBeenCalled();
   });
 });
