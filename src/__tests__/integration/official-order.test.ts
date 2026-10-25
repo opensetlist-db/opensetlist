@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { StageIdentity } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { createOfficialOrdering, membershipOrderBy } from "@/lib/officialOrder";
@@ -36,7 +37,7 @@ describe("official ordering on isolated dev fixtures", () => {
       const event = await tx.event.create({ data: { slug: `${PREFIX}past`, originalName: "past fixture", type: "concert", status: "completed", date: new Date("2020-01-01T00:00:00Z"), startTime: new Date("2020-01-01T09:00:00Z") } });
       const voice = await tx.realPerson.create({ data: { slug: `${PREFIX}voice`, originalName: "explicit voice" } });
       const song = await tx.song.create({ data: { slug: `${PREFIX}song`, originalTitle: "actual song" } });
-      const identities = [];
+      const identities: StageIdentity[] = [];
       for (const [index, name] of ["a", "b", "c"].entries()) {
         identities.push(await tx.stageIdentity.create({ data: {
           slug: `${PREFIX}${name}`, originalName: name, type: "character", sortOrder: index + 1,
