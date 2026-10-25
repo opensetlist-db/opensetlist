@@ -41,7 +41,7 @@ try {
     const slug = `${PREFIX}${Date.now()}`;
     const row = await db.event.create({ data: { slug, originalName: "OpenSetlist QA event Day.1", originalLanguage: "en", type: "concert",
       startTime: new Date("2099-07-11T08:00:00Z"), date: new Date("2099-07-11T00:00:00Z"), originalVenue: "Development QA venue" } });
-    const eventId = String(row.id); const folder = path.join(root, ".claude/tmp", slug); await mkdir(folder);
+    const eventId = String(row.id); const folder = path.join(root, ".claude/tmp", slug); await mkdir(folder, { recursive: true });
     const manifestFile = path.join(folder, "packet/manifest.json");
     const manifest = await preparePreview({ root, events: await readCardEvents(db, [eventId]), output: path.dirname(manifestFile) });
     const evidenceFile = path.join(folder, "fixture-approval.txt");

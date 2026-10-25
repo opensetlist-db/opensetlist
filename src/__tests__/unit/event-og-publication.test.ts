@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { eventShareHtml } from "@/lib/eventOg/shareHtml";
+import { lookupPublication } from "@/lib/eventOg/reader";
+import { captureException } from "@sentry/nextjs";
+import { GET } from "@/app/[locale]/share/events/[eventId]/[mode]/[revision]/route";
+
+vi.mock("@/lib/eventOg/reader", () => ({ lookupPublication: vi.fn() }));
+vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+vi.mock("next-intl/server", () => ({ getTranslations: vi.fn().mockResolvedValue((key: string) => key) }));
 
 const card = {
   publicationId: "c04960d6-7c5a-4ec4-a145-c956d84b31f7", eventId: "7", mode: "prediction", locale: "ja", slug: "event-seven",
@@ -14,6 +21,30 @@ const card = {
 const copy = { heading: "共有カード", opening: "移動します", open: "イベントを開く" };
 
 describe("published event-card transport", () => {
+  it("logs handled share failures locally and to Sentry while keeping no-store503 and same-URL recovery", async () => {
+    const context = { params: Promise.resolve({ locale: card.locale, eventId: card.eventId, mode: card.mode, revision: card.publicationId }) };
+    const request = new Request(card.shareUrl);
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      vi.mocked(lookupPublication).mockResolvedValue(card);
+      const normal = await GET(request, context);
+      expect(normal.status).toBe(200);
+      expect(await normal.text()).toContain(card.content.officialEventTitle);
+      const error = new Error("synthetic publication lookup failure");
+      vi.mocked(lookupPublication).mockRejectedValueOnce(error);
+      const failed = await GET(request, context);
+      expect(log).toHaveBeenCalledWith("[share/events] publication render failed", error);
+      expect(captureException).toHaveBeenCalledWith(error);
+      expect(failed.status).toBe(503);
+      expect(failed.headers.get("cache-control")).toContain("no-store");
+      expect(failed.headers.get("retry-after")).toBe("5");
+      expect(await failed.text()).toBe("");
+      const recovered = await GET(request, context);
+      expect(recovered.status).toBe(200);
+      expect(await recovered.text()).toContain(card.content.officialEventTitle);
+    } finally { log.mockRestore(); vi.clearAllMocks(); }
+  });
+
   it("returns complete frozen social metadata in head, full official names and an accessible JS-free destination", () => {
     const html = eventShareHtml(card, "/ja/events/7/current-slug", copy);
     const doc = new DOMParser().parseFromString(html, "text/html");
