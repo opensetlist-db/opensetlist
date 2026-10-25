@@ -69,6 +69,8 @@ describe("official ordering on isolated dev fixtures", () => {
       const links = await tx.stageIdentityArtist.findMany({ where: { artistId: { in: [root.id, unitA.id, unitB.id] } }, orderBy: { id: "asc" } });
       expect(links.map((r) => ({ ...r, sortOrder: null })))
         .toEqual(linksBefore);
+      expect(links.find((r) => r.stageIdentityId === identities[1].id && r.artistId === unitA.id)?.sortOrder).toBe(0);
+      expect(links.find((r) => r.stageIdentityId === identities[1].id && r.artistId === unitB.id)?.sortOrder).toBe(20);
       const rows = identities.map((m) => ({ ...m, groupArtistIds: [root.id], membershipOrders: links.filter((r) => r.stageIdentityId === m.id) }));
       const order = createOfficialOrdering([root, unitA, unitB]);
       const names = (artistId: bigint) => order.sortMembers(rows, (m) => m, { kind: "artist", artistId }).map((m) => m.originalName);
@@ -79,6 +81,15 @@ describe("official ordering on isolated dev fixtures", () => {
       const queryNames = async (artistId: bigint, contextual: boolean) => (await tx.stageIdentityArtist.findMany({
         where: { artistId }, orderBy: contextual ? membershipOrderBy() : byStageIdentityOrderBy(), include: { stageIdentity: true },
       })).map((r) => r.stageIdentity.originalName);
+      const assertPureMatchesSql = async () => {
+        const freshLinks = await tx.stageIdentityArtist.findMany({ where: { artistId: { in: [root.id, unitA.id, unitB.id] } } });
+        const freshRows = identities.map((m) => ({ ...m, groupArtistIds: [root.id], membershipOrders: freshLinks.filter((r) => r.stageIdentityId === m.id) }));
+        for (const artist of [root, unitA, unitB]) {
+          expect(order.sortMembers(freshRows, (m) => m, { kind: "artist", artistId: artist.id }).map((m) => m.originalName))
+            .toEqual(await queryNames(artist.id, true));
+        }
+      };
+      await assertPureMatchesSql();
       expect(await queryNames(unitB.id, true)).toEqual(["a", "b", "c"]);
       expect(await queryNames(unitA.id, true)).toEqual(["b", "a", "c"]);
       expect(await queryNames(root.id, true)).toEqual(["a", "b", "c"]);
@@ -89,6 +100,7 @@ describe("official ordering on isolated dev fixtures", () => {
       expect(before.setlistItems[0].id).toBe(item.id);
       await tx.stageIdentityArtist.update({ where: { stageIdentityId_artistId: relation }, data: { sortOrder: null } });
       expect(await queryNames(unitA.id, true)).toEqual(["a", "b", "c"]);
+      await assertPureMatchesSql();
       // Omission is a normal Prisma partial update: it must preserve rank.
       await tx.stageIdentityArtist.update({ where: { stageIdentityId_artistId: { ...relation, artistId: unitB.id } }, data: { note: "preserve membership" } });
       expect((await tx.stageIdentityArtist.findUniqueOrThrow({ where: { stageIdentityId_artistId: { ...relation, artistId: unitB.id } } })).sortOrder).toBe(20);

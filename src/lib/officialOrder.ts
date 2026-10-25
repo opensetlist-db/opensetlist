@@ -76,6 +76,18 @@ function compareRank(a: number | null, b: number | null): number {
   return a < b ? -1 : 1;
 }
 
+function memberCreatedAt(value: Date | string): Date {
+  // JSON/RSC metadata must identify an instant explicitly. Date.parse
+  // accepts zone-less dates in the host's local zone and even loose
+  // strings such as "1"; neither is a portable ordering key.
+  if (typeof value === "string" && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    throw new RangeError("Member createdAt must be an ISO timestamp with an explicit timezone");
+  }
+  const millis = value instanceof Date ? value.getTime() : Date.parse(value);
+  if (!Number.isFinite(millis)) throw new RangeError("Member createdAt must be a valid timestamp");
+  return new Date(millis);
+}
+
 /**
  * For a StageIdentityArtist query restricted to ONE artist. A mixed
  * relation query needs the hierarchy/context API below instead. Fresh
@@ -154,9 +166,7 @@ export function createOfficialOrdering(artists: readonly ArtistOrderKey[]) {
     }
     const decorated = items.map((item) => {
       const source = key(item);
-      const createdAt = source.createdAt instanceof Date ? source.createdAt.getTime() : Date.parse(source.createdAt);
-      if (!Number.isFinite(createdAt)) throw new RangeError("Member createdAt must be a valid timestamp");
-      const member: MemberOrderKey = { id: source.id, sortOrder: rank(source.sortOrder), createdAt: new Date(createdAt) };
+      const member: MemberOrderKey = { id: source.id, sortOrder: rank(source.sortOrder), createdAt: memberCreatedAt(source.createdAt) };
       const orders = new Map<string, number | null>();
       for (const relation of source.membershipOrders) {
         const id = artistId(relation.artistId);

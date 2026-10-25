@@ -112,6 +112,23 @@ describe("official display ordering", () => {
     expect(ids(order.sortMembers(rows, (m) => m, { kind: "mixed" }))).toEqual(["host", "guest"]);
     const groups = [{ artistId: BigInt(10), isGuest: true }, { artistId: BigInt(2), isGuest: false }];
     expect(order.sortArtists(groups, (g) => g).map((g) => g.artistId)).toEqual([BigInt(2), BigInt(10)]);
+    expect(ids(order.sortMembers(rows, (m) => m, { kind: "artist", artistId: BigInt(30) }))).toEqual(["host", "guest"]);
+  });
+
+  it("keeps resolved group contexts distinct from solo/unit page contexts", () => {
+    const rows = [member("solo", 0, { groupArtistIds: [BigInt(50)], membershipOrders: [{ artistId: BigInt(50), sortOrder: -1 }] }), member("group", 1)];
+    const order = createOfficialOrdering(artists);
+    expect(ids(order.sortMembers(rows, (m) => m, { kind: "mixed" }))).toEqual(["group", "solo"]);
+    expect(ids(order.sortMembers(rows, (m) => m, { kind: "artist", artistId: BigInt(50) }))).toEqual(["solo", "group"]);
+  });
+
+  it("requires explicit timestamp zones and compares different offset forms as the same instant", () => {
+    const order = createOfficialOrdering(artists);
+    const rows = [member("c", null, { createdAt: new Date(timestamp) }), member("b", null, { createdAt: "2026-01-01T09:00:00+09:00" }), member("a", null)];
+    expect(ids(order.sortMembers(rows, (m) => m, { kind: "mixed" }))).toEqual(["a", "b", "c"]);
+    for (const createdAt of ["1", "2026-01-01", "2026-01-01 00:00:00", "2026-01-01T00:00:00", "2026-01-01T00:00:00+99:00"]) {
+      expect(() => order.sortMembers([member("a", null, { createdAt })], (m) => m, { kind: "mixed" })).toThrow(/timestamp/);
+    }
   });
 
   it("sorts eligible multi-unit credits and overlapping members without adding performers", () => {

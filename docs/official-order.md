@@ -41,7 +41,9 @@ rank sorts before every unranked relation, even one with a lower default
 rank. Ties/unranked relations use default rank, creation instant, UUID
 code-unit order. Signed 32-bit integers including zero/negative values and
 null are valid; `isOfficialRank` rejects fractions, NaN, overflow and omission.
-Dates may be Date objects or serialized ISO timestamps for the same instant.
+Dates may be Date objects or serialized ISO timestamps with an explicit `Z`
+or numeric timezone offset for the same instant. Zone-less/loose strings are
+rejected rather than interpreted in the host's local timezone.
 
 ## Member contexts
 
@@ -82,7 +84,9 @@ is equivalent to mixed). Existing stage/badge semantics stay with consumers.
 If multiple legal groups remain for a flat row, the first officially ordered
 group becomes its comparison key. This never changes `groupArtistIds` or
 stores a representative affiliation. Unknown/deleted groups are ignored as
-contexts; an ungrouped member's historical memberships do not invent a group.
+contexts; `groupArtistIds` accepts only loaded `type=group` nodes. For a solo
+or unit page use the explicit `artist` context instead. An ungrouped member's
+historical memberships do not invent a group.
 
 On event lists, pass the existing `EventPerformer.isGuest` through the member
 key. All ordinary performers precede all guests, before unit/group/member
