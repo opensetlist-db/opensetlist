@@ -345,6 +345,22 @@ describe("<PredictedSetlist> bridge strip", () => {
     view.unmount();
   });
 
+  it("the board link note shows only on a board event; the save note on every event", () => {
+    // Positive control: with board groups the note renders.
+    const board = renderBuilder({
+      boardGroups: [{ groupId: "1", slug: "hasunosora", label: "蓮ノ空", color: null }],
+    });
+    expect(screen.getByTestId("predict-board-link-note")).toBeTruthy();
+    board.unmount();
+
+    // Non-board event (no board groups): only the scoring rule and the
+    // save note — a "separate from the fan board" line would make no sense.
+    renderBuilder();
+    expect(screen.getByText("description")).toBeTruthy();
+    expect(screen.getByTestId("predict-save-note")).toBeTruthy();
+    expect(screen.queryByTestId("predict-board-link-note")).toBeNull();
+  });
+
   it("removing the last imported song ends the provisional label", () => {
     writePredictions("107", [entry(10, "残陽")], { provisional: true });
     renderBuilder({

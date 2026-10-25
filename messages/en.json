@@ -685,7 +685,7 @@
     "copied": "Copied to clipboard",
     "copyUnavailable": "Couldn't copy. Please copy your predictions by hand.",
     "toFullSetlist": "Go to full setlist mode",
-    "modesNote": "Want to predict more songs? Full setlist mode has no limit. If that list is empty, it starts from your picks here, and your hit rate is scored on that list.",
+    "modesNote": "Want to predict the whole setlist? Use full setlist mode. If that list is empty, it starts from your picks here, and your hit rate is scored on that list.",
     "proposalTitle": "Your board predictions from this setlist",
     "proposalExplainer": "The first {max} songs of each group, in your order. Edit them before publishing.",
     "proposalSkipped": "No songs: this group is skipped.",
