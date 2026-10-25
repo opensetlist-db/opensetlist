@@ -49,4 +49,14 @@ describe("GET /api/admin/artists", () => {
     expect(args.take).toBe(100);
     expect(args.where.OR).toBeDefined();
   });
+
+  it("orders the already selected artist rows by common hierarchy, with numeric ID ties", async () => {
+    findManyMock.mockResolvedValue([
+      { id: BigInt(10), parentArtistId: null, type: "group", sortOrder: 1 },
+      { id: BigInt(3), parentArtistId: BigInt(2), type: "unit", sortOrder: 1 },
+      { id: BigInt(2), parentArtistId: null, type: "group", sortOrder: 1 },
+    ]);
+    const response = await GET(new NextRequest("http://localhost/api/admin/artists"));
+    expect((await response.json()).map((artist: { id: number }) => artist.id)).toEqual([2, 3, 10]);
+  });
 });

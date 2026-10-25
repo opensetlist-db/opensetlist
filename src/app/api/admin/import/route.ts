@@ -23,6 +23,7 @@ import {
   lockEvent,
 } from "@/lib/liveBroadcast";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { importMembershipOrders } from "@/lib/membershipOrderImport";
 import {
   findDuplicateSongs,
   normalizeSongText,
@@ -1954,6 +1955,9 @@ export async function POST(request: NextRequest) {
         break;
       case "members":
         result = await importMembers(rows);
+        break;
+      case "membership-order":
+        result = await importMembershipOrders(rows);
         break;
       case "albums":
         result = await importAlbums(rows);

@@ -80,6 +80,7 @@ function mockApi() {
       const json = (data: unknown) => ({ ok: true, json: () => Promise.resolve(data) });
       if (url === "/api/admin/stage-identities" && method === "GET") return json([linkable]);
       if (url === "/api/admin/groups" || url === "/api/admin/artists") return json([]);
+      if (url.endsWith("/stage-identities") && method === "PUT") return json({ sortOrder: JSON.parse(String(init?.body)).sortOrder });
       return json({ ok: true });
     }),
   );
@@ -98,7 +99,7 @@ function rowOf(name: string): HTMLElement {
 
 async function openEditor(name: string) {
   fireEvent.click(within(rowOf(name)).getByRole("button", { name: "편집" }));
-  const input = (await screen.findByLabelText("정렬 순서", {
+  const input = (await screen.findByLabelText("기본 멤버 순서", {
     selector: "input[placeholder='정렬 순서 (비우면 미지정)']",
   })) as HTMLInputElement;
   return { input, editor: input.closest(".bg-blue-50") as HTMLElement };
@@ -151,5 +152,34 @@ describe("ArtistForm member list", () => {
 
     // Both unnumbered now: the older B comes first, as a reload shows.
     await waitFor(() => expect(memberOrder()).toEqual(["멤버B", "멤버A"]));
+  });
+
+  it("saves and clears only the selected relationship rank; keeps default rank", async () => {
+    render(<ArtistForm initialData={{ ...baseInitial, type: "unit", existingStageIdentities: [memberA, memberB] }} />);
+    const input = screen.getByLabelText("멤버B — 이 아티스트의 관계순");
+    fireEvent.change(input, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "멤버B 관계순 저장" }));
+    await waitFor(() => expect(memberOrder()).toEqual(["멤버B", "멤버A"]));
+    expect(calls.find((call) => call.method === "PUT")?.body).toEqual({ stageIdentityId: "si-b", sortOrder: 0 });
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "멤버B 관계순 저장" }));
+    await waitFor(() => expect(memberOrder()).toEqual(["멤버A", "멤버B"]));
+    const { input: defaultRank } = await openEditor("멤버A");
+    expect(defaultRank.value).toBe("1");
+  });
+
+  it("rejects a fraction locally and retains draft on a failed save", async () => {
+    render(<ArtistForm initialData={{ ...baseInitial, existingStageIdentities: [memberA] }} />);
+    const input = screen.getByLabelText("멤버A — 이 아티스트의 관계순");
+    fireEvent.change(input, { target: { value: "1.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "멤버A 관계순 저장" }));
+    expect(screen.getByText(/정수를 입력하세요/)).toBeTruthy();
+    expect(calls.filter((call) => call.method === "PUT")).toHaveLength(0);
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: false, json: async () => ({ error: "fixture failure" }) } as Response);
+    fireEvent.change(input, { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "멤버A 관계순 저장" }));
+    await screen.findByText("fixture failure");
+    expect((input as HTMLInputElement).value).toBe("2");
+    expect(memberOrder()).toEqual(["멤버A"]);
   });
 });
