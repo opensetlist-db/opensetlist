@@ -94,6 +94,8 @@ describe("local event-card preview service", () => {
     await expect(renderCard({ ...content, title: "蓮".repeat(300) }, "live", "セットリスト速報", resources)).rejects.toThrow(/읽기 가능한 배치 실패/);
     await expect(renderCard({ ...content, venue: "会場".repeat(80) }, "live", "セットリスト速報", resources)).rejects.toThrow(/읽기 가능한 배치 실패/);
     const failedOutput = path.join(folder, "no-font-output");
+    // Same-test positive control: a working root creates a readable packet.
+    await expect(access(path.join(folder, "packet/manifest.json"))).resolves.toBeUndefined();
     await mkdir(path.join(folder, "public"));
     await expect(preparePreview({ root: folder, events: [event], output: failedOutput })).rejects.toThrow(/ENOENT/);
     await expect(access(failedOutput)).rejects.toThrow();
@@ -109,11 +111,13 @@ describe("local event-card preview service", () => {
     await expect(preparePreview({ root, events: [event], output: path.join(folder, "bad-evidence"), displayTitles: [{ ...review, reviewSha256: "0".repeat(64) }] })).rejects.toThrow(/증거 해시/);
     await expect(preparePreview({ root, events: [{ ...event, eventSeries: { ...event.eventSeries!, originalName: "Live\nTitle" } }],
       output: path.join(folder, "invalid-title"), displayTitles: [review] })).rejects.toThrow(/제어 문자/);
+    const oversized = { ...event, eventSeries: { ...event.eventSeries!, originalName: "蓮".repeat(250) } };
+    await expect(preparePreview({ root, events: [oversized], output: path.join(folder, "needs-title-review") }))
+      .rejects.toMatchObject({ field: "title", message: expect.stringContaining("운영자 검토 증거") });
     // The same overflowing text in another field must not request title approval.
     const venueTitle = { ...event, originalName: "会場".repeat(30), originalVenue: "会場".repeat(30), translations: [], eventSeries: null };
     await expect(preparePreview({ root, events: [venueTitle], output: path.join(folder, "venue-failure") }))
       .rejects.toMatchObject({ field: "venue", message: expect.not.stringContaining("운영자 검토 증거") });
-    const oversized = { ...event, eventSeries: { ...event.eventSeries!, originalName: "蓮".repeat(250) } };
     const result = await preparePreview({ root, events: [oversized], output: path.join(folder, "display-title"), displayTitles: [review,
       { ...review, locale: "ko" }, { ...review, locale: "en" }] });
     expect(result.renditions[0].content.title).toBe("テストライブ");
