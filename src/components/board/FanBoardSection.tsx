@@ -114,7 +114,6 @@ export function FanBoardSection({
   seed,
   catalog = NO_CATALOG,
   anchorId,
-  picksRevision = 0,
 }: {
   eventId: string;
   locale: string;
@@ -123,13 +122,9 @@ export function FanBoardSection({
    *  carries its `festivalGroupIds`). Empty when the page has none —
    *  then the add control is hidden. */
   catalog?: readonly AvailableSong[];
-  /** Element id for the block, so a publish from the Predict tab can
-   *  scroll back here. Must not start with `board-` (see `fragment.ts`:
-   *  the group fragment matches no element on purpose). */
+  /** Element id for the block. Must not start with `board-` (see
+   *  `fragment.ts`: the group fragment matches no element on purpose). */
   anchorId?: string;
-  /** Bumped by `<LiveSetlist>` after the Predict tab published a ballot
-   *  (n15), so "my picks" re-read the local copy it wrote. */
-  picksRevision?: number;
 }) {
   const t = useTranslations("Board");
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -150,7 +145,6 @@ export function FanBoardSection({
     eventId,
     locale,
     active: state.kind === "ready",
-    revision: picksRevision,
   });
 
   // A tab left open across the start time goes read-only AT the start
@@ -283,16 +277,6 @@ export function FanBoardSection({
       if (readSession.current === session) readSession.current = null;
     };
   }, [eventId, locale]);
-
-  // Publishing the Predict ballot can finish while a wish write is
-  // still pending. Keep the same read session so both changes share
-  // its pending-write barrier, rather than dropping that barrier.
-  const previousPicksRevision = useRef(picksRevision);
-  useEffect(() => {
-    if (previousPicksRevision.current === picksRevision) return;
-    previousPicksRevision.current = picksRevision;
-    readSession.current?.refresh();
-  }, [picksRevision]);
 
   const mutate = async (action: () => Promise<PickOutcome>) => {
     const complete = readSession.current?.beginWrite();

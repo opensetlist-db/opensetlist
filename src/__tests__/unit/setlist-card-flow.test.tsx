@@ -4,7 +4,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 // The board and the setlist card end to end through the real
 // <LiveSetlist> → <SetlistSection> → <PredictedSetlist>: no mode switch
 // between them, a start button into the Predicted tab, and the
-// builder's "import my wishes".
+// builder's "import my expected songs".
 
 vi.mock("next-intl", () => ({
   useTranslations:
@@ -112,6 +112,17 @@ const display = (originalTitle: string) => ({
   translations: [],
 });
 const entry = (songId: number, title: string) => ({ songId, song: display(title) });
+/** A stored board expected song (the `board-{eventId}` local copy). */
+const pick = (groupId: string, songId: string, available = true) => ({
+  id: `p-${groupId}-${songId}`,
+  groupId,
+  songId,
+  title: songId,
+  available,
+});
+function storePicks(picks: ReturnType<typeof pick>[]) {
+  window.localStorage.setItem("board-107", JSON.stringify({ picks }));
+}
 /** A stored wish; `groupId` set = a board wish, absent = legacy wishlist. */
 const wish = (songId: number, title: string, groupId?: string) => ({
   songId,
@@ -228,7 +239,8 @@ describe("board and setlist card on one page", () => {
   });
 });
 
-describe("<PredictedSetlist> import my wishes", () => {
+describe("<PredictedSetlist> import my expected songs", () => {
+  const FILTERS = [{ key: "all", label: "All", color: null, kind: "all" as const, artistId: null }];
   function renderBuilder(props: Partial<React.ComponentProps<typeof PredictedSetlist>> = {}) {
     return render(
       <PredictedSetlist
@@ -240,49 +252,70 @@ describe("<PredictedSetlist> import my wishes", () => {
         seriesName="S"
         eventTitle="E"
         dateLine="d"
-        availableSongs={[]}
-        unitFilters={[]}
+        availableSongs={CATALOG}
+        unitFilters={FILTERS}
+        boardGroups={SEED.chips}
         {...props}
       />,
     );
   }
 
-  it("appends every wish (all groups and legacy), skipping songs already listed, duplicates and deleted ones", () => {
+  it("appends my board expected songs in board group order, skipping listed, duplicate and unavailable ones", () => {
     writePredictions("107", [entry(10, "残陽")]);
-    writeWishes("107", [
-      wish(10, "残陽", "1"), // already in the list
-      wish(11, "ハナムスビ", "1"),
-      wish(20, "始まりは君の空", "2"),
-      wish(20, "始まりは君の空"), // same song again as a legacy wish
-      { ...wish(31, "消えた曲", "1"), available: false },
+    // Liella! picked first: the import still follows the board's group order.
+    storePicks([
+      pick("2", "20"),
+      pick("1", "10"), // already in the list
+      pick("1", "11"),
+      pick("1", "30", false), // moderated out
+      pick("1", "99"), // not in the catalog any more
     ]);
     renderBuilder();
-    fireEvent.click(screen.getByTestId("predict-import-wishes"));
+    fireEvent.click(screen.getByTestId("predict-import-picks"));
 
     expect(readPredictions("107")?.songs.map((e) => e.songId)).toEqual([10, 11, 20]);
-    // Wish order is not a ranking: the list asks to be arranged.
+    // Board order is not a ranking: the list asks to be arranged.
     expect(readPredictions("107")?.provisional).toBe(true);
     expect(screen.getByTestId("predict-provisional")).toBeTruthy();
-    expect(screen.getByTestId("predict-wish-import-note")).toHaveTextContent(
-      "importWishesDone(2)",
-    );
-    expect(trackEvent).toHaveBeenCalledWith("predict_wish_import", {
+    expect(screen.getByTestId("predict-import-note")).toHaveTextContent("importPicksDone(2)");
+    expect(trackEvent).toHaveBeenCalledWith("predict_board_import", {
       event_id: "107",
       added_count: 2,
     });
   });
 
+  it("wishes are never imported — this list is a prediction", () => {
+    // A board wish and no expected song: nothing to add.
+    writeWishes("107", [wish(11, "ハナムスビ", "1")]);
+    renderBuilder();
+    fireEvent.click(screen.getByTestId("predict-import-picks"));
+    expect(readPredictions("107")).toBeNull();
+    expect(screen.getByTestId("predict-import-note")).toHaveTextContent("importPicksNone");
+  });
+
   it("nothing new to import: the list is untouched and the fan is told so", () => {
     writePredictions("107", [entry(10, "残陽")]);
-    writeWishes("107", [wish(10, "残陽", "1")]);
+    storePicks([pick("1", "10")]);
     const before = window.localStorage.getItem("predict-107");
     renderBuilder();
-    fireEvent.click(screen.getByTestId("predict-import-wishes"));
+    fireEvent.click(screen.getByTestId("predict-import-picks"));
     expect(window.localStorage.getItem("predict-107")).toBe(before);
-    expect(screen.getByTestId("predict-wish-import-note")).toHaveTextContent(
-      "importWishesNone",
-    );
+    expect(screen.getByTestId("predict-import-note")).toHaveTextContent("importPicksNone");
     expect(screen.queryByTestId("predict-provisional")).toBeNull();
+  });
+
+  it("only on board events, and only before the start", () => {
+    // Positive control: board event, before the start.
+    const open = renderBuilder();
+    expect(screen.getByTestId("predict-import-picks")).toBeTruthy();
+    open.unmount();
+
+    const noBoard = renderBuilder({ boardGroups: undefined });
+    expect(screen.queryByTestId("predict-import-picks")).toBeNull();
+    noBoard.unmount();
+
+    renderBuilder({ startTime: new Date(Date.now() - 60_000) });
+    expect(screen.queryByTestId("predict-import-picks")).toBeNull();
   });
 
   it("a provisional list keeps its label after a reload", () => {
@@ -293,10 +326,7 @@ describe("<PredictedSetlist> import my wishes", () => {
 
   it("removing the last imported song ends the provisional label", () => {
     writePredictions("107", [entry(10, "残陽")], { provisional: true });
-    renderBuilder({
-      availableSongs: CATALOG,
-      unitFilters: [{ key: "all", label: "All", color: null, kind: "all", artistId: null }],
-    });
+    renderBuilder();
     expect(screen.getByTestId("predict-provisional")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("removeAria"));
     expect(readPredictions("107")?.provisional).toBeUndefined();
@@ -308,15 +338,9 @@ describe("<PredictedSetlist> import my wishes", () => {
     expect(readPredictions("107")?.provisional).toBeUndefined();
   });
 
-  it("locked (show started): no import button and no strip", () => {
+  it("locked (show started): no strip even for a provisional list", () => {
     writePredictions("107", [entry(10, "残陽")], { provisional: true });
-    // Positive control: before the start the button is there.
-    const open = renderBuilder();
-    expect(screen.getByTestId("predict-import-wishes")).toBeTruthy();
-    open.unmount();
-
     renderBuilder({ startTime: new Date(Date.now() - 60_000) });
-    expect(screen.queryByTestId("predict-import-wishes")).toBeNull();
     expect(screen.queryByTestId("predict-provisional")).toBeNull();
   });
 });

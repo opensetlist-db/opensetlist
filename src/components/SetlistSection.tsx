@@ -82,10 +82,10 @@ interface Props {
   availableSongs: AvailableSong[];
   /** Filter chip set (server-derived). Empty array hides the picker. */
   unitFilters: UnitFilter[];
-  /** Board groups for the builder's "put on the board" (n15);
-   *  absent → no publish. */
+  /** The board's groups while predicting is open on a board event;
+   *  enables the builder's "import my expected songs". Absent → no
+   *  import (no board, or outside the window). */
   boardGroups?: readonly BoardChip[];
-  onBoardPublished?: () => void;
 }
 
 /**
@@ -133,7 +133,6 @@ export function SetlistSection({
   unitFilters,
   eventArtistId,
   boardGroups,
-  onBoardPublished,
 }: Props) {
   const t = useTranslations("Setlist");
   const mounted = useMounted();
@@ -247,7 +246,6 @@ export function SetlistSection({
         availableSongs={availableSongs}
         unitFilters={unitFilters}
         boardGroups={boardGroups}
-        onBoardPublished={onBoardPublished}
       />
     );
 

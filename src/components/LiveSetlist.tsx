@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useState } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistSection } from "@/components/SetlistSection";
@@ -175,31 +174,18 @@ export function LiveSetlist({
   const t = useTranslations("Event");
   const detailT = useTranslations("EventDetail");
 
-  // The board block and the setlist card sit one above the other, so
-  // there is no button to move between them (a "go to full setlist
-  // mode" button read as a mode switch for what is just the next card).
-  // The one link left is "put on the board" from the Predict tab, which
-  // scrolls back to the board. Element ids instead of refs: both targets
-  // are rendered by children that own their own refs.
+  // The board block and the setlist card sit one above the other with no
+  // buttons between them (a "go to full setlist mode" button read as a
+  // mode switch for what is just the next card, and "put on the board"
+  // was more UI than it was worth). The one link left: the builder can
+  // import the viewer's board expected songs, so it gets the board's
+  // groups (their order groups the imported songs) while predicting is
+  // open — upcoming and inside the D-7 window, the same gate
+  // `<SetlistSection>` uses.
   const boardAnchorId = `fan-board-${eventId}`;
   const setlistAnchorId = `setlist-card-${eventId}`;
-  const backToBoard = useCallback(() => {
-    document
-      .getElementById(boardAnchorId)
-      ?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-  }, [boardAnchorId]);
-  // Publishing needs the Predict tab's builder and an open board:
-  // upcoming and inside the D-7 window — the same gate `<SetlistSection>`
-  // uses for predicting.
-  const bridgeOpen = board !== null && status === "upcoming" && isWishPredictOpen;
-  // A publish from the Predict tab rewrote the local ballot, so the
-  // board block re-reads it (the revision) and comes into view showing
-  // the new picks.
-  const [boardPicksRevision, setBoardPicksRevision] = useState(0);
-  const onBoardPublished = useCallback(() => {
-    setBoardPicksRevision((r) => r + 1);
-    requestAnimationFrame(backToBoard);
-  }, [backToBoard]);
+  const importableBoard =
+    board !== null && status === "upcoming" && isWishPredictOpen ? board : null;
 
   // While polling, derive trending from the same reactionCounts that drives
   // per-item counts — single source of truth, no risk of the two views
@@ -318,7 +304,6 @@ export function LiveSetlist({
             seed={board}
             catalog={availableSongs}
             anchorId={boardAnchorId}
-            picksRevision={boardPicksRevision}
           />
         )}
     </>
@@ -427,8 +412,7 @@ export function LiveSetlist({
         availableSongs={availableSongs}
         unitFilters={unitFilters}
         eventArtistId={eventArtistId}
-        boardGroups={bridgeOpen && board ? board.chips : undefined}
-        onBoardPublished={bridgeOpen ? onBoardPublished : undefined}
+        boardGroups={importableBoard?.chips}
       />
     </section>
       {!participationFirst && participation}

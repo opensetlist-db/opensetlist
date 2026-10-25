@@ -205,9 +205,3 @@ export interface BoardPickCreated {
   songId: string;
   createdAt: string;
 }
-
-/** Body of a successful publish (n15): the whole resulting
- *  ballot, oldest first. */
-export interface BoardPublishResponse {
-  picks: BoardPickCreated[];
-}
