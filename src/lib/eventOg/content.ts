@@ -37,7 +37,7 @@ export function cardContent(event: CardEvent, locale: CardLocale) {
     localizedSeriesTitle: seriesTitle,
     title,
     performance: seriesTitle && seriesTitle !== eventTitle ? eventTitle : "",
-    context: artist && !title.includes(artist) && artist !== eventTitle ? artist : "",
+    context: artist && !title.includes(artist) && !eventTitle.includes(artist) ? artist : "",
     date: formatVenueDate(event.date, locale),
     venue: resolveLocalizedField(event, event.translations, locale, "venue", "originalVenue") ?? "",
   };

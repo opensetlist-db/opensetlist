@@ -72,9 +72,9 @@ export async function preparePreview({ root, events, output, legacy, displayTitl
         } catch (error) {
           // Only the title's measured layout failure permits an override.
           // Missing glyphs/fonts or overflowing factual fields still fail.
-          if (!(error instanceof CardLayoutError) || !error.message.endsWith(`: ${content.title}`)) throw error;
+          if (!(error instanceof CardLayoutError) || error.field !== "title") throw error;
           officialLayoutFailure = error.message;
-          if (!review) throw new CardLayoutError(`${error.message}\n공유 카드 표시명과 운영자 검토 증거가 필요합니다.`);
+          if (!review) throw new CardLayoutError(`${error.message}\n공유 카드 표시명과 운영자 검토 증거가 필요합니다.`, "title");
           result = await renderCard({ ...content, title: review.title }, mode, label, resources);
         }
         if (review && !officialLayoutFailure) throw new Error("공식 전체 제목이 읽기 기준에 맞으므로 표시명을 사용할 수 없습니다.");

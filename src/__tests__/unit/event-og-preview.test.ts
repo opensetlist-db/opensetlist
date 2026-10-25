@@ -67,12 +67,20 @@ describe("local event-card preview service", () => {
         process.env.TZ = zone;
         expect(cardContent(event, "en").date).toBe("July 11, 2026");
       }
-    } finally { process.env.TZ = previous; }
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
     const absent = cardContent({ ...event, date: null, originalVenue: null, translations: [], eventSeries: null }, "ja");
     expect(absent.date).toBe("");
     expect(absent.venue).toBe("");
     expect(absent.performance).toBe("");
     expect(absent.title).toBe(event.originalName);
+    const artist = { originalName: "Bloom", originalLanguage: "en", translations: [] };
+    const distinct = { ...event, artist, originalName: "Saitama Day.1", translations: [],
+      eventSeries: { ...event.eventSeries!, originalName: "Garden Party" } };
+    expect(cardContent(distinct, "en").context).toBe("Bloom");
+    expect(cardContent({ ...distinct, originalName: "Bloom Saitama Day.1" }, "en").context).toBe("");
   });
 
   it("fails missing fonts, unsupported glyphs, title/venue overflow and undersized text instead of returning a degraded card", async () => {
@@ -86,7 +94,6 @@ describe("local event-card preview service", () => {
     await expect(renderCard({ ...content, title: "蓮".repeat(300) }, "live", "セットリスト速報", resources)).rejects.toThrow(/읽기 가능한 배치 실패/);
     await expect(renderCard({ ...content, venue: "会場".repeat(80) }, "live", "セットリスト速報", resources)).rejects.toThrow(/읽기 가능한 배치 실패/);
     const failedOutput = path.join(folder, "no-font-output");
-    await expect(access(path.join(folder, "packet/manifest.json"))).resolves.toBeUndefined();
     await mkdir(path.join(folder, "public"));
     await expect(preparePreview({ root: folder, events: [event], output: failedOutput })).rejects.toThrow(/ENOENT/);
     await expect(access(failedOutput)).rejects.toThrow();
@@ -100,6 +107,12 @@ describe("local event-card preview service", () => {
     const review = { eventId: event.id, locale: "ja" as const, title: "テストライブ", reviewFile, reviewSha256: sha256(evidence) };
     await expect(preparePreview({ root, events: [event], output: path.join(folder, "unnecessary"), displayTitles: [review] })).rejects.toThrow(/公式|공식 전체 제목/);
     await expect(preparePreview({ root, events: [event], output: path.join(folder, "bad-evidence"), displayTitles: [{ ...review, reviewSha256: "0".repeat(64) }] })).rejects.toThrow(/증거 해시/);
+    await expect(preparePreview({ root, events: [{ ...event, eventSeries: { ...event.eventSeries!, originalName: "Live\nTitle" } }],
+      output: path.join(folder, "invalid-title"), displayTitles: [review] })).rejects.toThrow(/제어 문자/);
+    // The same overflowing text in another field must not request title approval.
+    const venueTitle = { ...event, originalName: "会場".repeat(30), originalVenue: "会場".repeat(30), translations: [], eventSeries: null };
+    await expect(preparePreview({ root, events: [venueTitle], output: path.join(folder, "venue-failure") }))
+      .rejects.toMatchObject({ field: "venue", message: expect.not.stringContaining("운영자 검토 증거") });
     const oversized = { ...event, eventSeries: { ...event.eventSeries!, originalName: "蓮".repeat(250) } };
     const result = await preparePreview({ root, events: [oversized], output: path.join(folder, "display-title"), displayTitles: [review,
       { ...review, locale: "ko" }, { ...review, locale: "en" }] });
@@ -111,14 +124,16 @@ describe("local event-card preview service", () => {
   it("detects changed manifest and output bytes", async () => {
     const file = path.join(folder, "packet/manifest.json");
     const original = await readFile(file, "utf8");
-    await writeFile(file, original.replace("July 11, 2026", "July 12, 2026"));
-    await expect(readPreview(file)).rejects.toThrow(/manifest/);
-    await writeFile(file, original);
+    try {
+      await writeFile(file, original.replace("July 11, 2026", "July 12, 2026"));
+      await expect(readPreview(file)).rejects.toThrow(/manifest/);
+    } finally { await writeFile(file, original); }
     const image = path.join(folder, "packet/999-en-live.png");
     const originalImage = await readFile(image);
-    await writeFile(image, "not a png");
-    await expect(readPreview(file)).rejects.toThrow(/출력 해시/);
-    await writeFile(image, originalImage);
+    try {
+      await writeFile(image, "not a png");
+      await expect(readPreview(file)).rejects.toThrow(/출력 해시/);
+    } finally { await writeFile(image, originalImage); }
   });
 
   it("checks malformed arguments, a failed packet, and exact successful replay through real CLI processes", async () => {

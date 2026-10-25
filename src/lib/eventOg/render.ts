@@ -46,11 +46,18 @@ export async function loadCardResources(root: string) {
 export type CardResources = Awaited<ReturnType<typeof loadCardResources>>;
 
 type Layout = { fontSize: number; height: number; lines: number };
-export class CardLayoutError extends Error {}
+type LayoutField = "title" | "performance" | "context" | "venue" | "date" | "label";
+export class CardLayoutError extends Error {
+  readonly field: LayoutField;
+  constructor(message: string, field: LayoutField) {
+    super(message);
+    this.field = field;
+  }
+}
 export class CardFontError extends Error {}
-async function fit(text: string, area: { min: number; max: number; lines: number; height: number; lineHeight: number }, fonts: Font[]): Promise<Layout> {
+async function fit(field: LayoutField, text: string, area: { min: number; max: number; lines: number; height: number; lineHeight: number }, fonts: Font[]): Promise<Layout> {
   if (!text) return { fontSize: area.max, height: 0, lines: 0 };
-  if (/[\u0000-\u001f\u007f]/u.test(text)) throw new CardLayoutError("제어 문자가 포함된 표시 내용입니다.");
+  if (/[\u0000-\u001f\u007f]/u.test(text)) throw new Error("제어 문자가 포함된 표시 내용입니다.");
   for (let size = area.max; size >= area.min; size -= 2) {
     let measured = 0;
     await satori(box({ width: TEMPLATE.textWidth, flexDirection: "column", fontFamily: OG_FONT_STACK, fontWeight: 700 },
@@ -62,18 +69,18 @@ async function fit(text: string, area: { min: number; max: number; lines: number
     const lines = Math.round(measured / (size * area.lineHeight));
     if (measured > 0 && measured <= area.height && lines <= area.lines) return { fontSize: size, height: measured, lines };
   }
-  throw new CardLayoutError(`읽기 가능한 배치 실패 (${area.min}px / ${area.lines}줄): ${text}`);
+  throw new CardLayoutError(`읽기 가능한 배치 실패 (${area.min}px / ${area.lines}줄): ${text}`, field);
 }
 
 export async function renderCard(content: CardContent, mode: CardMode, label: string, resources: CardResources) {
   const { fonts } = resources;
   const layout = {
-    title: await fit(content.title, { ...TEMPLATE.title, height: content.context ? 203 : TEMPLATE.title.height }, fonts),
-    performance: await fit(content.performance, TEMPLATE.performance, fonts),
-    context: await fit(content.context, TEMPLATE.context, fonts),
-    venue: await fit(content.venue, TEMPLATE.venue, fonts),
-    date: await fit(content.date, { min: 34, max: 34, lines: 1, height: 43, lineHeight: 1.18 }, fonts),
-    label: await fit(label, { min: 30, max: 30, lines: 1, height: 38, lineHeight: 1.18 }, fonts),
+    title: await fit("title", content.title, { ...TEMPLATE.title, height: content.context ? 203 : TEMPLATE.title.height }, fonts),
+    performance: await fit("performance", content.performance, TEMPLATE.performance, fonts),
+    context: await fit("context", content.context, TEMPLATE.context, fonts),
+    venue: await fit("venue", content.venue, TEMPLATE.venue, fonts),
+    date: await fit("date", content.date, { min: 34, max: 34, lines: 1, height: 43, lineHeight: 1.18 }, fonts),
+    label: await fit("label", label, { min: 30, max: 30, lines: 1, height: 38, lineHeight: 1.18 }, fonts),
   };
   const accent = ACCENTS[mode];
   const text = (value: string, top: number, size: number, color = "#172542") => box({ position: "absolute", left: 54, top, width: TEMPLATE.textWidth, fontSize: size, lineHeight: 1.18, wordBreak: "break-word", color }, value);
@@ -100,7 +107,7 @@ export async function renderCard(content: CardContent, mode: CardMode, label: st
   );
   // Both passes use the same Satori/fonts. Validate the whole composition too:
   // fitting each string alone must not hide collisions with adjacent regions.
-  if (layout.title.height + (content.context ? 195 : 163) > 398) throw new CardLayoutError("제목과 회차 영역이 겹칩니다.");
+  if (layout.title.height + (content.context ? 195 : 163) > 398) throw new CardLayoutError("제목과 회차 영역이 겹칩니다.", "title");
   const png = Buffer.from(await new ImageResponse(tree, { width: 1200, height: 630, fonts }).arrayBuffer());
   return { png, layout };
 }
