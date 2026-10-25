@@ -297,13 +297,11 @@ model Artist {
   // No-op for type=solo|group (the chip filter only runs over
   // sub-artists, which by construction are units).
   isMainUnit        Boolean        @default(false)
-  // sortOrder: display order among top-level groups on festival
-  // surfaces — the group chips on the fan board and on the prediction
-  // picker. Lower first, null last; ties (and nulls) fall back to the
-  // roster rule (performer count desc, first appearance). Set by the
-  // operator, e.g. by series debut, so a festival lists its series in
-  // franchise order instead of by how many members each brings.
-  // Only read for root artists (parentArtistId IS NULL).
+  // Official display rank at this level of the Artist hierarchy, for
+  // roots AND child units/solo artists. Compare ancestor paths first,
+  // then siblings by rank ASC NULLS LAST and numeric id ASC. A child's
+  // rank is local to its parent, not comparable with a root's rank.
+  // Existing consumers adopt the common officialOrder contract separately.
   sortOrder         Int?
   // isSideProject: a cross-IP side project / collaboration unit — e.g.
   // a unit whose members come from several series — that is a
@@ -384,9 +382,9 @@ model StageIdentity {
   // the operator sets it, e.g. the official site's member order. Lower
   // first; null sorts last and falls back to today's order (createdAt,
   // then id), so members nobody has numbered yet keep their place.
-  // One global number per identity rather than per artist link: a
-  // member's sub-unit lists reuse the same relative order, which is how
-  // official sites list unit members too.
+  // This remains the default member rank. An explicit display context
+  // may override it via StageIdentityArtist.sortOrder; it never changes
+  // this value or historical membership/appearance facts.
   sortOrder         Int?
   createdAt         DateTime          @default(now())
 
@@ -416,6 +414,11 @@ model StageIdentityArtist {
   id              String @id @default(uuid())
   stageIdentityId String
   artistId        BigInt
+
+  // Display metadata for this exact group/unit relation. NULL means
+  // use the default StageIdentity order; ties also use that default.
+  // Independent of membership dates, roles and actual appearances.
+  sortOrder       Int?
 
   startDate DateTime? @db.Date
   endDate   DateTime? @db.Date

@@ -26,8 +26,9 @@ export interface ArtistHierarchy {
   parentOf: Map<string, string | null>;
   /** parent id → direct child ids. */
   childrenOf: Map<string, string[]>;
-  /** `Artist.sortOrder`, only for artists that have one. Read for
-   *  roots by the festival group order (`resolveFestivalGroups`). */
+  /** `Artist.sortOrder` for every level. Root and child ranks belong to
+   *  separate sibling comparisons (see officialOrder). The legacy
+   *  festival consumer currently reads roots only. */
   sortOrderOf: Map<string, number>;
   /** Ids with `Artist.isSideProject` — dropped from the fan board's
    *  group list (`fanBoardRootIds`), kept everywhere else. */
