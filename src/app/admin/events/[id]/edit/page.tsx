@@ -191,7 +191,7 @@ export default async function EditEventPage({ params }: Props) {
 
       <div>
         <h2 className="mb-6 text-2xl font-bold">협업 그룹 출연</h2>
-        <CollaborationSettings key={String(data.id)} eventId={Number(data.id)} />
+        <CollaborationSettings key={event.id.toString()} eventId={event.id.toString()} />
       </div>
 
       <hr className="border-zinc-200" />

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 type Artist = { artistId: string; label: string; included: boolean };
 
-export default function CollaborationSettings({ eventId }: { eventId: number }) {
+export default function CollaborationSettings({ eventId }: { eventId: string }) {
   const [artists, setArtists] = useState<Artist[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

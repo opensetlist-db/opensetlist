@@ -39,6 +39,13 @@ const scenario = {
       name: "explicit-appearance",
       async run(t) {
         await t.open(path(t));
+        const gkss = panel(t).getByRole("checkbox", { name: "GKSS", exact: true });
+        await gkss.check();
+        await save(t).click();
+        await panel(t).getByRole("status").waitFor();
+        const control = await t.page.request.get(`${t.base}/ja/events/${t.fixture.eventId}/${t.fixture.slug}`);
+        t.check(`GKSS explicit positive control@${t.width}`, control.status() === 200 && (await control.text()).includes("festival:gkss"));
+        await gkss.uncheck();
         await choice(t).check();
         await save(t).click();
         await panel(t).getByRole("status").waitFor();
