@@ -13,6 +13,8 @@ correction. Public suspension is a separate operation.
    includes each annotation's current version and private append-only correction
    history. Keep the source revision and expected annotation version.
 3. Save a nonempty private reason (at most 1,000 characters) in a UTF-8 file.
+   Invalid UTF-8 and NUL characters are rejected before CLI database access;
+   Windows PowerShell 5.1 operators must explicitly select UTF-8 encoding.
    Allocate a new operation UUID for this decision and retain the exact inputs.
 4. Execute explicitly:
 

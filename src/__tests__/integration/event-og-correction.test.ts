@@ -69,6 +69,7 @@ describe("event-card correction through real dev DB and real PNG publications", 
     const originalLocales = new Map(await Promise.all(["ja", "ko", "en"].map(async (locale) => [locale, await lookup(A, locale)] as const)));
     expect(before?.correction).toBeNull(); expect(newer?.image.sha256).not.toBe(before?.image.sha256);
     const bytes = [...storage.objects.entries()].map(([key, value]) => [key, value.sha256]);
+    expect(bytes.length).toBeGreaterThan(0);
     const request = input(); const result = await correct(request);
     expect(result.status).toBe("corrected"); expect(result.version).toBe(1);
     for (const locale of ["ja", "ko", "en"]) {
@@ -93,6 +94,7 @@ describe("event-card correction through real dev DB and real PNG publications", 
   });
 
   it("rejects unpublished/cross-event/cross-mode/self/cyclic targets without changing the existing decision", async () => {
+    await expect(correct({ ...input(), reason: "private\u0000reason" })).rejects.toMatchObject({ code: "invalid_publication" });
     await correct(input()); const before = await lookup(A);
     for (const target of [randomUUID(), OTHER, LIVE]) await expect(correct(input(B, target))).rejects.toMatchObject({ code: "invalid_correction" });
     await expect(correct(input(B, B))).rejects.toMatchObject({ code: "invalid_publication" });

@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { eventShareHtml } from "@/lib/eventOg/shareHtml";
 import { lookupPublication } from "@/lib/eventOg/reader";
 import { captureException } from "@sentry/nextjs";
@@ -23,6 +26,23 @@ const copy = { heading: "共有カード", opening: "移動します", open: "�
   correctionHeading: "訂正", correctionBody: "元のカードを記録", openCorrection: "最新のカード", correctionUnavailable: "現在利用できません" };
 
 describe("published event-card transport", () => {
+  it("rejects incorrectly encoded or NUL-containing private reason files through real CLI processes before DB access", () => {
+    const folder = mkdtempSync(path.join(tmpdir(), "og-reason-"));
+    const file = path.join(folder, "reason.txt");
+    const args = ["correct", "--event", "7", "--mode", "prediction", "--revision", card.publicationId, "--replacement", card.publicationId,
+      "--expected-version", "0", "--operation", card.publicationId, "--reason-file", file];
+    const run = () => spawnSync(process.execPath, ["scripts/event-og.mjs", ...args], { cwd: process.cwd(), encoding: "utf8", timeout: 30_000,
+      env: { ...process.env, DATABASE_URL: "postgresql://invalid:invalid@localhost/not-dev", DATABASE_URL_UNPOOLED: "postgresql://invalid:invalid@localhost/not-dev" } });
+    try {
+      writeFileSync(file, "valid private reason", "utf8");
+      const allowed = run(); expect(allowed.status).toBe(1); expect(allowed.stderr).toContain("dev 데이터베이스만 허용");
+      for (const bytes of [Buffer.from([0xff, 0xfe, 0x61, 0]), Buffer.from([0xc3, 0x28]), Buffer.from("reason\u0000text")]) {
+        writeFileSync(file, bytes); const rejected = run(); expect(rejected.status).toBe(1);
+        expect(rejected.stderr).toMatch(/유효한 UTF-8|NUL 문자/);
+      }
+    } finally { rmSync(folder, { recursive: true, force: true }); }
+  });
+
   it("keeps frozen metadata on a readable corrected page and omits auto-navigation while offering the explicit latest link", () => {
     const parse = (html: string) => new DOMParser().parseFromString(html, "text/html");
     const normal = parse(eventShareHtml(card, "/ja/events/7/current-slug", copy));

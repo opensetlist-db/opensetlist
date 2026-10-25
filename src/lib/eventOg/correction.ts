@@ -22,7 +22,7 @@ export async function correctPublication(input: CorrectionInput, deps: { db?: Co
   sharePath(eventId, mode, revision, "ja"); sharePath(eventId, mode, replacementId, "ja");
   if (revision === replacementId || !isPublicationId(operationId) || !Number.isSafeInteger(expectedVersion)
     || expectedVersion < 0 || expectedVersion >= 2147483647 || typeof input.reason !== "string"
-    || !input.reason.trim() || input.reason.trim().length > 1000) throw invalid("정정 식별자·버전·운영 사유를 확인하세요.");
+    || !input.reason.trim() || input.reason.includes("\u0000") || input.reason.trim().length > 1000) throw invalid("정정 식별자·버전·운영 사유를 확인하세요.");
   const reason = input.reason.trim(); const origin = publicationOrigin(deps.origin); const db = deps.db ?? prisma;
   const fingerprint = createHash("sha256").update(JSON.stringify({ eventId, mode, revision, replacementId, expectedVersion, operationId, reason })).digest("hex");
   const urls = (id: string) => Object.fromEntries(CARD_LOCALES.map((l) => [l, origin + sharePath(eventId, mode, id, l)]));

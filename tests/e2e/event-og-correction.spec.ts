@@ -17,7 +17,7 @@ function helper(action: string) {
   expect(run.status, run.stderr).toBe(0); return JSON.parse(run.stdout);
 }
 function correct(operationId = fixture.operationId, replacementId = fixture.replacement.publicationId) {
-  return spawnSync(process.execPath, ["scripts/event-og.mjs", "correct", "--event", fixture.eventId, "--mode", "prediction", "--revision", fixture.published[0].revision,
+  return spawnSync(process.execPath, ["scripts/event-og.mjs", "correct", "--event", fixture.eventId, "--mode", "prediction", "--revision", fixture.published.find((p) => p.mode === "prediction")!.revision,
     "--replacement", replacementId, "--expected-version", "0", "--operation", operationId, "--reason-file", fixture.reasonFile], {
     cwd: process.cwd(), encoding: "utf8", timeout: 60_000, env: { ...process.env, NEXT_PUBLIC_BASE_URL: BASE },
   });
@@ -33,6 +33,12 @@ test.describe("corrected event-card HTTP and readable notice", () => {
     for (const locale of ["ja", "ko", "en"]) {
       const response = await request.get(old.urls[locale]); expect(response.status()).toBe(200);
       const html = await response.text(); before.set(locale, html);
+      const tags = metadata(html);
+      expect(tags).not.toBeNull();
+      expect(tags!.length).toBeGreaterThan(5);
+      for (const required of ['property="og:image"', 'name="twitter:card"', 'rel="canonical"']) {
+        expect(tags!.some((tag) => tag.includes(required))).toBe(true);
+      }
       expect(html).toContain('/event-share-navigation.js');
     }
     const first = correct(); expect(first.status, first.stderr).toBe(0);

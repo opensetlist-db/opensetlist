@@ -26,12 +26,22 @@ async function main() {
     options[key] = value;
   }
   if (["publish", "list", "correct"].includes(action)) {
+    let correctionReason;
     if (!/^[1-9]\d*$/.test(options["--event"] ?? "")) throw new Error("올바른 공연 ID가 필요합니다.");
     if (action === "publish" && (!options["--manifest"] || !options["--approval"] || !options["--revision"]
       || !["prediction", "live", "setlist"].includes(options["--mode"]))) throw new Error("발행에는 명시적 mode/revision/manifest/approval이 필요합니다.");
     if (action === "correct" && (!options["--revision"] || !options["--replacement"] || !options["--operation"] || !options["--reason-file"]
       || !/^(0|[1-9]\d*)$/.test(options["--expected-version"] ?? "") || !["prediction", "live", "setlist"].includes(options["--mode"]))) {
       throw new Error("정정에는 명시적 mode/revision/replacement/expected-version/operation/reason-file이 필요합니다.");
+    }
+    if (action === "correct") {
+      try {
+        correctionReason = new TextDecoder("utf-8", { fatal: true }).decode(await readFile(path.resolve(options["--reason-file"])));
+      } catch (error) {
+        if (error instanceof TypeError) throw new Error("운영 사유 파일은 유효한 UTF-8이어야 합니다.");
+        throw error;
+      }
+      if (correctionReason.includes("\u0000")) throw new Error("운영 사유 파일에 NUL 문자를 사용할 수 없습니다. UTF-8 인코딩을 확인하세요.");
     }
     const { config } = await import("dotenv");
     config({ path: [path.join(root, ".env.local"), path.join(root, ".env")], quiet: true });
@@ -51,7 +61,7 @@ async function main() {
       else if (action === "correct") {
         const result = await lifecycle.correctPublication({ eventId: options["--event"], mode: options["--mode"], revision: options["--revision"],
           replacementId: options["--replacement"], expectedVersion: Number(options["--expected-version"]), operationId: options["--operation"],
-          reason: await readFile(path.resolve(options["--reason-file"]), "utf8") }, { origin: configuredOrigin });
+          reason: correctionReason }, { origin: configuredOrigin });
         console.log(JSON.stringify(result, null, 2));
       }
       else {
