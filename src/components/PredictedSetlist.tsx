@@ -39,6 +39,7 @@ import {
 import type { BoardToBuilderOutcome } from "@/lib/board/toPredictions";
 import type { BoardChip } from "@/lib/board/types";
 import { BoardPublishProposal } from "@/components/board/BoardPublishProposal";
+import { BOARD_PICKS_PER_GROUP } from "@/lib/board/config";
 import { calcPredictScore } from "@/lib/predictScore";
 import { isSongMatched } from "@/lib/songMatch";
 import { trackEvent } from "@/lib/analytics";
@@ -556,6 +557,16 @@ export function PredictedSetlist({
           rules copy retires alongside the editor. Visual treatment
           mirrors the during-show legend strip further down. */}
       {isPreShow && <p className={styles.predictNote}>{t("description")}</p>}
+      {/* Board events only: this list and the board's expected songs
+          are stored apart (localStorage vs the server ballot) and never
+          sync on their own — only "put on the board" copies the first
+          picks per group over. Said here because the fan who came from
+          the board otherwise assumes the two are one list. */}
+      {isPreShow && boardGroups && (
+        <p data-testid="predict-board-link-note" className={styles.predictNote}>
+          {t("boardLinkNote", { max: BOARD_PICKS_PER_GROUP })}
+        </p>
+      )}
 
       {/* Two-mode bridge strip (n15), pre-show only: the outcome of
           the board import that opened this tab, the provisional-order

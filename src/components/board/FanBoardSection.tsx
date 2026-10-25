@@ -584,6 +584,16 @@ export function FanBoardSection({
             {locked ? t("closed") : t("openUntil")}
           </p>
         )}
+        {state.kind === "ready" && !locked && (
+          // How participation is kept, next to the inputs rather than
+          // only in the privacy policy: no account, each add/remove is
+          // saved as it happens, and the ballot is tied to this
+          // browser's anonymous id (pickStorage + `/board/mine`), so it
+          // is editable here until the show starts and nowhere else.
+          <p data-testid="board-save-note" className={styles.boardStatus}>
+            {t("saveNote")}
+          </p>
+        )}
         {tally && tally.size > 0 && (
           <p data-testid="board-tally-overall" className={styles.boardTally}>
             {t("tallyOverall", { played: tally.played, size: tally.size })}
@@ -727,6 +737,17 @@ export function FanBoardSection({
             )}
             {/* 18-v3 `.bridge-strip`: the way on from the board. */}
             <div className={styles.bridgeStrip}>
+              {/* The two ways to predict, in one sentence: the board's
+                  3-per-group picks vs the ordered full setlist that is
+                  scored. Without it a first-time fan asks whether the
+                  songs picked above must be entered again below (they
+                  can be carried over; nothing syncs on its own). Shown
+                  with the button it explains. */}
+              {onOpenFullSetlist && !locked && (
+                <p data-testid="board-modes-note" className={styles.bridgeNote}>
+                  {t("modesNote")}
+                </p>
+              )}
               {/* "Explore this group" — the private alternative to a
                   public "skipped" stat: a fan who doesn't know the group
                   gets a way in, and nobody else learns they skipped it. */}
