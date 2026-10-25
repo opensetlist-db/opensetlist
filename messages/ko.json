@@ -714,6 +714,17 @@
     "count": "{count}명"
   },
   "Impression": {
+    "preShow": {
+      "title": "기대 한마디",
+      "placeholder": "이번 공연, 뭐가 기대돼요?",
+      "submit": "기대 남기기",
+      "empty": "첫 기대를 남겨보세요",
+      "count": "{count, plural, =0 {기대 한마디 없음} other {#개의 기대 한마디}}",
+      "myLabel": "내 기대 한마디",
+      "allLabel": "모든 기대 한마디",
+      "loadMore": "이전 기대 한마디 보기 ({remaining}개 더)"
+    },
+    "preShowBadge": "공연 전",
     "title": "한줄감상",
     "placeholder": "공연은 어땠나요? (최대 200자)",
     "submit": "등록",
