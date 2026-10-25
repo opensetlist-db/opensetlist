@@ -870,5 +870,10 @@
     "memberTitleNoGroup": "{name} | Songs & Live Appearances | OpenSetlist",
     "seriesTitle": "{name} — All Setlists | OpenSetlist",
     "seriesDescription": "Setlists and song order for every show of {name}"
+  },
+  "EventSharePage": {
+    "heading": "OpenSetlist event share card",
+    "opening": "Opening the event page. If it does not open, follow the link below.",
+    "open": "Open event details"
   }
 }

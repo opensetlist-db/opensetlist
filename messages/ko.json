@@ -870,5 +870,10 @@
     "memberTitleNoGroup": "{name} | 가창곡·출연 공연 | OpenSetlist",
     "seriesTitle": "{name} 전 공연 세트리스트 | OpenSetlist",
     "seriesDescription": "{name} 전 공연의 세트리스트와 곡 순서"
+  },
+  "EventSharePage": {
+    "heading": "OpenSetlist 이벤트 공유 카드",
+    "opening": "이벤트 상세 페이지로 이동합니다. 이동하지 않으면 아래 링크를 선택해 주세요.",
+    "open": "이벤트 상세 열기"
   }
 }
