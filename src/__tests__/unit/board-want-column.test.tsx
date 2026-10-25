@@ -599,6 +599,26 @@ describe("<FanBoardSection> want column", () => {
     expect(screen.queryByLabelText("removeAria(残陽)")).toBeNull();
     expect(screen.queryByLabelText("removeAria(ハナムスビ)")).toBeNull();
   });
+
+  it("shows the save note while the board is open and drops it once locked", async () => {
+    handler = (url) =>
+      url.startsWith("/api/events/107/board?")
+        ? { status: 200, body: readBoard() }
+        : { status: 500, body: {} };
+    const open = renderBlock();
+    await screen.findByTestId("board-col-want");
+    expect(screen.getByTestId("board-save-note").textContent).toBe("saveNote");
+    open.unmount();
+
+    handler = (url) =>
+      url.startsWith("/api/events/107/board?")
+        ? { status: 200, body: readBoard({ locked: true }) }
+        : { status: 500, body: {} };
+    renderBlock();
+    // Positive control: the locked board did render its columns.
+    await screen.findByTestId("board-col-want");
+    expect(screen.queryByTestId("board-save-note")).toBeNull();
+  });
 });
 
 async function wantColAsync() {

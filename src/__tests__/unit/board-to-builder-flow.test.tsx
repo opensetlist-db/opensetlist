@@ -259,6 +259,8 @@ describe("board → full setlist mode", () => {
   it("the builder's switch scrolls back to the board block", async () => {
     renderPage();
     await screen.findByRole("button", { name: "toFullSetlist" });
+    // The one-line "which mode is for what" note sits with the button.
+    expect(screen.getByTestId("board-modes-note")).toHaveTextContent("modesNote");
     fireEvent.click(within(setlistCard()).getByRole("button", { name: /toBoard/ }));
     expect(scrollIntoView.mock.contexts.at(-1)).toBe(
       document.getElementById("fan-board-107"),
@@ -270,6 +272,8 @@ describe("board → full setlist mode", () => {
     await screen.findByRole("button", { name: "copy" });
     expect(screen.queryByRole("button", { name: "toFullSetlist" })).toBeNull();
     expect(screen.queryByRole("button", { name: /toBoard/ })).toBeNull();
+    // Shown only with the button (present pre-show: previous test).
+    expect(screen.queryByTestId("board-modes-note")).toBeNull();
   });
 
   it("before the wish/predict window: no board at all (one open date), so no bridge", async () => {

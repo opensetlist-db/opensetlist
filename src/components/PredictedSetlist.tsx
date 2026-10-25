@@ -562,7 +562,7 @@ export function PredictedSetlist({
           sync on their own — only "put on the board" copies the first
           picks per group over. Said here because the fan who came from
           the board otherwise assumes the two are one list. */}
-      {isPreShow && boardGroups && (
+      {isPreShow && boardGroups && boardGroups.length > 0 && (
         <p data-testid="predict-board-link-note" className={styles.predictNote}>
           {t("boardLinkNote", { max: BOARD_PICKS_PER_GROUP })}
         </p>
