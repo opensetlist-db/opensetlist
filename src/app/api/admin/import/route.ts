@@ -940,6 +940,10 @@ async function importSongs(rows: Record<string, string>[]) {
   // in JS (NFKC + trim + lower): an exact `originalTitle IN (…)` filter
   // would drop an existing title stored in another Unicode form (e.g.
   // full-width or decomposed), and the duplicate would go unwarned.
+  // Trim is a regex, not `btrim`: `btrim` strips only spaces, while JS
+  // `trim()` also strips tabs and newlines, and the two must agree. The
+  // backslashes are doubled because the tagged template sends the
+  // cooked string: a bare `\s` would reach Postgres as `s`.
   const songRows = rows.filter((r) => r.slug && r.originalTitle);
   const existingSlugSet = new Set(
     songRows.length === 0
@@ -962,7 +966,8 @@ async function importSongs(rows: Record<string, string>[]) {
           await prisma.$queryRaw<{ id: bigint }[]>`
             SELECT id FROM "Song"
             WHERE "isDeleted" = false
-              AND lower(btrim(normalize("originalTitle", NFKC))) = ANY(${normalizedNewTitles}::text[])
+              AND lower(regexp_replace(normalize("originalTitle", NFKC), '^\\s+|\\s+$', '', 'g'))
+                = ANY(${normalizedNewTitles}::text[])
           `
         ).map((r) => r.id);
   const duplicateCandidates: ExistingSongForDuplicateCheck[] =

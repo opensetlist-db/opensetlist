@@ -42,7 +42,8 @@ export type CsvSongForDuplicateCheck = {
 /**
  * The comparison form for titles and variant labels: NFKC, trimmed,
  * lower-cased. The import's candidate query mirrors it in SQL
- * (`lower(btrim(normalize(…, NFKC)))`) so both sides agree.
+ * (`lower(regexp_replace(normalize(…, NFKC), '^\s+|\s+$', '', 'g'))`)
+ * so both sides agree.
  */
 export function normalizeSongText(value: string | null | undefined): string {
   return (value ?? "").normalize("NFKC").trim().toLowerCase();
