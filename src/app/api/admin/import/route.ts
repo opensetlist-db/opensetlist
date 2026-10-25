@@ -25,6 +25,7 @@ import {
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import {
   findDuplicateSongs,
+  normalizeSongText,
   type ExistingSongForDuplicateCheck,
 } from "@/lib/songDuplicate";
 import {
@@ -934,9 +935,11 @@ async function importSongs(rows: Record<string, string>[]) {
   // Duplicate-under-another-slug check (see src/lib/songDuplicate.ts).
   // Both lookups run BEFORE the first pass: once a row is upserted its
   // slug "exists", and the check could no longer tell an insert from an
-  // update. Two findMany calls for the whole CSV — no per-row queries.
-  // The title filter is exact; the helper's NFKC comparison only matters
-  // for the candidates this already returned.
+  // update. Three queries for the whole CSV — no per-row queries.
+  // The candidate lookup normalizes in SQL the same way the helper does
+  // in JS (NFKC + trim + lower): an exact `originalTitle IN (…)` filter
+  // would drop an existing title stored in another Unicode form (e.g.
+  // full-width or decomposed), and the duplicate would go unwarned.
   const songRows = rows.filter((r) => r.slug && r.originalTitle);
   const existingSlugSet = new Set(
     songRows.length === 0
@@ -949,15 +952,25 @@ async function importSongs(rows: Record<string, string>[]) {
         ).map((s) => s.slug),
   );
   const newSongRows = songRows.filter((r) => !existingSlugSet.has(r.slug));
+  const normalizedNewTitles = Array.from(
+    new Set(newSongRows.map((r) => normalizeSongText(r.originalTitle))),
+  );
+  const candidateIds =
+    normalizedNewTitles.length === 0
+      ? []
+      : (
+          await prisma.$queryRaw<{ id: bigint }[]>`
+            SELECT id FROM "Song"
+            WHERE "isDeleted" = false
+              AND lower(btrim(normalize("originalTitle", NFKC))) = ANY(${normalizedNewTitles}::text[])
+          `
+        ).map((r) => r.id);
   const duplicateCandidates: ExistingSongForDuplicateCheck[] =
-    newSongRows.length === 0
+    candidateIds.length === 0
       ? []
       : (
           await prisma.song.findMany({
-            where: {
-              isDeleted: false,
-              originalTitle: { in: Array.from(new Set(newSongRows.map((r) => r.originalTitle))) },
-            },
+            where: { id: { in: candidateIds } },
             select: {
               id: true,
               slug: true,

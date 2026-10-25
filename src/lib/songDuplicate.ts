@@ -39,7 +39,12 @@ export type CsvSongForDuplicateCheck = {
   artistSlugs: string[];
 };
 
-function normText(value: string | null | undefined): string {
+/**
+ * The comparison form for titles and variant labels: NFKC, trimmed,
+ * lower-cased. The import's candidate query mirrors it in SQL
+ * (`lower(btrim(normalize(…, NFKC)))`) so both sides agree.
+ */
+export function normalizeSongText(value: string | null | undefined): string {
   return (value ?? "").normalize("NFKC").trim().toLowerCase();
 }
 
@@ -58,14 +63,14 @@ export function findDuplicateSongs(
   existingSlugs: ReadonlySet<string>,
 ): ExistingSongForDuplicateCheck[] {
   if (existingSlugs.has(row.slug)) return [];
-  const title = normText(row.originalTitle);
-  const variant = normText(row.variantLabel);
+  const title = normalizeSongText(row.originalTitle);
+  const variant = normalizeSongText(row.variantLabel);
   const artists = row.artistSlugs.length > 0 ? artistKey(row.artistSlugs) : null;
   return existing.filter(
     (s) =>
       s.slug !== row.slug &&
-      normText(s.originalTitle) === title &&
-      normText(s.variantLabel) === variant &&
+      normalizeSongText(s.originalTitle) === title &&
+      normalizeSongText(s.variantLabel) === variant &&
       (artists === null || artistKey(s.artistSlugs) === artists),
   );
 }
