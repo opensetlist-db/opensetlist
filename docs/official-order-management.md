@@ -50,3 +50,19 @@ Conflicts and inaccessible sources remain explicit null/fallback decisions.
 No membership is created by an order import. Apply only an approved dev
 manifest with before-value checks, replay/rollback verification and preserved
 performance baselines. Production application belongs to ticket 05.
+
+## Legacy hierarchy repair
+
+Admin artist parent edits and the `artists.csv` parent pass reject self/ancestor
+cycles. Their ancestry check and write share one transaction advisory lock so
+opposing concurrent edits cannot both create a cycle. Clearing a parent remains
+available for repair. CSV reports an `ERROR` and keeps that row's parent; its
+other existing import passes retain their documented partial-row behavior.
+
+Admin list ordering uses `createAdminOfficialOrdering` from
+`adminOfficialOrder.ts`. For legacy cyclic hierarchies, this adapter drops only
+cycle edges in a copied ordering snapshot and delegates to the common contract.
+It never changes stored/returned parent fields or falls back to database row
+order. Descendant edges, official ranks and numeric ID ties remain effective.
+The ticket01 `createOfficialOrdering` API continues to reject cyclic metadata;
+this recovery policy belongs to catalog repair screens.

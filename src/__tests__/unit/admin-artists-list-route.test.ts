@@ -60,6 +60,23 @@ describe("GET /api/admin/artists", () => {
     expect((await response.json()).map((artist: { id: number }) => artist.id)).toEqual([2, 3, 10]);
   });
 
+  it("keeps legacy cyclic rows available for repair with deterministic ordering and intact parent data", async () => {
+    const rows = Object.freeze([
+      Object.freeze({ id: BigInt(10), parentArtistId: BigInt(2), type: "group", sortOrder: null }),
+      Object.freeze({ id: BigInt(2), parentArtistId: BigInt(10), type: "group", sortOrder: null }),
+      Object.freeze({ id: BigInt(3), parentArtistId: BigInt(2), type: "unit", sortOrder: null }),
+    ]);
+    for (const input of [rows, [...rows].reverse()]) {
+      findManyMock.mockResolvedValue(input);
+      const res = await GET(new NextRequest("http://localhost/api/admin/artists"));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.map((artist: { id: number }) => artist.id)).toEqual([2, 3, 10]);
+      expect(body.find((artist: { id: number }) => artist.id === 2).parentArtistId).toBe(10);
+    }
+    expect(rows[0].parentArtistId).toBe(BigInt(2));
+  });
+
   it("loads ancestors for search without adding them to the selected result set", async () => {
     const root = { id: BigInt(10), parentArtistId: null, type: "group", sortOrder: 1 };
     const child = { id: BigInt(20), parentArtistId: root.id, type: "unit", sortOrder: null };

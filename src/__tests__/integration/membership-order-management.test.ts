@@ -11,6 +11,9 @@ import { POST as IMPORT } from "@/app/api/admin/import/route";
 import { membershipOrderBy } from "@/lib/officialOrder";
 import { warmEntryCache, WARM_PUBLIC_DATA_TAG } from "@/lib/dataCache";
 import { revalidateTag } from "next/cache";
+import { PUT as SAVE_ARTIST } from "@/app/api/admin/artists/[id]/route";
+import { GET as LIST_ARTISTS } from "@/app/api/admin/artists/route";
+import { GET as LIST_MEMBERS } from "@/app/api/admin/stage-identities/route";
 
 const PREFIX = "membershiporder-itest-";
 let root: Artist, unitA: Artist, unitB: Artist;
@@ -30,6 +33,9 @@ async function purge() {
   await prisma.stageIdentity.deleteMany({ where: { slug: { startsWith: PREFIX } } });
   await prisma.realPerson.deleteMany({ where: { slug: { startsWith: PREFIX } } });
   await prisma.song.deleteMany({ where: { slug: { startsWith: PREFIX } } });
+  await prisma.artistTranslation.deleteMany({ where: { artist: { slug: { startsWith: PREFIX } } } });
+  // Interrupted cycle tests can leave a self-reference or mutual FK.
+  await prisma.artist.updateMany({ where: { slug: { startsWith: PREFIX } }, data: { parentArtistId: null } });
   await prisma.artist.deleteMany({ where: { slug: { startsWith: PREFIX }, parentArtistId: { not: null } } });
   await prisma.artist.deleteMany({ where: { slug: { startsWith: PREFIX } } });
 }
@@ -73,6 +79,40 @@ const identities = () => prisma.stageIdentity.findMany({ where: { slug: { starts
 const relations = () => prisma.stageIdentityArtist.findMany({ where: { stageIdentity: { slug: { startsWith: PREFIX } } }, orderBy: { id: "asc" } });
 
 describe("admin and CSV relationship order on isolated dev fixtures", () => {
+  it("serializes opposing parent edits, rejects CSV cycles and keeps legacy cyclic lists repairable", async () => {
+    const saveParent = (artist: Artist, parentId: bigint | null) => SAVE_ARTIST(json("PUT", {
+      type: artist.type, originalName: artist.originalName, originalLanguage: "ja",
+      translations: [{ locale: "ja", name: artist.originalName }], parentArtistId: parentId?.toString() ?? null,
+    }), { params: Promise.resolve({ id: artist.id.toString() }) });
+    const reset = () => prisma.artist.updateMany({ where: { id: { in: [unitA.id, unitB.id] } }, data: { parentArtistId: root.id } });
+    const before = { history: await history(), identities: await identities(), relations: await relations() };
+    try {
+      const responses = await Promise.all([saveParent(unitA, unitB.id), saveParent(unitB, unitA.id)]);
+      expect(responses.map((r) => r.status).sort()).toEqual([200, 400]);
+      const saved = await prisma.artist.findMany({ where: { id: { in: [unitA.id, unitB.id] } } });
+      expect(saved.filter((row) => row.parentArtistId === root.id)).toHaveLength(1);
+      await reset();
+      const imported = await IMPORT(json("POST", { type: "artists", csv:
+        `slug,type,ja_name,parentArtist_slug\n${unitA.slug},unit,fixture A,${unitB.slug}\n${unitB.slug},unit,fixture B,${unitA.slug}` }));
+      expect(imported.status).toBe(200);
+      expect((await imported.json()).log.filter((line: string) => line.startsWith("ERROR:") && line.includes("cycle"))).toHaveLength(1);
+      // Direct fixture writes simulate legacy rows from before validation.
+      await prisma.artist.update({ where: { id: unitA.id }, data: { parentArtistId: unitB.id } });
+      await prisma.artist.update({ where: { id: unitB.id }, data: { parentArtistId: unitA.id } });
+      const artists = await LIST_ARTISTS(new NextRequest(`http://localhost/api/admin/artists?q=${PREFIX}`));
+      expect(artists.status).toBe(200);
+      expect((await artists.json()).filter((row: { slug: string }) => row.slug === unitA.slug || row.slug === unitB.slug)).toHaveLength(2);
+      const listedMembers = await LIST_MEMBERS();
+      expect(listedMembers.status).toBe(200);
+      expect((await listedMembers.json()).filter((row: { slug: string }) => row.slug.startsWith(PREFIX))).toHaveLength(3);
+      expect((await saveParent(unitA, null)).status).toBe(200);
+      expect((await prisma.artist.findUniqueOrThrow({ where: { id: unitA.id } })).parentArtistId).toBeNull();
+      expect(await history()).toEqual(before.history);
+      expect(await identities()).toEqual(before.identities);
+      expect(await relations()).toEqual(before.relations);
+    } finally { await reset(); }
+  });
+
   it("writes only one rank, invalidates actual warm entries, preserves history/defaults and clears", async () => {
     const before = { history: await history(), identities: await identities(), relations: await relations() };
     const cache = warmEntryCache();

@@ -1,9 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { parseMembershipRank } from "@/lib/membershipOrderImport";
-import { sortAdminMembers } from "@/lib/adminOfficialOrder";
+import { createAdminOfficialOrdering, sortAdminMembers } from "@/lib/adminOfficialOrder";
+import { createOfficialOrdering } from "@/lib/officialOrder";
 
 describe("membership-order CSV contract", () => {
+  it("ignores only cycle edges in copied admin metadata, preserving strict common validation", () => {
+    const artists = Object.freeze([
+      Object.freeze({ id: BigInt(10), type: "group" as const, sortOrder: null, parentArtistId: BigInt(2) }),
+      Object.freeze({ id: BigInt(2), type: "group" as const, sortOrder: null, parentArtistId: BigInt(10) }),
+      Object.freeze({ id: BigInt(3), type: "unit" as const, sortOrder: null, parentArtistId: BigInt(2) }),
+      Object.freeze({ id: BigInt(4), type: "group" as const, sortOrder: 1, parentArtistId: BigInt(4) }),
+    ]);
+    expect(() => createOfficialOrdering(artists)).toThrow("Cyclic artist ordering metadata");
+    for (const input of [artists, [...artists].reverse(), [artists[2], artists[0], artists[3], artists[1]]]) {
+      expect(createAdminOfficialOrdering(input).sortArtists(input, (artist) => ({ artistId: artist.id })).map((artist) => artist.id)).toEqual([BigInt(4), BigInt(2), BigInt(3), BigInt(10)]);
+    }
+    expect(artists.map((artist) => artist.parentArtistId)).toEqual([BigInt(2), BigInt(10), BigInt(2), BigInt(4)]);
+  });
   it("preserves blank/missing, explicitly clears, and validates signed Int bounds", () => {
     expect(parseMembershipRank(undefined)).toBeUndefined();
     expect(parseMembershipRank(" ")).toBeUndefined();

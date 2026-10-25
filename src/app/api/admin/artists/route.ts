@@ -25,7 +25,7 @@ import {
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { normalizeArtistQuery } from "@/lib/search";
-import { createOfficialOrdering } from "@/lib/officialOrder";
+import { createAdminOfficialOrdering } from "@/lib/adminOfficialOrder";
 
 const SEARCH_LIMIT = 100;
 
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     where: { isDeleted: false },
     select: { id: true, parentArtistId: true, type: true, sortOrder: true },
   }) : artists;
-  const ordered = createOfficialOrdering(metadata).sortArtists(artists, (artist) => ({ artistId: artist.id }));
+  const ordered = createAdminOfficialOrdering(metadata).sortArtists(artists, (artist) => ({ artistId: artist.id }));
   return NextResponse.json(serializeBigInt(ordered));
 }
 
