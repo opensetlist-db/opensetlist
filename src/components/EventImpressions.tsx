@@ -20,6 +20,7 @@ import { borderWidth, colors, motion, radius } from "@/styles/tokens";
 // rely on this re-export.
 import type { Impression } from "@/lib/types/impression";
 import { mergePolledImpressions } from "@/lib/impressionsMerge";
+import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 export type { Impression };
 
@@ -113,7 +114,8 @@ interface Props {
    * (X more)" button stays accurate as new impressions arrive.
    */
   initialTotalCount: number;
-  isOngoing: boolean;
+  status: ResolvedEventStatus;
+  startTime: string | null;
 }
 
 // Pure read — no side effects (no localStorage.removeItem on parse failure).
@@ -177,9 +179,14 @@ export function EventImpressions({
   initialImpressions,
   initialNextCursor,
   initialTotalCount,
-  isOngoing,
+  status,
+  startTime,
 }: Props) {
   const t = useTranslations("Impression");
+  const copy = useTranslations(status === "upcoming" ? "Impression.preShow" : "Impression");
+  const isOngoing = status === "ongoing";
+  const showPreShowChips = isOngoing || status === "completed";
+  const startMs = startTime === null ? NaN : new Date(startTime).getTime();
   const et = useTranslations("Event");
   const locale = useLocale();
   const mounted = useMounted();
@@ -579,7 +586,7 @@ export function EventImpressions({
       <div className={styles.panelHead}>
         <div className="flex items-center gap-2">
           <h2 id="event-impressions-title" className={styles.panelTitle}>
-            {t("title")}
+            {copy("title")}
           </h2>
           {isOngoing && (
             <span
@@ -613,7 +620,7 @@ export function EventImpressions({
             on pre-show pages (the Soft 404 pattern). */}
         {totalCount > 0 && (
           <span className={styles.panelCount}>
-            {t("count", { count: totalCount })}
+            {copy("count", { count: totalCount })}
           </span>
         )}
       </div>
@@ -628,8 +635,8 @@ export function EventImpressions({
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder={t("placeholder")}
-                aria-label={t("myLabel")}
+                placeholder={copy("placeholder")}
+                aria-label={copy("myLabel")}
                 rows={3}
                 className="block min-h-[100px] w-full resize-y p-3 text-sm"
                 style={textareaStyle}
@@ -658,7 +665,7 @@ export function EventImpressions({
                   className={submitClass}
                   style={{ background: colors.primary }}
                 >
-                  {t("submit")}
+                  {copy("submit")}
                 </button>
               </div>
             </div>
@@ -698,7 +705,7 @@ export function EventImpressions({
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                aria-label={t("myLabel")}
+                aria-label={copy("myLabel")}
                 rows={3}
                 className="block min-h-[100px] w-full resize-y p-3 text-sm"
                 style={textareaStyle}
@@ -748,7 +755,7 @@ export function EventImpressions({
                     className={submitClass}
                     style={{ background: colors.primary }}
                   >
-                    {t("submit")}
+                    {copy("submit")}
                   </button>
                 </div>
               </div>
@@ -759,11 +766,11 @@ export function EventImpressions({
         <div>
           {impressions.length === 0 ? (
             <p className="text-sm" style={{ color: colors.textSecondary }}>
-              {t("empty")}
+              {copy("empty")}
             </p>
           ) : (
             <>
-              <ul className="space-y-2" aria-label={t("allLabel")}>
+              <ul className="space-y-2" aria-label={copy("allLabel")}>
                 {impressions.map((imp) => {
                   const isOwn = saved?.chainId === imp.rootImpressionId;
                   const hasReported = reportedChainIds.has(imp.rootImpressionId);
@@ -775,6 +782,10 @@ export function EventImpressions({
                     >
                       <ImpressionCell
                         impression={imp}
+                        // Edits create a new row: classify the displayed
+                        // revision, never the original chain. Invalid or
+                        // missing instants compare false, as does equality.
+                        isPreShow={showPreShowChips && new Date(imp.createdAt).getTime() < startMs}
                         eventId={eventId}
                         isOwn={isOwn}
                         hasReported={hasReported}
@@ -810,7 +821,7 @@ export function EventImpressions({
                     >
                       {loadingMore
                         ? t("loadMoreLoading")
-                        : t("loadMore", {
+                        : copy("loadMore", {
                             remaining: totalCount - impressions.length,
                           })}
                     </button>

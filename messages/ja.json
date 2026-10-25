@@ -714,6 +714,17 @@
     "count": "{count}人"
   },
   "Impression": {
+    "preShow": {
+      "title": "期待のひとこと",
+      "placeholder": "今回の公演、何が楽しみですか？",
+      "submit": "期待を投稿",
+      "empty": "最初の期待を投稿してみましょう",
+      "count": "{count, plural, =0 {期待のひとことなし} other {#件の期待のひとこと}}",
+      "myLabel": "私の期待のひとこと",
+      "allLabel": "すべての期待のひとこと",
+      "loadMore": "以前の期待のひとことを見る (残り{remaining}件)"
+    },
+    "preShowBadge": "公演前",
     "title": "一言感想",
     "placeholder": "ライブはどうでしたか？ (200文字以内)",
     "submit": "投稿",

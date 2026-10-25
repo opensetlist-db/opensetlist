@@ -714,6 +714,17 @@
     "count": "{count}"
   },
   "Impression": {
+    "preShow": {
+      "title": "Looking forward to it",
+      "placeholder": "What are you looking forward to at this event?",
+      "submit": "Share your anticipation",
+      "empty": "Be the first to share what you're looking forward to",
+      "count": "{count, plural, =0 {No messages yet} one {# message} other {# messages}}",
+      "myLabel": "What I'm looking forward to",
+      "allLabel": "What everyone's looking forward to",
+      "loadMore": "See older messages ({remaining} more)"
+    },
+    "preShowBadge": "Before the event",
     "title": "One-line impressions",
     "placeholder": "How was the event? (up to 200 chars)",
     "submit": "Post",

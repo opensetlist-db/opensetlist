@@ -9,6 +9,7 @@ import type { Impression } from "./EventImpressions";
 
 interface Props {
   impression: Impression;
+  isPreShow?: boolean;
   eventId: string;
   isOwn: boolean;
   hasReported: boolean;
@@ -17,6 +18,7 @@ interface Props {
 
 export function ImpressionCell({
   impression,
+  isPreShow = false,
   eventId,
   isOwn,
   hasReported,
@@ -52,6 +54,7 @@ export function ImpressionCell({
   //     acceptable per the dialog pattern.
   useEffect(() => {
     if (!showReportModal) return;
+    const triggerButton = triggerButtonRef.current;
     cancelButtonRef.current?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -75,7 +78,7 @@ export function ImpressionCell({
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      triggerButtonRef.current?.focus();
+      triggerButton?.focus();
     };
   }, [showReportModal]);
 
@@ -150,7 +153,17 @@ export function ImpressionCell({
             viewer-zone date would differ from the SSR markup for
             anyone outside UTC and fail hydration. A Korean viewer
             sees the previous day for posts made 00:00-08:59 KST. */}
-        <span>{formatDate(impression.createdAt, locale)}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span>{formatDate(impression.createdAt, locale)}</span>
+          {isPreShow && (
+            <span
+              className="rounded px-1.5 py-0.5 text-[11px]"
+              style={{ background: colors.bgSubtle, color: colors.textSecondary }}
+            >
+              {t("preShowBadge")}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {canTranslate && (
             <button
