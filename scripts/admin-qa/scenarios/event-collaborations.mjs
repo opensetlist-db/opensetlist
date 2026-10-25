@@ -5,7 +5,7 @@ const path = (t) => `/admin/events/${t.fixture.eventId}/edit`;
 const save = (t) => panel(t).getByRole("button", { name: "협업 그룹 저장" });
 const choice = (t) => panel(t).getByRole("checkbox", { name: "AiScReam", exact: true });
 
-export default {
+const scenario = {
   name: "event-collaborations",
   ready: '[data-testid="collaboration-settings"] input',
   container: '[data-testid="collaboration-settings"]',
@@ -79,3 +79,5 @@ export default {
     },
   ],
 };
+
+export default scenario;
