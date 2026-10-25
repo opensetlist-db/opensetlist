@@ -1028,6 +1028,8 @@ model EventCardPublication {
   event          Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
   renditions     EventCardRendition[]
   annotation     EventCardAnnotation?
+  correctionsMade EventCardCorrection[] @relation("CardCorrectionSource")
+  correctionsReceived EventCardCorrection[] @relation("CardCorrectionTarget")
   @@index([eventId, mode, createdAt])
 }
 
@@ -1052,6 +1054,25 @@ model EventCardAnnotation {
   privateReason String?
   updatedAt     DateTime @updatedAt
   publication   EventCardPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+}
+
+// Append-only operator decisions. The mutable annotation is only the current
+// pointer; operation ids and versions preserve retries and superseded reasons.
+model EventCardCorrection {
+  id                    String @id
+  publicationId         String
+  replacementId         String
+  previousReplacementId String?
+  previousStatus        EventCardStatus
+  fromVersion           Int
+  toVersion             Int
+  fingerprint           String
+  privateReason         String
+  createdAt             DateTime @default(now())
+  publication           EventCardPublication @relation("CardCorrectionSource", fields: [publicationId], references: [id], onDelete: Restrict)
+  replacement           EventCardPublication @relation("CardCorrectionTarget", fields: [replacementId], references: [id], onDelete: Restrict)
+  @@unique([publicationId, toVersion])
+  @@index([replacementId])
 }
 
 // ── ALBUM ─────────────────────────────────────────────

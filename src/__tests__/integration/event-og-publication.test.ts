@@ -223,7 +223,8 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
     expect(await lookup(input.revision)).toBeTruthy();
     for (const status of ["corrected", "suspended"] as const) {
       await prisma.eventCardAnnotation.update({ where: { publicationId: input.revision }, data: { status } });
-      expect(await lookup(input.revision)).toBeNull();
+      if (status === "corrected") expect((await lookup(input.revision))?.correction).toEqual({ replacementUrl: null });
+      else expect(await lookup(input.revision)).toBeNull();
       // A committed retry returns identity without resurrecting removed bytes.
       mem.objects.clear();
       expect((await publishPreview(input, { storage: mem, origin: ORIGIN })).status).toBe("reconciled");

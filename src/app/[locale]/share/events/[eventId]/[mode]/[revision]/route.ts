@@ -17,7 +17,9 @@ export async function GET(_request: Request, context: { params: Promise<{ locale
     if (!card) return new Response(null, { status: 404, headers: HEADERS });
     const t = await getTranslations({ locale: params.locale, namespace: "EventSharePage" });
     const destination = entityPath("events", params.locale, card.eventId, card.slug);
-    return new Response(eventShareHtml(card, destination, { heading: t("heading"), opening: t("opening"), open: t("open") }), { headers: HEADERS });
+    return new Response(eventShareHtml(card, destination, { heading: t("heading"), opening: t("opening"), open: t("open"),
+      correctionHeading: t("correctionHeading"), correctionBody: t("correctionBody"), openCorrection: t("openCorrection"),
+      correctionUnavailable: t("correctionUnavailable") }), { headers: HEADERS });
   } catch (error) {
     console.error("[share/events] publication render failed", error);
     Sentry.captureException(error);

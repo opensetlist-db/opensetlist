@@ -14,20 +14,25 @@ installTypeScriptResolver(root);
 async function main() {
   const args = process.argv.slice(2);
   const action = args.shift();
-  if (!["preview", "replay", "publish", "list"].includes(action)) throw new Error("사용법: event-og.mjs preview --events 109,7 --out <새 폴더> | replay --manifest <파일> --out <새 폴더> | publish --event <id> --mode <prediction|live|setlist> --revision <UUID> --manifest <파일> --approval <파일> | list --event <id>");
+  if (!["preview", "replay", "publish", "list", "correct"].includes(action)) throw new Error("사용법: event-og.mjs preview | replay | publish | list | correct --event <id> --mode <모드> --revision <이전UUID> --replacement <새UUID> --expected-version <정수> --operation <작업UUID> --reason-file <운영사유파일>");
   const options = {};
   while (args.length) {
     const key = args.shift();
     const value = args.shift();
     const allowed = { preview: ["--events", "--out", "--legacy-base", "--display-titles"], replay: ["--manifest", "--out"],
-      publish: ["--event", "--mode", "--revision", "--manifest", "--approval"], list: ["--event"] }[action];
+      publish: ["--event", "--mode", "--revision", "--manifest", "--approval"], list: ["--event"],
+      correct: ["--event", "--mode", "--revision", "--replacement", "--expected-version", "--operation", "--reason-file"] }[action];
     if (!allowed.includes(key) || !value || value.startsWith("--") || options[key]) throw new Error(`잘못된 인자: ${key}`);
     options[key] = value;
   }
-  if (action === "publish" || action === "list") {
+  if (["publish", "list", "correct"].includes(action)) {
     if (!/^[1-9]\d*$/.test(options["--event"] ?? "")) throw new Error("올바른 공연 ID가 필요합니다.");
     if (action === "publish" && (!options["--manifest"] || !options["--approval"] || !options["--revision"]
       || !["prediction", "live", "setlist"].includes(options["--mode"]))) throw new Error("발행에는 명시적 mode/revision/manifest/approval이 필요합니다.");
+    if (action === "correct" && (!options["--revision"] || !options["--replacement"] || !options["--operation"] || !options["--reason-file"]
+      || !/^(0|[1-9]\d*)$/.test(options["--expected-version"] ?? "") || !["prediction", "live", "setlist"].includes(options["--mode"]))) {
+      throw new Error("정정에는 명시적 mode/revision/replacement/expected-version/operation/reason-file이 필요합니다.");
+    }
     const { config } = await import("dotenv");
     config({ path: [path.join(root, ".env.local"), path.join(root, ".env")], quiet: true });
     const { pointsAtDevProject } = await import("./dev-db-guard.mjs");
@@ -43,6 +48,12 @@ async function main() {
     const { prisma } = await import(pathToFileURL(path.join(root, "src/lib/prisma.ts")).href);
     try {
       if (action === "list") console.log(JSON.stringify({ publications: await lifecycle.listPublications(options["--event"]) }, null, 2));
+      else if (action === "correct") {
+        const result = await lifecycle.correctPublication({ eventId: options["--event"], mode: options["--mode"], revision: options["--revision"],
+          replacementId: options["--replacement"], expectedVersion: Number(options["--expected-version"]), operationId: options["--operation"],
+          reason: await readFile(path.resolve(options["--reason-file"]), "utf8") }, { origin: configuredOrigin });
+        console.log(JSON.stringify(result, null, 2));
+      }
       else {
         const result = await lifecycle.publishPreview({ root, eventId: options["--event"], mode: options["--mode"], revision: options["--revision"],
           manifestFile: path.resolve(options["--manifest"]), approvalFile: path.resolve(options["--approval"]) }, { origin: configuredOrigin });
