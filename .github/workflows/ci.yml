@@ -1,13 +1,12 @@
 name: CI
 
-# feature/redesign is the long-lived integration branch for the site
-# redesign: app task PRs target it and it reaches dev only through one
-# final PR, so its PRs and pushes need the same gates as dev's.
+# Long-lived integration branches collect task PRs before one final PR to
+# dev, so their PRs and pushes need the same gates as dev's.
 on:
   pull_request:
-    branches: [main, dev, feature/redesign]
+    branches: [main, dev, feature/redesign, feature/event-og-renewal]
   push:
-    branches: [main, dev, feature/redesign]
+    branches: [main, dev, feature/redesign, feature/event-og-renewal]
 
 jobs:
   test:
