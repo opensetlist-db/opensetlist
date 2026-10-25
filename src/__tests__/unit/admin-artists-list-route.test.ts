@@ -59,4 +59,15 @@ describe("GET /api/admin/artists", () => {
     const response = await GET(new NextRequest("http://localhost/api/admin/artists"));
     expect((await response.json()).map((artist: { id: number }) => artist.id)).toEqual([2, 3, 10]);
   });
+
+  it("loads ancestors for search without adding them to the selected result set", async () => {
+    const root = { id: BigInt(10), parentArtistId: null, type: "group", sortOrder: 1 };
+    const child = { id: BigInt(20), parentArtistId: root.id, type: "unit", sortOrder: null };
+    const other = { id: BigInt(2), parentArtistId: null, type: "group", sortOrder: 2 };
+    findManyMock.mockResolvedValueOnce([other, child]).mockResolvedValueOnce([other, root, child]);
+    const response = await GET(new NextRequest("http://localhost/api/admin/artists?q=fixture"));
+    expect((await response.json()).map((artist: { id: number }) => artist.id)).toEqual([20, 2]);
+    expect(findManyMock).toHaveBeenCalledTimes(2);
+    expect(findManyMock.mock.calls[0][0].take).toBe(100);
+  });
 });

@@ -84,18 +84,26 @@ describe("admin and CSV relationship order on isolated dev fixtures", () => {
     expect(await order(unitA.id)).toEqual([members[1].id, members[0].id, members[2].id]);
     expect(await order(unitB.id)).toEqual(members.map((m) => m.id));
     expect(await order(root.id)).toEqual(members.map((m) => m.id));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(await cache.get(`${PREFIX}warm`)).toBeNull();
+    await vi.waitFor(async () => expect(await cache.get(`${PREFIX}warm`)).toBeNull());
     expect(revalidateTag).toHaveBeenCalledWith("public-data", { expire: 0 });
     expect((await save({ stageIdentityId: members[1].id })).status).toBe(200);
     expect((await relations()).find((r) => r.artistId === unitA.id && r.stageIdentityId === members[1].id)?.sortOrder).toBe(-1);
     for (const invalid of ["", "1", 1.2, 2147483648]) expect((await save({ stageIdentityId: members[1].id, sortOrder: invalid })).status).toBe(400);
     expect((await save({ stageIdentityId: "nonexistent", sortOrder: 1 })).status).toBe(404);
+    expect((await PUT(json("PUT", { stageIdentityId: members[1].id, sortOrder: 1 }), { params: Promise.resolve({ id: "9223372036854775808" }) })).status).toBe(400);
     expect((await save({ stageIdentityId: members[1].id, sortOrder: null })).status).toBe(200);
     expect(await order(unitA.id)).toEqual(members.map((m) => m.id));
     expect(await history()).toEqual(before.history);
     expect(await identities()).toEqual(before.identities);
     expect(await relations()).toEqual(before.relations);
+    // The admin form cannot open a soft-deleted artist; its API has
+    // the same boundary, even while its historical relations remain.
+    await prisma.artist.update({ where: { id: unitA.id }, data: { isDeleted: true } });
+    try {
+      expect((await save({ stageIdentityId: members[1].id, sortOrder: 9 })).status).toBe(404);
+      expect((await save({ stageIdentityId: members[1].id })).status).toBe(404);
+      expect(await relations()).toEqual(before.relations);
+    } finally { await prisma.artist.update({ where: { id: unitA.id }, data: { isDeleted: false } }); }
   });
 
   it("imports/replays partial rows, preserves blanks and clears explicitly without creating relationships", async () => {
@@ -108,9 +116,15 @@ describe("admin and CSV relationship order on isolated dev fixtures", () => {
       `${unitA.slug},${members[1].slug},-2147483648`,
     ].join("\n");
     const run = (value: string) => IMPORT(json("POST", { type: "membership-order", csv: value }));
+    const cache = warmEntryCache();
+    await cache.set(`${PREFIX}csv-warm`, { old: true }, { tags: [WARM_PUBLIC_DATA_TAG] });
+    expect(await cache.get(`${PREFIX}csv-warm`)).toEqual({ old: true });
+    vi.mocked(revalidateTag).mockClear();
     const first = await (await run(csv)).json();
     expect(first.count).toBe(2);
     expect(first.log.filter((line: string) => line.startsWith("ERROR:"))).toHaveLength(3);
+    expect(revalidateTag).toHaveBeenCalledWith("public-data", { expire: 0 });
+    await vi.waitFor(async () => expect(await cache.get(`${PREFIX}csv-warm`)).toBeNull());
     expect((await (await run(csv)).json()).count).toBe(0);
     await run(`artistSlug,memberSlug,sortOrder\n${unitA.slug},${members[2].slug},`);
     expect(await order(unitA.id)).toEqual([members[1].id, members[2].id, members[0].id]);
