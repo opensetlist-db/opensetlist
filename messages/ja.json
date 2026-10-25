@@ -870,5 +870,10 @@
     "memberTitleNoGroup": "{name} | 歌唱曲・出演ライブ | OpenSetlist",
     "seriesTitle": "{name} 全公演セットリスト | OpenSetlist",
     "seriesDescription": "{name}の全公演のセットリスト・曲順"
+  },
+  "EventSharePage": {
+    "heading": "OpenSetlist イベント共有カード",
+    "opening": "イベントの詳細ページを開きます。移動しない場合はリンクを選択してください。",
+    "open": "イベントの詳細を開く"
   }
 }

@@ -1,33 +1,49 @@
 #!/usr/bin/env node
 // Node 24's type stripping runs the shared TypeScript service. The resolver
 // supplies the same extensionless local imports used by Next/Vitest.
-import { registerHooks } from "node:module";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { installTypeScriptResolver } from "./ts-runtime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-registerHooks({ resolve(specifier, context, next) {
-  if (specifier.startsWith(".") && context.parentURL?.startsWith("file:")) {
-    const candidate = new URL(`${specifier}.ts`, context.parentURL);
-    if (existsSync(candidate)) return next(candidate.href, context);
-  }
-  return next(specifier, context);
-} });
+installTypeScriptResolver(root);
 
 async function main() {
   const args = process.argv.slice(2);
   const action = args.shift();
-  if (!["preview", "replay"].includes(action)) throw new Error("사용법: node scripts/event-og.mjs preview --events 109,7 --out <새 폴더> [--legacy-base http://127.0.0.1:3191] | replay --manifest <manifest.json> --out <새 폴더>");
+  if (!["preview", "replay", "publish", "list"].includes(action)) throw new Error("사용법: event-og.mjs preview --events 109,7 --out <새 폴더> | replay --manifest <파일> --out <새 폴더> | publish --event <id> --mode <prediction|live|setlist> --revision <UUID> --manifest <파일> --approval <파일> | list --event <id>");
   const options = {};
   while (args.length) {
     const key = args.shift();
     const value = args.shift();
-    const allowed = action === "preview" ? ["--events", "--out", "--legacy-base", "--display-titles"] : ["--manifest", "--out"];
+    const allowed = { preview: ["--events", "--out", "--legacy-base", "--display-titles"], replay: ["--manifest", "--out"],
+      publish: ["--event", "--mode", "--revision", "--manifest", "--approval"], list: ["--event"] }[action];
     if (!allowed.includes(key) || !value || value.startsWith("--") || options[key]) throw new Error(`잘못된 인자: ${key}`);
     options[key] = value;
+  }
+  if (action === "publish" || action === "list") {
+    if (!/^[1-9]\d*$/.test(options["--event"] ?? "")) throw new Error("올바른 공연 ID가 필요합니다.");
+    if (action === "publish" && (!options["--manifest"] || !options["--approval"] || !options["--revision"]
+      || !["prediction", "live", "setlist"].includes(options["--mode"]))) throw new Error("발행에는 명시적 mode/revision/manifest/approval이 필요합니다.");
+    const { config } = await import("dotenv");
+    config({ path: [path.join(root, ".env.local"), path.join(root, ".env")], quiet: true });
+    const { pointsAtDevProject } = await import("./dev-db-guard.mjs");
+    for (const name of ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]) if (!pointsAtDevProject(process.env[name] ?? "")) throw new Error("이 CLI는 dev 데이터베이스만 허용합니다.");
+    const lifecycle = await import(pathToFileURL(path.join(root, "src/lib/eventOg/index.ts")).href);
+    const { prisma } = await import(pathToFileURL(path.join(root, "src/lib/prisma.ts")).href);
+    try {
+      if (action === "list") console.log(JSON.stringify({ publications: await lifecycle.listPublications(options["--event"]) }, null, 2));
+      else {
+        if (!["dev", "test"].includes(process.env.R2_KEY_PREFIX ?? "")) throw new Error("운영 발행은 허용하지 않습니다. dev/test 저장소 namespace가 필요합니다.");
+        const result = await lifecycle.publishPreview({ root, eventId: options["--event"], mode: options["--mode"], revision: options["--revision"],
+          manifestFile: path.resolve(options["--manifest"]), approvalFile: path.resolve(options["--approval"]) });
+        console.log(JSON.stringify(result, null, 2));
+      }
+    } finally { await prisma.$disconnect(); }
+    return;
   }
   if (!options["--out"]) throw new Error("출력 폴더가 필요합니다.");
   const output = path.resolve(options["--out"]);

@@ -655,6 +655,7 @@ model Event {
   // not joins). Backfilled in prisma/post-deploy.sql; populated on
   // INSERT in src/app/api/reactions/route.ts.
   reactions    SetlistItemReaction[]
+  cardPublications EventCardPublication[]
 
   @@index([eventSeriesId])
   @@index([artistId])
@@ -996,6 +997,61 @@ model ImageAsset {
 
   eventSeriesLogos EventSeries[] @relation("EventSeriesLogo")
   eventLogos       Event[]       @relation("EventLogo")
+  eventCardRenditions EventCardRendition[]
+}
+
+// A reviewed event-card version owns its complete locale group. Frozen
+// content lives here/in its renditions; later correction/suspension state
+// belongs to the separate annotation row, never to the image payload.
+enum EventCardMode {
+  prediction
+  live
+  setlist
+}
+
+enum EventCardStatus {
+  active
+  corrected
+  suspended
+}
+
+model EventCardPublication {
+  id             String @id
+  eventId        BigInt
+  mode           EventCardMode
+  namespace      String
+  fingerprint    String
+  previewId      String
+  approvalSha256 String
+  identity       Json
+  createdAt      DateTime @default(now())
+  event          Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  renditions     EventCardRendition[]
+  annotation     EventCardAnnotation?
+  @@index([eventId, mode, createdAt])
+}
+
+model EventCardRendition {
+  publicationId String
+  locale        String
+  assetId       String
+  sha256        String
+  content       Json
+  publication   EventCardPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  asset         ImageAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  @@id([publicationId, locale])
+  @@index([assetId])
+}
+
+model EventCardAnnotation {
+  publicationId String @id
+  version       Int @default(0)
+  // Operations that change these fields are separate from frozen content.
+  status        EventCardStatus @default(active)
+  replacementId String?
+  privateReason String?
+  updatedAt     DateTime @updatedAt
+  publication   EventCardPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
 }
 
 // ── ALBUM ─────────────────────────────────────────────
