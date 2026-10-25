@@ -181,6 +181,9 @@ describe("board → full setlist mode", () => {
     // Announced by the live region that outlives the builder's remount.
     expect(card.getByTestId("predict-bridge-status")).toHaveTextContent("bridgeImported(3)");
     expect(card.getByTestId("predict-provisional")).toBeTruthy();
+    // Storage note sits apart from the scoring rule (`description`).
+    expect(card.getByTestId("predict-save-note")).toHaveTextContent("saveNote");
+    expect(card.getByText("description")).toBeTruthy();
     // Rendered rows, top to bottom (the picker sheet is closed, so these
     // are the builder's rows only).
     expect(

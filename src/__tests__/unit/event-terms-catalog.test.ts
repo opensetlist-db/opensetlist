@@ -389,6 +389,13 @@ const ALLOWED: { locale: Locale; key: string; value: string; reason: string }[] 
   },
   { locale: "en", key: "Predict.shareDisabled", value: "Available after the show ends", reason: MAIN_OUT_OF_SCOPE },
   { locale: "en", key: "Predict.afterHint", value: "Show ended · Final result", reason: MAIN_OUT_OF_SCOPE },
+  {
+    locale: "en",
+    key: "Predict.description",
+    value:
+      "Add your predictions before the show starts. Your hit rate is scored against the actual setlist. There's no limit on how many songs you predict, but only the top N predictions (where N = the number of songs in the actual setlist) count toward the score.",
+    reason: MAIN_OUT_OF_SCOPE,
+  },
   { locale: "en", key: "Predict.copyFromPast", value: "📋 From past show", reason: MAIN_OUT_OF_SCOPE },
   { locale: "en", key: "Predict.copy.sheetTitle", value: "Copy from a past show", reason: MAIN_OUT_OF_SCOPE },
   { locale: "en", key: "Predict.copy.loading", value: "Loading past shows...", reason: MAIN_OUT_OF_SCOPE },

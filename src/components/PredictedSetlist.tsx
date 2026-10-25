@@ -557,6 +557,15 @@ export function PredictedSetlist({
           rules copy retires alongside the editor. Visual treatment
           mirrors the during-show legend strip further down. */}
       {isPreShow && <p className={styles.predictNote}>{t("description")}</p>}
+      {/* Where the list lives, next to the editor: localStorage only
+          (predictionsStorage), no account, editable until the lock.
+          Kept apart from `description`, which states the scoring rule
+          and must stay exactly that. */}
+      {isPreShow && (
+        <p data-testid="predict-save-note" className={styles.predictNote}>
+          {t("saveNote")}
+        </p>
+      )}
       {/* Board events only: this list and the board's expected songs
           are stored apart (localStorage vs the server ballot) and never
           sync on their own — only "put on the board" copies the first
