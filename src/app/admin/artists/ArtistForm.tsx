@@ -64,9 +64,9 @@ type AllStageIdentityOption = {
 
 type ArtistFormProps = {
   initialData?: {
-    id: number;
+    id: string | number;
     type: string;
-    parentArtistId: number | null;
+    parentArtistId: string | number | null;
     hasBoard: boolean;
     category: string | null;
     isMainUnit: boolean;
@@ -88,7 +88,7 @@ const ARTIST_TYPES = ["solo", "group", "unit"];
 const INT_RE = /^-?\d+$/;
 
 // Same explicit-context contract as the filtered server membership read.
-function sortMembersForArtist(list: ExistingStageIdentity[], artistId: number): ExistingStageIdentity[] {
+function sortMembersForArtist(list: ExistingStageIdentity[], artistId: string | number): ExistingStageIdentity[] {
   // Only this already selected artist context matters here; no affiliation
   // is inferred. The same common comparator backs the filtered SQL read.
   return createOfficialOrdering([]).sortMembers(list, (member) => ({
@@ -163,7 +163,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   >([]);
   const [allSIOptions, setAllSIOptions] = useState<AllStageIdentityOption[]>([]);
   const duplicateArtistRank = sortOrder.trim() !== "" && artists.some((artist) =>
-    artist.id !== initialData?.id && String(artist.parentArtistId ?? "") === parentArtistId && artist.sortOrder === Number(sortOrder));
+    String(artist.id) !== String(initialData?.id) && String(artist.parentArtistId ?? "") === parentArtistId && artist.sortOrder === Number(sortOrder));
   const duplicateDefaultRank = existingSIs.some((member, index) => member.sortOrder !== null &&
     existingSIs.some((other, otherIndex) => index !== otherIndex && other.sortOrder === member.sortOrder));
 
@@ -522,7 +522,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
             <option value="">없음</option>
             <UnlistedArtistOption value={parentArtistId} options={artists} />
             {artists
-              .filter((a) => a.id !== initialData?.id)
+              .filter((a) => String(a.id) !== String(initialData?.id))
               .map((a) => {
                 const name =
                   a.translations.find((t) => t.locale === "ko")?.name ??

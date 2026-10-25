@@ -77,6 +77,7 @@ describe("admin and CSV relationship order on isolated dev fixtures", () => {
     const before = { history: await history(), identities: await identities(), relations: await relations() };
     const cache = warmEntryCache();
     await cache.set(`${PREFIX}warm`, { old: true }, { tags: [WARM_PUBLIC_DATA_TAG] });
+    expect(await cache.get(`${PREFIX}warm`)).toEqual({ old: true });
     const response = await save({ stageIdentityId: members[1].id, sortOrder: -1 });
     expect(response.status).toBe(200);
     expect((await response.json()).sortOrder).toBe(-1);

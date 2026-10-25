@@ -29,11 +29,17 @@ export async function importMembershipOrders(rows: readonly Record<string, strin
         const member = await tx.stageIdentity.findUnique({ where: { slug: row.memberSlug }, select: { id: true } });
         if (!artist || !member) return "missing";
         const where = { stageIdentityId: member.id, artistId: artist.id };
+        if (sortOrder !== undefined) {
+          const result = await tx.stageIdentityArtist.updateMany({
+            where: { ...where, ...(sortOrder === null
+              ? { sortOrder: { not: null } }
+              : { OR: [{ sortOrder: null }, { sortOrder: { not: sortOrder } }] }) },
+            data: { sortOrder },
+          });
+          if (result.count) return "updated";
+        }
         const relation = await tx.stageIdentityArtist.findUnique({ where: { stageIdentityId_artistId: where } });
-        if (!relation) return "missing";
-        if (sortOrder === undefined || relation.sortOrder === sortOrder) return "preserved";
-        await tx.stageIdentityArtist.update({ where: { stageIdentityId_artistId: where }, data: { sortOrder } });
-        return "updated";
+        return relation ? "preserved" : "missing";
       });
       if (result === "missing") log.push(`ERROR: ${label}: artist, member or existing membership not found (no relation created)`);
       else if (result === "preserved") log.push(`PRESERVED: ${label}`);

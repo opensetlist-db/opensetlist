@@ -4,7 +4,7 @@ import { useState } from "react";
 import { isOfficialRank } from "@/lib/officialOrder";
 
 export default function MembershipOrderInput({ artistId, memberId, name, value, onSaved }: {
-  artistId: number;
+  artistId: string | number;
   memberId: string;
   name: string;
   value: number | null;

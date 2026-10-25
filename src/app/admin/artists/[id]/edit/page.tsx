@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
+import { serializeBigIntAsString } from "@/lib/utils";
 import { membershipOrderBy } from "@/lib/officialOrder";
 import ArtistForm from "../../ArtistForm";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
@@ -36,7 +36,7 @@ export default async function EditArtistPage({ params }: Props) {
   });
   if (!artist) notFound();
 
-  const data = serializeBigInt(artist);
+  const data = serializeBigIntAsString(artist);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const existingStageIdentities = data.stageLinks.map((sl: any) => {
@@ -62,10 +62,10 @@ export default async function EditArtistPage({ params }: Props) {
       <h1 className="mb-6 text-2xl font-bold">아티스트 편집</h1>
       <ArtistForm
         initialData={{
-          id: Number(data.id),
+          id: data.id,
           type: data.type,
           parentArtistId: data.parentArtistId
-            ? Number(data.parentArtistId)
+            ? data.parentArtistId
             : null,
           hasBoard: data.hasBoard,
           category: data.category ?? null,

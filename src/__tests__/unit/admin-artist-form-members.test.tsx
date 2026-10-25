@@ -181,5 +181,17 @@ describe("ArtistForm member list", () => {
     await screen.findByText("fixture failure");
     expect((input as HTMLInputElement).value).toBe("2");
     expect(memberOrder()).toEqual(["멤버A"]);
+    fireEvent.click(screen.getByRole("button", { name: "멤버A 관계순 저장" }));
+    await screen.findByText("관계순을 저장했습니다.");
+    expect(screen.queryByText("fixture failure")).toBeNull();
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+  });
+
+  it("preserves a decimal BigInt artist context and save URL", async () => {
+    render(<ArtistForm initialData={{ ...baseInitial, id: "9007199254740993", existingStageIdentities: [memberA, memberB] }} />);
+    fireEvent.change(screen.getByLabelText("멤버B — 이 아티스트의 관계순"), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "멤버B 관계순 저장" }));
+    await waitFor(() => expect(memberOrder()).toEqual(["멤버B", "멤버A"]));
+    expect(calls.find((call) => call.method === "PUT")?.url).toBe("/api/admin/artists/9007199254740993/stage-identities");
   });
 });
