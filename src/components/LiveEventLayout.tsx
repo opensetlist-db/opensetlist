@@ -461,7 +461,8 @@ export function LiveEventLayout({
           initialImpressions={initialImpressions}
           initialNextCursor={initialImpressionsNextCursor}
           initialTotalCount={initialImpressionsTotalCount}
-          isOngoing={effectiveStatus === "ongoing"}
+          status={effectiveStatus}
+          startTime={startTimeIso}
         />
       </div>
 

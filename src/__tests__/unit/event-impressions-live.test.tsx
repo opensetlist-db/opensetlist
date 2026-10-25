@@ -70,7 +70,8 @@ describe("EventImpressions — polling is the only live path", () => {
         initialImpressions={[]}
         initialNextCursor={null}
         initialTotalCount={0}
-        isOngoing
+        status="ongoing"
+        startTime="2026-11-14T07:30:00.000Z"
       />,
     );
     expect(channelMock).not.toHaveBeenCalled();
@@ -94,7 +95,8 @@ describe("EventImpressions — polling is the only live path", () => {
         initialImpressions={[]}
         initialNextCursor={null}
         initialTotalCount={0}
-        isOngoing={false}
+        status="upcoming"
+        startTime="2026-11-14T07:30:00.000Z"
       />,
     );
     await act(async () => {

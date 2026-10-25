@@ -24,6 +24,11 @@ import {
 } from "@/lib/liveBroadcast";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import {
+  findDuplicateSongs,
+  normalizeSongText,
+  type ExistingSongForDuplicateCheck,
+} from "@/lib/songDuplicate";
+import {
   parseCsvBooleanCell,
   parseCsvNullableIntCell,
   parseIsoInstant,
@@ -926,6 +931,88 @@ async function importSongs(rows: Record<string, string>[]) {
             [trackKey(t.albumId, t.discNumber, t.trackNumber), t.id] as [string, string],
         ),
       );
+
+  // Duplicate-under-another-slug check (see src/lib/songDuplicate.ts).
+  // Both lookups run BEFORE the first pass: once a row is upserted its
+  // slug "exists", and the check could no longer tell an insert from an
+  // update. Three queries for the whole CSV — no per-row queries.
+  // The candidate lookup normalizes in SQL the same way the helper does
+  // in JS (NFKC + trim + lower): an exact `originalTitle IN (…)` filter
+  // would drop an existing title stored in another Unicode form (e.g.
+  // full-width or decomposed), and the duplicate would go unwarned.
+  // Trim is a regex, not `btrim`: `btrim` strips only spaces, while JS
+  // `trim()` also strips tabs and newlines, and the two must agree. The
+  // backslashes are doubled because the tagged template sends the
+  // cooked string: a bare `\s` would reach Postgres as `s`.
+  const songRows = rows.filter((r) => r.slug && r.originalTitle);
+  const existingSlugSet = new Set(
+    songRows.length === 0
+      ? []
+      : (
+          await prisma.song.findMany({
+            where: { slug: { in: songRows.map((r) => r.slug) } },
+            select: { slug: true },
+          })
+        ).map((s) => s.slug),
+  );
+  const newSongRows = songRows.filter((r) => !existingSlugSet.has(r.slug));
+  const normalizedNewTitles = Array.from(
+    new Set(newSongRows.map((r) => normalizeSongText(r.originalTitle))),
+  );
+  const candidateIds =
+    normalizedNewTitles.length === 0
+      ? []
+      : (
+          await prisma.$queryRaw<{ id: bigint }[]>`
+            SELECT id FROM "Song"
+            WHERE "isDeleted" = false
+              AND lower(regexp_replace(normalize("originalTitle", NFKC), '^\\s+|\\s+$', '', 'g'))
+                = ANY(${normalizedNewTitles}::text[])
+          `
+        ).map((r) => r.id);
+  const duplicateCandidates: ExistingSongForDuplicateCheck[] =
+    candidateIds.length === 0
+      ? []
+      : (
+          await prisma.song.findMany({
+            where: { id: { in: candidateIds } },
+            select: {
+              id: true,
+              slug: true,
+              originalTitle: true,
+              variantLabel: true,
+              artists: { select: { artist: { select: { slug: true } } } },
+            },
+          })
+        ).map((s) => ({
+          id: s.id,
+          slug: s.slug,
+          originalTitle: s.originalTitle,
+          variantLabel: s.variantLabel,
+          artistSlugs: s.artists.map((a) => a.artist.slug),
+        }));
+  const duplicateWarned = new Set<string>();
+  for (const row of newSongRows) {
+    if (duplicateWarned.has(row.slug)) continue;
+    const dups = findDuplicateSongs(
+      {
+        slug: row.slug,
+        originalTitle: row.originalTitle,
+        variantLabel: row.variantLabel,
+        artistSlugs: parseArtistSlugs(row.artist_slugs),
+      },
+      duplicateCandidates,
+      existingSlugSet,
+    );
+    if (dups.length > 0) {
+      duplicateWarned.add(row.slug);
+      results.push(
+        `WARN: possible duplicate song: new slug ${row.slug} has the same title/variant/artists as ${dups
+          .map((d) => `${d.slug} (id ${d.id})`)
+          .join(", ")} — if it is the same song, change the CSV slug to the existing one and re-import`,
+      );
+    }
+  }
 
   // First pass: upsert songs, translations, artists, album tracks
   for (const row of rows) {
