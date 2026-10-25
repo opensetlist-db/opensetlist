@@ -61,6 +61,15 @@ files=$(git diff --name-only --diff-filter=d origin/dev...HEAD -- '*.ts' '*.tsx'
 
 ### Unit — no database
 
+`npx vitest run src/__tests__/unit/event-og-preview.test.ts` exercises the
+event-card preview service with actual bundled fonts/Satori/ImageResponse PNGs,
+three modes/locales, measured title and venue limits, missing fonts/glyphs,
+timezone-stable dates, manifests/tampering and display-title review evidence.
+It also runs a few real CLI processes for malformed arguments, bad packets,
+render failure and exact offline replay. It uses temporary local directories,
+never a DB or bucket. See [the operator runbook](docs/event-og-preview.md) for
+the separate actual-dev-data 18-image review matrix and legacy comparisons.
+
 `npm test` never opens a connection: the files that import
 `@/lib/prisma` either `vi.mock` it or `vi.spyOn` the methods they call
 (importing the client builds a pool but connects only on a query). Keep
