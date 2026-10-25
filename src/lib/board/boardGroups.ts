@@ -71,6 +71,8 @@ export interface BoardGroupIdsInput {
    *  single-artist branch — the roster is then ignored, so a guest from
    *  another IP on a solo show does not add a second group. */
   primaryArtistId: IdLike | null;
+  /** Explicit side-project appearances for the festival picker. */
+  collaborationArtistIds?: readonly IdLike[];
 }
 
 /**
@@ -81,9 +83,10 @@ export function boardGroupRootIds({
   roster,
   hierarchy,
   primaryArtistId,
+  collaborationArtistIds,
 }: BoardGroupIdsInput): string[] {
   if (primaryArtistId !== null) return [rootOf(hierarchy, primaryArtistId)];
-  return resolveFestivalGroups(roster, hierarchy).map((g) => g.rootId);
+  return resolveFestivalGroups(roster, hierarchy, collaborationArtistIds).map((g) => g.rootId);
 }
 
 /**
@@ -92,8 +95,8 @@ export function boardGroupRootIds({
  *
  * Why only the board: a cross-IP side unit is a top-level Artist, so
  * the roster walk makes it a root next to the series it borrows its
- * members from. In the picker that is right — its songs are
- * predictable and the chip filters them. On the board it would be a
+ * members from. The picker keeps it only when explicitly assigned to
+ * the event (`resolveFestivalGroups`). On the board it is a
  * near-empty extra column next to the series fans actually pick for,
  * so it is dropped here and nowhere else (catalog, picker chips and
  * song pages keep it).

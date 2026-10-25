@@ -110,6 +110,43 @@ describe("resolveFestivalGroups", () => {
     expect(resolveFestivalGroups([], H)).toEqual([]);
   });
 
+  describe("explicit side-project appearances", () => {
+    const hierarchy = buildArtistHierarchy([
+      { id: BigInt(1), parentArtistId: null },
+      { id: BigInt(2), parentArtistId: BigInt(1) },
+      { id: BigInt(3), parentArtistId: BigInt(1) },
+      { id: BigInt(10), parentArtistId: null },
+      { id: BigInt(20), parentArtistId: null, isSideProject: true },
+      { id: BigInt(30), parentArtistId: null, isSideProject: true },
+    ]);
+    const first = member("first", [artist(2, 1), artist(20, null)]);
+    const second = member("second", [artist(10, null), artist(20, null)], true);
+    const roots = (roster: EventRosterEntry[], assigned: (bigint | number | string)[] = []) =>
+      resolveFestivalGroups(roster, hierarchy, assigned).map((g) => g.rootId);
+
+    it("includes only an assigned collaboration even when all its members attend", () => {
+      expect(roots([first, second], [20])).toContain("20");
+      expect(roots([first, second])).toEqual(["1", "10"]);
+    });
+
+    it("an explicit appearance needs neither a second home group nor roster members", () => {
+      expect(roots([first], ["20"])).toEqual(["1", "20"]);
+      expect(resolveFestivalGroups([], hierarchy, [BigInt(20)])).toEqual([
+        { rootId: "20", performerCount: 0, sortOrder: null },
+      ]);
+    });
+
+    it("deduplicates assignments and ignores unknown or ordinary artists", () => {
+      expect(roots([], [20, "20", BigInt(20), 999, 1, 2])).toEqual(["20"]);
+      expect(roots([], [999, 1, 2])).toEqual([]);
+    });
+
+    it("dropping an assignment removes only that collaboration", () => {
+      expect(roots([first, second], [20, 30])).toEqual(["20", "1", "10", "30"]);
+      expect(roots([first, second], [30])).toEqual(["1", "10", "30"]);
+    });
+  });
+
   describe("Artist.sortOrder (operator's series order)", () => {
     // 1 has the most performers, 10 and 20 one each; 30 two.
     const roster = [

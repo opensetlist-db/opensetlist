@@ -86,7 +86,7 @@ const FIXTURE_ASSET_KEY = "qa-fixture/";
 // at it). `prefixColumn` is the column the prefix is checked against; `owned` are
 // the child tables deleted with the parent (found by their FK to it).
 const ENTITIES = [
-  { flag: "events", table: "Event", idType: "bigint", prefixColumn: "originalName", owned: ["EventTranslation", "EventPerformer"] },
+  { flag: "events", table: "Event", idType: "bigint", prefixColumn: "originalName", owned: ["EventTranslation", "EventPerformer", "EventCollaborationArtist"] },
   { flag: "series", table: "EventSeries", idType: "bigint", prefixColumn: "originalName", owned: ["EventSeriesTranslation"] },
   { flag: "albums", table: "Album", idType: "bigint", prefixColumn: "originalTitle", owned: ["AlbumTranslation", "AlbumArtist"] },
   { flag: "assets", table: "ImageAsset", idType: "text", prefixColumn: "objectKey", owned: [] },

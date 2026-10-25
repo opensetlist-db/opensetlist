@@ -6,6 +6,7 @@ import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import EventForm from "../../EventForm";
 import SetlistBuilder from "../../SetlistBuilder";
 import BoardSettings from "../../BoardSettings";
+import CollaborationSettings from "../../CollaborationSettings";
 import EventLogoSection from "../../EventLogoSection";
 import { getEventLogoAdminState } from "@/lib/adminEventLogo";
 import { seriesAdminName } from "@/lib/adminLogo";
@@ -184,6 +185,13 @@ export default async function EditEventPage({ params }: Props) {
       <div>
         <h2 className="mb-6 text-2xl font-bold">팬 보드</h2>
         <BoardSettings eventId={Number(data.id)} />
+      </div>
+
+      <hr className="border-zinc-200" />
+
+      <div>
+        <h2 className="mb-6 text-2xl font-bold">협업 그룹 출연</h2>
+        <CollaborationSettings key={String(data.id)} eventId={Number(data.id)} />
       </div>
 
       <hr className="border-zinc-200" />

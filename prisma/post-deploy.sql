@@ -630,6 +630,20 @@ END $$;
 --    the seconds in between the empty table carries the default grants.
 --    The DO block skips roles that don't exist (a non-Supabase Postgres).
 --    Do NOT add ImageAsset to the supabase_realtime publication.
+-- Explicit event collaboration settings are server-managed as well.
+ALTER TABLE "EventCollaborationArtist" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE "EventCollaborationArtist" FROM PUBLIC;
+DO $$
+DECLARE
+  r TEXT;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('REVOKE ALL ON TABLE "EventCollaborationArtist" FROM %I', r);
+    END IF;
+  END LOOP;
+END $$;
+
 ALTER TABLE "ImageAsset" ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE "ImageAsset" FROM PUBLIC;
 DO $$
