@@ -29,7 +29,6 @@ export function sharePath(eventId: string, mode: string, revision: string, local
     || !UUID.test(revision) || !CARD_LOCALES.includes(locale as CardLocale)) throw invalid("잘못된 공유 카드 식별자입니다.");
   return `/${locale}/share/events/${eventId}/${mode}/${revision}`;
 }
-
 export const INCLUDE = { renditions: { include: { asset: true } }, annotation: true } as const;
 export type Stored = Prisma.EventCardPublicationGetPayload<{ include: typeof INCLUDE }>;
 export function result(row: Stored, origin: string, status: "created" | "reconciled") {

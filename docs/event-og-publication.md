@@ -8,9 +8,11 @@ Existing event links, legacy OG and personal PNGs keep their behavior.
 Use Node24 and the checkout's installed dependencies. Preview and replay retain
 the commands in [the preview runbook](event-og-preview.md). The new commands
 require both DB settings to pass the existing dev-project guard. Publication
-also requires the configured R2 namespace to be `dev` or `test`; production
+also requires bucket `opensetlist-images-dev` and namespace `dev` or `test`; production
 publication is outside this stage. `NEXT_PUBLIC_BASE_URL` is the trusted share
-origin and must be an HTTPS origin (HTTP is allowed only on loopback for QA).
+origin and must be explicitly configured to a dev/Preview HTTPS origin (HTTP
+is allowed only on loopback for QA). The CLI refuses known production origins
+and has no implicit production-origin fallback.
 R2 image URLs derive exclusively from the deployment's existing R2 config.
 
 ## Exact approval and explicit publication

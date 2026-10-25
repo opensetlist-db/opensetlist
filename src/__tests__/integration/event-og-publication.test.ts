@@ -212,7 +212,7 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
   });
 
   it("does not expose malformed tuples or a deleted event through published lookup", async () => {
-    const input = await request(); await publishPreview(input, { storage: storage(), origin: ORIGIN });
+    const input = await request(); const mem = storage(); await publishPreview(input, { storage: mem, origin: ORIGIN });
     expect(await lookup(input.revision)).toBeTruthy();
     for (const [mode, locale, revision] of [["wrong", "ja", input.revision], ["prediction", "fr", input.revision], ["prediction", "ja", "../unsafe"]]) {
       expect(await lookup(revision, mode, locale)).toBeNull();
@@ -221,5 +221,15 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
     expect(await lookup(input.revision)).toBeNull();
     await prisma.event.update({ where: { id: BigInt(eventId) }, data: { isDeleted: false } });
     expect(await lookup(input.revision)).toBeTruthy();
+    for (const status of ["corrected", "suspended"] as const) {
+      await prisma.eventCardAnnotation.update({ where: { publicationId: input.revision }, data: { status } });
+      expect(await lookup(input.revision)).toBeNull();
+      // A committed retry returns identity without resurrecting removed bytes.
+      mem.objects.clear();
+      expect((await publishPreview(input, { storage: mem, origin: ORIGIN })).status).toBe("reconciled");
+      expect(mem.objects.size).toBe(0);
+      await prisma.eventCardAnnotation.update({ where: { publicationId: input.revision }, data: { status: "active" } });
+      expect(await lookup(input.revision)).toBeTruthy();
+    }
   });
 });

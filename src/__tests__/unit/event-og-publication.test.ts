@@ -57,4 +57,24 @@ describe("published event-card transport", () => {
     expect(guarded.status).toBe(1);
     expect(guarded.stderr).toContain("dev 데이터베이스만 허용");
   });
+
+  it("refuses a production bucket or missing/production share origin before reading a packet or connecting", () => {
+    const dev = "postgresql://invalid:invalid@db.nddawybyuedsrshhxikx.supabase.co/postgres";
+    const args = ["publish", "--event", "7", "--mode", "prediction", "--revision", card.publicationId, "--manifest", "missing-manifest.json", "--approval", "missing-approval.json"];
+    const run = (override: Record<string, string>) => spawnSync(process.execPath, ["scripts/event-og.mjs", ...args], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 30_000,
+      env: { ...process.env, DATABASE_URL: dev, DATABASE_URL_UNPOOLED: dev,
+        R2_ACCOUNT_ID: "0".repeat(32), R2_ACCESS_KEY_ID: "synthetic-key", R2_SECRET_ACCESS_KEY: "synthetic-secret",
+        R2_PUBLIC_BASE_URL: "https://images.test.invalid", R2_BUCKET: "opensetlist-images-dev", R2_KEY_PREFIX: "test", NEXT_PUBLIC_BASE_URL: "https://preview.test.invalid", ...override },
+    });
+    // Positive control: safe settings get as far as reading the absent packet.
+    const allowed = run({}); expect(allowed.status).toBe(1); expect(allowed.stderr).toContain("missing-manifest.json");
+    for (const [override, message] of [
+      [{ R2_BUCKET: "opensetlist-images" }, "dev bucket"],
+      [{ NEXT_PUBLIC_BASE_URL: "" }, "공개 origin을 명시"],
+      [{ NEXT_PUBLIC_BASE_URL: "https://opensetlist.com" }, "운영 origin"],
+    ] as const) {
+      const rejected = run(override); expect(rejected.status).toBe(1); expect(rejected.stderr).toContain(message);
+    }
+  });
 });

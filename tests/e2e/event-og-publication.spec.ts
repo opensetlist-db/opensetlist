@@ -84,8 +84,8 @@ test.describe("event-card publication HTTP and navigation", () => {
       for (const item of published) for (const locale of ["ja", "ko", "en"]) {
         await fallback.goto(item.urls[locale]);
         await expect(fallback.locator("html")).toHaveAttribute("lang", locale);
-        await expect(fallback.locator("h1")).toHaveText("OpenSetlist QA event Day.1");
-        const link = fallback.locator("a[data-event-destination]");
+        await expect(fallback.getByTestId("event-share-title")).toHaveText("OpenSetlist QA event Day.1");
+        const link = fallback.getByTestId("event-share-destination");
         await expect(link).toBeVisible(); await expect(link).toHaveAttribute("href", `/${locale}/events/${eventId}/${slug}`);
         await fallback.keyboard.press("Tab"); await expect(link).toBeFocused();
         expect(await fallback.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -112,8 +112,8 @@ test.describe("event-card publication HTTP and navigation", () => {
       // The destination is deliberately aborted. Waiting for load would wait
       // on that aborted navigation; the wrapper's committed HTML is our target.
       await page.goto(url, { waitUntil: "commit", timeout: 15_000 });
-      await expect(page.locator("a[data-event-destination]")).toBeVisible();
-      await expect(page.locator("h1")).toHaveText("OpenSetlist QA event Day.1");
+      await expect(page.getByTestId("event-share-destination")).toBeVisible();
+      await expect(page.getByTestId("event-share-title")).toHaveText("OpenSetlist QA event Day.1");
     } finally { await context.close(); }
   });
 

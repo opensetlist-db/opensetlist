@@ -127,4 +127,3 @@ export async function publishPreview(input: {
     throw new CardPublicationError("not_saved", "발행하지 못했습니다. 미할당 객체는 보존됩니다. 같은 식별자로 재시도하세요.");
   }
 }
-

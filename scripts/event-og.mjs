@@ -32,14 +32,20 @@ async function main() {
     config({ path: [path.join(root, ".env.local"), path.join(root, ".env")], quiet: true });
     const { pointsAtDevProject } = await import("./dev-db-guard.mjs");
     for (const name of ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]) if (!pointsAtDevProject(process.env[name] ?? "")) throw new Error("이 CLI는 dev 데이터베이스만 허용합니다.");
+    const configuredOrigin = process.env.NEXT_PUBLIC_BASE_URL?.trim();
+    if (!configuredOrigin) throw new Error("NEXT_PUBLIC_BASE_URL에 dev/Preview 공개 origin을 명시해야 합니다.");
+    const origin = new URL(configuredOrigin);
+    if (["opensetlist.com", "www.opensetlist.com", "opensetlist.vercel.app"].includes(origin.hostname)) throw new Error("운영 origin으로는 dev 발행본을 생성하거나 조회할 수 없습니다.");
+    if (action === "publish" && (process.env.R2_BUCKET !== "opensetlist-images-dev" || !["dev", "test"].includes(process.env.R2_KEY_PREFIX ?? ""))) {
+      throw new Error("운영 발행은 허용하지 않습니다. dev bucket과 dev/test 저장소 namespace가 필요합니다.");
+    }
     const lifecycle = await import(pathToFileURL(path.join(root, "src/lib/eventOg/index.ts")).href);
     const { prisma } = await import(pathToFileURL(path.join(root, "src/lib/prisma.ts")).href);
     try {
       if (action === "list") console.log(JSON.stringify({ publications: await lifecycle.listPublications(options["--event"]) }, null, 2));
       else {
-        if (!["dev", "test"].includes(process.env.R2_KEY_PREFIX ?? "")) throw new Error("운영 발행은 허용하지 않습니다. dev/test 저장소 namespace가 필요합니다.");
         const result = await lifecycle.publishPreview({ root, eventId: options["--event"], mode: options["--mode"], revision: options["--revision"],
-          manifestFile: path.resolve(options["--manifest"]), approvalFile: path.resolve(options["--approval"]) });
+          manifestFile: path.resolve(options["--manifest"]), approvalFile: path.resolve(options["--approval"]) }, { origin: configuredOrigin });
         console.log(JSON.stringify(result, null, 2));
       }
     } finally { await prisma.$disconnect(); }
