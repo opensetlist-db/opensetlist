@@ -362,19 +362,45 @@ describe("AlbumsPage", () => {
     expect(lib.getAlbumsPage).toHaveBeenLastCalledWith("ko", BigInt(109), 1);
   });
 
-  // generateMetadata never receives searchParams, so every `?page=` /
-  // `?artist=` variant shares the bare list's canonical and hreflang set
-  // (the concert list's rule). The origin comes from the site-URL env.
-  it("keeps the canonical on the bare list for any filter or page", async () => {
-    const { generateMetadata } = await import("@/app/[locale]/albums/page");
-    const { absoluteUrl } = await import("@/lib/seo/entityUrl");
-    const meta = await generateMetadata({ params: Promise.resolve({ locale: "ja" }) });
-    expect(meta.alternates?.canonical).toBe(absoluteUrl("/ja/albums"));
-    expect(meta.alternates?.languages).toMatchObject({
-      ko: absoluteUrl("/ko/albums"),
-      en: absoluteUrl("/en/albums"),
-      "x-default": absoluteUrl("/ja/albums"),
-    });
+  describe.each(["ko", "ja", "en"])("metadata in %s", (locale) => {
+    async function metadata(sp: Sp = {}) {
+      const { generateMetadata } = await import("@/app/[locale]/albums/page");
+      return generateMetadata({
+        params: Promise.resolve({ locale }),
+        searchParams: Promise.resolve(sp),
+      });
+    }
+
+    it.each([
+      [{}, ""],
+      [{ page: "1" }, ""],
+      [{ page: "2" }, "?page=2"],
+      [{ page: "24" }, "?page=24"],
+      [{ page: "02" }, "?page=2"],
+      [{ page: ["2", "3"] }, "?page=2"],
+      [{ page: "abc" }, ""],
+      [{ page: "0" }, ""],
+      [{ page: "-2" }, ""],
+      [{ page: "1.5" }, ""],
+      [{ artist: "1" }, ""],
+      [{ artist: "1", page: "2" }, "?page=2"],
+    ] satisfies [Sp, string][])(
+      "uses the normalized page URL for %j",
+      async (sp, query) => {
+        const { absoluteUrl } = await import("@/lib/seo/entityUrl");
+        const meta = await metadata(sp);
+        expect(meta.title).toBe("Album.title");
+        expect(meta.alternates?.canonical).toBe(
+          absoluteUrl(`/${locale}/albums${query}`),
+        );
+        expect(meta.alternates?.languages).toEqual({
+          ko: absoluteUrl(`/ko/albums${query}`),
+          ja: absoluteUrl(`/ja/albums${query}`),
+          en: absoluteUrl(`/en/albums${query}`),
+          "x-default": absoluteUrl(`/ja/albums${query}`),
+        });
+      },
+    );
   });
 
   it.each([
