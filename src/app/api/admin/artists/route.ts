@@ -25,6 +25,7 @@ import {
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { normalizeArtistQuery } from "@/lib/search";
+import { createAdminOfficialOrdering } from "@/lib/adminOfficialOrder";
 
 const SEARCH_LIMIT = 100;
 
@@ -70,7 +71,14 @@ export async function GET(request: NextRequest) {
     // headliner — fell off once the catalog passed 100 rows.
     ...(term ? { take: SEARCH_LIMIT } : {}),
   });
-  return NextResponse.json(serializeBigInt(artists));
+  // Search selection/relevance remains unchanged; sort only the chosen
+  // results. Load ancestors too so a search subset keeps hierarchy order.
+  const metadata = term ? await prisma.artist.findMany({
+    where: { isDeleted: false },
+    select: { id: true, parentArtistId: true, type: true, sortOrder: true },
+  }) : artists;
+  const ordered = createAdminOfficialOrdering(metadata).sortArtists(artists, (artist) => ({ artistId: artist.id }));
+  return NextResponse.json(serializeBigInt(ordered));
 }
 
 export async function POST(request: NextRequest) {

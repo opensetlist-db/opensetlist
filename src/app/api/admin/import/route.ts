@@ -23,6 +23,8 @@ import {
   lockEvent,
 } from "@/lib/liveBroadcast";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { importMembershipOrders } from "@/lib/membershipOrderImport";
+import { ArtistParentCycleError, validateArtistParent } from "@/lib/adminArtistParent";
 import {
   findDuplicateSongs,
   normalizeSongText,
@@ -325,10 +327,15 @@ async function importArtists(rows: Record<string, string>[]) {
     const artist = await prisma.artist.findUnique({ where: { slug: row.slug } });
     const parent = await prisma.artist.findUnique({ where: { slug: row.parentArtist_slug } });
     if (artist && parent) {
-      await prisma.artist.update({
-        where: { id: artist.id },
-        data: { parentArtistId: parent.id },
-      });
+      try {
+        await prisma.$transaction(async (tx) => {
+          await validateArtistParent(tx, artist.id, parent.id);
+          await tx.artist.update({ where: { id: artist.id }, data: { parentArtistId: parent.id } });
+        });
+      } catch (error) {
+        if (!(error instanceof ArtistParentCycleError)) throw error;
+        results.push(`ERROR: artists.csv parentArtist_slug "${row.parentArtist_slug}" creates a cycle (artist ${row.slug}) — parent kept`);
+      }
     }
   }
 
@@ -1954,6 +1961,9 @@ export async function POST(request: NextRequest) {
         break;
       case "members":
         result = await importMembers(rows);
+        break;
+      case "membership-order":
+        result = await importMembershipOrders(rows);
         break;
       case "albums":
         result = await importAlbums(rows);

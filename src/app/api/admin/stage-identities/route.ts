@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { stageIdentityOrderBy } from "@/lib/memberOrder";
+import { sortAdminMembers } from "@/lib/adminOfficialOrder";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
@@ -15,10 +15,10 @@ export async function GET() {
         include: { artist: { include: { translations: true } } },
       },
     },
-    // Official member order (`src/lib/memberOrder.ts`) — the
-    // SetlistBuilder / EventForm performer pickers and the artist
-    // form's "기존 멤버 연결" list render this order as is.
-    orderBy: stageIdentityOrderBy(),
   });
-  return NextResponse.json(serializeBigInt(identities));
+  const artists = await prisma.artist.findMany({
+    where: { isDeleted: false },
+    select: { id: true, parentArtistId: true, type: true, sortOrder: true },
+  });
+  return NextResponse.json(serializeBigInt(sortAdminMembers(identities, (identity) => identity, artists)));
 }

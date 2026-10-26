@@ -20,6 +20,7 @@ import {
 } from "../_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { ArtistParentCycleError, validateArtistParent } from "@/lib/adminArtistParent";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -110,39 +111,45 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!translations.ok) return badRequest(translations.message);
 
   // Atomic delete-then-update: a failure on the update would otherwise leave the artist with no translations/group links.
-  const artist = await prisma.$transaction(async (tx) => {
-    // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
-    await tx.artistTranslation.deleteMany({ where: { artistId } });
-    await tx.artistGroup.deleteMany({ where: { artistId } });
-    return tx.artist.update({
-      where: { id: artistId },
-      data: {
-        type: typeCheck.value,
-        parentArtistId: parentArtistIdCheck.value,
-        hasBoard: hasBoardCheck.value ?? true,
-        category: categoryCheck.value,
-        // See POST handler — only persist isMainUnit=true when the
-        // artist is actually a unit. Force false on every other type
-        // so a stale form value can't survive a type flip.
-        isMainUnit:
-          typeCheck.value === "unit"
-            ? (isMainUnitCheck.value ?? false)
-            : false,
-        ...display.value,
-        originalName: name.value,
-        originalShortName: shortName.value,
-        originalBio: bio.value,
-        originalLanguage: language.value,
-        translations: { create: translations.value },
-        groupLinks: groupIdsCheck.value.length
-          ? { create: groupIdsCheck.value.map((gid) => ({ groupId: gid })) }
-          : undefined,
-      },
-      include: { translations: true },
+  try {
+    const artist = await prisma.$transaction(async (tx) => {
+      await validateArtistParent(tx, artistId, parentArtistIdCheck.value);
+      // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
+      await tx.artistTranslation.deleteMany({ where: { artistId } });
+      await tx.artistGroup.deleteMany({ where: { artistId } });
+      return tx.artist.update({
+        where: { id: artistId },
+        data: {
+          type: typeCheck.value,
+          parentArtistId: parentArtistIdCheck.value,
+          hasBoard: hasBoardCheck.value ?? true,
+          category: categoryCheck.value,
+          // See POST handler — only persist isMainUnit=true when the
+          // artist is actually a unit. Force false on every other type
+          // so a stale form value can't survive a type flip.
+          isMainUnit:
+            typeCheck.value === "unit"
+              ? (isMainUnitCheck.value ?? false)
+              : false,
+          ...display.value,
+          originalName: name.value,
+          originalShortName: shortName.value,
+          originalBio: bio.value,
+          originalLanguage: language.value,
+          translations: { create: translations.value },
+          groupLinks: groupIdsCheck.value.length
+            ? { create: groupIdsCheck.value.map((gid) => ({ groupId: gid })) }
+            : undefined,
+        },
+        include: { translations: true },
+      });
     });
-  });
-  revalidatePublicData();
-  return NextResponse.json(serializeBigInt(artist));
+    revalidatePublicData();
+    return NextResponse.json(serializeBigInt(artist));
+  } catch (error) {
+    if (error instanceof ArtistParentCycleError) return badRequest(error.message);
+    throw error;
+  }
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {
