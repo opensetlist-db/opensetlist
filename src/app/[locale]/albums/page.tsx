@@ -57,16 +57,22 @@ import styles from "@/components/albums/albumList.module.css";
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ page?: string | string[] }>;
 }): Promise<Metadata> {
   const { locale } = await params;
+  const sp = await searchParams;
+  const page = albumPageParamValue(parseAlbumPageParam(sp.page));
   const t = await getTranslations({ locale, namespace: "Album" });
-  // `?artist=` filter and `?page=` variants consolidate onto the
-  // unfiltered first page, the same rule as the concert list's
-  // `?filter=` / `?pastPage=`: list pages are navigation, and every album
-  // they lead to has its own canonical URL in the sitemap.
-  return { title: t("title"), alternates: staticAlternates(locale, "/albums") };
+  // Each page lists different albums, so its canonical and hreflang
+  // targets keep the page number. Artist filters still consolidate to
+  // the unfiltered list; page 1 uses the bare list URL.
+  return {
+    title: t("title"),
+    alternates: staticAlternates(locale, `/albums${page ? `?page=${page}` : ""}`),
+  };
 }
 
 export default async function AlbumsPage({
