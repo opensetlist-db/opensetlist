@@ -306,8 +306,8 @@ model Artist {
   // isSideProject: a cross-IP side project / collaboration unit — e.g.
   // a unit whose members come from several series — that is a
   // top-level Artist like a main group but must not get its own column
-  // on the fan board. It stays in song catalogs and in the prediction
-  // picker's chips; only the board's group list drops it.
+  // on the fan board. Festival prediction catalogs include it only
+  // when explicitly assigned through EventCollaborationArtist.
   isSideProject     Boolean        @default(false)
   originalName      String
   originalShortName String?
@@ -317,20 +317,21 @@ model Artist {
   deletedAt         DateTime?
   createdAt         DateTime       @default(now())
 
-  parentArtist Artist?               @relation("ArtistChildren", fields: [parentArtistId], references: [id])
-  subArtists   Artist[]              @relation("ArtistChildren")
-  translations ArtistTranslation[]
-  groupLinks   ArtistGroup[]
-  stageLinks   StageIdentityArtist[]
-  songCredits  SongArtist[]
-  eventSeries  EventSeries[]
+  parentArtist        Artist?                    @relation("ArtistChildren", fields: [parentArtistId], references: [id])
+  subArtists          Artist[]                   @relation("ArtistChildren")
+  translations        ArtistTranslation[]
+  groupLinks          ArtistGroup[]
+  stageLinks          StageIdentityArtist[]
+  songCredits         SongArtist[]
+  eventSeries         EventSeries[]
   // Fan board (n15) picks and per-group wishes (n15-08) filed under
   // this root group.
-  boardPicks   BoardPick[]
-  songWishes   SongWish[]
-  events       Event[]
-  albums       AlbumArtist[]
-  setlistItems SetlistItemArtist[]
+  boardPicks          BoardPick[]
+  songWishes          SongWish[]
+  events              Event[]
+  collaborationEvents EventCollaborationArtist[]
+  albums              AlbumArtist[]
+  setlistItems        SetlistItemArtist[]
 
   @@index([parentArtistId])
   @@index([isDeleted])
@@ -642,22 +643,23 @@ model Event {
   logoMode            LogoDisplayMode @default(inherit)
   logoAssetId         String?
 
-  eventSeries  EventSeries?          @relation(fields: [eventSeriesId], references: [id])
-  logoAsset    ImageAsset?           @relation("EventLogo", fields: [logoAssetId], references: [id], onDelete: Restrict)
-  artist       Artist?               @relation(fields: [artistId], references: [id])
-  bdAlbum      Album?                @relation("EventBdAlbum", fields: [bdAlbumId], references: [id])
-  translations EventTranslation[]
-  setlistItems SetlistItem[]
-  performers   EventPerformer[]
-  impressions  EventImpression[]
-  wishes       SongWish[]
-  boardPicks   BoardPick[]
+  eventSeries          EventSeries?               @relation(fields: [eventSeriesId], references: [id])
+  logoAsset            ImageAsset?                @relation("EventLogo", fields: [logoAssetId], references: [id], onDelete: Restrict)
+  artist               Artist?                    @relation(fields: [artistId], references: [id])
+  bdAlbum              Album?                     @relation("EventBdAlbum", fields: [bdAlbumId], references: [id])
+  translations         EventTranslation[]
+  setlistItems         SetlistItem[]
+  performers           EventPerformer[]
+  collaborationArtists EventCollaborationArtist[]
+  impressions          EventImpression[]
+  wishes               SongWish[]
+  boardPicks           BoardPick[]
   // Realtime R2: SetlistItemReaction carries a denormalized eventId
   // so Supabase Realtime postgres_changes can filter pushes by event
   // (the channel filter only supports columns on the changed table,
   // not joins). Backfilled in prisma/post-deploy.sql; populated on
   // INSERT in src/app/api/reactions/route.ts.
-  reactions    SetlistItemReaction[]
+  reactions            SetlistItemReaction[]
 
   @@index([eventSeriesId])
   @@index([artistId])
@@ -665,6 +667,21 @@ model Event {
   @@index([date, status])
   @@index([isDeleted])
   @@index([logoAssetId])
+}
+
+// An explicit collaboration appearance, independent of its members'
+// other affiliations. Only top-level isSideProject artists are accepted
+// by the admin API. A collaboration's own headlined show needs no row.
+model EventCollaborationArtist {
+  id       String @id @default(uuid())
+  eventId  BigInt
+  artistId BigInt
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, artistId])
+  @@index([artistId])
 }
 
 model EventTranslation {

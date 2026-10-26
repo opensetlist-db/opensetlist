@@ -59,6 +59,7 @@ import styles from "@/components/event/eventDetail.module.css";
 import { LOGO_EVENT_SELECT, resolveEventLogo } from "@/lib/logoResolution";
 import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
 import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
+import { getEventCollaborationArtistIdsCached } from "@/lib/predict/eventCollaborations";
 import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
 import {
@@ -882,17 +883,21 @@ export default async function EventPage({ params }: Props) {
       predictPickerTrans("filterOthers"),
       colors.primary,
     );
-  } else if (resolvedStatus === "upcoming" && roster.length > 0) {
-    const hierarchy = await getArtistHierarchyCached();
+  } else if (resolvedStatus === "upcoming") {
+    const [hierarchy, collaborationArtistIds] = await Promise.all([
+      getArtistHierarchyCached(),
+      getEventCollaborationArtistIdsCached(eventId),
+    ]);
     // Same resolver the fan board uses (`primaryArtistId: null` selects
     // the festival branch), so the picker's chips and the board's
     // groups come from one ordering (`Artist.sortOrder` first, then
-    // performer count). Deliberately NOT `fanBoardRootIds`: a side
-    // project keeps its picker chip — only the board drops it.
+    // performer count). Deliberately NOT `fanBoardRootIds`: an eligible
+    // explicitly assigned side project keeps its picker chip; the board drops it.
     const rootIds = boardGroupRootIds({
       roster,
       hierarchy,
       primaryArtistId: null,
+      collaborationArtistIds,
     });
     if (rootIds.length > 0) {
       // Sorted id key so the display-row cache entry is independent of
