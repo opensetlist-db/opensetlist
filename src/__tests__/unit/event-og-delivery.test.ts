@@ -18,6 +18,24 @@ async function fixture() {
   return { storage, resource, target, neighbor, directory };
 }
 describe("publication-scoped owned image delivery revocation", () => {
+  it("revokes saved URLs on an inventoried previous base after the primary delivery domain changes", async () => {
+    const f = await fixture(); const primary = "https://new.test.invalid";
+    await f.resource.warm(f.target.images.map((i) => `${primary}/${i.key}`));
+    for (const base of [primary, f.resource.base]) for (const image of f.target.images) {
+      const before = await f.resource.fetch(`${base}/${image.key}`);
+      expect(before.status).toBe(200);
+      expect(createHash("sha256").update(new Uint8Array(await before.arrayBuffer())).digest("hex")).toBe(image.sha256);
+    }
+    const report = await new R2CardDelivery({ accountId: "0".repeat(32), accessKeyId: "synthetic", secretAccessKey: "synthetic",
+      bucket: "opensetlist-images-dev", publicBaseUrl: primary, keyPrefix: "test" }, {
+      EVENT_CARD_DELIVERY_BASES: JSON.stringify([primary, f.resource.base]), CLOUDFLARE_CACHE_ZONE_ID: "1".repeat(32),
+      CLOUDFLARE_CACHE_ZONE_HOST: "test.invalid", CLOUDFLARE_CACHE_PURGE_TOKEN: "synthetic",
+    }, f.resource.fetch).revoke(f.target);
+    expect(report.cache.status).toBe("purged"); expect(report.public).toHaveLength(18);
+    expect(report.public.every((r) => r.blocked)).toBe(true);
+    expect([...f.storage.objects.keys()]).toEqual([f.neighbor]);
+    expect((await f.resource.fetch(`${f.resource.base}/${f.neighbor}`)).status).toBe(200);
+  });
   it("deletes only exact published keys, purges their prefix including query/header variants, and verifies the original URLs", async () => {
     const f = await fixture(); expect(f.storage.objects.size).toBe(4); expect(f.resource.edge.size).toBe(12);
     const report = await f.resource.delivery().revoke(f.target);

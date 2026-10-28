@@ -53,7 +53,9 @@ export async function suspendPublication(input: SuspensionInput, deps: { db?: Su
           toVersion: expectedVersion + 1, fingerprint, privateReason: reason, targets: target as Prisma.InputJsonValue },
           include: { publication: { include: { annotation: true } } } });
         finished = true; return saved;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 30000, timeout: 30000 });
+      // A publisher can hold this graph lock for up to60s while uploading.
+      // Allow that transaction to finish rather than timing out at30s first.
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 30000, timeout: 90000 });
     } catch (error) {
       try {
         const saved = await db.$transaction(replay, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
@@ -72,6 +74,11 @@ export async function suspendPublication(input: SuspensionInput, deps: { db?: Su
   let attempt: { id: string };
   try { attempt = await db.eventCardSuspensionAttempt.create({ data: { suspensionId: operationId }, select: { id: true } }); }
   catch { throw new CardPublicationError("outcome_unknown", "안내는 적용됐지만 전달 경로 중단 시도 이력을 저장하지 못했습니다. 같은 작업으로 재시도하세요."); }
+  const pendingWriters = () => db.eventCardWriteAttempt.findMany({ where: { publicationId: revision, settledAt: null },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+  let writersAtStart: { id: string }[];
+  try { writersAtStart = await pendingWriters(); }
+  catch { throw new CardPublicationError("outcome_unknown", "안내는 적용됐지만 진행 중 쓰기를 확인하지 못했습니다. 같은 작업으로 재시도하세요."); }
   let delivery: DeliveryReport;
   try { delivery = await (deps.delivery ?? getCardDelivery()).revoke(target); }
   catch (error) {
@@ -79,11 +86,16 @@ export async function suspendPublication(input: SuspensionInput, deps: { db?: Su
       cache: { status: "failed", prefixes: [], code: "not_attempted" }, public: [] };
   }
   try {
-    const writers = await db.eventCardWriteAttempt.findMany({ where: { publicationId: revision, settledAt: null },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+    const writersAtEnd = await pendingWriters();
+    // A late PUT can land AFTER the404 probes, then settle before this final
+    // read. Any writer observed at the start therefore forces THIS attempt to
+    // remain partial, even if it settled. A fresh same-operation retry must
+    // DELETE/purge/verify again after that acknowledgment.
+    const writers = [...new Set([...writersAtStart, ...writersAtEnd].map((w) => w.id))];
     const complete = delivery.origins.length === 3 && target.images.every((i) => delivery.origins.some((r) => r.key === i.key && r.status === "blocked"))
       && delivery.cache.status !== "failed" && delivery.public.length >= 3 && delivery.public.every((r) => r.blocked) && writers.length === 0;
-    const report = { complete, ...delivery, unsettledWriters: writers.map((w) => w.id) };
+    const report = { complete, ...delivery, unsettledWriters: writers,
+      writersAtStart: writersAtStart.map((w) => w.id), writersAtEnd: writersAtEnd.map((w) => w.id) };
     const stored = await db.eventCardSuspensionAttempt.updateMany({ where: { id: attempt.id, completedAt: null },
       data: { completedAt: new Date(), report: report as Prisma.InputJsonValue } });
     if (stored.count !== 1) throw new Error("Delivery attempt changed");

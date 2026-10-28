@@ -69,10 +69,10 @@ export class R2CardDelivery implements CardDelivery {
   }
   async revoke(target: DeliveryTarget): Promise<DeliveryReport> {
     const directory = validateDeliveryTarget(target);
-    if (target.namespace !== this.config.keyPrefix || target.images.some((i) => i.url !== `${this.config.publicBaseUrl}/${i.key}`)) {
+    const bases = deliveryBases(this.config, this.env);
+    if (target.namespace !== this.config.keyPrefix || target.images.some((i) => !bases.some((base) => i.url === `${base}/${i.key}`))) {
       throw new DeliveryFailure("delivery_scope_mismatch");
     }
-    const bases = deliveryBases(this.config, this.env);
     const report: DeliveryReport = { origins: [], cache: { status: "failed", prefixes: [], code: "not_attempted" }, public: [] };
     for (const image of target.images) {
       try {

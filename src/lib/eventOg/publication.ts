@@ -115,6 +115,9 @@ export async function publishPreview(input: {
         await storage.putImmutable({ key: i.key, bytes: i.image.bytes, contentType: "image/png", sha256: i.image.sha256 });
       }
       putsAcknowledged = true;
+      // READ COMMITTED sees edits that landed while the external PUTs ran.
+      // They require a new review too; uploaded unassigned bytes are retained.
+      await assertCurrent(tx);
       const created = await tx.eventCardPublication.create({ data: {
         id: revision, eventId: BigInt(eventId), mode, namespace: storage.keyPrefix, fingerprint, previewId: manifest.previewId, approvalSha256,
         identity: { template: manifest.template, fonts: manifest.fonts, renderer: manifest.renderer } as Prisma.InputJsonValue,

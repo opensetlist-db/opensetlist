@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { Prisma } from "@/generated/prisma/client";
+import { PrismaClient, type Prisma } from "@/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import { prisma } from "@/lib/prisma";
 import { preparePreview } from "@/lib/eventOg/service";
 import { publishPreview } from "@/lib/eventOg/publication";
@@ -103,7 +105,8 @@ describe("explicit public suspension through actual dev DB, PNGs and independent
     expect(await prisma.eventCardCorrection.findUnique({ where: { id: correctionId } })).toMatchObject({ privateReason: "Private correction retained before suspension" });
     expect(saved?.createdAt).toBeInstanceOf(Date); expect((await suspend(request)).status).toBe("suspended");
     expect(await prisma.eventCardSuspension.count({ where: { publicationId: A } })).toBe(1);
-    const puts = storage.puts.length; expect((await publishPreview(await publication(A), { storage, origin: ORIGIN })).status).toBe("reconciled");
+    const puts = storage.puts.length; expect(puts).toBeGreaterThan(0);
+    expect((await publishPreview(await publication(A), { storage, origin: ORIGIN })).status).toBe("reconciled");
     expect(storage.puts.length).toBe(puts); expect(storage.objects.size).toBe(9);
     await prisma.event.update({ where: { id: BigInt(eventId) }, data: { status: "completed" } });
     expect((await lookup())?.suspended).toBe(true); expect((await lookup(B))?.suspended).toBe(false);
@@ -121,14 +124,23 @@ describe("explicit public suspension through actual dev DB, PNGs and independent
     expect(attempts).toHaveLength(2); expect(attempts[0].report).toMatchObject({ complete: false }); expect(attempts[1].report).toMatchObject({ complete: true });
     expect(storage.objects.has(key)).toBe(false);
   });
-  it("refuses false completion while an origin writer outcome is unsettled, then verifies a retry after its real acknowledgment", async () => {
+  it("refuses false completion when a late PUT recreates a key after verification and settles before the final writer check", async () => {
     const writer = await prisma.eventCardWriteAttempt.create({ data: { publicationId: A, eventId: BigInt(eventId), namespace: NAMESPACE } });
-    const request = input(); const first = await suspend(request);
+    const key = `${NAMESPACE}/event-cards/${eventId}/prediction/${A}/ja.png`;
+    const original = storage.objects.get(key)!; expect(original).toBeTruthy();
+    const request = input();
+    const first = await suspendPublication(request, { origin: ORIGIN, delivery: { async revoke(target) {
+      const report = await resource.delivery().revoke(target);
+      expect(report.public.every((r) => r.blocked)).toBe(true);
+      await storage.putImmutable({ key, bytes: original.bytes, sha256: original.sha256, contentType: original.contentType });
+      await prisma.eventCardWriteAttempt.update({ where: { id: writer.id }, data: { settledAt: new Date() } });
+      return report;
+    } } });
     expect(first.status).toBe("partial"); expect(first.report.unsettledWriters).toContain(writer.id);
     expect(first.report.public.every((r) => r.blocked)).toBe(true);
-    // Simulate the external writer's acknowledgment, never a timeout expiry.
-    await prisma.eventCardWriteAttempt.update({ where: { id: writer.id }, data: { settledAt: new Date() } });
+    expect(first.report.writersAtEnd).toEqual([]); expect(storage.objects.has(key)).toBe(true);
     expect((await suspend(request)).status).toBe("suspended");
+    expect(storage.objects.has(key)).toBe(false);
   });
   it("rejects missing/mismatched targets, stale competing decisions and corrections of a suspended source/target", async () => {
     expect((await lookup())?.suspended).toBe(false);
@@ -146,6 +158,26 @@ describe("explicit public suspension through actual dev DB, PNGs and independent
     await expect(correction(B, A)).rejects.toMatchObject({ code: "invalid_correction" });
     expect((await lookup())?.suspended).toBe(true); expect((await lookup(B))?.suspended).toBe(false);
   });
+  it("keeps an uncertain failed PUT fenced even after a successful same-revision publication retry", async () => {
+    const revision = randomUUID(); const request = await publication(revision); let writes = 0;
+    const failing: ImageStorage = { keyPrefix: NAMESPACE, publicUrlFor: (key) => storage.publicUrlFor(key),
+      async putImmutable(image) { const result = await storage.putImmutable(image); if (++writes === 2) throw new Error("lost PUT reply"); return result; } };
+    await expect(publishPreview(request, { storage: failing, origin: ORIGIN })).rejects.toMatchObject({ code: "not_saved" });
+    expect(await lookup(revision)).toBeNull();
+    expect([...storage.objects.keys()].filter((key) => key.includes(revision))).toHaveLength(2);
+    expect((await publishPreview(request, { storage, origin: ORIGIN })).status).toBe("created");
+    expect((await lookup(revision))?.image).toBeTruthy();
+    const uncertain = await prisma.eventCardWriteAttempt.findMany({ where: { publicationId: revision, settledAt: null } });
+    expect(uncertain).toHaveLength(1); const stop = input(revision);
+    for (let retry = 0; retry < 2; retry++) {
+      const result = await suspend(stop); expect(result.status).toBe("partial");
+      expect(result.report.unsettledWriters).toEqual([uncertain[0].id]);
+      expect(result.report.public.every((r) => r.blocked)).toBe(true);
+      expect((await lookup(revision))?.image).toBeNull();
+    }
+    expect([...storage.objects.keys()].filter((key) => key.includes(revision))).toHaveLength(0);
+    expect(storage.objects.size).toBe(12);
+  }, 180_000);
   it("serializes correction/suspension, preserves the earlier correction decision and can stop a deleted event's owned images", async () => {
     const correction = { eventId, mode: "prediction" as const, revision: A, replacementId: B, expectedVersion: 0, operationId: randomUUID(), reason: "original private correction" };
     const initial = input(); const outcomes = await Promise.allSettled([correctPublication(correction, { origin: ORIGIN }), suspend(initial)]);
@@ -199,6 +231,11 @@ describe("explicit public suspension through actual dev DB, PNGs and independent
     expect(attempts).toHaveLength(2); expect(attempts[0].completedAt).toBeNull(); expect(attempts[1].report).toMatchObject({ complete: true });
   });
   it("fences a late duplicate publisher so suspension cannot be followed by a retry that recreates the old keys", async () => {
+    // An operator CLI has its own process/pool. Both shared app connections
+    // are occupied by the two publishers; do not mistake pool acquisition
+    // failure for a test of the database's advisory-lock wait.
+    const operatorPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 5000 });
+    const operator = new PrismaClient({ adapter: new PrismaPg(operatorPool) });
     const revision = randomUUID(); const request = await publication(revision);
     let release!: () => void; let reached!: () => void; let writes = 0;
     const hold = new Promise<void>((resolve) => { release = resolve; }); const barrier = new Promise<void>((resolve) => { reached = resolve; });
@@ -213,13 +250,17 @@ describe("explicit public suspension through actual dev DB, PNGs and independent
         if (Date.now() > deadline) throw new Error("Duplicate publisher did not reach durable writer fence");
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      const suspension = input(revision); const stopped = suspend(suspension); release();
+      const suspension = input(revision);
+      const stopped = suspendPublication(suspension, { db: operator, origin: ORIGIN, delivery: resource.delivery() });
+      void stopped.catch(() => {}); // Attach immediately while the lock is held.
+      // Real lock wait longer than the former30s decision timeout.
+      await new Promise((resolve) => setTimeout(resolve, 31000)); release();
       const published = await Promise.all([first, second]);
       expect(published.map((p) => p.status).sort()).toEqual(["created", "reconciled"]);
       await stopped; expect((await suspend(suspension)).status).toBe("suspended");
       expect(writes).toBe(3); expect((await lookup(revision))?.suspended).toBe(true);
       expect([...storage.objects.keys()].filter((key) => key.includes(revision))).toHaveLength(0);
       expect(storage.objects.size).toBe(12);
-    } finally { release(); await Promise.allSettled([first, second]); }
+    } finally { release(); await Promise.allSettled([first, second]); await operator.$disconnect(); await operatorPool.end(); }
   }, 180_000);
 });

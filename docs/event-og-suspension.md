@@ -16,6 +16,8 @@ use new synthetic dev assets for verification.
 HTTPS public bases, including `R2_PUBLIC_BASE_URL` and any active custom-domain
 or r2.dev aliases. Omitted/mismatched inventory fails safely. URLs or keys are
 never accepted as command-line deletion targets. Keep configuration private.
+Previously saved URLs may use any inventoried base after a primary-domain
+change; keep that previous alias inventoried while it can still serve objects.
 Do not infer the inventory from DNS alone or assume a custom-domain WAF also
 blocks a separately enabled r2.dev endpoint.
 
@@ -77,8 +79,25 @@ any PUT, and keeps a durable writer fence before external writes. A completed
 publication retry never re-PUTs removed objects. If a PUT response or process
 disappears, an unsettled writer fence prevents false complete suspension even
 when current GETs return404. There is no automatic lease expiry or force-clear
-command. Restore the writer's acknowledged completion or investigate with the
+command. Any writer observed at the start of a revocation attempt makes that
+attempt partial even if it settles during verification: retry the same operation
+after its acknowledgment so DELETE/purge/GET run again. Restore the writer's
+acknowledged completion or investigate with the
 owner/provider; do not delete that audit row to manufacture revocation proof.
+Even an ordinary failed PUT followed by a successful publication retry cannot
+settle the earlier uncertain request. That publication's notice and origin
+deletion still work, but completion remains `partial` indefinitely unless the
+original writer acknowledges its requests. This conservative limitation is
+explicitly retained: this ticket provides no audited quiescence/credential
+rotation recovery tool and cannot prove a crashed writer will never resume.
+Escalate unresolved writer IDs to the owner; repeating the command alone does
+not resolve them. Do not present this case as a completed suspension.
+
+The decision transaction allows90s for a publisher's60s graph-lock transaction.
+Pool exhaustion or a longer queue can still fail before the notice commits;
+check the saved decision and retry the same operation rather than assuming
+the notice was applied. Only404/410 count as blocked delivery. A403/WAF error
+or network failure is incomplete evidence, even if it hides the image locally.
 
 The publication snapshot, hashes, targets, earlier correction decisions,
 timestamps and private reasons remain in server-only tables. Delivery-attempt

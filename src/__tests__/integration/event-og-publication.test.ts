@@ -137,6 +137,20 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
     }
   });
 
+  it("requires fresh approval if source facts change while the reviewed PNGs are being uploaded", async () => {
+    const baseline = await request(); await publishPreview(baseline, { storage: storage(), origin: ORIGIN });
+    expect(await lookup(baseline.revision)).toBeTruthy();
+    const mem = storage(); const input = await request(); let writes = 0;
+    const editing = { keyPrefix: mem.keyPrefix, publicUrlFor: (key: string) => mem.publicUrlFor(key),
+      async putImmutable(image: PutImmutableInput) {
+        const result = await mem.putImmutable(image);
+        if (++writes === 3) await prisma.event.update({ where: { id: BigInt(eventId) }, data: { originalVenue: "Edited during uploads" } });
+        return result;
+      } };
+    await expect(publishPreview(input, { storage: editing, origin: ORIGIN })).rejects.toMatchObject({ code: "preview_stale" });
+    expect(mem.objects.size).toBe(3); expect(await lookup(input.revision)).toBeNull();
+  });
+
   it("rolls all metadata back on pre-commit failure without deleting approved unassigned objects", async () => {
     const baseline = await request(); await publishPreview(baseline, { storage: storage(), origin: ORIGIN });
     expect(await lookup(baseline.revision)).toBeTruthy();
