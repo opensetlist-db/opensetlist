@@ -75,6 +75,7 @@ describe("private preview artifact boundary", () => {
     expect(steps.split("      - name: Verify owner request")[0]).not.toContain("secrets.");
     expect(workflow).toContain("environment: EventCardProduction");
     expect(workflow).toContain("cancel-in-progress: false");
+    expect(workflow).toContain("persist-credentials: false");
     const uses = [...workflow.matchAll(/uses: (\S+)/g)].map((match) => match[1]);
     expect(uses.length).toBe(4); expect(uses.every((value) => /@[a-f0-9]{40}$/.test(value))).toBe(true);
     const upload = steps.split("      - name: Retain encrypted preview")[1];

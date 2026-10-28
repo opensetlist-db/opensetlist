@@ -14,7 +14,7 @@ const load = (file) => import(pathToFileURL(path.join(root, "src/lib/eventOg", f
 let artifactFolder;
 async function main() {
   if (!["verify", "execute"].includes(process.argv[2]) || process.argv.length !== 3) throw new Error("operation_arguments");
-  const { productionOperation, assertProductionDeployment, assertPreviewRun, assertProductionStorage, assertEnvironmentPolicy } = await load("productionOperation.ts");
+  const { productionOperation, assertProductionDeployment, assertPreviewRun, assertProductionStorage, assertEnvironmentPolicy, publicOperationResult } = await load("productionOperation.ts");
   const event = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, "utf8"));
   const plan = productionOperation(process.env, event);
   const api = async (resource) => {
@@ -117,7 +117,7 @@ async function main() {
       await sealPreviewDirectory(folder, path.join(artifactFolder, "preview.enc"), process.env.EVENT_CARD_PREVIEW_ENCRYPTION_KEY);
       await writeFile(path.join(artifactFolder, "summary.json"), JSON.stringify({ action: "preview", commit: result.commit, previewId: result.previewId,
         manifestSha256: result.manifestSha256, publication: "none", encrypted: true }, null, 2));
-    } else await writeFile(path.join(artifactFolder, "operation-result.json"), JSON.stringify(result, null, 2));
+    } else await writeFile(path.join(artifactFolder, "operation-result.json"), JSON.stringify(publicOperationResult(plan, result), null, 2));
     console.log(JSON.stringify({ action: plan.action, resultFile, status: result.status ?? "prepared" }));
     if (result.status === "partial") process.exitCode = 1;
   } finally { await db.$disconnect(); }

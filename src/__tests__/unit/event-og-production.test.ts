@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { productionOperation, assertProductionDeployment, assertPreviewRun, assertEnvironmentPolicy } from "@/lib/eventOg/productionOperation";
+import { productionOperation, assertProductionDeployment, assertPreviewRun, assertEnvironmentPolicy, publicOperationResult } from "@/lib/eventOg/productionOperation";
 import { spawnSync } from "node:child_process";
 
 const revision = "1dcd9a25-4916-4ce7-9526-1e81c7ecfc3d";
@@ -20,6 +20,24 @@ function fixture(operation = "publish") {
   return { env, event };
 }
 describe("owner-dispatched hosted production card boundary", () => {
+  it("publishes only explicit result fields, with no private delivery/audit data even on partial suspension or recovery", () => {
+    const urls = { ja: "https://opensetlist.com/ja/share/approved", ko: "https://opensetlist.com/ko/share/approved", en: "https://opensetlist.com/en/share/approved" };
+    const privateFields = { privateReason: "private-reason-canary", operationId: "private-operation-canary", attemptId: "private-attempt-canary",
+      report: { origins: [{ key: "private-object-key" }], cache: { prefixes: ["private-cache-prefix"] }, public: [{ url: "private-probe" }],
+        unsettledWriters: ["private-writer-canary"], writersAtStart: ["private-start-canary"], writersAtEnd: ["private-end-canary"] } };
+    const value = { status: "partial", safeNoticeApplied: true, version: 1, urls, ...privateFields };
+    expect(JSON.stringify(value)).toContain("private-object-key");
+    const plan = { action: "suspend" as const, eventIds: ["109"], mode: "prediction" as const, revision };
+    const projected = publicOperationResult(plan, value);
+    expect(projected).toMatchObject({ status: "partial", safeNoticeApplied: true, version: 1, urls, publicationId: revision });
+    expect(JSON.stringify(projected)).not.toContain("private-");
+    const inspection = publicOperationResult({ ...plan, action: "inspect" }, { outcome: "uncertain", unsettledWriters: ["private-writer-canary"], ...privateFields });
+    expect(inspection).toMatchObject({ outcome: "uncertain", unsettledWriterCount: 1 });
+    expect(JSON.stringify(inspection)).not.toContain("private-");
+    const correction = publicOperationResult({ ...plan, action: "correct" }, { ...value, status: "corrected", replacementId: revision, replacementUrls: urls });
+    expect(correction).toMatchObject({ status: "corrected", replacementId: revision, replacementUrls: urls });
+    expect(JSON.stringify(correction)).not.toContain("private-");
+  });
   it("requires a separately protected main-branch environment without changing the existing release environment", () => {
     const environment = { name: "EventCardProduction", deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } };
     const policies = { total_count: 1, branch_policies: [{ name: "main", type: "branch" }] };

@@ -122,3 +122,29 @@ export function assertPreviewRun(sha: string, run: unknown, attempt: number) {
     || !object(run.actor) || run.actor.login !== "helloopensetlistdb"
     || !object(run.triggering_actor) || run.triggering_actor.login !== "helloopensetlistdb") fail();
 }
+
+/** Public repository artifacts are a separate contract from the operator's
+ * private service result. Full delivery/writer/audit details remain in the DB. */
+export function publicOperationResult(plan: Pick<ProductionOperation, "action" | "eventIds" | "mode" | "revision">, value: unknown) {
+  if (!object(value)) fail();
+  const fields = (source: Record<string, unknown>, names: string[]) => Object.fromEntries(names
+    .filter((name) => ["string", "number", "boolean"].includes(typeof source[name]))
+    .map((name) => [name, source[name]]));
+  const urls = (value: unknown) => object(value) ? Object.fromEntries(CARD_LOCALES.filter((l) => typeof value[l] === "string").map((l) => [l, value[l]])) : undefined;
+  const annotation = (value: unknown) => object(value) ? fields(value, ["status", "version"]) : undefined;
+  const common = { action: plan.action, eventIds: plan.eventIds, mode: plan.mode, publicationId: plan.revision };
+  if (plan.action === "list") {
+    if (!Array.isArray(value.publications)) fail();
+    return { ...common, publications: value.publications.map((row) => {
+      if (!object(row)) fail();
+      return { ...fields(row, ["publicationId", "mode", "status", "version"]), urls: urls(row.urls) };
+    }) };
+  }
+  if (plan.action === "inspect") {
+    if (!Array.isArray(value.unsettledWriters)) fail();
+    return { ...common, ...fields(value, ["outcome", "previewId", "approvalSha256"]),
+      outputs: urls(value.outputs), annotation: annotation(value.annotation), unsettledWriterCount: value.unsettledWriters.length };
+  }
+  return { ...common, ...fields(value, ["status", "version", "safeNoticeApplied", "replacementId"]), urls: urls(value.urls),
+    replacementUrls: urls(value.replacementUrls), publicationState: annotation(value.publicationState) };
+}

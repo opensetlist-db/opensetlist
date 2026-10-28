@@ -11,6 +11,7 @@ vi.mock("@/hooks/useMounted", () => ({
 
 import { SetlistSection } from "@/components/SetlistSection";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
+import { writePredictions } from "@/lib/predictionsStorage";
 
 function makeItem(overrides: Partial<LiveSetlistItem> = {}): LiveSetlistItem {
   return {
@@ -49,6 +50,30 @@ beforeEach(() => {
 });
 
 describe("SetlistSection", () => {
+  it.each([true, false])("keeps a prediction started this visit through show start only when saved (saved=%s), without leaking it to another event", (saved) => {
+    const props = { eventId: "1", items: [], reactionCounts: {}, locale: "ko", startTime: null,
+      seriesName: "Test Series", eventTitle: "Test Event", dateLine: "2026-05-23", availableSongs: [], unitFilters: [],
+      emptyFallback: <p data-testid="empty">empty</p> };
+    const { rerender } = render(<SetlistSection {...props} status="upcoming" isWishPredictOpen={true} />);
+    fireEvent.click(screen.getByTestId("predict-start"));
+    expect(screen.getByRole("tab", { name: /tabPredicted/ })).toHaveAttribute("aria-selected", "true");
+    if (saved) {
+      writePredictions("1", [{ songId: 1, song: { originalTitle: "Saved song", originalLanguage: "ja", variantLabel: null, baseVersionId: null, translations: [] } }]);
+      // Read the saved list through the UI before testing the phase change.
+      fireEvent.click(screen.getByRole("tab", { name: "tabActual" }));
+      fireEvent.click(screen.getByRole("tab", { name: /tabPredicted/ }));
+      expect(screen.getByText("Saved song")).toBeVisible();
+    }
+    rerender(<SetlistSection {...props} status="ongoing" isWishPredictOpen={false} items={[makeItem()]} />);
+    if (saved) {
+      expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeVisible();
+      fireEvent.click(screen.getByRole("tab", { name: /tabPredicted/ }));
+      expect(screen.getByText("Saved song")).toBeVisible();
+    } else expect(screen.queryByRole("tablist")).toBeNull();
+    rerender(<SetlistSection {...props} eventId="2" status="ongoing" isWishPredictOpen={false} items={[makeItem()]} />);
+    expect(screen.queryByRole("tablist")).toBeNull();
+    if (saved) expect(screen.queryByText("Saved song")).toBeNull();
+  });
   it("case 4 (no predictions, has actual, during/post-show): no tab strip; no tabpanel wrapper; only ActualSetlist body", () => {
     // Status `ongoing` (not upcoming) — upcoming always shows the
     // Predict tab as the entry point per the gate. The "no tabs"

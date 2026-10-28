@@ -186,6 +186,12 @@ the operation rather than reporting absence.
 public-safe projection of identities/URLs and annotation status/version. Inspect
 server-only audit tables through an authorized remote operator path when a
 private investigation is necessary; do not export full reasons to artifacts.
+All non-preview artifacts use explicit field projections, including correction
+and suspension. Internal delivery reports, object/cache inventories, probe URLs,
+attempt/operation IDs and individual writer IDs are omitted; inspection exposes
+only the unsettled-writer count. Full reports/fences remain in the private DB.
+Use that authorized remote investigation path for details; missing archive keys
+must not prevent applying an emergency safe notice.
 
 For an ordinary correction first preview and explicitly publish a fresh version
 B using the same procedure. Then `operation=correct` with an exact request:
