@@ -130,7 +130,13 @@ describe("published event-card transport", () => {
     const guarded = run(["list", "--event", "7"]);
     expect(guarded.status).toBe(1);
     expect(guarded.stderr).toContain("dev 데이터베이스만 허용");
-    const correction = run(["correct", "--event", "7", "--expected-version", "-1"]);
+    const correctionArgs = (version: string) => ["correct", "--event", "7", "--mode", "prediction", "--revision", card.publicationId,
+      "--replacement", "778f4eec-1d33-401f-8ee7-bbcc159a279b", "--expected-version", version,
+      "--operation", "6327fdfd-e378-47be-a7b1-8d43389d876b", "--reason-file", "unused-reason.txt"];
+    const validVersion = run(correctionArgs("0"));
+    expect(validVersion.status).toBe(1);
+    expect(validVersion.stderr).toContain("unused-reason.txt");
+    const correction = run(correctionArgs("-1"));
     expect(correction.status).toBe(1);
     expect(correction.stderr).toContain("정정에는 명시적");
   });

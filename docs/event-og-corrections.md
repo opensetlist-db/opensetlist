@@ -58,7 +58,7 @@ or restore the old pointer. No automatic network/transaction retry loop runs.
 
 ## Public notice and freshness
 
-A corrected URL remains200 with its original image, title, description, self
+A corrected URL remains 200 with its original image, title, description, self
 canonical/og:url and Twitter metadata. It has no auto-navigation script or
 destination trigger. Its localized notice offers an explicit latest same-locale
 share URL; A→B→C resolves to C. A missing, suspended, incomplete or malformed
