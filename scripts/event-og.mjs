@@ -14,27 +14,29 @@ installTypeScriptResolver(root);
 async function main() {
   const args = process.argv.slice(2);
   const action = args.shift();
-  if (!["preview", "replay", "publish", "list", "correct"].includes(action)) throw new Error("사용법: event-og.mjs preview | replay | publish | list | correct --event <id> --mode <모드> --revision <이전UUID> --replacement <새UUID> --expected-version <정수> --operation <작업UUID> --reason-file <운영사유파일>");
+  if (!["preview", "replay", "publish", "list", "correct", "suspend"].includes(action)) throw new Error("사용법: event-og.mjs preview | replay | publish | list | correct | suspend --event <id> --mode <모드> --revision <UUID> --expected-version <정수> --operation <작업UUID> --reason-file <운영사유파일>");
   const options = {};
   while (args.length) {
     const key = args.shift();
     const value = args.shift();
     const allowed = { preview: ["--events", "--out", "--legacy-base", "--display-titles"], replay: ["--manifest", "--out"],
       publish: ["--event", "--mode", "--revision", "--manifest", "--approval"], list: ["--event"],
-      correct: ["--event", "--mode", "--revision", "--replacement", "--expected-version", "--operation", "--reason-file"] }[action];
+      correct: ["--event", "--mode", "--revision", "--replacement", "--expected-version", "--operation", "--reason-file"],
+      suspend: ["--event", "--mode", "--revision", "--expected-version", "--operation", "--reason-file"] }[action];
     if (!allowed.includes(key) || !value || value.startsWith("--") || options[key]) throw new Error(`잘못된 인자: ${key}`);
     options[key] = value;
   }
-  if (["publish", "list", "correct"].includes(action)) {
+  if (["publish", "list", "correct", "suspend"].includes(action)) {
     let correctionReason;
     if (!/^[1-9]\d*$/.test(options["--event"] ?? "")) throw new Error("올바른 공연 ID가 필요합니다.");
     if (action === "publish" && (!options["--manifest"] || !options["--approval"] || !options["--revision"]
       || !["prediction", "live", "setlist"].includes(options["--mode"]))) throw new Error("발행에는 명시적 mode/revision/manifest/approval이 필요합니다.");
-    if (action === "correct" && (!options["--revision"] || !options["--replacement"] || !options["--operation"] || !options["--reason-file"]
+    if (["correct", "suspend"].includes(action) && (!options["--revision"] || (action === "correct" && !options["--replacement"]) || !options["--operation"] || !options["--reason-file"]
       || !/^(0|[1-9]\d*)$/.test(options["--expected-version"] ?? "") || !["prediction", "live", "setlist"].includes(options["--mode"]))) {
-      throw new Error("정정에는 명시적 mode/revision/replacement/expected-version/operation/reason-file이 필요합니다.");
+      throw new Error(action === "correct" ? "정정에는 명시적 mode/revision/replacement/expected-version/operation/reason-file이 필요합니다."
+        : "공개 중단에는 명시적 mode/revision/expected-version/operation/reason-file이 필요합니다.");
     }
-    if (action === "correct") {
+    if (["correct", "suspend"].includes(action)) {
       try {
         correctionReason = new TextDecoder("utf-8", { fatal: true }).decode(await readFile(path.resolve(options["--reason-file"])));
       } catch (error) {
@@ -51,13 +53,19 @@ async function main() {
     if (!configuredOrigin) throw new Error("NEXT_PUBLIC_BASE_URL에 dev/Preview 공개 origin을 명시해야 합니다.");
     const origin = new URL(configuredOrigin);
     if (["opensetlist.com", "www.opensetlist.com", "opensetlist.vercel.app"].includes(origin.hostname)) throw new Error("운영 origin으로는 dev 발행본을 생성하거나 조회할 수 없습니다.");
-    if (action === "publish" && (process.env.R2_BUCKET !== "opensetlist-images-dev" || !["dev", "test"].includes(process.env.R2_KEY_PREFIX ?? ""))) {
+    if (["publish", "suspend"].includes(action) && (process.env.R2_BUCKET !== "opensetlist-images-dev" || !["dev", "test"].includes(process.env.R2_KEY_PREFIX ?? ""))) {
       throw new Error("운영 발행은 허용하지 않습니다. dev bucket과 dev/test 저장소 namespace가 필요합니다.");
     }
     const lifecycle = await import(pathToFileURL(path.join(root, "src/lib/eventOg/index.ts")).href);
     const { prisma } = await import(pathToFileURL(path.join(root, "src/lib/prisma.ts")).href);
     try {
       if (action === "list") console.log(JSON.stringify({ publications: await lifecycle.listPublications(options["--event"]) }, null, 2));
+      else if (action === "suspend") {
+        const result = await lifecycle.suspendPublication({ eventId: options["--event"], mode: options["--mode"], revision: options["--revision"],
+          expectedVersion: Number(options["--expected-version"]), operationId: options["--operation"], reason: correctionReason }, { origin: configuredOrigin });
+        console.log(JSON.stringify(result, null, 2));
+        if (result.status === "partial") process.exitCode = 1;
+      }
       else if (action === "correct") {
         const result = await lifecycle.correctPublication({ eventId: options["--event"], mode: options["--mode"], revision: options["--revision"],
           replacementId: options["--replacement"], expectedVersion: Number(options["--expected-version"]), operationId: options["--operation"],

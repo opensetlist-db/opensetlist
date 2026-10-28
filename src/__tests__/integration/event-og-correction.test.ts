@@ -21,6 +21,7 @@ let eventId: string; let otherId: string; let folder: string;
 async function purge() {
   const ids = (await prisma.event.findMany({ where: { slug: { startsWith: PREFIX } }, select: { id: true } })).map((e) => e.id);
   await prisma.eventCardCorrection.deleteMany({ where: { publication: { eventId: { in: ids } } } });
+  await prisma.eventCardWriteAttempt.deleteMany({ where: { namespace: "og03itest" } });
   await prisma.eventCardPublication.deleteMany({ where: { eventId: { in: ids } } });
   await prisma.imageAsset.deleteMany({ where: { objectKey: { startsWith: "og03itest/event-cards/" } } });
   await prisma.event.deleteMany({ where: { id: { in: ids } } });
@@ -67,7 +68,7 @@ describe("event-card correction through real dev DB and real PNG publications", 
   it("retains old bytes/metadata, exposes same-locale latest links and keeps private audit data operator-only", async () => {
     const before = await lookup(A); const newer = await lookup(B);
     const originalLocales = new Map(await Promise.all(["ja", "ko", "en"].map(async (locale) => [locale, await lookup(A, locale)] as const)));
-    expect(before?.correction).toBeNull(); expect(newer?.image.sha256).not.toBe(before?.image.sha256);
+    expect(before?.correction).toBeNull(); expect(newer?.image?.sha256).not.toBe(before?.image?.sha256);
     const bytes = [...storage.objects.entries()].map(([key, value]) => [key, value.sha256]);
     expect(bytes.length).toBeGreaterThan(0);
     const request = input(); const result = await correct(request);
@@ -122,7 +123,7 @@ describe("event-card correction through real dev DB and real PNG publications", 
     expect((await lookup(A))?.correction).toEqual({ replacementUrl: null });
     await expect(correct(input(B, C, 1))).rejects.toMatchObject({ code: "invalid_correction" });
     await prisma.eventCardAnnotation.update({ where: { publicationId: A }, data: { status: "suspended", version: { increment: 1 } } });
-    expect(await lookup(A)).toBeNull();
+    expect(await lookup(A)).toMatchObject({ suspended: true, content: null, image: null });
     await expect(correct(input(A, B, 3))).rejects.toMatchObject({ code: "invalid_correction" });
   });
 

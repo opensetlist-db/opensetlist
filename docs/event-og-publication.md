@@ -52,10 +52,15 @@ Source facts are checked again in the publication transaction. Slug changes
 affect navigation only; event status, engagement, metrics and the clock are not
 publication triggers or approval invalidators.
 
-All three immutable writes precede ONE serializable transaction creating the
-aggregate, its locale content and ImageAsset references. A failed second/third
-upload or a rolled-back transaction exposes no partial publication. Uploaded
-but unassigned objects can remain; nothing deletes them automatically.
+A durable writer fence is stored before any external PUT. One READ COMMITTED
+transaction takes the event/mode advisory lock shared with correction and
+suspension, rechecks any committed revision before uploading, checks source
+facts before and after all three immutable PUTs, and creates the aggregate,
+locale content and ImageAsset references. A failed second/third upload or a
+rolled-back transaction exposes no partial publication. Uploaded unassigned
+objects remain; nothing deletes them automatically. A writer settles only
+after its PUT responses are known. Unknown writer outcomes prevent a later
+suspension from falsely claiming complete image revocation.
 
 Keep the same UUID/envelope/bytes when retrying. A committed matching request
 returns the original URLs without re-uploading (including after a future public
@@ -85,8 +90,9 @@ version URL with a fallback card. Share wrappers are not added to sitemap or
 blocked from social crawlers in robots.
 
 Frozen publication/rendition payloads and mutable annotations are separate
-tables. Correction and public-suspension operations are subsequent work. A
-non-active annotation is not served as an ordinary auto-navigating card here.
+tables. [Correction](event-og-corrections.md) preserves frozen content and adds
+a readable notice; [public suspension](event-og-suspension.md) projects neutral
+content and verifies owned delivery revocation. Neither notice auto-navigates.
 Public readers project neither approval data nor ImageAsset provenance.
 
 ## Validation

@@ -8,7 +8,13 @@ export async function lookupPublication(input: { eventId: string; mode: string; 
   const db = deps.db ?? prisma;
   const row = await db.eventCardPublication.findFirst({ where: { id: revision, eventId: BigInt(eventId), mode: mode as CardMode,
     event: { isDeleted: false } }, include: { ...INCLUDE, event: { select: { slug: true } } } });
-  if (!row || !row.annotation || row.annotation.status === "suspended" || row.renditions.length !== 3
+  if (!row || !row.annotation) return null;
+  const common = { publicationId: row.id, eventId, mode, locale, slug: row.event.slug,
+    shareUrl: publicationOrigin(deps.origin) + sharePath(eventId, mode, revision, locale) };
+  // Project NO frozen content/image/reason into a suspended public response.
+  // It takes priority even over a saved correction pointer or incomplete assets.
+  if (row.annotation.status === "suspended") return { ...common, suspended: true, content: null, image: null, correction: null };
+  if (row.renditions.length !== 3
     || !CARD_LOCALES.every((l) => row.renditions.some((r) => r.locale === l))) return null;
   const rendition = row.renditions.find((r) => r.locale === locale);
   if (!rendition) return null;
@@ -32,8 +38,7 @@ export async function lookupPublication(input: { eventId: string; mode: string; 
       next = node.annotation.replacementId;
     }
   }
-  return { publicationId: row.id, eventId, mode, locale, slug: row.event.slug,
-    shareUrl: publicationOrigin(deps.origin) + sharePath(eventId, mode, revision, locale),
+  return { ...common, suspended: false,
     content: rendition.content as FrozenCard, correction,
     image: { url: rendition.asset.publicUrl, width: rendition.asset.width, height: rendition.asset.height, mimeType: rendition.asset.mimeType, sha256: rendition.sha256 } };
 }
@@ -41,7 +46,8 @@ export async function lookupPublication(input: { eventId: string; mode: string; 
 export async function listPublications(eventId: string, db: CardDb = prisma) {
   if (!/^[1-9]\d*$/.test(eventId) || BigInt(eventId) > BigInt("9223372036854775807")) throw invalid("잘못된 공연 ID입니다.");
   const rows = await db.eventCardPublication.findMany({ where: { eventId: BigInt(eventId) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    include: { ...INCLUDE, correctionsMade: { orderBy: { toVersion: "asc" } } } });
+    include: { ...INCLUDE, correctionsMade: { orderBy: { toVersion: "asc" } },
+      suspension: { include: { attempts: { orderBy: [{ startedAt: "asc" }, { id: "asc" }] } } } } });
   return rows.map((row) => ({ ...result(row, publicationOrigin(), "reconciled"), annotation: row.annotation,
-    corrections: row.correctionsMade }));
+    corrections: row.correctionsMade, suspension: row.suspension }));
 }

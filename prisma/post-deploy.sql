@@ -650,7 +650,7 @@ DECLARE
   t TEXT;
   r TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['EventCardPublication', 'EventCardRendition', 'EventCardAnnotation', 'EventCardCorrection'] LOOP
+  FOREACH t IN ARRAY ARRAY['EventCardPublication', 'EventCardRendition', 'EventCardAnnotation', 'EventCardCorrection', 'EventCardWriteAttempt', 'EventCardSuspension', 'EventCardSuspensionAttempt'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('REVOKE ALL ON TABLE %I FROM PUBLIC', t);
     FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP

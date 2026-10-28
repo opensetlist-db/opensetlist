@@ -27,6 +27,7 @@ const originalVenue = "テスト会場";
 
 async function purge() {
   const ids = (await prisma.event.findMany({ where: { slug: { startsWith: PREFIX } }, select: { id: true } })).map((e) => e.id);
+  await prisma.eventCardWriteAttempt.deleteMany({ where: { namespace: NAMESPACE } });
   await prisma.eventCardPublication.deleteMany({ where: { namespace: NAMESPACE, eventId: { in: ids } } });
   await prisma.imageAsset.deleteMany({ where: { objectKey: { startsWith: `${NAMESPACE}/event-cards/` } } });
   await prisma.eventTranslation.deleteMany({ where: { eventId: { in: ids } } });
@@ -62,7 +63,7 @@ async function request(mode: CardMode = "prediction", revision = randomUUID(), p
 }
 const lookup = (revision: string, mode = "prediction", locale = "ja") => lookupPublication({ eventId, revision, mode, locale }, { origin: ORIGIN });
 const dbWith = (transaction: CardDb["$transaction"], publication = prisma.eventCardPublication): CardDb => ({
-  event: prisma.event, eventCardPublication: publication, $transaction: transaction,
+  event: prisma.event, eventCardPublication: publication, eventCardWriteAttempt: prisma.eventCardWriteAttempt, $transaction: transaction,
 });
 type Callback = (tx: Prisma.TransactionClient) => Promise<unknown>;
 type TxOptions = Parameters<CardDb["$transaction"]>[1];
@@ -78,9 +79,9 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
     for (const locale of ["ja", "ko", "en"]) {
       const card = await lookup(input.revision, "prediction", locale);
       expect(card?.shareUrl).toBe(first.urls[locale]);
-      expect(card?.content.officialEventTitle).toBe(originalName);
+      expect(card?.content?.officialEventTitle).toBe(originalName);
       expect(card?.image).toMatchObject({ width: 1200, height: 630, mimeType: "image/png" });
-      expect([...mem.objects.values()].some((o) => o.sha256 === card?.image.sha256)).toBe(true);
+      expect([...mem.objects.values()].some((o) => o.sha256 === card?.image?.sha256)).toBe(true);
       expect((await readFile(input.approvalFile, "utf8"))).toContain("evidenceFile");
       expect(JSON.stringify(card)).not.toContain("evidenceFile");
     }
@@ -134,6 +135,20 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
       expect((await publishPreview(input, { storage: mem, origin: ORIGIN })).status).toBe("created");
       expect(mem.objects.size).toBe(3);
     }
+  });
+
+  it("requires fresh approval if source facts change while the reviewed PNGs are being uploaded", async () => {
+    const baseline = await request(); await publishPreview(baseline, { storage: storage(), origin: ORIGIN });
+    expect(await lookup(baseline.revision)).toBeTruthy();
+    const mem = storage(); const input = await request(); let writes = 0;
+    const editing = { keyPrefix: mem.keyPrefix, publicUrlFor: (key: string) => mem.publicUrlFor(key),
+      async putImmutable(image: PutImmutableInput) {
+        const result = await mem.putImmutable(image);
+        if (++writes === 3) await prisma.event.update({ where: { id: BigInt(eventId) }, data: { originalVenue: "Edited during uploads" } });
+        return result;
+      } };
+    await expect(publishPreview(input, { storage: editing, origin: ORIGIN })).rejects.toMatchObject({ code: "preview_stale" });
+    expect(mem.objects.size).toBe(3); expect(await lookup(input.revision)).toBeNull();
   });
 
   it("rolls all metadata back on pre-commit failure without deleting approved unassigned objects", async () => {
@@ -224,7 +239,7 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
     for (const status of ["corrected", "suspended"] as const) {
       await prisma.eventCardAnnotation.update({ where: { publicationId: input.revision }, data: { status } });
       if (status === "corrected") expect((await lookup(input.revision))?.correction).toEqual({ replacementUrl: null });
-      else expect(await lookup(input.revision)).toBeNull();
+      else expect(await lookup(input.revision)).toMatchObject({ suspended: true, content: null, image: null, correction: null });
       // A committed retry returns identity without resurrecting removed bytes.
       mem.objects.clear();
       expect((await publishPreview(input, { storage: mem, origin: ORIGIN })).status).toBe("reconciled");

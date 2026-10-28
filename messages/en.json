@@ -878,6 +878,8 @@
     "correctionHeading": "This share card has been corrected",
     "correctionBody": "The original card is kept here as a record. Open the updated card for current information.",
     "openCorrection": "Open the updated share card",
-    "correctionUnavailable": "The updated card is currently unavailable. You can still open the event details below."
+    "correctionUnavailable": "The updated card is currently unavailable. You can still open the event details below.",
+    "suspensionHeading": "This share card is no longer public",
+    "suspensionBody": "This version of the card is no longer publicly available. Use the link below for current event information."
   }
 }

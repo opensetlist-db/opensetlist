@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../prisma";
 import { getImageStorage } from "../imageUpload/storage";
+import { isUploadError } from "../imageUpload/errors";
 import { CARD_LOCALES, type CardMode } from "./content";
 import { readCardEvents, cardSourceFacts } from "./source";
 
@@ -94,12 +95,28 @@ export async function publishPreview(input: {
     };
     return { locale: s.locale, image, key, publicUrl, content };
   }));
-  // Deliberately sequential: a failed 2nd/3rd PUT leaves no publication row.
-  // Already written immutable objects are retained for a safe same-ID retry.
-  for (const i of images) await storage.putImmutable({ key: i.key, bytes: i.image.bytes, contentType: "image/png", sha256: i.image.sha256 });
+  // Commit a fence before any PUT. A process/connection can disappear with a
+  // request still in flight; an unsettled fence makes later suspension partial
+  // instead of claiming that a verified deletion can never be recreated.
+  const writer = await db.eventCardWriteAttempt.create({ data: { publicationId: revision, eventId: BigInt(eventId), namespace: storage.keyPrefix } });
+  let enteredPut = false; let putsAcknowledged = false; let reused = false;
   let callbackFinished = false;
   try {
     const row = await db.$transaction(async (tx) => {
+      const lock = `event-card-annotation:${eventId}:${mode}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`;
+      // Recheck AFTER locking: another publisher may have committed and a
+      // suspension may already have deleted its objects while we rendered.
+      const existing = await tx.eventCardPublication.findUnique({ where: { id: revision }, include: INCLUDE });
+      if (existing) { reconcile(existing); reused = true; callbackFinished = true; return existing; }
+      await assertCurrent(tx);
+      for (const i of images) {
+        enteredPut = true;
+        await storage.putImmutable({ key: i.key, bytes: i.image.bytes, contentType: "image/png", sha256: i.image.sha256 });
+      }
+      putsAcknowledged = true;
+      // READ COMMITTED sees edits that landed while the external PUTs ran.
+      // They require a new review too; uploaded unassigned bytes are retained.
       await assertCurrent(tx);
       const created = await tx.eventCardPublication.create({ data: {
         id: revision, eventId: BigInt(eventId), mode, namespace: storage.keyPrefix, fingerprint, previewId: manifest.previewId, approvalSha256,
@@ -110,8 +127,8 @@ export async function publishPreview(input: {
       }, include: INCLUDE });
       callbackFinished = true;
       return created;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    return result(row, origin, "created");
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 30000, timeout: 60000 });
+    return result(row, origin, reused ? "reconciled" : "created");
   } catch (error) {
     // A lost COMMIT response and a concurrent same-ID winner are reconciled
     // by the committed fingerprint, never by assuming the transaction failed.
@@ -124,6 +141,14 @@ export async function publishPreview(input: {
     }
     if (callbackFinished) throw new CardPublicationError("outcome_unknown", "저장 결과가 미확정입니다. 같은 발행 식별자로 재시도하세요.");
     if (error instanceof CardPublicationError) throw error;
+    if (isUploadError(error)) throw error;
     throw new CardPublicationError("not_saved", "발행하지 못했습니다. 미할당 객체는 보존됩니다. 같은 식별자로 재시도하세요.");
+  } finally {
+    if (!enteredPut || putsAcknowledged) {
+      // Failure to settle is conservative: the operator sees a pending writer,
+      // not a false successful revocation. Never mask the publication outcome.
+      try { await db.eventCardWriteAttempt.update({ where: { id: writer.id }, data: { settledAt: new Date() } }); }
+      catch { console.error("[eventOg] publication writer fence remains unsettled", writer.id); }
+    }
   }
 }
