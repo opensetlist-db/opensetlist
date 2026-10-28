@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useState } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistSection } from "@/components/SetlistSection";
@@ -20,10 +19,6 @@ import type {
 import { EventWishSection } from "@/components/EventWishSection";
 import { FanBoardSection } from "@/components/board/FanBoardSection";
 import type { BoardBlockSeed } from "@/lib/board/types";
-import type {
-  BoardToBuilderOutcome,
-  BuilderRequest,
-} from "@/lib/board/toPredictions";
 import { LiveSyncIndicator } from "@/components/LiveSyncIndicator";
 import type { Freshness } from "@/lib/snapshotFreshness";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
@@ -178,48 +173,19 @@ export function LiveSetlist({
 }: Props) {
   const t = useTranslations("Event");
   const detailT = useTranslations("EventDetail");
-  const setlistT = useTranslations("Setlist");
 
-  // Two-mode bridge (n15). The board block and the setlist card are
-  // siblings, so the "go to full setlist mode" tap is lifted here: the
-  // board runs the import, this bumps a request the setlist section
-  // reacts to (switch to Predict, re-read storage, show the outcome),
-  // and the card is scrolled into view. The way back is a plain scroll
-  // to the board block. Element ids instead of refs: both targets are
-  // rendered by children that own their own refs.
+  // The board block and the setlist card sit one above the other with no
+  // buttons between them (a "go to full setlist mode" button read as a
+  // mode switch for what is just the next card, and "put on the board"
+  // was more UI than it was worth). The one link left: the builder can
+  // import the viewer's board expected songs, so it gets the board's
+  // groups (their order groups the imported songs) while predicting is
+  // open — upcoming and inside the D-7 window, the same gate
+  // `<SetlistSection>` uses.
   const boardAnchorId = `fan-board-${eventId}`;
   const setlistAnchorId = `setlist-card-${eventId}`;
-  const [builderRequest, setBuilderRequest] = useState<BuilderRequest | null>(
-    null,
-  );
-  const openFullSetlist = useCallback(
-    (outcome: BoardToBuilderOutcome) => {
-      setBuilderRequest((prev) => ({ seq: (prev?.seq ?? 0) + 1, outcome }));
-      // After the commit, so the Predict tab is what scrolls into view.
-      requestAnimationFrame(() => {
-        document
-          .getElementById(setlistAnchorId)
-          ?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-      });
-    },
-    [setlistAnchorId],
-  );
-  const backToBoard = useCallback(() => {
-    document
-      .getElementById(boardAnchorId)
-      ?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-  }, [boardAnchorId]);
-  // The bridge needs a Predict tab to land in: upcoming and inside the
-  // D-7 window — the same gate `<SetlistSection>` uses for the tab.
-  const bridgeOpen = board !== null && status === "upcoming" && isWishPredictOpen;
-  // The reverse direction (n15): a publish from the Predict tab
-  // rewrote the local ballot, so the board block re-reads it (the
-  // revision) and comes into view showing the new picks.
-  const [boardPicksRevision, setBoardPicksRevision] = useState(0);
-  const onBoardPublished = useCallback(() => {
-    setBoardPicksRevision((r) => r + 1);
-    requestAnimationFrame(backToBoard);
-  }, [backToBoard]);
+  const importableBoard =
+    board !== null && status === "upcoming" && isWishPredictOpen ? board : null;
 
   // While polling, derive trending from the same reactionCounts that drives
   // per-item counts — single source of truth, no risk of the two views
@@ -274,10 +240,6 @@ export function LiveSetlist({
   // has started the actual setlist leads and the locked wishes follow it
   // (18-v3: open → board first; LIVE / completed → setlist first).
   const participationFirst = status === "upcoming";
-  // Pre-show with the window open there are no actual rows yet, so the
-  // card holds only the viewer's predicted setlist — title it as such.
-  const predictOnlyCard =
-    status === "upcoming" && isWishPredictOpen && items.length === 0;
 
   const participation = (
     <>
@@ -342,8 +304,6 @@ export function LiveSetlist({
             seed={board}
             catalog={availableSongs}
             anchorId={boardAnchorId}
-            onOpenFullSetlist={bridgeOpen ? openFullSetlist : undefined}
-            picksRevision={boardPicksRevision}
           />
         )}
     </>
@@ -390,7 +350,9 @@ export function LiveSetlist({
     >
       <div className={styles.panelHead}>
         <h2 id={`${setlistAnchorId}-title`} className={styles.panelTitle}>
-          {predictOnlyCard ? setlistT("tabPredicted") : t("setlist")}
+          {/* Always "Setlist": the actual / predicted split lives in the
+              tabs inside the card, not in its title. */}
+          {t("setlist")}
         </h2>
         {/* Counts only once there are items: "0 items · 0 songs" is
             noise (and zero-stats feed the Soft 404 read). */}
@@ -450,10 +412,7 @@ export function LiveSetlist({
         availableSongs={availableSongs}
         unitFilters={unitFilters}
         eventArtistId={eventArtistId}
-        builderRequest={builderRequest}
-        onBackToBoard={bridgeOpen ? backToBoard : undefined}
-        boardGroups={bridgeOpen && board ? board.chips : undefined}
-        onBoardPublished={bridgeOpen ? onBoardPublished : undefined}
+        boardGroups={importableBoard?.chips}
       />
     </section>
       {!participationFirst && participation}

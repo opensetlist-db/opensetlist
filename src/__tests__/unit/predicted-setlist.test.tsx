@@ -127,7 +127,7 @@ beforeEach(() => {
 });
 
 describe("PredictedSetlist — render gates by status + lock", () => {
-  it("pre-show: renders the `+ 곡 추가` link and the pre-show hint", () => {
+  it("pre-show: renders the `+ 곡 추가` link and the scoring rule", () => {
     render(
       <PredictedSetlist
         eventId="1"
@@ -143,7 +143,9 @@ describe("PredictedSetlist — render gates by status + lock", () => {
       />,
     );
     expect(screen.getByText("add")).toBeTruthy();
-    expect(screen.getByText(/preShowHint:/)).toBeTruthy();
+    // Pre-show the tab opens with the scoring rule and the save note.
+    expect(screen.getByText("description")).toBeTruthy();
+    expect(screen.getByTestId("predict-save-note")).toBeTruthy();
   });
 
   it("locked (status ongoing, startTime past): no `+ 곡 추가`, no ✕, no drag handle", () => {
@@ -345,6 +347,8 @@ describe("PredictedSetlist — long pre-show window", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(screen.getByText("add")).toBeTruthy();
-    expect(screen.getByText(/preShowHint:/)).toBeTruthy();
+    // Pre-show the tab opens with the scoring rule and the save note.
+    expect(screen.getByText("description")).toBeTruthy();
+    expect(screen.getByTestId("predict-save-note")).toBeTruthy();
   });
 });

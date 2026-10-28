@@ -96,6 +96,7 @@ know what each suite leaves behind:
 | `board-picks.test.ts` | **writes** | artist, song, series, event, setlist item, `BoardPick` rows; `afterAll` deletes them |
 | `board-wishes.test.ts` | **writes** | artists, songs, series, event, `SongWish` rows; `afterAll` deletes them |
 | `member-order.test.ts` | **writes** | artist, event, stage identity, performers; `afterAll` deletes them |
+| `official-order.test.ts` | **writes** | `officialorder-itest-` artists, identities, relations, event, explicit voice, song and historical item in a rolled-back transaction; fixed-prefix purge before/after handles interrupted fixtures |
 | `n14-live-path.test.ts` | **writes** | event, setlist items, reactions, wishes, confirms; also joins the dev Supabase Realtime channel (anon key) and broadcasts; `afterAll` deletes the rows |
 | `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
