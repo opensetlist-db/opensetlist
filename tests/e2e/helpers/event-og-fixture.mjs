@@ -13,12 +13,16 @@ for (const name of ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]) if (!pointsAtDevPr
 installTypeScriptResolver(root);
 const { prisma: db } = await import(pathToFileURL(path.join(root, "src/lib/prisma.ts")).href);
 const suite = process.env.EVENT_CARD_E2E_SUITE ?? "publication";
-if (!["publication", "correction"].includes(suite)) throw new Error("Unknown event-card E2E suite");
-const PREFIX = suite === "correction" ? "og03e2e-" : "og02e2e-";
+if (!["publication", "correction", "suspension"].includes(suite)) throw new Error("Unknown event-card E2E suite");
+const PREFIX = { publication: "og02e2e-", correction: "og03e2e-", suspension: "og04e2e-" }[suite];
 const hash = (b) => createHash("sha256").update(b).digest("hex");
 async function purge() {
   const ids = (await db.event.findMany({ where: { slug: { startsWith: PREFIX } }, select: { id: true } })).map((e) => e.id);
   const assets = await db.eventCardRendition.findMany({ where: { publication: { eventId: { in: ids } } }, select: { assetId: true } });
+  const publications = await db.eventCardPublication.findMany({ where: { eventId: { in: ids } }, select: { id: true } });
+  await db.eventCardSuspensionAttempt.deleteMany({ where: { suspension: { publicationId: { in: publications.map((p) => p.id) } } } });
+  await db.eventCardSuspension.deleteMany({ where: { publicationId: { in: publications.map((p) => p.id) } } });
+  await db.eventCardWriteAttempt.deleteMany({ where: { eventId: { in: ids } } });
   await db.eventCardCorrection.deleteMany({ where: { publication: { eventId: { in: ids } } } });
   await db.eventCardPublication.deleteMany({ where: { eventId: { in: ids } } });
   await db.imageAsset.deleteMany({ where: { id: { in: assets.map((a) => a.assetId) } } });

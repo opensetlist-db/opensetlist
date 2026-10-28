@@ -20,12 +20,36 @@ const card = {
     alt: "Approved title · セットリスト予想", officialEventTitle: "Full official title", officialSeriesTitle: "Official series",
     localizedEventTitle: "公演", localizedSeriesTitle: "シリーズ", displayTitle: "Approved title", performance: "Day.1", context: "", date: "2026年7月11日", venue: "会場", purposeLabel: "セットリスト予想" },
   image: { url: "https://images.test/dev/event-cards/7/prediction/revision/ja.png", width: 1200, height: 630, mimeType: "image/png", sha256: "1".repeat(64) },
-  correction: null,
+  correction: null, suspended: false,
 };
 const copy = { heading: "共有カード", opening: "移動します", open: "イベントを開く",
-  correctionHeading: "訂正", correctionBody: "元のカードを記録", openCorrection: "最新のカード", correctionUnavailable: "現在利用できません" };
+  correctionHeading: "訂正", correctionBody: "元のカードを記録", openCorrection: "最新のカード", correctionUnavailable: "現在利用できません",
+  suspensionHeading: "公開停止", suspensionBody: "この版は公開していません" };
 
 describe("published event-card transport", () => {
+  it("keeps a suspended card on a neutral accessible notice without frozen content or correction/navigation/image leakage", () => {
+    const parse = (html: string) => new DOMParser().parseFromString(html, "text/html");
+    const normal = eventShareHtml({ ...card, correction: { replacementUrl: card.shareUrl } }, "/ja/events/7/current-slug", copy);
+    expect(normal).toContain(card.image.url); expect(normal).toContain(card.content.officialEventTitle);
+    expect(normal).toContain(copy.correctionHeading); expect(parse(normal).querySelector("img")).toBeTruthy();
+    expect(parse(normal).querySelector('[property="og:image"]')).toBeTruthy();
+    expect(parse(normal).querySelector('[name="twitter:image"]')).toBeTruthy();
+    const html = eventShareHtml({ ...card, suspended: true, correction: { replacementUrl: card.shareUrl } }, "/ja/events/7/current-slug", copy);
+    const doc = parse(html);
+    expect(doc.documentElement.lang).toBe("ja");
+    expect(doc.querySelector("[data-testid='event-share-suspension']")?.textContent).toBe(copy.suspensionBody);
+    expect(doc.head.querySelector('meta[property="og:title"]')?.getAttribute("content")).toContain(copy.suspensionHeading);
+    expect(doc.head.querySelector('meta[name="twitter:card"]')?.getAttribute("content")).toBe("summary");
+    expect(doc.head.querySelector('meta[property="og:url"]')?.getAttribute("content")).toBe(card.shareUrl);
+    expect(doc.head.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(card.shareUrl);
+    expect(html).not.toContain(card.image.url); expect(html).not.toContain(card.content.officialEventTitle);
+    expect(doc.querySelector("img")).toBeNull(); expect(doc.querySelector('[property="og:image"]')).toBeNull();
+    expect(doc.querySelector('[name="twitter:image"]')).toBeNull(); expect(doc.body.textContent).not.toContain(copy.correctionHeading);
+    const active = parse(eventShareHtml(card, "/ja/events/7/current-slug", copy));
+    expect(active.querySelector('[data-event-destination]')).toBeTruthy(); expect(active.querySelector('script')).toBeTruthy();
+    expect(doc.querySelector('[data-event-destination]')).toBeNull(); expect(doc.querySelector('script')).toBeNull();
+    expect(doc.querySelector('[data-testid="event-share-destination"]')?.getAttribute("href")).toBe("/ja/events/7/current-slug");
+  });
   it("rejects incorrectly encoded or NUL-containing private reason files through real CLI processes before DB access", () => {
     const folder = mkdtempSync(path.join(tmpdir(), "og-reason-"));
     const file = path.join(folder, "reason.txt");
@@ -139,6 +163,9 @@ describe("published event-card transport", () => {
     const correction = run(correctionArgs("-1"));
     expect(correction.status).toBe(1);
     expect(correction.stderr).toContain("정정에는 명시적");
+    const suspension = run(["suspend", "--event", "7", "--mode", "prediction", "--revision", card.publicationId,
+      "--expected-version", "-1", "--operation", card.publicationId, "--reason-file", "unused-reason.txt"]);
+    expect(suspension.status).toBe(1); expect(suspension.stderr).toContain("공개 중단에는 명시적");
   });
 
   it("refuses a production bucket or missing/production share origin before reading a packet or connecting", () => {

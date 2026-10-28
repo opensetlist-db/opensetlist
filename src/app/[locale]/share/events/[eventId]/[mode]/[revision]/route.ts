@@ -19,7 +19,7 @@ export async function GET(_request: Request, context: { params: Promise<{ locale
     const destination = entityPath("events", params.locale, card.eventId, card.slug);
     return new Response(eventShareHtml(card, destination, { heading: t("heading"), opening: t("opening"), open: t("open"),
       correctionHeading: t("correctionHeading"), correctionBody: t("correctionBody"), openCorrection: t("openCorrection"),
-      correctionUnavailable: t("correctionUnavailable") }), { headers: HEADERS });
+      correctionUnavailable: t("correctionUnavailable"), suspensionHeading: t("suspensionHeading"), suspensionBody: t("suspensionBody") }), { headers: HEADERS });
   } catch (error) {
     console.error("[share/events] publication render failed", error);
     Sentry.captureException(error);

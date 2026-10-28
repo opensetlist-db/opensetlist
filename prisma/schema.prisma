@@ -1030,6 +1030,7 @@ model EventCardPublication {
   annotation     EventCardAnnotation?
   correctionsMade EventCardCorrection[] @relation("CardCorrectionSource")
   correctionsReceived EventCardCorrection[] @relation("CardCorrectionTarget")
+  suspension     EventCardSuspension?
   @@index([eventId, mode, createdAt])
 }
 
@@ -1073,6 +1074,47 @@ model EventCardCorrection {
   replacement           EventCardPublication @relation("CardCorrectionTarget", fields: [replacementId], references: [id], onDelete: Restrict)
   @@unique([publicationId, toVersion])
   @@index([replacementId])
+}
+
+// A durable writer fence survives a lost DB connection while an origin PUT
+// is still uncertain. Suspension cannot claim complete delivery revocation
+// while such a write could recreate a removed key. No automatic expiry.
+model EventCardWriteAttempt {
+  id            String @id @default(uuid())
+  publicationId String
+  eventId       BigInt
+  namespace     String
+  createdAt     DateTime @default(now())
+  settledAt     DateTime?
+  @@index([publicationId, settledAt])
+  @@index([namespace])
+}
+
+// One immutable suspension decision; retries append delivery attempts rather
+// than replacing its private reason or erasing earlier partial failures.
+model EventCardSuspension {
+  id                    String @id
+  publicationId         String @unique
+  previousStatus        EventCardStatus
+  previousReplacementId String?
+  fromVersion           Int
+  toVersion             Int
+  fingerprint           String
+  privateReason         String
+  targets               Json
+  createdAt             DateTime @default(now())
+  publication           EventCardPublication @relation(fields: [publicationId], references: [id], onDelete: Restrict)
+  attempts              EventCardSuspensionAttempt[]
+}
+
+model EventCardSuspensionAttempt {
+  id           String @id @default(uuid())
+  suspensionId String
+  startedAt    DateTime @default(now())
+  completedAt  DateTime?
+  report       Json?
+  suspension   EventCardSuspension @relation(fields: [suspensionId], references: [id], onDelete: Restrict)
+  @@index([suspensionId, startedAt])
 }
 
 // ── ALBUM ─────────────────────────────────────────────
