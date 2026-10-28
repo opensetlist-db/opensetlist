@@ -684,6 +684,7 @@ export function ShareCardModal({
     <div
       ref={dialogRef}
       role="dialog"
+      data-testid="personal-share-dialog"
       aria-modal="true"
       aria-busy={busy || undefined}
       aria-labelledby="share-card-modal-title"
@@ -863,6 +864,7 @@ export function ShareCardModal({
               <PrimaryButton
                 type="button"
                 onClick={handleShare}
+                testId="personal-share-export"
                 disabled={busy}
                 busy={busy}
                 style={{ flex: 1 }}

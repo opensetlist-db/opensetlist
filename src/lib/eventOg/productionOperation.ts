@@ -4,10 +4,10 @@ import { isPublicationId } from "./contracts";
 type Target = { id: string; slug: string };
 type DisplayTitle = { eventId: string; locale: CardLocale; title: string };
 export type ProductionOperation = {
-  action: "preview" | "publish" | "list" | "correct" | "suspend";
+  action: "preview" | "publish" | "list" | "inspect" | "correct" | "suspend";
   eventIds: string[]; targets: Target[]; mode?: CardMode; revision?: string;
   replacementId?: string; operationId?: string; expectedVersion?: number;
-  displayTitles: DisplayTitle[]; previewRunId?: string; manifestSha256?: string;
+  displayTitles: DisplayTitle[]; previewRunId?: string; previewRunAttempt?: number; manifestSha256?: string;
 };
 function fail(): never { throw new Error("운영 카드 작업의 실행 환경·대상·명시적 승인을 확인하세요."); }
 const id = (v: unknown): v is string => typeof v === "string" && /^[1-9]\d*$/.test(v) && BigInt(v) <= BigInt("9223372036854775807");
@@ -16,17 +16,17 @@ const hash = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{64
 
 /** The local dev CLI remains dev-only. A separate, owner-dispatched hosted
  * operation is the production boundary; environment names alone are not an
- * approval gate (the existing Production environment has no reviewers). */
+ * approval gate. The dedicated environment must restrict deployments to main. */
 export function productionOperation(env: Record<string, string | undefined>, event: unknown): ProductionOperation {
   if (env.GITHUB_ACTIONS !== "true" || env.RUNNER_ENVIRONMENT !== "github-hosted" || env.GITHUB_EVENT_NAME !== "workflow_dispatch"
     || env.GITHUB_REPOSITORY !== "opensetlist-db/opensetlist" || env.GITHUB_REF !== "refs/heads/main"
     || env.GITHUB_ACTOR !== "helloopensetlistdb" || env.GITHUB_TRIGGERING_ACTOR !== "helloopensetlistdb"
     || env.GITHUB_WORKFLOW_REF !== "opensetlist-db/opensetlist/.github/workflows/event-card-ops.yml@refs/heads/main"
     || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA ?? "")) fail();
-  if (!object(event) || event.ref !== "main" || !object(event.sender) || event.sender.login !== "helloopensetlistdb"
+  if (!object(event) || !["main", "refs/heads/main"].includes(String(event.ref)) || !object(event.sender) || event.sender.login !== "helloopensetlistdb"
     || !object(event.repository) || event.repository.full_name !== env.GITHUB_REPOSITORY || !object(event.inputs)) fail();
   const inputs = event.inputs;
-  if (!["preview", "publish", "list", "correct", "suspend"].includes(String(inputs.operation))) fail();
+  if (!["preview", "publish", "list", "inspect", "correct", "suspend"].includes(String(inputs.operation))) fail();
   const action = inputs.operation as ProductionOperation["action"];
   let request: unknown; let rawTargets: unknown;
   try { request = JSON.parse(String(inputs.request)); rawTargets = JSON.parse(env.EVENT_CARD_FES2_TARGETS ?? "null"); } catch { fail(); }
@@ -35,7 +35,7 @@ export function productionOperation(env: Record<string, string | undefined>, eve
   const targets = rawTargets as Target[];
   if (new Set(targets.map((t) => t.id)).size !== 2 || new Set(targets.map((t) => t.slug)).size !== 2) fail();
   const allowed = action === "preview" ? ["eventIds", "displayTitles"] : action === "list" ? ["eventId"]
-    : action === "publish" ? ["eventId", "mode", "revision"]
+    : ["publish", "inspect"].includes(action) ? ["eventId", "mode", "revision"]
     : action === "correct" ? ["eventId", "mode", "revision", "replacementId", "expectedVersion", "operationId"]
     : ["eventId", "mode", "revision", "expectedVersion", "operationId"];
   if (Object.keys(request).some((k) => !allowed.includes(k))) fail();
@@ -55,13 +55,13 @@ export function productionOperation(env: Record<string, string | undefined>, eve
     if (inputs.confirm !== "READ-ONLY") fail();
   } else {
     if (!CARD_MODES.includes(request.mode as CardMode) || typeof request.revision !== "string" || !isPublicationId(request.revision)
-      || inputs.confirm !== "APPROVE-FES2-CARD" || env.EVENT_CARD_PUBLICATION_ENABLED !== "reviewed-delivery-paths"
-      || !hash(env.EVENT_CARD_DELIVERY_PROOF_SHA256)) fail();
+      || inputs.confirm !== (action === "inspect" ? "READ-ONLY" : "APPROVE-FES2-CARD")) fail();
     result.mode = request.mode as CardMode; result.revision = request.revision;
     if (action === "publish") {
-      if (!id(inputs.preview_run_id) || !hash(inputs.approved_manifest_sha256)) fail();
-      result.previewRunId = inputs.preview_run_id; result.manifestSha256 = inputs.approved_manifest_sha256;
-    } else {
+      if (env.EVENT_CARD_PUBLICATION_ENABLED !== "reviewed-delivery-paths" || !hash(env.EVENT_CARD_DELIVERY_PROOF_SHA256)) fail();
+      if (!id(inputs.preview_run_id) || !id(inputs.preview_run_attempt) || !Number.isSafeInteger(Number(inputs.preview_run_attempt)) || !hash(inputs.approved_manifest_sha256)) fail();
+      result.previewRunId = inputs.preview_run_id; result.previewRunAttempt = Number(inputs.preview_run_attempt); result.manifestSha256 = inputs.approved_manifest_sha256;
+    } else if (action !== "inspect") {
       if (!Number.isInteger(request.expectedVersion) || Number(request.expectedVersion) < 0 || Number(request.expectedVersion) >= 2147483647
         || typeof request.operationId !== "string" || !isPublicationId(request.operationId)
         || !env.EVENT_CARD_PRIVATE_REASON?.trim()) fail();
@@ -80,10 +80,25 @@ export function productionOperation(env: Record<string, string | undefined>, eve
       || [...url.searchParams.keys()].some((key) => !["sslmode", "ssl", "schema", "pgbouncer", "connection_limit", "pool_timeout"].includes(key))
       || !(url.hostname === `db.${project}.supabase.co` || (url.hostname.endsWith(".pooler.supabase.com") && decodeURIComponent(url.username) === `postgres.${project}`))) fail();
   }
-  if (!["preview", "list"].includes(action) && (env.R2_KEY_PREFIX !== "prod" || !env.EVENT_CARD_PROD_BUCKET
-    || env.EVENT_CARD_PROD_BUCKET === "opensetlist-images-dev" || env.R2_BUCKET !== env.EVENT_CARD_PROD_BUCKET
-    || env.R2_PUBLIC_BASE_URL !== "https://img.opensetlist.com")) fail();
+  if (["preview", "publish"].includes(action) && !hash(env.EVENT_CARD_PREVIEW_ENCRYPTION_KEY)) fail();
+  if (action === "publish") assertProductionStorage(env);
   return result;
+}
+
+/** Call lazily for suspension, after the safe notice commits. Missing delivery
+ * credentials must not prevent removing incorrect content from the wrapper. */
+export function assertProductionStorage(env: Record<string, string | undefined>) {
+  if (env.R2_KEY_PREFIX !== "prod" || !env.EVENT_CARD_PROD_BUCKET
+    || env.EVENT_CARD_PROD_BUCKET === "opensetlist-images-dev" || env.R2_BUCKET !== env.EVENT_CARD_PROD_BUCKET
+    || env.R2_PUBLIC_BASE_URL !== "https://img.opensetlist.com") fail();
+}
+
+export function assertEnvironmentPolicy(environment: unknown, policies: unknown) {
+  if (!object(environment) || environment.name !== "EventCardProduction" || !object(environment.deployment_branch_policy)
+    || environment.deployment_branch_policy.protected_branches !== false || environment.deployment_branch_policy.custom_branch_policies !== true
+    || !object(policies) || policies.total_count !== 1 || !Array.isArray(policies.branch_policies) || policies.branch_policies.length !== 1) fail();
+  const policy = policies.branch_policies[0];
+  if (!object(policy) || policy.name !== "main" || policy.type !== "branch") fail();
 }
 
 /** GitHub's Vercel integration names the environment Production but reports
@@ -100,9 +115,9 @@ export function assertProductionDeployment(sha: string, deployment: unknown, sta
   return url.origin;
 }
 
-export function assertPreviewRun(sha: string, run: unknown) {
+export function assertPreviewRun(sha: string, run: unknown, attempt: number) {
   if (!object(run) || run.head_sha !== sha || run.head_branch !== "main" || run.event !== "workflow_dispatch"
-    || run.conclusion !== "success" || run.path !== ".github/workflows/event-card-ops.yml"
+    || run.conclusion !== "success" || run.path !== ".github/workflows/event-card-ops.yml" || run.run_attempt !== attempt
     || !object(run.repository) || run.repository.full_name !== "opensetlist-db/opensetlist"
     || !object(run.actor) || run.actor.login !== "helloopensetlistdb"
     || !object(run.triggering_actor) || run.triggering_actor.login !== "helloopensetlistdb") fail();

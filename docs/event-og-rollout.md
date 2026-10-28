@@ -32,7 +32,7 @@ custom-domain CDN verification. Code integration does not erase that gap.
 
 The existing `scripts/event-og.mjs` remains dev-only. Do not pull production DB
 credentials into a local checkout. `.github/workflows/event-card-ops.yml` is a
-manual hosted path for preview, publish, list, correction and public suspension.
+manual hosted path for preview, publish, list, recovery inspection, correction and public suspension.
 It cannot run until the owner releases that workflow to main. It requires:
 
 - `workflow_dispatch` on main, the known repository/workflow, GitHub-hosted
@@ -42,17 +42,27 @@ It cannot run until the owner releases that workflow to main. It requires:
   its real Production environment, so that boolean is not the authority.
 - Both DB settings supplied by `PROD_DATABASE_URL_UNPOOLED`, matching the
   separately configured production project and session port5432. Read-only
-  preview/list queries run inside `SET TRANSACTION READ ONLY` transactions.
+  preview/list/inspection queries run inside `SET TRANSACTION READ ONLY` transactions.
 - An exact two-item Fes2 ID/slug inventory. These are owner-confirmed production
   records, not assumed copies of development IDs or mockup examples.
 
-The existing GitHub `Production` environment currently has no review protection
-rules. Its name alone provides no approval. The workflow explicitly checks
-owner identity and exact request/approval fields instead. Adding secrets or
-security-sensitive permissions is an owner configuration step, not something
-the agent silently provisions while starting this ticket.
+Before adding any new secret, the owner must configure the dedicated GitHub
+`EventCardProduction` environment: custom deployment-branch policies enabled,
+protected-branches mode disabled, and exactly one **branch** policy, `main`.
+The operation checks this configuration through the read-only Actions API.
+An in-file `if:` alone cannot protect secrets from a different branch's workflow.
+Do not change the existing `Production` environment: release migrations use it
+before the dev→main merge. Its existing repository-level production DB secret
+still has the repository's inherited access model; this workflow does not claim
+to isolate that legacy secret from other repository workflows. Moving that
+secret requires a separate review of the existing release procedure.
 
-Configure these **variables** in the existing Production environment after
+Only the owned verify/execute steps receive production secrets. `npm ci`,
+checkout and artifact actions receive none; Prisma generation during installation
+uses a dummy localhost URL. Adding credentials or changing environment protection
+is an owner configuration step; starting this ticket does not authorize it.
+
+Configure these **variables** in EventCardProduction after
 confirming the actual values; never send secret values in chat:
 
 | Variable | Purpose |
@@ -69,10 +79,21 @@ Secret **names** required for production writes: `R2_ACCOUNT_ID`,
 `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `CLOUDFLARE_CACHE_PURGE_TOKEN`
 (the latter for suspension). Existing repository secret
 `PROD_DATABASE_URL_UNPOOLED` supplies the DB. Correction/suspension additionally
-read `EVENT_CARD_PRIVATE_REASON` from the environment secret; do not put a
+read `EVENT_CARD_PRIVATE_REASON` from the dedicated environment secret; do not put a
 private reason in public dispatch JSON. The list artifact deliberately omits
 private reasons, audit internals and approval paths. R2 namespace is `prod` and
 the trusted public image base is fixed to `https://img.opensetlist.com`.
+
+Preview/publish also require `EVENT_CARD_PREVIEW_ENCRYPTION_KEY`, a privately
+generated 32-byte key encoded as 64 lowercase hex characters. Keep a recoverable
+owner-only copy outside Git and chat. This AES-256-GCM key encrypts draft packets
+before upload: artifacts of this public repository are downloadable by other
+GitHub users. Only authenticated ciphertext and a hash/identity summary are
+uploaded. Plain PNGs, source snapshots and selection evidence stay in ephemeral
+runner temp storage. Publish decrypts the original packet without changing its
+evidence paths/bytes. Other operations upload only explicit public-safe results.
+Key rotation requires a fresh preview or the retained old key for old packets;
+it must not block list/inspection/correction/emergency suspension.
 
 At implementation time only the two DEV/PROD DB secret names existed; prod R2,
 purge permissions and these rollout variables were not configured or tested.
@@ -92,9 +113,18 @@ The owner dispatches `event-card-ops.yml` on main with `operation=preview`,
 `request=<that exact JSON>` and `confirm=READ-ONLY`. This is a read-only DB
 snapshot and local renderer operation in the hosted runner: no publication
 rows, PUTs or public draft URLs. Download artifact
-`event-card-preview-<run-id>` and inspect `packet/index.html`,18 originals,
-half/mobile/mode comparisons, manifest, source records, fonts and glyphs.
-Record its exact `manifestSha256` from `operation-result.json`.
+`event-card-preview-<run-id>-<run-attempt>`. With the private key supplied through
+the local process environment, decrypt offline into a **new private directory**:
+
+```powershell
+node scripts/event-og-preview-decrypt.mjs --in '<download>/preview.enc' --out '<private-parent>/fes2-preview'
+```
+
+The parent must exist. Never put the key in command arguments, upload plaintext
+to GitHub or use the application's `public/` directory (the CLI refuses it).
+Inspect `packet/index.html`,18 originals, half/mobile/mode comparisons, manifest,
+source records, fonts and glyphs. Record the exact `manifestSha256` from the
+decrypted `operation-result.json` and compare the downloaded `summary.json`.
 
 If the official full title fails measured layout, an owner-selected
 `displayTitles` array may accompany a new preview request:
@@ -111,9 +141,12 @@ dispatches `operation=publish` with:
 {"eventId":"<confirmed-ID>","mode":"prediction","revision":"<retained-new-UUID>"}
 ```
 
-Supply `confirm=APPROVE-FES2-CARD`, the successful preview's `preview_run_id`
+Supply `confirm=APPROVE-FES2-CARD`, the successful preview's `preview_run_id`,
+exact `preview_run_attempt`
 and exact `approved_manifest_sha256`. The workflow verifies the preview run's
-repository/workflow, owner, success and SAME deployed main SHA before download.
+repository/workflow, owner, success and SAME deployed main SHA for that exact
+attempt before download. Upload names include run ID AND attempt, retaining
+earlier evidence without v4 artifact-name collisions on GitHub Re-run.
 The service checks manifest/output hashes, renderer/fonts and current source
 facts, then atomically publishes three locales. No arbitrary key/URL target or
 implicit mode is accepted. Output `operation-result.json` records the exact
@@ -123,10 +156,29 @@ If main changed since preview, create/review a fresh preview. Restore artifacts
 to the original hosted temp path so display-title review evidence retains its
 identity. Do not rewrite manifest paths/hashes to make a relocated packet pass.
 
-For an uncertain publication, retry the **same** preview run, manifest hash,
+For an uncertain publication, retry the **same** preview run/attempt, manifest hash,
 event, mode and revision. Approval bytes exclude the current attempt time/run
 and remain stable across retries. Per-run attempt evidence is separate. Never
 allocate another UUID merely because the COMMIT reply was lost.
+
+If main moved or the original preview/key is unavailable, use `operation=inspect`,
+`confirm=READ-ONLY`, with the **original** event/mode/revision tuple. This operation
+does not require the old preview, its key, R2 credentials or the publication flag.
+It reads under the lifecycle lock, without rendering or PUTs, and reports:
+
+- `committed`: compare all three stored hashes/preview/approval digests against
+  the original retained evidence. Record the **current annotation status/version**;
+  committed/reconciled does not imply active. Never re-upload suspended images.
+- `uncertain`: an unsettled writer still exists. Retain the original UUID and
+  investigate through the authorized remote path. Do not force-clear it.
+- `absent`: only a point-in-time observation. First prove all original workflow
+  attempts are terminal and no original process/request can still write. If
+  absence remains confirmed, create/review a fresh packet on current main and
+  explicitly select a new UUID. Retain any unassigned objects and both records.
+
+If any evidence is unavailable or scope conflicts, stop publication and retain
+the uncertainty. Do not invent a successful reconciliation. API/DB errors fail
+the operation rather than reporting absence.
 
 ## List, correction and suspension
 
@@ -156,6 +208,14 @@ and retains per-path outcomes; `outcome_unknown` is not a success. Follow
 that remain partial indefinitely and the absence of an automatic force-clear.
 No real production card is suspended for demonstration; use dev synthetic
 combination evidence when no actual correction/suspension is needed.
+
+Disabling `EVENT_CARD_PUBLICATION_ENABLED` stops new publication only. Correction,
+suspension and read-only recovery remain available. Missing/wrong delivery
+configuration is checked **after** the safe suspension notice and produces
+`partial`; it must not prevent removing incorrect content from the wrapper.
+Dispatch one operation at a time and confirm its run actually executed. GitHub
+concurrency keeps one running and one pending run; a newer dispatch can cancel
+an older pending run even with `cancel-in-progress:false`. Cancelled is not pass.
 
 ## Public integration verification
 

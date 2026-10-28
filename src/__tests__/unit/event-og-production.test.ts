@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { productionOperation, assertProductionDeployment, assertPreviewRun } from "@/lib/eventOg/productionOperation";
+import { productionOperation, assertProductionDeployment, assertPreviewRun, assertEnvironmentPolicy } from "@/lib/eventOg/productionOperation";
 import { spawnSync } from "node:child_process";
 
 const revision = "1dcd9a25-4916-4ce7-9526-1e81c7ecfc3d";
@@ -13,12 +13,39 @@ function fixture(operation = "publish") {
     DATABASE_URL: `postgresql://postgres.${project}:synthetic@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres`,
     DATABASE_URL_UNPOOLED: `postgresql://postgres:synthetic@db.${project}.supabase.co:5432/postgres`,
     EVENT_CARD_PUBLICATION_ENABLED: "reviewed-delivery-paths", EVENT_CARD_DELIVERY_PROOF_SHA256: "e".repeat(64),
+    EVENT_CARD_PREVIEW_ENCRYPTION_KEY: "d".repeat(64),
     R2_KEY_PREFIX: "prod", R2_BUCKET: "synthetic-production", EVENT_CARD_PROD_BUCKET: "synthetic-production", R2_PUBLIC_BASE_URL: "https://img.opensetlist.com" };
   const event = { ref: "main", sender: { login: "helloopensetlistdb" }, repository: { full_name: "opensetlist-db/opensetlist" },
-    inputs: { operation, request: JSON.stringify({ eventId: "109", mode: "prediction", revision }), confirm: "APPROVE-FES2-CARD", preview_run_id: "123", approved_manifest_sha256: "f".repeat(64) } };
+    inputs: { operation, request: JSON.stringify({ eventId: "109", mode: "prediction", revision }), confirm: "APPROVE-FES2-CARD", preview_run_id: "123", preview_run_attempt: "1", approved_manifest_sha256: "f".repeat(64) } };
   return { env, event };
 }
 describe("owner-dispatched hosted production card boundary", () => {
+  it("requires a separately protected main-branch environment without changing the existing release environment", () => {
+    const environment = { name: "EventCardProduction", deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } };
+    const policies = { total_count: 1, branch_policies: [{ name: "main", type: "branch" }] };
+    expect(() => assertEnvironmentPolicy(environment, policies)).not.toThrow();
+    for (const bad of [null, { ...environment, name: "Production" }, { ...environment, deployment_branch_policy: null }]) {
+      expect(() => assertEnvironmentPolicy(bad, policies)).toThrow();
+    }
+    for (const bad of [{ total_count: 0, branch_policies: [] }, { total_count: 2, branch_policies: [...policies.branch_policies, { name: "dev", type: "branch" }] },
+      { total_count: 1, branch_policies: [{ name: "main", type: "tag" }] }]) expect(() => assertEnvironmentPolicy(environment, bad)).toThrow();
+  });
+  it("keeps read-only uncertain-publication recovery and emergency suspension available while publishing is disabled", () => {
+    const f = fixture("inspect"); delete f.env.EVENT_CARD_PUBLICATION_ENABLED; delete f.env.EVENT_CARD_DELIVERY_PROOF_SHA256;
+    delete f.env.EVENT_CARD_PREVIEW_ENCRYPTION_KEY; delete f.env.R2_BUCKET;
+    f.event.inputs.confirm = "READ-ONLY";
+    expect(productionOperation(f.env, f.event)).toMatchObject({ action: "inspect", revision });
+    // A later deployed main does not require the old preview or its key.
+    expect(productionOperation({ ...f.env, GITHUB_SHA: "a".repeat(40) }, f.event).revision).toBe(revision);
+    f.event.inputs.operation = "suspend"; f.event.inputs.confirm = "APPROVE-FES2-CARD";
+    f.event.inputs.request = JSON.stringify({ eventId: "109", mode: "prediction", revision, expectedVersion: 0, operationId: revision });
+    f.env.EVENT_CARD_PRIVATE_REASON = "Private emergency reason";
+    expect(productionOperation(f.env, f.event)).toMatchObject({ action: "suspend", expectedVersion: 0 });
+    // Delivery configuration is checked after the safe notice, then reports
+    // partial rather than preventing removal of incorrect wrapper content.
+    f.event.inputs.operation = "publish"; f.event.inputs.request = JSON.stringify({ eventId: "109", mode: "prediction", revision });
+    expect(() => productionOperation(f.env, f.event)).toThrow();
+  });
   it("accepts actual Vercel Production metadata despite its false production flag and rejects unverified deployments/artifacts", () => {
     const sha = "a".repeat(40);
     const deployment = { sha, environment: "Production", production_environment: false, creator: { login: "vercel[bot]" } };
@@ -29,11 +56,12 @@ describe("owner-dispatched hosted production card boundary", () => {
     }
     expect(() => assertProductionDeployment(sha, deployment, { ...status, state: "pending" })).toThrow();
     expect(() => assertProductionDeployment(sha, deployment, { ...status, environment_url: "https://untrusted.invalid" })).toThrow();
-    const run = { head_sha: sha, head_branch: "main", event: "workflow_dispatch", conclusion: "success", path: ".github/workflows/event-card-ops.yml",
+    const run = { head_sha: sha, head_branch: "main", event: "workflow_dispatch", conclusion: "success", run_attempt: 1, path: ".github/workflows/event-card-ops.yml",
       repository: { full_name: "opensetlist-db/opensetlist" }, actor: { login: "helloopensetlistdb" }, triggering_actor: { login: "helloopensetlistdb" } };
-    expect(() => assertPreviewRun(sha, run)).not.toThrow();
+    expect(() => assertPreviewRun(sha, run, 1)).not.toThrow();
+    expect(() => assertPreviewRun(sha, run, 2)).toThrow();
     for (const bad of [{ ...run, head_sha: "b".repeat(40) }, { ...run, conclusion: "failure" }, { ...run, path: "another.yml" }, { ...run, event: "pull_request" }]) {
-      expect(() => assertPreviewRun(sha, bad)).toThrow();
+      expect(() => assertPreviewRun(sha, bad, 1)).toThrow();
     }
   });
   it("refuses real local CLI processes without reading local env or attempting a production operation", () => {
@@ -47,7 +75,9 @@ describe("owner-dispatched hosted production card boundary", () => {
   });
   it("returns one explicit approved mode and revision, with an exact bounded target inventory", () => {
     const f = fixture(); expect(productionOperation(f.env, f.event)).toMatchObject({ action: "publish", eventIds: ["109"], mode: "prediction", revision,
-      previewRunId: "123", manifestSha256: "f".repeat(64) });
+      previewRunId: "123", previewRunAttempt: 1, manifestSha256: "f".repeat(64) });
+    expect(productionOperation(f.env, { ...f.event, ref: "refs/heads/main" }).action).toBe("publish");
+    expect(() => productionOperation(f.env, { ...f.event, ref: "refs/heads/dev" })).toThrow();
     for (const mode of ["live", "setlist"]) { f.event.inputs.request = JSON.stringify({ eventId: "110", mode, revision }); expect(productionOperation(f.env, f.event).mode).toBe(mode); }
   });
   it("requires hosted main, original and rerun owner identity, known workflow, explicit delivery signoff and production destinations", () => {
@@ -66,7 +96,7 @@ describe("owner-dispatched hosted production card boundary", () => {
       { eventId: "109", mode: "prediction", revision, key: "prod/arbitrary.png" }, { eventId: "109", mode: "prediction", revision, url: "https://untrusted.invalid" }]) {
       expect(() => productionOperation(f.env, { ...f.event, inputs: { ...f.event.inputs, request: JSON.stringify(request) } })).toThrow();
     }
-    for (const changed of [{ confirm: "yes" }, { preview_run_id: "" }, { approved_manifest_sha256: "yes" }]) {
+    for (const changed of [{ confirm: "yes" }, { preview_run_id: "" }, { preview_run_attempt: "" }, { preview_run_attempt: "0" }, { approved_manifest_sha256: "yes" }]) {
       expect(() => productionOperation(f.env, { ...f.event, inputs: { ...f.event.inputs, ...changed } })).toThrow();
     }
   });

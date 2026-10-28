@@ -79,6 +79,11 @@ boundary without production credentials: exact Fes2 scope, explicit approval,
 deployed commit/artifact identity, environment separation and actual local CLI
 refusal. It does not execute the production workflow or prove live CDN/X.
 
+`event-og-preview-archive.test.ts` checks authenticated encryption/decryption
+of actual PNG/manifest/evidence bytes, tamper/path/overwrite refusal and the
+offline CLI. It also checks secret isolation and the encrypted-only workflow
+artifact boundary. No production credentials, DB or storage are used.
+
 `npm test` never opens a connection: the files that import
 `@/lib/prisma` either `vi.mock` it or `vi.spyOn` the methods they call
 (importing the client builds a pool but connects only on a query). Keep

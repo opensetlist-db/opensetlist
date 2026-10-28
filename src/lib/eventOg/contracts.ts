@@ -35,6 +35,7 @@ export type Stored = Prisma.EventCardPublicationGetPayload<{ include: typeof INC
 export function result(row: Stored, origin: string, status: "created" | "reconciled") {
   if (row.renditions.length !== 3 || !CARD_LOCALES.every((locale) => row.renditions.some((r) => r.locale === locale))) throw invalid("발행본의 언어 묶음이 완전하지 않습니다.");
   return { status, publicationId: row.id, eventId: String(row.eventId), mode: row.mode,
+    publicationState: row.annotation ? { status: row.annotation.status, version: row.annotation.version } : null,
     urls: Object.fromEntries(CARD_LOCALES.map((l) => [l, origin + sharePath(String(row.eventId), row.mode, row.id, l)])) };
 }
 

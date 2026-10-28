@@ -1,6 +1,6 @@
 import { prisma } from "../prisma";
 import { CARD_LOCALES, type CardMode } from "./content";
-import { publicationOrigin, sharePath, INCLUDE, result, invalid, type CardDb, type FrozenCard, type PublicationDeps } from "./contracts";
+import { publicationOrigin, sharePath, INCLUDE, result, invalid, CardPublicationError, type CardDb, type FrozenCard, type PublicationDeps } from "./contracts";
 
 export async function lookupPublication(input: { eventId: string; mode: string; revision: string; locale: string }, deps: Pick<PublicationDeps, "db" | "origin"> = {}) {
   const { eventId, mode, revision, locale } = input;
@@ -50,4 +50,31 @@ export async function listPublications(eventId: string, db: CardDb = prisma) {
       suspension: { include: { attempts: { orderBy: [{ startedAt: "asc" }, { id: "asc" }] } } } } });
   return rows.map((row) => ({ ...result(row, publicationOrigin(), "reconciled"), annotation: row.annotation,
     corrections: row.correctionsMade, suspension: row.suspension }));
+}
+
+/** Read-only recovery independent of the current renderer, preview or main
+ * SHA. Absence is a point-in-time observation, never permission to race an
+ * original workflow/writer that may still be running. No object PUT occurs. */
+export async function inspectPublication(input: { eventId: string; mode: CardMode; revision: string; namespace: string }, db: CardDb = prisma) {
+  const { eventId, mode, revision, namespace } = input;
+  sharePath(eventId, mode, revision, "ja");
+  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(namespace)) throw invalid("잘못된 namespace입니다.");
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    const lock = `event-card-annotation:${eventId}:${mode}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`;
+    const row = await tx.eventCardPublication.findUnique({ where: { id: revision }, include: INCLUDE });
+    const writers = await tx.eventCardWriteAttempt.findMany({ where: { publicationId: revision, settledAt: null },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, eventId: true, namespace: true } });
+    if ((row && (String(row.eventId) !== eventId || row.mode !== mode || row.namespace !== namespace))
+      || writers.some((w) => String(w.eventId) !== eventId || w.namespace !== namespace)) throw new CardPublicationError("publication_conflict", "복구할 발행 식별자의 범위가 다릅니다.");
+    const common = { publicationId: revision, eventId, mode, unsettledWriters: writers.map((w) => w.id) };
+    if (!row) return { ...common, outcome: writers.length ? "uncertain" as const : "absent" as const };
+    if (!row.annotation || row.renditions.length !== 3 || !CARD_LOCALES.every((l) => row.renditions.some((r) => r.locale === l))) {
+      throw new CardPublicationError("outcome_unknown", "완전한 발행 묶음을 확인하지 못했습니다.");
+    }
+    return { ...common, outcome: "committed" as const, previewId: row.previewId, approvalSha256: row.approvalSha256,
+      outputs: Object.fromEntries(row.renditions.map((r) => [r.locale, r.sha256])),
+      annotation: { status: row.annotation.status, version: row.annotation.version } };
+  }, { isolationLevel: "ReadCommitted", maxWait: 30000, timeout: 90000 });
 }

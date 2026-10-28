@@ -561,6 +561,7 @@ export function FanBoardSection({
 
       <div
         role="tablist"
+        data-testid="board-group-tabs"
         aria-label={t("groupsAria")}
         className={styles.groupTabs}
       >
@@ -571,6 +572,7 @@ export function FanBoardSection({
               key={c.groupId}
               type="button"
               role="tab"
+              data-testid={`board-group-${c.groupId}`}
               aria-selected={selected}
               onClick={() => setActiveId(c.groupId)}
               className={styles.groupTab}
@@ -707,6 +709,7 @@ export function FanBoardSection({
                 <button
                   type="button"
                   onClick={() => void handleCopy()}
+                  data-testid="board-copy"
                   disabled={!copy}
                   className={styles.secondaryButton}
                 >
