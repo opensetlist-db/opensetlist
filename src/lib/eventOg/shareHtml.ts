@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server.edge";
 import type { lookupPublication } from "./reader";
 
 type Card = NonNullable<Awaited<ReturnType<typeof lookupPublication>>>;
-export function eventShareHtml(card: Card, destination: string, copy: { heading: string; opening: string; open: string }) {
+export function eventShareHtml(card: Card, destination: string, copy: {
+  heading: string; opening: string; open: string;
+  correctionHeading: string; correctionBody: string; openCorrection: string; correctionUnavailable: string;
+}) {
   const { content: c, image } = card;
   // Full HTML is returned by a Route Handler: metadata cannot be streamed
   // behind browser navigation, and no global bot-specific setting is needed.
@@ -18,12 +21,17 @@ export function eventShareHtml(card: Card, destination: string, copy: { heading:
       ...Object.entries({ "twitter:card": "summary_large_image", "twitter:title": c.title, "twitter:description": c.description, "twitter:image": image.url, "twitter:image:alt": c.alt })
         .map(([name, content]) => h("meta", { key: name, name, content })),
       h("style", null, "body{margin:0;background:#f5f7fb;color:#172542;font:18px/1.6 system-ui,sans-serif}main{box-sizing:border-box;width:100%;max-width:850px;margin:auto;padding:24px;overflow-wrap:anywhere}h1{font-size:clamp(24px,5vw,36px)}img{display:block;max-width:100%;height:auto}a{display:inline-block;color:#174b9c;padding:12px 4px}a:focus-visible{outline:3px solid currentColor;outline-offset:3px}"),
-      h("script", { src: "/event-share-navigation.js", defer: true })),
+      card.correction ? null : h("script", { src: "/event-share-navigation.js", defer: true })),
     h("body", null, h("main", null,
       h("p", null, copy.heading), h("h1", { "data-testid": "event-share-title" }, c.officialEventTitle),
       c.officialSeriesTitle && c.officialSeriesTitle !== c.officialEventTitle ? h("p", null, c.officialSeriesTitle) : null,
-      h("p", null, c.purposeLabel), h("p", null, copy.opening),
-      h("a", { href: destination, "data-event-destination": true, "data-testid": "event-share-destination" }, copy.open),
+      h("p", null, c.purposeLabel),
+      card.correction ? h("section", { "aria-labelledby": "correction-heading", "data-testid": "event-share-correction" },
+        h("h2", { id: "correction-heading" }, copy.correctionHeading), h("p", null, copy.correctionBody),
+        card.correction.replacementUrl
+          ? h("a", { href: card.correction.replacementUrl, "data-testid": "event-share-correction-link" }, copy.openCorrection)
+          : h("p", null, copy.correctionUnavailable)) : h("p", null, copy.opening),
+      h("a", { href: destination, ...(!card.correction ? { "data-event-destination": true } : {}), "data-testid": "event-share-destination" }, copy.open),
       h("img", { src: image.url, width: 1200, height: 630, alt: c.alt }),
     )),
   ));

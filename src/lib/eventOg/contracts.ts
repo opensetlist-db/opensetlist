@@ -10,6 +10,7 @@ export class CardPublicationError extends Error {
 }
 export const invalid = (message: string) => new CardPublicationError("invalid_publication", message);
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+export const isPublicationId = (value: string) => UUID.test(value);
 export type CardDb = Pick<typeof prisma, "$transaction" | "event" | "eventCardPublication">;
 export type PublicationDeps = { db?: CardDb; storage?: ImageStorage; origin?: string };
 export type FrozenCard = {

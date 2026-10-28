@@ -874,6 +874,10 @@
   "EventSharePage": {
     "heading": "OpenSetlist event share card",
     "opening": "Opening the event page. If it does not open, follow the link below.",
-    "open": "Open event details"
+    "open": "Open event details",
+    "correctionHeading": "This share card has been corrected",
+    "correctionBody": "The original card is kept here as a record. Open the updated card for current information.",
+    "openCorrection": "Open the updated share card",
+    "correctionUnavailable": "The updated card is currently unavailable. You can still open the event details below."
   }
 }

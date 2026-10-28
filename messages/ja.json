@@ -874,6 +874,10 @@
   "EventSharePage": {
     "heading": "OpenSetlist イベント共有カード",
     "opening": "イベントの詳細ページを開きます。移動しない場合はリンクを選択してください。",
-    "open": "イベントの詳細を開く"
+    "open": "イベントの詳細を開く",
+    "correctionHeading": "この共有カードは訂正されています",
+    "correctionBody": "元のカードは記録として残しています。最新の情報は訂正後のカードをご確認ください。",
+    "openCorrection": "訂正後の共有カードを開く",
+    "correctionUnavailable": "訂正後のカードは現在利用できません。下のリンクからイベント詳細をご確認いただけます。"
   }
 }
