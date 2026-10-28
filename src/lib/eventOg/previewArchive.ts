@@ -36,7 +36,7 @@ export async function sealPreviewDirectory(source: string, output: string, secre
   await visit("");
   if (!files.length) invalid();
   const nonce = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey, nonce); cipher.setAAD(HEADER);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey, nonce, { authTagLength: 16 }); cipher.setAAD(HEADER);
   const ciphertext = Buffer.concat([cipher.update(JSON.stringify(files), "utf8"), cipher.final()]);
   await writeFile(output, Buffer.concat([HEADER, nonce, cipher.getAuthTag(), ciphertext]), { flag: "wx", mode: 0o600 });
 }
@@ -49,7 +49,7 @@ export async function openPreviewArchive(input: string, output: string, secret: 
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > LIMIT * 2) invalid();
   const bytes = await readFile(input);
   if (bytes.length < 36 || !bytes.subarray(0, HEADER.length).equals(HEADER)) invalid();
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey, bytes.subarray(8, 20));
+  const decipher = createDecipheriv("aes-256-gcm", encryptionKey, bytes.subarray(8, 20), { authTagLength: 16 });
   decipher.setAAD(HEADER); decipher.setAuthTag(bytes.subarray(20, 36));
   const plain = Buffer.concat([decipher.update(bytes.subarray(36)), decipher.final()]);
   const files: unknown = JSON.parse(plain.toString("utf8"));

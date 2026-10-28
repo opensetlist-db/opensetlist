@@ -246,6 +246,10 @@ three locales and exercises fan-board clipboard URLs with isolated localStorage.
 API writes are blocked before the server, with a guard positive control. It
 does not post to SNS or save ballots. Record actual event phases; a catalog
 fixture in the wrong phase fails rather than impersonating a live/final event.
+Existing board links keep the site's configured canonical origin. On Preview,
+record that copied URL separately and exercise its identical path/fragment on
+the verified dev deployment, since production and dev IDs differ. This is not
+evidence that a dev-only copied URL resolves against the production database.
 Keep existing unit503→recovery transport coverage distinct from deliberately
 outaging a public deployment, which this runbook does not authorize.
 
@@ -260,3 +264,9 @@ Primary references: [manual workflows](https://docs.github.com/en/actions/how-to
 [workflow triggers](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow),
 [GitHub contexts](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts),
 [cross-run artifact download](https://github.com/actions/download-artifact/blob/d3f86a106a0bac45b974a628896c90dbdf5c8093/README.md#download-artifacts-from-other-workflow-runs-or-repositories).
+
+The new card wrapper uses the provider-supplied immutable `VERCEL_URL` only in
+this project's verified Vercel Preview environment. Production/local use the
+configured origin. Request Host/Forwarded headers cannot select it; legacy
+canonical and personal/board sharing configuration stay unchanged. See
+[Vercel system variables](https://vercel.com/docs/environment-variables/system-environment-variables).

@@ -63,7 +63,7 @@ test.describe("existing personal PNG and fan-board sharing", () => {
     }
     await writeFile(path.join(folder, "personal-png.json"), JSON.stringify(records, null, 2));
   });
-  test("copies a canonical fan-board group link and opens that same group without using an event-card wrapper", async ({ browser, request }) => {
+  test("copies a canonical fan-board link and consumes its same path/fragment on the verified dev deployment", async ({ browser, request }) => {
     test.setTimeout(120000); const records = [];
     for (const locale of locales) {
       const m = JSON.parse(await readFile(path.resolve("messages", `${locale}.json`), "utf8"));
@@ -79,11 +79,18 @@ test.describe("existing personal PNG and fan-board sharing", () => {
       const groupTab = tabs.getByTestId(`board-group-${group!.groupId}`); await expect(groupTab).toHaveAccessibleName(group!.name); await groupTab.click();
       const copyButton = page.getByTestId("board-copy"); await expect(copyButton).toHaveAccessibleName(m.Board.copy); await copyButton.click();
       const copy = await page.evaluate(() => navigator.clipboard.readText()); const url = copy.match(/https?:\/\/\S+/)?.[0];
-      expect(url).toBe(`${page.url().split("#")[0]}#board-${group!.slug}`); expect(copy).toContain(song.title);
-      const target = await context.newPage(); await target.goto(url!);
+      const responseHtml = await request.get(page.url()); expect(responseHtml.status()).toBe(200);
+      const canonical = (await responseHtml.text()).match(/<link rel="canonical" href="([^"]+)"/i)?.[1];
+      expect(canonical).toBeTruthy(); expect(new URL(canonical!).pathname).toBe(new URL(page.url()).pathname);
+      expect(url).toBe(`${canonical}#board-${group!.slug}`); expect(copy).toContain(song.title);
+      // Existing board links deliberately use the configured global canonical
+      // origin. Preview and production IDs differ: exercise the exact copied
+      // path/fragment on this dev deployment, without claiming a prod traversal.
+      const copied = new URL(url!); const consumedUrl = `${BASE}${copied.pathname}${copied.search}${copied.hash}`;
+      const target = await context.newPage(); await target.goto(consumedUrl);
       await expect(target.getByTestId(`board-group-${group!.groupId}`)).toHaveAttribute("aria-selected", "true");
       expect(writes).toEqual([]); await target.screenshot({ path: path.join(folder, `board-${locale}.png`) });
-      records.push({ locale, url, copy, groupId: group!.groupId }); await context.close();
+      records.push({ locale, url, consumedUrl, copy, groupId: group!.groupId }); await context.close();
     }
     await writeFile(path.join(folder, "board-links.json"), JSON.stringify(records, null, 2));
   });
