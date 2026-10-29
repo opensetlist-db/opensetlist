@@ -165,6 +165,12 @@ If main changed since preview, create/review a fresh preview. Restore artifacts
 to the original hosted temp path so display-title review evidence retains its
 identity. Do not rewrite manifest paths/hashes to make a relocated packet pass.
 
+The hosted workflow pins Node to `24.22.1` and the runner OS family to
+`ubuntu-24.04`. Preview identity includes the exact Node version, so preview and
+publish must use the same runtime. Changing the runtime requires a fresh,
+reviewed preview. The OS label does not freeze the runner image; renderer,
+font and output-hash checks still fail closed if replay differs.
+
 For an uncertain publication, retry the **same** preview run/attempt, manifest hash,
 event, mode and revision. Approval bytes exclude the current attempt time/run
 and remain stable across retries. Per-run attempt evidence is separate. Never
