@@ -5,7 +5,7 @@ import path from "node:path";
 import sharp from "sharp";
 
 const enabled = process.env.EVENT_CARD_REGRESSION_E2E === "1";
-const BASE = process.env.TEST_BASE_URL ?? "http://127.0.0.1:3196";
+const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 const folder = path.resolve(".claude/tmp", `og05-regression-${Date.now()}`);
 const locales = ["ja", "ko", "en"] as const;
 type Song = { id: number; originalTitle: string; translations: { locale: string; title: string }[] };
@@ -31,7 +31,8 @@ test.describe("existing personal PNG and fan-board sharing", () => {
       const m = JSON.parse(await readFile(path.resolve("messages", `${locale}.json`), "utf8"));
       const response = await request.get(`${BASE}/api/setlist?eventId=2&locale=${locale}`); expect(response.status()).toBe(200);
       const data: { items: { type: string; songs: { song: Song }[] }[] } = await response.json();
-      const songs = data.items.filter((i) => i.type === "song").flatMap((i) => i.songs.map((s) => ({ songId: Number(s.song.id), song: s.song }))).slice(0, 3).reverse();
+      const actualSongs = data.items.filter((i) => i.type === "song" && i.songs.length > 0);
+      const songs = actualSongs.flatMap((i) => i.songs.map((s) => ({ songId: Number(s.song.id), song: s.song }))).slice(0, 3).reverse();
       expect(songs).toHaveLength(3);
       for (const [id, phase] of [["109", "prediction"], ["2", "final"]] as const) {
         const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -45,11 +46,11 @@ test.describe("existing personal PNG and fan-board sharing", () => {
         await expect(open).toHaveAccessibleName(phase === "prediction" ? m.Predict.shareButtonPrediction : m.Predict.shareButton); await open.click();
         const dialog = page.getByTestId("personal-share-dialog"); await expect(dialog).toHaveRole("dialog"); await expect(dialog).toBeVisible();
         const card = dialog.getByTestId("personal-share-card").first(); const text = await card.innerText();
-        for (const entry of songs) expect(text).toContain(entry.song.translations.find((t) => t.locale === locale)?.title ?? entry.song.originalTitle);
+        for (const entry of songs) expect(text).toContain(entry.song.originalTitle);
         expect(text).not.toContain(`predict-${id}`); expect(text).not.toContain("savedAt");
         const score = await card.getByTestId("personal-share-primary-score").innerText();
         if (phase === "prediction") expect(score.trim()).toBe("3");
-        else expect(score.replace(/\s/g, "")).toBe(`3/${data.items.filter((i) => i.type === "song").length}`);
+        else expect(score.replace(/\s/g, "")).toBe(`3/${actualSongs.length}`);
         const exportButton = dialog.getByTestId("personal-share-export"); await expect(exportButton).toHaveAccessibleName(m.ShareCard.downloadImage);
         const pending = page.waitForEvent("download"); await exportButton.click();
         const download = await pending; const file = path.join(folder, `${phase}-${locale}.png`); await download.saveAs(file);

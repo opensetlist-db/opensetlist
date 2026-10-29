@@ -37,6 +37,8 @@ export async function correctPublication(input: CorrectionInput, deps: { db?: Co
   };
   let callbackFinished = false;
   try {
+    // A publisher can hold this graph lock for up to60s while uploading.
+    // Keep the correction alive long enough to wait for that transaction.
     return await db.$transaction(async (tx) => {
       const lock = `event-card-annotation:${eventId}:${mode}`;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`;
@@ -68,7 +70,7 @@ export async function correctPublication(input: CorrectionInput, deps: { db?: Co
       callbackFinished = true;
       return { operationId, publicationId: revision, replacementId, version: expectedVersion + 1,
         urls: urls(revision), replacementUrls: urls(replacementId), status: "corrected" as const };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 5000, timeout: 30000 });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 30000, timeout: 90000 });
   } catch (error) {
     // One consistent read distinguishes a committed decision from its newer
     // successor. Never resurrect a stale correction after COMMIT reply loss.

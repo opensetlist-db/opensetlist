@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -125,6 +126,26 @@ describe("event-card correction through real dev DB and real PNG publications", 
     await prisma.eventCardAnnotation.update({ where: { publicationId: A }, data: { status: "suspended", version: { increment: 1 } } });
     expect(await lookup(A)).toMatchObject({ suspended: true, content: null, image: null });
     await expect(correct(input(A, B, 3))).rejects.toMatchObject({ code: "invalid_correction" });
+  });
+
+  it("waits for an in-flight publisher graph lock before saving the correction", async () => {
+    expect((await lookup(A))?.correction).toBeNull();
+    const acquired = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
+    const holder = prisma.$transaction(async (tx) => {
+      const key = `event-card-annotation:${eventId}:prediction`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+      acquired.resolve(); await release.promise;
+    }, { maxWait: 30000, timeout: 60000 });
+    void holder.catch(acquired.reject);
+    try {
+      await acquired.promise;
+      // A publisher can legitimately hold this lock beyond the old30s
+      // correction deadline. Capture rejection immediately while it waits.
+      const outcome = correct(input()).then((value) => value, (error: unknown) => error);
+      await delay(35000); release.resolve();
+      expect(await outcome).toMatchObject({ status: "corrected", version: 1 });
+      expect((await lookup(A))?.correction?.replacementUrl).toBe((await lookup(B))?.shareUrl);
+    } finally { release.resolve(); await holder; }
   });
 
   it("serializes inverse-edge races so exactly one correction wins without a cycle", async () => {
