@@ -5,6 +5,7 @@ type Target = { id: string; slug: string };
 type DisplayTitle = { eventId: string; locale: CardLocale; title: string };
 export type ProductionOperation = {
   action: "preview" | "publish" | "list" | "inspect" | "correct" | "suspend";
+  requiresDeployedSource: boolean;
   eventIds: string[]; targets: Target[]; mode?: CardMode; revision?: string;
   replacementId?: string; operationId?: string; expectedVersion?: number;
   displayTitles: DisplayTitle[]; previewRunId?: string; previewRunAttempt?: number; manifestSha256?: string;
@@ -42,7 +43,7 @@ export function productionOperation(env: Record<string, string | undefined>, eve
   const eventIds = action === "preview" ? request.eventIds : [request.eventId];
   if (!Array.isArray(eventIds) || !eventIds.length || eventIds.length > 2 || new Set(eventIds).size !== eventIds.length
     || eventIds.some((v) => !id(v) || !targets.some((t) => t.id === v))) fail();
-  const result: ProductionOperation = { action, eventIds, targets, displayTitles: [] };
+  const result: ProductionOperation = { action, eventIds, targets, displayTitles: [], requiresDeployedSource: action === "preview" || action === "publish" };
   if (action === "preview") {
     if (inputs.confirm !== "READ-ONLY") fail();
     const titles = request.displayTitles ?? [];
@@ -83,6 +84,14 @@ export function productionOperation(env: Record<string, string | undefined>, eve
   if (["preview", "publish"].includes(action) && !hash(env.EVENT_CARD_PREVIEW_ENCRYPTION_KEY)) fail();
   if (action === "publish") assertProductionStorage(env);
   return result;
+}
+
+/** New cards bind the reviewed current source. Existing immutable versions
+ * remain operable by their allowlisted IDs even after a slug edit/deletion. */
+export function assertProductionTargets(plan: ProductionOperation, rows: { id: bigint | string; slug: string }[]) {
+  if (plan.requiresDeployedSource && (rows.length !== plan.eventIds.length
+    || rows.some((row) => !plan.eventIds.includes(String(row.id))
+      || !plan.targets.some((target) => target.id === String(row.id) && target.slug === row.slug)))) throw new Error("fes2_target_changed");
 }
 
 /** Call lazily for suspension, after the safe notice commits. Missing delivery

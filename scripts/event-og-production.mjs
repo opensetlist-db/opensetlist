@@ -14,7 +14,7 @@ const load = (file) => import(pathToFileURL(path.join(root, "src/lib/eventOg", f
 let artifactFolder;
 async function main() {
   if (!["verify", "execute"].includes(process.argv[2]) || process.argv.length !== 3) throw new Error("operation_arguments");
-  const { productionOperation, assertProductionDeployment, assertPreviewRun, assertProductionStorage, assertEnvironmentPolicy, publicOperationResult } = await load("productionOperation.ts");
+  const { productionOperation, assertProductionTargets, assertProductionDeployment, assertPreviewRun, assertProductionStorage, assertEnvironmentPolicy, publicOperationResult } = await load("productionOperation.ts");
   const event = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, "utf8"));
   const plan = productionOperation(process.env, event);
   const api = async (resource) => {
@@ -27,11 +27,14 @@ async function main() {
   };
   assertEnvironmentPolicy(await api("environments/EventCardProduction"),
     await api("environments/EventCardProduction/deployment-branch-policies?per_page=100"));
-  const deployments = await api(`deployments?sha=${process.env.GITHUB_SHA}&environment=Production&per_page=100`);
-  const deployment = deployments.find((d) => d.sha === process.env.GITHUB_SHA && d.environment === "Production" && d.creator?.login === "vercel[bot]");
-  if (!deployment) throw new Error("production_deployment_required");
-  const statuses = await api(`deployments/${deployment.id}/statuses?per_page=1`);
-  const deployedOrigin = assertProductionDeployment(process.env.GITHUB_SHA, deployment, statuses[0]);
+  let deployedOrigin = null;
+  if (plan.requiresDeployedSource) {
+    const deployments = await api(`deployments?sha=${process.env.GITHUB_SHA}&environment=Production&per_page=100`);
+    const deployment = deployments.find((d) => d.sha === process.env.GITHUB_SHA && d.environment === "Production" && d.creator?.login === "vercel[bot]");
+    if (!deployment) throw new Error("production_deployment_required");
+    const statuses = await api(`deployments/${deployment.id}/statuses?per_page=1`);
+    deployedOrigin = assertProductionDeployment(process.env.GITHUB_SHA, deployment, statuses[0]);
+  }
   if (plan.action === "publish") assertPreviewRun(process.env.GITHUB_SHA,
     await api(`actions/runs/${plan.previewRunId}/attempts/${plan.previewRunAttempt}`), plan.previewRunAttempt);
   if (process.argv[2] === "verify") { console.log(JSON.stringify({ verified: true, action: plan.action, commit: process.env.GITHUB_SHA, deployedOrigin })); return; }
@@ -55,12 +58,12 @@ async function main() {
   const { prisma: db } = await import(pathToFileURL(path.join(root, "src/lib/prisma.ts")).href);
   try {
     const { readCardEvents } = await load("source.ts");
-    const snapshot = await db.$transaction(async (tx) => {
+    const snapshot = plan.requiresDeployedSource ? await db.$transaction(async (tx) => {
       await tx.$executeRaw`SET TRANSACTION READ ONLY`;
       const rows = await tx.event.findMany({ where: { id: { in: plan.eventIds.map(BigInt) } }, select: { id: true, slug: true } });
-      if (rows.length !== plan.eventIds.length || rows.some((e) => !plan.targets.some((t) => t.id === String(e.id) && t.slug === e.slug))) throw new Error("fes2_target_changed");
+      assertProductionTargets(plan, rows);
       return plan.action === "preview" ? readCardEvents(tx, plan.eventIds) : null;
-    }, { maxWait: 30000, timeout: 30000 });
+    }, { maxWait: 30000, timeout: 30000 }) : null;
     let result;
     if (plan.action === "preview") {
       if (snapshot.length !== plan.eventIds.length) throw new Error("deleted_preview_target");
@@ -118,7 +121,10 @@ async function main() {
       await writeFile(path.join(artifactFolder, "summary.json"), JSON.stringify({ action: "preview", commit: result.commit, previewId: result.previewId,
         manifestSha256: result.manifestSha256, publication: "none", encrypted: true }, null, 2));
     } else await writeFile(path.join(artifactFolder, "operation-result.json"), JSON.stringify(publicOperationResult(plan, result), null, 2));
-    console.log(JSON.stringify({ action: plan.action, resultFile, status: result.status ?? "prepared" }));
+    // Reconciled describes the saved operation, not a claim that images remain
+    // active. A later correction/suspension must be visible in the run summary.
+    console.log(JSON.stringify({ action: plan.action, resultFile, status: result.status ?? result.outcome ?? "prepared",
+      ...(plan.action === "publish" ? { publicationState: publicOperationResult(plan, result).publicationState } : {}) }));
     if (result.status === "partial") process.exitCode = 1;
   } finally { await db.$disconnect(); }
 }

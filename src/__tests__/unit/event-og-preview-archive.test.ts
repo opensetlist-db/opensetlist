@@ -51,7 +51,7 @@ describe("private preview artifact boundary", () => {
       await sealPreviewDirectory(valid, path.join(folder, "valid.enc"), secret);
       await openPreviewArchive(path.join(folder, "valid.enc"), path.join(folder, "valid-output"), secret);
       expect(await readFile(path.join(folder, "valid-output/control.txt"), "utf8")).toBe("control");
-      for (const [index, names] of [["../escape"], ["/absolute"], ["C:\\escape"], ["same", "same"], ["folder", "folder/file"]].entries()) {
+      for (const [index, names] of [["../escape"], ["/absolute"], ["C:\\escape"], ["same", "same"], ["folder", "folder/file"], ["Same", "same"], ["Folder", "folder/file"]].entries()) {
         const header = Buffer.from("OSETOG01"); const nonce = randomBytes(12);
         const cipher = createCipheriv("aes-256-gcm", Buffer.from(secret, "hex"), nonce); cipher.setAAD(header);
         const encrypted = Buffer.concat([cipher.update(JSON.stringify(names.map((name) => ({ path: name, bytes: "eA==" })))), cipher.final()]);

@@ -11,7 +11,7 @@ vi.mock("@/hooks/useMounted", () => ({
 
 import { SetlistSection } from "@/components/SetlistSection";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
-import { writePredictions } from "@/lib/predictionsStorage";
+import { writePredictions, clearPredictions } from "@/lib/predictionsStorage";
 
 function makeItem(overrides: Partial<LiveSetlistItem> = {}): LiveSetlistItem {
   return {
@@ -69,6 +69,10 @@ describe("SetlistSection", () => {
       expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeVisible();
       fireEvent.click(screen.getByRole("tab", { name: /tabPredicted/ }));
       expect(screen.getByText("Saved song")).toBeVisible();
+      clearPredictions("1");
+      rerender(<SetlistSection {...props} status="ongoing" isWishPredictOpen={false} items={[makeItem()]} />);
+      expect(screen.queryByRole("tablist")).toBeNull();
+      expect(screen.queryByText("Saved song")).toBeNull();
     } else expect(screen.queryByRole("tablist")).toBeNull();
     rerender(<SetlistSection {...props} eventId="2" status="ongoing" isWishPredictOpen={false} items={[makeItem()]} />);
     expect(screen.queryByRole("tablist")).toBeNull();

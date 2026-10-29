@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { productionOperation, assertProductionDeployment, assertPreviewRun, assertEnvironmentPolicy, publicOperationResult } from "@/lib/eventOg/productionOperation";
+import { productionOperation, assertProductionTargets, assertProductionDeployment, assertPreviewRun, assertEnvironmentPolicy, publicOperationResult } from "@/lib/eventOg/productionOperation";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const revision = "1dcd9a25-4916-4ce7-9526-1e81c7ecfc3d";
 function fixture(operation = "publish") {
@@ -20,6 +24,49 @@ function fixture(operation = "publish") {
   return { env, event };
 }
 describe("owner-dispatched hosted production card boundary", () => {
+  it("keeps existing-version operations available after slug changes while refusing new cards from changed targets", () => {
+    const f = fixture(); const publish = productionOperation(f.env, f.event);
+    expect(publish.requiresDeployedSource).toBe(true);
+    expect(() => assertProductionTargets(publish, [{ id: "109", slug: "fes2-day1" }])).not.toThrow();
+    const changed = [{ id: "109", slug: "corrected-event-name" }];
+    expect(() => assertProductionTargets(publish, changed)).toThrow("fes2_target_changed");
+    for (const action of ["suspend", "inspect", "list", "correct"]) {
+      const request = action === "list" ? { eventId: "109" } : { eventId: "109", mode: "prediction", revision,
+        ...(["suspend", "correct"].includes(action) ? { operationId: revision, expectedVersion: 0 } : {}),
+        ...(action === "correct" ? { replacementId: revision } : {}) };
+      const plan = productionOperation({ ...f.env, EVENT_CARD_PRIVATE_REASON: "Private reason" }, { ...f.event,
+        inputs: { ...f.event.inputs, operation: action, confirm: ["list", "inspect"].includes(action) ? "READ-ONLY" : "APPROVE-FES2-CARD", request: JSON.stringify(request) } });
+      expect(plan.requiresDeployedSource).toBe(false);
+      expect(() => assertProductionTargets(plan, changed)).not.toThrow();
+      expect(() => assertProductionTargets(plan, [])).not.toThrow();
+    }
+  });
+  it("verifies emergency CLI requests without a Vercel deployment while new publication still requires one", () => {
+    const folder = mkdtempSync(path.join(tmpdir(), "og05-emergency-"));
+    try {
+      const preload = path.join(folder, "github.mjs"); const eventFile = path.join(folder, "event.json");
+      writeFileSync(preload, `globalThis.fetch=async(input)=>{const url=new URL(input);if(url.hostname!=='api.github.com')throw Error('Unexpected network');
+        const value=url.pathname.endsWith('/EventCardProduction')?{name:'EventCardProduction',deployment_branch_policy:{protected_branches:false,custom_branch_policies:true}}
+        :url.pathname.endsWith('/deployment-branch-policies')?{total_count:1,branch_policies:[{name:'main',type:'branch'}]}:[];
+        return new Response(JSON.stringify(value),{status:200});};`);
+      const f = fixture("suspend"); f.env.EVENT_CARD_PRIVATE_REASON = "Private reason";
+      f.event.inputs.request = JSON.stringify({ eventId: "109", mode: "prediction", revision, operationId: revision, expectedVersion: 0 });
+      const run = () => spawnSync(process.execPath, ["--import", pathToFileURL(preload).href, "scripts/event-og-production.mjs", "verify"], {
+        cwd: process.cwd(), encoding: "utf8", timeout: 10000, env: { ...process.env, ...f.env, GITHUB_TOKEN: "synthetic-readonly-token", GITHUB_EVENT_PATH: eventFile } });
+      writeFileSync(eventFile, JSON.stringify(f.event)); const emergency = run();
+      expect(emergency.status, emergency.stderr).toBe(0); expect(JSON.parse(emergency.stdout)).toMatchObject({ verified: true, action: "suspend", deployedOrigin: null });
+      writeFileSync(eventFile, JSON.stringify(fixture().event)); const publish = run();
+      expect(publish.status).toBe(1); expect(publish.stdout).toBe("");
+      expect(JSON.parse(publish.stderr.trim().split("\n").at(-1)!)).toMatchObject({ code: "production_deployment_required" });
+    } finally { rmSync(folder, { recursive: true, force: true }); }
+  });
+  it("distinguishes inactive publication reconciliation from an active card in the public result", () => {
+    const plan = { action: "publish" as const, eventIds: ["109"], mode: "prediction" as const, revision };
+    expect(publicOperationResult(plan, { status: "created", publicationState: { status: "active", version: 0 } })).toMatchObject({ publicationState: { status: "active" } });
+    for (const status of ["corrected", "suspended"]) {
+      expect(publicOperationResult(plan, { status: "reconciled", publicationState: { status, version: 1 } })).toMatchObject({ status: "reconciled", publicationState: { status, version: 1 } });
+    }
+  });
   it("publishes only explicit result fields, with no private delivery/audit data even on partial suspension or recovery", () => {
     const urls = { ja: "https://opensetlist.com/ja/share/approved", ko: "https://opensetlist.com/ko/share/approved", en: "https://opensetlist.com/en/share/approved" };
     const privateFields = { privateReason: "private-reason-canary", operationId: "private-operation-canary", attemptId: "private-attempt-canary",

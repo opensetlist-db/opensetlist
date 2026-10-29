@@ -37,14 +37,20 @@ It cannot run until the owner releases that workflow to main. It requires:
 
 - `workflow_dispatch` on main, the known repository/workflow, GitHub-hosted
   runner, and original AND rerun actor `helloopensetlistdb`.
-- Actual Vercel-bot Production deployment/status evidence for the exact running
-  main SHA. The integration reports `production_environment:false` even for
+- For new previews/publication, actual Vercel-bot Production deployment/status
+  evidence for the exact running main SHA. Existing-version list/inspection/
+  correction/suspension do not depend on the latest Vercel build succeeding.
+  The integration reports `production_environment:false` even for
   its real Production environment, so that boolean is not the authority.
 - Both DB settings supplied by `PROD_DATABASE_URL_UNPOOLED`, matching the
   separately configured production project and session port5432. Read-only
   preview/list/inspection queries run inside `SET TRANSACTION READ ONLY` transactions.
 - An exact two-item Fes2 ID/slug inventory. These are owner-confirmed production
   records, not assumed copies of development IDs or mockup examples.
+  New preview/publication checks the current slug as well as ID. Existing
+  immutable versions remain operable by the allowlisted ID after slug edits or
+  deletion; lifecycle tuple/version checks still apply. Owner/main/environment/
+  production DB guards remain mandatory for every operation.
 
 Before adding any new secret, the owner must configure the dedicated GitHub
 `EventCardProduction` environment: custom deployment-branch policies enabled,
@@ -151,6 +157,9 @@ The service checks manifest/output hashes, renderer/fonts and current source
 facts, then atomically publishes three locales. No arbitrary key/URL target or
 implicit mode is accepted. Output `operation-result.json` records the exact
 version/locale URLs. Retain the selected image hashes from the approved packet.
+The console summary includes current `publicationState` too: a successful
+`reconciled` operation may describe a corrected or suspended version, not an
+active image. Reconciliation never re-uploads a committed version.
 
 If main changed since preview, create/review a fresh preview. Restore artifacts
 to the original hosted temp path so display-title review evidence retains its

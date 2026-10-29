@@ -57,9 +57,9 @@ export async function openPreviewArchive(input: string, output: string, secret: 
   const seen = new Set<string>(); let total = 0;
   const validated = files.map((file: unknown) => {
     if (!file || typeof file !== "object" || !("path" in file) || !("bytes" in file)
-      || Object.keys(file).sort().join() !== "bytes,path" || !safeName(file.path) || seen.has(file.path)
+      || Object.keys(file).sort().join() !== "bytes,path" || !safeName(file.path) || seen.has(file.path.toLowerCase())
       || typeof file.bytes !== "string") invalid();
-    seen.add(file.path);
+    seen.add(file.path.toLowerCase());
     const contents = Buffer.from(file.bytes, "base64");
     if (contents.toString("base64") !== file.bytes || (total += contents.length) > LIMIT) invalid();
     return { name: file.path, contents };
@@ -67,7 +67,7 @@ export async function openPreviewArchive(input: string, output: string, secret: 
   // Reject file/directory conflicts before writing anything.
   for (const file of validated) {
     const parts = file.name.split("/"); parts.pop();
-    while (parts.length) { if (seen.has(parts.join("/"))) invalid(); parts.pop(); }
+    while (parts.length) { if (seen.has(parts.join("/").toLowerCase())) invalid(); parts.pop(); }
   }
   await mkdir(output, { mode: 0o700 });
   for (const file of validated) {
