@@ -162,17 +162,12 @@ export function useBoardBallot({
   eventId,
   locale,
   active,
-  revision = 0,
 }: {
   eventId: string;
   locale: string;
   /** False until the board read answered with groups — no "mine"
    *  request is made for a hidden / failed / ongoing board. */
   active: boolean;
-  /** Bumped when the ballot was replaced outside this hook — a publish
-   *  from the Predict tab (n15) writes the local picks itself — so
-   *  the hook re-reads storage. */
-  revision?: number;
 }) {
   const [picks, setPicks] = useState<BallotEntry[]>([]);
   const [wishes, setWishes] = useState<BallotEntry[]>([]);
@@ -192,9 +187,8 @@ export function useBoardBallot({
   // effect — `react-hooks/set-state-in-effect`.
   const mounted = useMounted();
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
-  const storageKey = `${eventId}:${revision}`;
-  if (mounted && hydratedKey !== storageKey) {
-    setHydratedKey(storageKey);
+  if (mounted && hydratedKey !== eventId) {
+    setHydratedKey(eventId);
     setPicks(readBoardPicks(eventId));
     setWishes(readBoardWishes(eventId));
     setLegacyWishes(readWishes(eventId).filter((w) => !w.groupId));

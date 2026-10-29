@@ -7,6 +7,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { preparePreview } from "@/lib/eventOg/service";
 import { publishPreview, lookupPublication, type CardDb } from "@/lib/eventOg/publication";
+import { inspectPublication } from "@/lib/eventOg/reader";
 import { readCardEvents } from "@/lib/eventOg/source";
 import { sha256 } from "@/lib/eventOg/render";
 import { MemoryImageStorage } from "@/lib/imageUpload/memoryStorage";
@@ -69,6 +70,27 @@ type Callback = (tx: Prisma.TransactionClient) => Promise<unknown>;
 type TxOptions = Parameters<CardDb["$transaction"]>[1];
 
 describe("event-card lifecycle: real dev DB and immutable memory storage", () => {
+  it("inspects an uncertain original UUID without a preview, write capability or main-SHA binding", async () => {
+    const input = await request(); const mem = storage();
+    const scope = { eventId, mode: input.mode, revision: input.revision, namespace: NAMESPACE };
+    expect(await inspectPublication(scope)).toMatchObject({ outcome: "absent", unsettledWriters: [] });
+    const writer = await prisma.eventCardWriteAttempt.create({ data: { eventId: BigInt(eventId), publicationId: input.revision, namespace: NAMESPACE } });
+    expect(await inspectPublication(scope)).toMatchObject({ outcome: "uncertain", unsettledWriters: [writer.id] });
+    await prisma.eventCardWriteAttempt.update({ where: { id: writer.id }, data: { settledAt: new Date() } });
+    await publishPreview(input, { storage: mem, origin: ORIGIN });
+    const inspected = await inspectPublication(scope);
+    expect(inspected).toMatchObject({ outcome: "committed", previewId: manifest.previewId, annotation: { status: "active", version: 0 }, unsettledWriters: [] });
+    expect("outputs" in inspected && inspected.outputs).toEqual(Object.fromEntries(manifest.renditions.filter((r) => r.mode === input.mode)
+      .map((r) => [r.locale, manifest.files.find((f) => f.file === r.file)!.sha256])));
+    await expect(inspectPublication({ ...scope, mode: "live" })).rejects.toMatchObject({ code: "publication_conflict" });
+    await prisma.eventCardAnnotation.update({ where: { publicationId: input.revision }, data: { status: "suspended", privateReason: "Private recovery reason", version: 1 } });
+    mem.objects.clear();
+    const suspended = await inspectPublication(scope);
+    expect(suspended).toMatchObject({ outcome: "committed", annotation: { status: "suspended", version: 1 } });
+    expect(JSON.stringify(suspended)).not.toContain("Private recovery reason");
+    expect((await publishPreview(input, { storage: mem, origin: ORIGIN })).publicationState).toEqual({ status: "suspended", version: 1 });
+    expect(mem.objects.size).toBe(0);
+  });
   it("publishes one complete locale group, reconciles retries and exposes only frozen public content", async () => {
     const mem = storage();
     const input = await request();

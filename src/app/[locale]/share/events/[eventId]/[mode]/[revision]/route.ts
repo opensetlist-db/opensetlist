@@ -4,6 +4,7 @@ import { lookupPublication } from "@/lib/eventOg/reader";
 import { eventShareHtml } from "@/lib/eventOg/shareHtml";
 import { entityPath } from "@/lib/seo/entityUrl";
 import { CARD_LOCALES, type CardLocale } from "@/lib/eventOg/content";
+import { sharePageOrigin } from "@/lib/eventOg/shareOrigin";
 
 export const dynamic = "force-dynamic";
 const HEADERS = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store, max-age=0",
@@ -13,7 +14,7 @@ export async function GET(_request: Request, context: { params: Promise<{ locale
   const params = await context.params;
   if (!CARD_LOCALES.includes(params.locale as CardLocale)) return new Response(null, { status: 404, headers: HEADERS });
   try {
-    const card = await lookupPublication(params);
+    const card = await lookupPublication(params, { origin: sharePageOrigin() });
     if (!card) return new Response(null, { status: 404, headers: HEADERS });
     const t = await getTranslations({ locale: params.locale, namespace: "EventSharePage" });
     const destination = entityPath("events", params.locale, card.eventId, card.slug);

@@ -8,6 +8,8 @@ import { eventShareHtml } from "@/lib/eventOg/shareHtml";
 import { lookupPublication } from "@/lib/eventOg/reader";
 import { captureException } from "@sentry/nextjs";
 import { GET } from "@/app/[locale]/share/events/[eventId]/[mode]/[revision]/route";
+import { sharePageOrigin } from "@/lib/eventOg/shareOrigin";
+import { BASE_URL } from "@/lib/config";
 
 vi.mock("@/lib/eventOg/reader", () => ({ lookupPublication: vi.fn() }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
@@ -27,6 +29,27 @@ const copy = { heading: "共有カード", opening: "移動します", open: "�
   suspensionHeading: "公開停止", suspensionBody: "この版は公開していません" };
 
 describe("published event-card transport", () => {
+  it("uses the verified immutable Preview origin for self identities while ignoring request hosts", async () => {
+    const host = "opensetlist-verified123-opensetlist-projects.vercel.app";
+    expect(sharePageOrigin({ VERCEL: "1", VERCEL_ENV: "preview", VERCEL_URL: host })).toBe(`https://${host}`);
+    expect(sharePageOrigin({ VERCEL: "1", VERCEL_ENV: "production", VERCEL_URL: host })).toBe(BASE_URL);
+    for (const url of ["untrusted.invalid", `https://${host}`, `${host}/path`, `user@${host}`, "opensetlist-git-dev-opensetlist-projects.vercel.app"]) {
+      expect(() => sharePageOrigin({ VERCEL: "1", VERCEL_ENV: "preview", VERCEL_URL: url })).toThrow();
+    }
+    vi.stubEnv("VERCEL", "1"); vi.stubEnv("VERCEL_ENV", "preview"); vi.stubEnv("VERCEL_URL", host);
+    try {
+      vi.mocked(lookupPublication).mockImplementation(async (_input, deps) => ({ ...card,
+        shareUrl: `${deps?.origin}/ja/share/events/7/prediction/${card.publicationId}` }));
+      const response = await GET(new Request("https://untrusted.invalid/", { headers: { host: "untrusted.invalid", "x-forwarded-host": "untrusted.invalid" } }),
+        { params: Promise.resolve({ locale: card.locale, eventId: card.eventId, mode: card.mode, revision: card.publicationId }) });
+      expect(response.status).toBe(200);
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      expect(doc.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(`https://${host}/ja/share/events/7/prediction/${card.publicationId}`);
+      expect(doc.querySelector('meta[property="og:url"]')?.getAttribute("content")).toBe(`https://${host}/ja/share/events/7/prediction/${card.publicationId}`);
+      expect(html).not.toContain("untrusted.invalid");
+    } finally { vi.unstubAllEnvs(); vi.clearAllMocks(); }
+  });
   it("keeps a suspended card on a neutral accessible notice without frozen content or correction/navigation/image leakage", () => {
     const parse = (html: string) => new DOMParser().parseFromString(html, "text/html");
     const normal = eventShareHtml({ ...card, correction: { replacementUrl: card.shareUrl } }, "/ja/events/7/current-slug", copy);

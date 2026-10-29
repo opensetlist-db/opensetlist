@@ -2,5 +2,6 @@
 export { publishPreview, lookupPublication, listPublications } from "./publication";
 export { correctPublication } from "./correction";
 export { suspendPublication } from "./suspension";
+export { inspectPublication } from "./reader";
 // Preview preparation stays on its existing local-only module so public
 // consumers do not eagerly import the renderer's WASM assets.

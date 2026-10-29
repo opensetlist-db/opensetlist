@@ -11,6 +11,7 @@ vi.mock("@/hooks/useMounted", () => ({
 
 import { SetlistSection } from "@/components/SetlistSection";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
+import { writePredictions, clearPredictions } from "@/lib/predictionsStorage";
 
 function makeItem(overrides: Partial<LiveSetlistItem> = {}): LiveSetlistItem {
   return {
@@ -49,6 +50,34 @@ beforeEach(() => {
 });
 
 describe("SetlistSection", () => {
+  it.each([true, false])("keeps a prediction started this visit through show start only when saved (saved=%s), without leaking it to another event", (saved) => {
+    const props = { eventId: "1", items: [], reactionCounts: {}, locale: "ko", startTime: null,
+      seriesName: "Test Series", eventTitle: "Test Event", dateLine: "2026-05-23", availableSongs: [], unitFilters: [],
+      emptyFallback: <p data-testid="empty">empty</p> };
+    const { rerender } = render(<SetlistSection {...props} status="upcoming" isWishPredictOpen={true} />);
+    fireEvent.click(screen.getByTestId("predict-start"));
+    expect(screen.getByRole("tab", { name: /tabPredicted/ })).toHaveAttribute("aria-selected", "true");
+    if (saved) {
+      writePredictions("1", [{ songId: 1, song: { originalTitle: "Saved song", originalLanguage: "ja", variantLabel: null, baseVersionId: null, translations: [] } }]);
+      // Read the saved list through the UI before testing the phase change.
+      fireEvent.click(screen.getByRole("tab", { name: "tabActual" }));
+      fireEvent.click(screen.getByRole("tab", { name: /tabPredicted/ }));
+      expect(screen.getByText("Saved song")).toBeVisible();
+    }
+    rerender(<SetlistSection {...props} status="ongoing" isWishPredictOpen={false} items={[makeItem()]} />);
+    if (saved) {
+      expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeVisible();
+      fireEvent.click(screen.getByRole("tab", { name: /tabPredicted/ }));
+      expect(screen.getByText("Saved song")).toBeVisible();
+      clearPredictions("1");
+      rerender(<SetlistSection {...props} status="ongoing" isWishPredictOpen={false} items={[makeItem()]} />);
+      expect(screen.queryByRole("tablist")).toBeNull();
+      expect(screen.queryByText("Saved song")).toBeNull();
+    } else expect(screen.queryByRole("tablist")).toBeNull();
+    rerender(<SetlistSection {...props} eventId="2" status="ongoing" isWishPredictOpen={false} items={[makeItem()]} />);
+    expect(screen.queryByRole("tablist")).toBeNull();
+    if (saved) expect(screen.queryByText("Saved song")).toBeNull();
+  });
   it("case 4 (no predictions, has actual, during/post-show): no tab strip; no tabpanel wrapper; only ActualSetlist body", () => {
     // Status `ongoing` (not upcoming) — upcoming always shows the
     // Predict tab as the entry point per the gate. The "no tabs"
@@ -77,7 +106,7 @@ describe("SetlistSection", () => {
     expect(screen.getByRole("list")).toBeTruthy();
   });
 
-  it("case 1 (predictions, no actual): Predicted-only tab strip; PredictedSetlist body", () => {
+  it("stored prediction, no actual, window open: both tabs, Predicted selected, PredictedSetlist body", () => {
     window.localStorage.setItem("predict-1", JSON.stringify({ slots: [] }));
     render(
       <SetlistSection
@@ -95,8 +124,12 @@ describe("SetlistSection", () => {
       />,
     );
     expect(screen.getByRole("tablist")).toBeTruthy();
-    expect(screen.queryByRole("tab", { name: "tabActual" })).toBeNull();
-    expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeTruthy();
+    expect(
+      screen.getByRole("tab", { name: "tabActual" }).getAttribute("aria-selected"),
+    ).toBe("false");
+    expect(
+      screen.getByRole("tab", { name: /tabPredicted/ }).getAttribute("aria-selected"),
+    ).toBe("true");
     // PredictedSetlist (Stage C) renders the pre-show full UI
     // — `+ 곡 추가` link is the load-bearing affordance for it.
     expect(screen.getByText("copyFromPast")).toBeTruthy();
@@ -131,13 +164,11 @@ describe("SetlistSection", () => {
     expect(screen.getByText("copyFromPast")).toBeTruthy();
   });
 
-  it("first-visitor on an upcoming event (no predictions, no actual): predict UI renders as the entry point", () => {
-    // CR #281 caught this as a Major bug pre-fix: without the
-    // `status === "upcoming"` half of the predict-tab gate, a
-    // first-time visitor on an upcoming event with no localStorage
-    // would drop straight to emptyFallback ("no setlist yet") with
-    // no path into the Predicted UI — the 5/16 user-open feature
-    // would have shipped dead.
+  it("first visitor, window open: the actual body plus a start button; pressing it opens the tabs on Predicted", () => {
+    // No stored list: the card shows the "filled in live from …" note
+    // (emptyFallback) and the "Make a setlist prediction" button, with
+    // no tab strip. The button is the only way into the builder, so a
+    // first-time visitor can always start predicting (CR #281).
     render(
       <SetlistSection
         eventId="1"
@@ -153,9 +184,56 @@ describe("SetlistSection", () => {
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
-    expect(screen.queryByTestId("empty")).toBeNull();
-    // PredictedSetlist's `+ 곡 추가` is the entry point.
+    expect(screen.getByTestId("empty")).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByText("copyFromPast")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("predict-start"));
+    expect(screen.queryByTestId("predict-start")).toBeNull();
+    expect(
+      screen.getByRole("tab", { name: /tabPredicted/ }).getAttribute("aria-selected"),
+    ).toBe("true");
     expect(screen.getByText("copyFromPast")).toBeTruthy();
+
+    // The Actual tab holds the same "filled in live" note.
+    fireEvent.click(screen.getByRole("tab", { name: "tabActual" }));
+    expect(screen.getByTestId("empty")).toBeTruthy();
+  });
+
+  it("no start button outside the window or after the show starts", () => {
+    const { rerender } = render(
+      <SetlistSection
+        eventId="1"
+        items={[]}
+        reactionCounts={{}}
+        locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
+        isWishPredictOpen={true}
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    // Positive control: present inside the window.
+    expect(screen.getByTestId("predict-start")).toBeTruthy();
+    rerender(
+      <SetlistSection
+        eventId="1"
+        items={[makeItem()]}
+        reactionCounts={{}}
+        locale="ko"
+        status="ongoing"
+        startTime={null}
+        seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
+        isWishPredictOpen={false}
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    expect(screen.queryByTestId("predict-start")).toBeNull();
   });
 
   it("completed/cancelled event with no actuals + no predictions: emptyFallback renders (no predict tab — nothing to score)", () => {
@@ -183,7 +261,7 @@ describe("SetlistSection", () => {
     expect(screen.queryByRole("tabpanel")).toBeNull();
   });
 
-  it("case 2 (predictions + actual): both tabs; defaults to Actual; tap Predicted swaps body", () => {
+  it("stored prediction + actual rows after the start: both tabs, Actual selected; tap Predicted swaps body", () => {
     window.localStorage.setItem("predict-1", JSON.stringify({ slots: [] }));
     render(
       <SetlistSection
@@ -191,12 +269,12 @@ describe("SetlistSection", () => {
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
-        status="upcoming"
+        status="ongoing"
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
         dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
-        isWishPredictOpen={true}
+        isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -206,14 +284,13 @@ describe("SetlistSection", () => {
     expect(predictedTab.getAttribute("aria-selected")).toBe("false");
     // Body shows ActualSetlist (the <ol> of rows).
     expect(screen.getByRole("list")).toBeTruthy();
-    // Pre-show PredictedSetlist `+ 곡 추가` is not rendered (Actual tab active).
-    expect(screen.queryByText("add")).toBeNull();
+    expect(screen.queryByText("duringHint")).toBeNull();
 
     fireEvent.click(predictedTab);
     expect(actualTab.getAttribute("aria-selected")).toBe("false");
     expect(predictedTab.getAttribute("aria-selected")).toBe("true");
-    // Body swaps to PredictedSetlist (pre-show full UI: `+ 곡 추가`).
-    expect(screen.getByText("copyFromPast")).toBeTruthy();
+    // Body swaps to PredictedSetlist (during-show hint).
+    expect(screen.getByText("duringHint")).toBeTruthy();
     expect(screen.queryByRole("list")).toBeNull();
   });
 

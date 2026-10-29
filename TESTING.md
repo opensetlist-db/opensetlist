@@ -74,6 +74,16 @@ the separate actual-dev-data 18-image review matrix and legacy comparisons.
 metadata/escaping and a few actual CLI validation/dev-guard processes without
 a DB. See [the publication runbook](docs/event-og-publication.md).
 
+`event-og-production.test.ts` checks the owner-dispatched hosted operation
+boundary without production credentials: exact Fes2 scope, explicit approval,
+deployed commit/artifact identity, environment separation and actual local CLI
+refusal. It does not execute the production workflow or prove live CDN/X.
+
+`event-og-preview-archive.test.ts` checks authenticated encryption/decryption
+of actual PNG/manifest/evidence bytes, tamper/path/overwrite refusal and the
+offline CLI. It also checks secret isolation and the encrypted-only workflow
+artifact boundary. No production credentials, DB or storage are used.
+
 `npm test` never opens a connection: the files that import
 `@/lib/prisma` either `vi.mock` it or `vi.spyOn` the methods they call
 (importing the client builds a pool but connects only on a query). Keep
@@ -96,6 +106,7 @@ know what each suite leaves behind:
 | `board-picks.test.ts` | **writes** | artist, song, series, event, setlist item, `BoardPick` rows; `afterAll` deletes them |
 | `board-wishes.test.ts` | **writes** | artists, songs, series, event, `SongWish` rows; `afterAll` deletes them |
 | `member-order.test.ts` | **writes** | artist, event, stage identity, performers; `afterAll` deletes them |
+| `official-order.test.ts` | **writes** | `officialorder-itest-` artists, identities, relations, event, explicit voice, song and historical item in a rolled-back transaction; fixed-prefix purge before/after handles interrupted fixtures |
 | `n14-live-path.test.ts` | **writes** | event, setlist items, reactions, wishes, confirms; also joins the dev Supabase Realtime channel (anon key) and broadcasts; `afterAll` deletes the rows |
 | `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
@@ -174,6 +185,8 @@ the skip count.
 | `event-og-publication.spec.ts` | **writes**, explicitly skipped unless `EVENT_CARD_R2_E2E=1` | dev DB + `opensetlist-images-dev` bucket + `R2_KEY_PREFIX=test`; writes nine retained PNGs, logs exact keys, purges/cleans only `og02e2e-` fixtures; actual nine normal/Twitterbot HTML+PNG responses, CLI retry, canonical auto-navigation and JS-free mobile/keyboard fallback; requires matching production `TEST_BASE_URL` / `NEXT_PUBLIC_BASE_URL` |
 | `event-og-correction.spec.ts` | **writes**, explicitly skipped unless `EVENT_CARD_R2_E2E=1` | same dev DB/bucket/test guards; fixed `og03e2e-` fixture cleaned with its history; retains twelve PNGs with exact keys; three-locale old OG/PNG preservation, no automatic navigation, accessible mobile/keyboard/JS-free notice and explicit latest link, latest/unrelated-mode normal navigation; matching production base URLs required |
 | `event-og-suspension.spec.ts` | **writes and exact-key revocation**, skipped unless `EVENT_CARD_R2_E2E=1` | dev DB/bucket/test and uncached r2.dev only; creates nine synthetic PNGs, revokes exactly three prediction keys, retains six; own `og04e2e-` fixture/history/fences cleaned; partial CLI then same-ID retry, old image404, three neutral notices/mobile/keyboard/no-JS, unaffected modes; custom-domain CDN purge remains a separate unverified live requirement |
+| `event-og-rollout.spec.ts` | **writes and exact-key revocation**, skipped unless `EVENT_CARD_R2_E2E=1` | matching local production build or deployed Preview + dev DB/bucket/test;12 new synthetic PNGs,6 prediction keys explicitly revoked,6 other-mode keys retained; fixed `og05e2e-` fixture/history/fences cleaned; all-locale normal/Twitterbot identities, actual PNG hashes/dimensions, navigation/fallback, real venue correction, both corrected source and replacement suspension, deleted/restored and invalid tuples; GET ECONNRESET alone retries once, no HTTP/write retries; no live cached-domain/X proof |
+| `event-og-regression.spec.ts` | GET only; skipped unless `EVENT_CARD_REGRESSION_E2E=1` | real catalog2/109 and actual predicted/final phases; isolated browser localStorage, API writes intercepted and blocked before server; six downloaded personal PNGs with content/score/hash and three fan-board clipboard URLs/group navigation; no saved ballot or SNS posts |
 | `seo-canonical.spec.ts` | GET only | events in the sitemap |
 | `setlist-unknown-song.spec.ts` | **writes** | `E2E_UNKNOWN_SONG_EVENT_ID`, `E2E_MULTI_ALBUM_SONG_ID`, `ADMIN_PASSWORD` |
 

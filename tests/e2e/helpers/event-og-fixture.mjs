@@ -13,8 +13,8 @@ for (const name of ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]) if (!pointsAtDevPr
 installTypeScriptResolver(root);
 const { prisma: db } = await import(pathToFileURL(path.join(root, "src/lib/prisma.ts")).href);
 const suite = process.env.EVENT_CARD_E2E_SUITE ?? "publication";
-if (!["publication", "correction", "suspension"].includes(suite)) throw new Error("Unknown event-card E2E suite");
-const PREFIX = { publication: "og02e2e-", correction: "og03e2e-", suspension: "og04e2e-" }[suite];
+if (!["publication", "correction", "suspension", "rollout"].includes(suite)) throw new Error("Unknown event-card E2E suite");
+const PREFIX = { publication: "og02e2e-", correction: "og03e2e-", suspension: "og04e2e-", rollout: "og05e2e-" }[suite];
 const hash = (b) => createHash("sha256").update(b).digest("hex");
 async function purge() {
   const ids = (await db.event.findMany({ where: { slug: { startsWith: PREFIX } }, select: { id: true } })).map((e) => e.id);
@@ -54,15 +54,24 @@ try {
     const evidenceFile = path.join(folder, "fixture-approval.txt");
     await writeFile(evidenceFile, "Synthetic QA publication: dev only. Owner-authorized ticket02 verification; no production approval.");
     const storage = getImageStorage(); const published = [];
-    for (const mode of ["prediction", "live", "setlist"]) {
-      const revision = randomUUID(); const approvalFile = path.join(folder, `${mode}-approval.json`);
+    const publishMode = async (mode, manifest, manifestFile, label = mode) => {
+      const revision = randomUUID(); const approvalFile = path.join(folder, `${label}-approval.json`);
       const outputs = Object.fromEntries(manifest.renditions.filter((r) => r.mode === mode).map((r) => [r.locale, manifest.files.find((f) => f.file === r.file).sha256]));
       await writeFile(approvalFile, JSON.stringify({ kind: "owner-reviewed-event-card", eventId, mode, previewId: manifest.previewId, outputs, evidenceFile, evidenceSha256: hash(await readFile(evidenceFile)) }));
       const keys = ["ja", "ko", "en"].map((locale) => `test/event-cards/${eventId}/${mode}/${revision}/${locale}.png`);
       console.error("[event-og-e2e] retained keys", JSON.stringify(keys));
-      await writeFile(path.join(folder, `${mode}-keys.json`), JSON.stringify(keys, null, 2));
+      await writeFile(path.join(folder, `${label}-keys.json`), JSON.stringify(keys, null, 2));
       const result = await publishPreview({ root, manifestFile, approvalFile, eventId, mode, revision }, { storage, origin: process.env.TEST_BASE_URL });
-      published.push({ mode, revision, urls: result.urls, hashes: outputs, approvalFile, manifestFile });
+      return { mode, revision, urls: result.urls, hashes: outputs, approvalFile, manifestFile };
+    };
+    for (const mode of ["prediction", "live", "setlist"]) published.push(await publishMode(mode, manifest, manifestFile));
+    if (suite === "rollout") {
+      // A genuine source edit and freshly rendered/reviewed synthetic packet:
+      // the older publication must retain the original venue/PNG afterward.
+      await db.event.update({ where: { id: row.id }, data: { originalVenue: "Development QA corrected venue" } });
+      const replacementFile = path.join(folder, "replacement-packet/manifest.json");
+      const replacement = await preparePreview({ root, events: await readCardEvents(db, [eventId]), output: path.dirname(replacementFile) });
+      published.push(await publishMode("prediction", replacement, replacementFile, "replacement"));
     }
     const result = { eventId, slug, folder, published };
     await writeFile(path.join(folder, "publications.json"), JSON.stringify(result, null, 2));

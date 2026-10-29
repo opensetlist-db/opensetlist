@@ -100,7 +100,6 @@ describe("<FanBoardSection> aggregate freshness", () => {
     vi.setSystemTime("2026-10-24T00:00:00Z");
     return renderBlock();
   }
-  const changed = { ...READY, groups: [group("1", "hasunosora", "Updated group")] };
 
   it("does not poll or refresh on tab switches before or after the show", async () => {
     respond(READY);
@@ -113,54 +112,6 @@ describe("<FanBoardSection> aggregate freshness", () => {
     vi.setSystemTime(LOCK);
     await advance(120_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("refreshes after publishing and preserves the manual group selection", async () => {
-    window.location.hash = "#board-aqours";
-    respond(READY);
-    const view = start();
-    await advance(0);
-    fireEvent.click(screen.getByRole("tab", { name: "Liella!" }));
-    view.rerender(<FanBoardSection eventId="107" locale="ko" seed={SEED} picksRevision={1} />);
-    await advance(0);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("tab", { name: "Liella!" })).toHaveAttribute("aria-selected", "true");
-  });
-
-  it("retains the board after a failed refresh and recovers on explicit retry", async () => {
-    respond(READY);
-    const view = start();
-    await advance(0);
-    respond({}, 500);
-    view.rerender(<FanBoardSection eventId="107" locale="ko" seed={SEED} picksRevision={1} />);
-    await advance(0);
-    expect(screen.getByText("refreshError")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "蓮ノ空" })).toBeTruthy();
-    await advance(240_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    respond(changed);
-    fireEvent.click(screen.getByRole("button", { name: "retryRefresh" }));
-    await advance(0);
-    expect(screen.getByRole("tab", { name: "Updated group" })).toBeTruthy();
-    expect(screen.queryByText("refreshError")).toBeNull();
-  });
-
-  it("keeps the board on a read timeout and cancels its deadline on unmount", async () => {
-    respond(READY);
-    const view = start();
-    await advance(0);
-    fetchMock.mockImplementation((_url: string, init: RequestInit) =>
-      new Promise((_resolve, reject) => {
-        init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-      }),
-    );
-    view.rerender(<FanBoardSection eventId="107" locale="ko" seed={SEED} picksRevision={1} />);
-    await advance(BOARD_TIMEOUT_MS);
-    expect(screen.getByText("refreshError")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "retryRefresh" }));
-    view.unmount();
-    await advance(BOARD_TIMEOUT_MS * 2);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -206,14 +157,16 @@ describe("<FanBoardSection>", () => {
     expect(screen.getByRole("tab", { name: "蓮ノ空" }).getAttribute("aria-selected")).toBe("true");
   });
 
-  it("the header is one short open-until line — no as-of stamp, no clock time", async () => {
+  it("the header is one short save-note line — no as-of stamp, no clock time", async () => {
     respond(READY);
     renderBlock();
     await screen.findAllByText("残陽");
     const line = screen.getByRole("heading", { level: 2 }).nextElementSibling;
     // The mock renders `key(args)` when a message gets arguments, so an
-    // exact "openUntil" also proves no `{time}` is passed any more.
-    expect(line?.textContent).toBe("openUntil");
+    // exact "saveNote" also proves no `{time}` is passed. It already says
+    // "until the show starts", so there is no separate open-until line.
+    expect(line?.textContent).toBe("saveNote");
+    expect(screen.queryByText("openUntil")).toBeNull();
     expect(screen.queryByText(/asOf/)).toBeNull();
   });
 
