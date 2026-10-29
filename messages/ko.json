@@ -1,4 +1,9 @@
 {
+  "EventShareCard": {
+    "prediction": "세트리스트 예상",
+    "live": "실황 세트리스트",
+    "setlist": "공개 세트리스트"
+  },
   "Home": {
     "title": "오픈세트리스트",
     "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
@@ -865,5 +870,16 @@
     "memberTitleNoGroup": "{name} | 가창곡·출연 공연 | OpenSetlist",
     "seriesTitle": "{name} 전 공연 세트리스트 | OpenSetlist",
     "seriesDescription": "{name} 전 공연의 세트리스트와 곡 순서"
+  },
+  "EventSharePage": {
+    "heading": "OpenSetlist 이벤트 공유 카드",
+    "opening": "이벤트 상세 페이지로 이동합니다. 이동하지 않으면 아래 링크를 선택해 주세요.",
+    "open": "이벤트 상세 열기",
+    "correctionHeading": "이 공유 카드의 정보가 정정되었습니다",
+    "correctionBody": "기존 카드는 기록으로 보존합니다. 최신 정보는 정정된 카드에서 확인해 주세요.",
+    "openCorrection": "정정된 공유 카드 열기",
+    "correctionUnavailable": "정정된 카드를 현재 이용할 수 없습니다. 아래 링크에서 이벤트 상세를 확인할 수 있습니다.",
+    "suspensionHeading": "이 공유 카드의 공개가 중단되었습니다",
+    "suspensionBody": "이 버전의 카드는 현재 공개하지 않습니다. 최신 이벤트 정보는 아래 링크에서 확인해 주세요."
   }
 }

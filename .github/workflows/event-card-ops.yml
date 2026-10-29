@@ -1,0 +1,102 @@
+name: Event card operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [preview, publish, list, inspect, correct, suspend]
+        required: true
+      request:
+        description: 'Exact JSON target/mode/revision; never include a private reason'
+        type: string
+        required: true
+      confirm:
+        description: 'READ-ONLY or explicit owner approval APPROVE-FES2-CARD'
+        type: string
+        required: true
+      preview_run_id:
+        description: 'Successful preview run from this exact deployed main commit (publish only)'
+        type: string
+      preview_run_attempt:
+        description: 'Exact successful preview attempt whose artifact was reviewed (publish only)'
+        type: string
+      approved_manifest_sha256:
+        description: 'SHA256 of the exact owner-reviewed manifest (publish only)'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  deployments: read
+
+concurrency:
+  group: event-card-production-operations
+  cancel-in-progress: false
+
+jobs:
+  operation:
+    if: github.ref == 'refs/heads/main' && github.actor == 'helloopensetlistdb' && github.triggering_actor == 'helloopensetlistdb'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: EventCardProduction
+    env:
+      NEXT_PUBLIC_BASE_URL: https://opensetlist.com
+      GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+      EVENT_CARD_FES2_TARGETS: ${{ vars.EVENT_CARD_FES2_TARGETS }}
+      EVENT_CARD_PROD_PROJECT_REF: ${{ vars.EVENT_CARD_PROD_PROJECT_REF }}
+      EVENT_CARD_PROD_BUCKET: ${{ vars.EVENT_CARD_PROD_BUCKET }}
+      EVENT_CARD_PUBLICATION_ENABLED: ${{ vars.EVENT_CARD_PUBLICATION_ENABLED }}
+      EVENT_CARD_DELIVERY_PROOF_SHA256: ${{ vars.EVENT_CARD_DELIVERY_PROOF_SHA256 }}
+      R2_BUCKET: ${{ vars.EVENT_CARD_PROD_BUCKET }}
+      R2_KEY_PREFIX: prod
+      R2_PUBLIC_BASE_URL: https://img.opensetlist.com
+      EVENT_CARD_DELIVERY_BASES: ${{ vars.EVENT_CARD_DELIVERY_BASES }}
+      CLOUDFLARE_CACHE_ZONE_ID: ${{ vars.CLOUDFLARE_CACHE_ZONE_ID }}
+      CLOUDFLARE_CACHE_ZONE_HOST: ${{ vars.CLOUDFLARE_CACHE_ZONE_HOST }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - run: npm ci
+        env:
+          DATABASE_URL: postgresql://unused:unused@127.0.0.1:5432/postgres
+      - name: Verify owner request, deployed commit and preview source
+        run: node scripts/event-og-production.mjs verify
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
+          EVENT_CARD_PREVIEW_ENCRYPTION_KEY: ${{ secrets.EVENT_CARD_PREVIEW_ENCRYPTION_KEY }}
+          EVENT_CARD_PRIVATE_REASON: ${{ secrets.EVENT_CARD_PRIVATE_REASON }}
+      - name: Download the reviewed preview without changing its identity
+        if: inputs.operation == 'publish'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: event-card-preview-${{ inputs.preview_run_id }}-${{ inputs.preview_run_attempt }}
+          path: ${{ runner.temp }}/event-card-input
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.preview_run_id }}
+      - name: Execute one explicitly selected operation
+        run: node scripts/event-og-production.mjs execute
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
+          EVENT_CARD_PREVIEW_ENCRYPTION_KEY: ${{ secrets.EVENT_CARD_PREVIEW_ENCRYPTION_KEY }}
+          EVENT_CARD_PRIVATE_REASON: ${{ secrets.EVENT_CARD_PRIVATE_REASON }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_CACHE_PURGE_TOKEN: ${{ secrets.CLOUDFLARE_CACHE_PURGE_TOKEN }}
+      - name: Retain encrypted preview or explicit public result only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: event-card-${{ inputs.operation }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/event-card-artifacts
+          retention-days: 30
+          if-no-files-found: ignore
