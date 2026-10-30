@@ -297,13 +297,11 @@ model Artist {
   // No-op for type=solo|group (the chip filter only runs over
   // sub-artists, which by construction are units).
   isMainUnit        Boolean        @default(false)
-  // sortOrder: display order among top-level groups on festival
-  // surfaces — the group chips on the fan board and on the prediction
-  // picker. Lower first, null last; ties (and nulls) fall back to the
-  // roster rule (performer count desc, first appearance). Set by the
-  // operator, e.g. by series debut, so a festival lists its series in
-  // franchise order instead of by how many members each brings.
-  // Only read for root artists (parentArtistId IS NULL).
+  // Official display rank at this level of the Artist hierarchy, for
+  // roots AND child units/solo artists. Compare ancestor paths first,
+  // then siblings by rank ASC NULLS LAST and numeric id ASC. A child's
+  // rank is local to its parent, not comparable with a root's rank.
+  // Existing consumers adopt the common officialOrder contract separately.
   sortOrder         Int?
   // isSideProject: a cross-IP side project / collaboration unit — e.g.
   // a unit whose members come from several series — that is a
@@ -384,9 +382,9 @@ model StageIdentity {
   // the operator sets it, e.g. the official site's member order. Lower
   // first; null sorts last and falls back to today's order (createdAt,
   // then id), so members nobody has numbered yet keep their place.
-  // One global number per identity rather than per artist link: a
-  // member's sub-unit lists reuse the same relative order, which is how
-  // official sites list unit members too.
+  // This remains the default member rank. An explicit display context
+  // may override it via StageIdentityArtist.sortOrder; it never changes
+  // this value or historical membership/appearance facts.
   sortOrder         Int?
   createdAt         DateTime          @default(now())
 
@@ -416,6 +414,11 @@ model StageIdentityArtist {
   id              String @id @default(uuid())
   stageIdentityId String
   artistId        BigInt
+
+  // Display metadata for this exact group/unit relation. NULL means
+  // use the default StageIdentity order; ties also use that default.
+  // Independent of membership dates, roles and actual appearances.
+  sortOrder       Int?
 
   startDate DateTime? @db.Date
   endDate   DateTime? @db.Date
@@ -655,6 +658,7 @@ model Event {
   // not joins). Backfilled in prisma/post-deploy.sql; populated on
   // INSERT in src/app/api/reactions/route.ts.
   reactions    SetlistItemReaction[]
+  cardPublications EventCardPublication[]
 
   @@index([eventSeriesId])
   @@index([artistId])
@@ -996,6 +1000,124 @@ model ImageAsset {
 
   eventSeriesLogos EventSeries[] @relation("EventSeriesLogo")
   eventLogos       Event[]       @relation("EventLogo")
+  eventCardRenditions EventCardRendition[]
+}
+
+// A reviewed event-card version owns its complete locale group. Frozen
+// content lives here/in its renditions; later correction/suspension state
+// belongs to the separate annotation row, never to the image payload.
+enum EventCardMode {
+  prediction
+  live
+  setlist
+}
+
+enum EventCardStatus {
+  active
+  corrected
+  suspended
+}
+
+model EventCardPublication {
+  id             String @id
+  eventId        BigInt
+  mode           EventCardMode
+  namespace      String
+  fingerprint    String
+  previewId      String
+  approvalSha256 String
+  identity       Json
+  createdAt      DateTime @default(now())
+  event          Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  renditions     EventCardRendition[]
+  annotation     EventCardAnnotation?
+  correctionsMade EventCardCorrection[] @relation("CardCorrectionSource")
+  correctionsReceived EventCardCorrection[] @relation("CardCorrectionTarget")
+  suspension     EventCardSuspension?
+  @@index([eventId, mode, createdAt])
+}
+
+model EventCardRendition {
+  publicationId String
+  locale        String
+  assetId       String
+  sha256        String
+  content       Json
+  publication   EventCardPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  asset         ImageAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  @@id([publicationId, locale])
+  @@index([assetId])
+}
+
+model EventCardAnnotation {
+  publicationId String @id
+  version       Int @default(0)
+  // Operations that change these fields are separate from frozen content.
+  status        EventCardStatus @default(active)
+  replacementId String?
+  privateReason String?
+  updatedAt     DateTime @updatedAt
+  publication   EventCardPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+}
+
+// Append-only operator decisions. The mutable annotation is only the current
+// pointer; operation ids and versions preserve retries and superseded reasons.
+model EventCardCorrection {
+  id                    String @id
+  publicationId         String
+  replacementId         String
+  previousReplacementId String?
+  previousStatus        EventCardStatus
+  fromVersion           Int
+  toVersion             Int
+  fingerprint           String
+  privateReason         String
+  createdAt             DateTime @default(now())
+  publication           EventCardPublication @relation("CardCorrectionSource", fields: [publicationId], references: [id], onDelete: Restrict)
+  replacement           EventCardPublication @relation("CardCorrectionTarget", fields: [replacementId], references: [id], onDelete: Restrict)
+  @@unique([publicationId, toVersion])
+  @@index([replacementId])
+}
+
+// A durable writer fence survives a lost DB connection while an origin PUT
+// is still uncertain. Suspension cannot claim complete delivery revocation
+// while such a write could recreate a removed key. No automatic expiry.
+model EventCardWriteAttempt {
+  id            String @id @default(uuid())
+  publicationId String
+  eventId       BigInt
+  namespace     String
+  createdAt     DateTime @default(now())
+  settledAt     DateTime?
+  @@index([publicationId, settledAt])
+  @@index([namespace])
+}
+
+// One immutable suspension decision; retries append delivery attempts rather
+// than replacing its private reason or erasing earlier partial failures.
+model EventCardSuspension {
+  id                    String @id
+  publicationId         String @unique
+  previousStatus        EventCardStatus
+  previousReplacementId String?
+  fromVersion           Int
+  toVersion             Int
+  fingerprint           String
+  privateReason         String
+  targets               Json
+  createdAt             DateTime @default(now())
+  publication           EventCardPublication @relation(fields: [publicationId], references: [id], onDelete: Restrict)
+  attempts              EventCardSuspensionAttempt[]
+}
+
+model EventCardSuspensionAttempt {
+  id           String @id @default(uuid())
+  suspensionId String
+  startedAt    DateTime @default(now())
+  completedAt  DateTime?
+  report       Json?
+  suspension   EventCardSuspension @relation(fields: [suspensionId], references: [id], onDelete: Restrict)
+  @@index([suspensionId, startedAt])
 }
 
 // ── ALBUM ─────────────────────────────────────────────

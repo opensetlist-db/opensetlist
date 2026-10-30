@@ -1,4 +1,9 @@
 {
+  "EventShareCard": {
+    "prediction": "Setlist predictions",
+    "live": "Live setlist",
+    "setlist": "Published setlist"
+  },
   "Home": {
     "title": "OpenSetlist",
     "description": "Open setlist database for live events (JP/EN/KR)",
@@ -865,5 +870,16 @@
     "memberTitleNoGroup": "{name} | Songs & Live Appearances | OpenSetlist",
     "seriesTitle": "{name} — All Setlists | OpenSetlist",
     "seriesDescription": "Setlists and song order for every show of {name}"
+  },
+  "EventSharePage": {
+    "heading": "OpenSetlist event share card",
+    "opening": "Opening the event page. If it does not open, follow the link below.",
+    "open": "Open event details",
+    "correctionHeading": "This share card has been corrected",
+    "correctionBody": "The original card is kept here as a record. Open the updated card for current information.",
+    "openCorrection": "Open the updated share card",
+    "correctionUnavailable": "The updated card is currently unavailable. You can still open the event details below.",
+    "suspensionHeading": "This share card is no longer public",
+    "suspensionBody": "This version of the card is no longer publicly available. Use the link below for current event information."
   }
 }
