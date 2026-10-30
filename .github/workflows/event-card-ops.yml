@@ -37,7 +37,7 @@ concurrency:
 jobs:
   operation:
     if: github.ref == 'refs/heads/main' && github.actor == 'helloopensetlistdb' && github.triggering_actor == 'helloopensetlistdb'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: EventCardProduction
     env:
@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '24'
+          node-version: '24.22.1'
       - run: npm ci
         env:
           DATABASE_URL: postgresql://unused:unused@127.0.0.1:5432/postgres
