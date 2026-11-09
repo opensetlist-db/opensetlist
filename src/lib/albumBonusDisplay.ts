@@ -23,7 +23,7 @@ import type {
   AlbumStoreBonusTranslationModel,
 } from "@/generated/prisma/models";
 import type { BigIntStringified } from "@/lib/utils";
-import { STORE_REGEXES } from "@/lib/storeKeys";
+import { projectPurchaseOptions, type PurchaseListing } from "@/lib/purchaseAvailability";
 
 // BigIntStringified-wrapped because every caller in the b03 chain
 // (`AlbumPurchasePanel` on the album page) receives
@@ -79,65 +79,8 @@ export function resolveBonusType(
   return trans?.bonusType ?? bonus.originalBonusType;
 }
 
-// Schema enum is 4-state (active / sold_out / unknown / ended) but
-// the b03 UI surface is 2-state (Available vs Ended) per the
-// simplification handoff. sold_out + unknown both collapse into the
-// "available" badge — they read as still-buyable to the user, just
-// without confirmation of current stock. ended is the only state
-// that hides the listing behind the toggle.
-export function mapStatusToUiKey(status: string): "active" | "ended" {
-  return status === "ended" ? "ended" : "active";
+export function countActiveBonuses(listings: readonly PurchaseListing[], performanceOnly = false): number {
+  return projectPurchaseOptions(listings, new Date(), { performanceOnly }).bonusCount;
 }
 
-// Identical predicate exposed as a named helper because every caller
-// using mapStatusToUiKey just to branch on === "ended" reads less
-// well than the directly-named guard. The two helpers are kept
-// separate (rather than just exporting one) so a future read site
-// that wants to render the badge text always goes through
-// mapStatusToUiKey while a filter site that just needs the boolean
-// stays terse.
-export function isEndedListing(listing: { status: string }): boolean {
-  return listing.status === "ended";
-}
-
-// Count of "active" bonuses across an album's store listings — the
-// number rendered in the green 特典 N badge on AlbumCard and the
-// "현재" count in the album page's purchase summary. A bonus counts as active
-// when its listing is not `ended` (sold_out + unknown collapse into
-// active per isEndedListing's 2-state mapping — they're still buyable,
-// just unconfirmed). Extracted here, next to isEndedListing, so the
-// Song page sidebar (songAlbums), the Album detail tab dot
-// (album page), and the b09 Artist/Series/Related album surfaces
-// all read the same number — the "tab badge says 5, sidebar says 4"
-// divergence earlier Album work hit came from this formula being
-// copy-pasted into each call site.
-//
-// Structural input only: each listing needs a `status` string and a
-// `bonuses` array whose length is the per-listing contribution. The
-// elements themselves are never inspected, so `unknown[]` keeps the
-// helper agnostic to whichever bonus include shape the caller fetched.
-export function countActiveBonuses(
-  listings: ReadonlyArray<{ status: string; bonuses: ReadonlyArray<unknown> }>,
-): number {
-  return listings
-    .filter((l) => !isEndedListing(l))
-    .reduce((sum, l) => sum + l.bonuses.length, 0);
-}
-
-// Canonical analytics store key from the free-text `originalStoreName`.
-// The schema has no normalized store-key column (operator types
-// "Amazon JP" / "amazon_jp" / "アマゾン" freely — see the
-// AlbumStoreListing schema comment), so the b10c `store_click` event +
-// the album page's `has_amazon_listing` flag need a stable key derived
-// at read time. Patterns come from the shared `STORE_REGEXES` list
-// (src/lib/storeKeys.ts) — the same source eventBdState's STORE_PRIORITY
-// derives from, so the analytics key and the BD-preview sort rank can't
-// drift. First match wins; anything unmatched is `other` so the funnel
-// never drops a click.
-export function resolveStoreKey(storeName: string | null | undefined): string {
-  if (!storeName) return "other";
-  for (const [pattern, key] of STORE_REGEXES) {
-    if (pattern.test(storeName)) return key;
-  }
-  return "other";
-}
+export { resolveStoreKey } from "@/lib/storeKeys";

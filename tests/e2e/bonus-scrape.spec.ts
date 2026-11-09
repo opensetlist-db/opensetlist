@@ -20,7 +20,7 @@ import { readCrossLinkSampleIds } from "./helpers/sampleIds";
  * admin half is intentionally deferred, documented here so it's explicit
  * rather than a silent gap).
  *
- * Sample id from env (E2E_BONUS_ALBUM_ID = an album with ≥1 active store
+ * Sample id from env (E2E_BONUS_ALBUM_ID = an album with ≥1 eligible active store
  * listing). Missing var skips.
  */
 
@@ -59,7 +59,7 @@ test.describe("Album 매장特典 tab — bonus-scrape public output (b10)", () 
     // an applied listing rendered (an empty bonus tab shows the
     // Album.bonus.empty placeholder instead, which has no such link).
     const buyLink = page
-      .locator('main a[target="_blank"][href^="http"]')
+      .getByTestId("purchase-option").getByRole("link")
       .first();
     await expect(buyLink).toBeVisible();
     await expect(buyLink).toHaveAttribute("href", /^https?:\/\//);

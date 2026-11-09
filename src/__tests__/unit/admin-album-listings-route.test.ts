@@ -141,11 +141,7 @@ describe("POST /api/admin/album-listings", () => {
     expect(call.data.productUrl).toBeNull();
   });
 
-  it("does NOT set the dropped lifecycle columns on create", async () => {
-    // The handoff drops sourceUrl/startsAt/endsAt/lastVerifiedAt from
-    // the admin form. A POST that omits them shouldn't end up writing
-    // any of those keys — Prisma's default-null handles the schema
-    // side, and we want to confirm the route isn't sneaking them in.
+  it("leaves omitted lifecycle fields unset on create", async () => {
     (prisma.albumStoreListing.create as ReturnType<typeof vi.fn>).mockResolvedValue(
       { id: "uuid-1", albumId: BigInt(1), originalStoreName: "amazon_jp" },
     );
@@ -154,7 +150,7 @@ describe("POST /api/admin/album-listings", () => {
     );
     const call = (prisma.albumStoreListing.create as ReturnType<typeof vi.fn>)
       .mock.calls[0][0];
-    expect("sourceUrl" in call.data).toBe(false);
+    expect(call.data.sourceUrl).toBeUndefined();
     expect("startsAt" in call.data).toBe(false);
     expect("endsAt" in call.data).toBe(false);
     expect("lastVerifiedAt" in call.data).toBe(false);
@@ -228,10 +224,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
     ]);
   });
 
-  it("does NOT touch the dropped lifecycle columns on update", async () => {
-    // Per the handoff, PATCH must preserve pre-existing values in
-    // sourceUrl/startsAt/endsAt/lastVerifiedAt that may have been
-    // set by CSV import or an earlier UI iteration.
+  it("preserves omitted lifecycle fields on update", async () => {
     (
       prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ id: "list-uuid" });
@@ -246,7 +239,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
     const updateCall = (
       prisma.albumStoreListing.update as ReturnType<typeof vi.fn>
     ).mock.calls[0][0];
-    expect("sourceUrl" in updateCall.data).toBe(false);
+    expect(updateCall.data.sourceUrl).toBeUndefined();
     expect("startsAt" in updateCall.data).toBe(false);
     expect("endsAt" in updateCall.data).toBe(false);
     expect("lastVerifiedAt" in updateCall.data).toBe(false);

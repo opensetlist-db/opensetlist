@@ -1,3 +1,4 @@
+import { parseBonusPurchaseFields, PurchaseInputError } from "@/lib/adminPurchaseFields";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -8,25 +9,12 @@ import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
-type PatchBody = {
+type PatchBody = Record<string, unknown> & {
   originalBonusType?: unknown;
   originalLanguage?: unknown;
   translations?: unknown;
 };
 
-/**
- * PATCH /api/admin/album-bonuses/[id]
- *
- *   listingId is NOT mutable — moving a bonus between listings should
- *   go through delete-then-create so the audit trail (when a05 ships)
- *   stays sane. Translations replaced delete-then-create inside a
- *   $transaction.
- *
- *   Bonus-level lifecycle columns (`startsAt`, `endsAt`,
- *   `bonusImageUrl`, `originalBonusDescription`) intentionally NOT
- *   touched — pre-existing non-null values from CSV import or an
- *   earlier UI iteration stay intact.
- */
 export async function PATCH(request: NextRequest, { params }: RouteProps) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
@@ -39,6 +27,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   let body: PatchBody;
   try {
     body = (await request.json()) as PatchBody;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
   } catch {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
@@ -74,6 +63,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     : [];
 
   try {
+    const purchase = parseBonusPurchaseFields(body);
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.albumStoreBonus.findUnique({
         where: { id },
@@ -100,6 +90,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       return tx.albumStoreBonus.update({
         where: { id },
         data: {
+          ...purchase,
           originalBonusType: (body.originalBonusType as string).trim(),
           originalLanguage,
           translations:
@@ -120,6 +111,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
+    if (e instanceof PurchaseInputError) return NextResponse.json({ error: e.message }, { status: 400 });
     // Race window: in-tx findUnique passed but a concurrent DELETE
     // removed the row before update landed.
     if (

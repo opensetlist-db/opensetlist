@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
 import type { Prisma } from "@/generated/prisma/client";
 import {
   resolveEventBdState,
@@ -112,21 +113,7 @@ export async function EventBdSection({ event, locale, referenceNow }: Props) {
       status: event.status,
       bdAlbumId: event.bdAlbumId,
     },
-    album
-      ? {
-          releaseDate: album.releaseDate,
-          listings: album.listings.map((l) => ({
-            status: l.status,
-            startsAt: l.startsAt,
-            endsAt: l.endsAt,
-            bonuses: l.bonuses.map((b) => ({
-              startsAt: b.startsAt,
-              endsAt: b.endsAt,
-              bonusImageUrl: b.bonusImageUrl,
-            })),
-          })),
-        }
-      : null,
+    album,
     referenceNow,
   );
 
@@ -214,13 +201,7 @@ async function FullVariant({
   // block in that case.
   const showsBonuses = state === "bd_preorder" || state === "bd_released";
   const topBonuses = showsBonuses
-    ? selectTopBonuses(
-        album.listings.map((l) => ({
-          ...l,
-          originalStoreName: l.originalStoreName,
-        })),
-        referenceNow,
-      )
+    ? selectTopBonuses(album.listings, referenceNow)
     : [];
 
   // Status badge — three label variants matching the v2 mockup.
@@ -231,7 +212,8 @@ async function FullVariant({
   // CTA: details (announced, neutral), compare (preorder, brand
   // gradient), purchase (released, brand gradient). All three link
   // to the Album page where the full listing + bonus catalog lives.
-  const cta = pickCta(state, t);
+  const { bonusCount, basicOptions } = projectPurchaseOptions(album.listings, referenceNow, { performanceOnly: true });
+  const cta = pickCta(bonusCount > 0 || basicOptions.length > 0 ? state : "bd_announced", t);
 
   return (
     <section

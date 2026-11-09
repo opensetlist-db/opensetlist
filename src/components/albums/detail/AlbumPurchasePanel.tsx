@@ -2,18 +2,15 @@ import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { TrackedStoreLink } from "@/components/TrackedStoreLink";
 import {
-  countActiveBonuses,
-  isEndedListing,
-  mapStatusToUiKey,
   resolveBonusType,
   resolveEditionLabel,
   resolveStoreKey,
   resolveStoreName,
 } from "@/lib/albumBonusDisplay";
-import { isSafeExternalUrl, type BigIntStringified } from "@/lib/utils";
+import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
+import { formatDate, formatTime, isSafeExternalUrl, type BigIntStringified } from "@/lib/utils";
 import styles from "./albumDetail.module.css";
 
-// Wire shape after the page's `serializeBigIntAsString`.
 export type AlbumForPurchase = BigIntStringified<
   Prisma.AlbumGetPayload<{
     include: {
@@ -27,117 +24,113 @@ export type AlbumForPurchase = BigIntStringified<
   }>
 >;
 
-/*
- * Purchase tab of the Album detail page (22-v1): a store-bonus summary,
- * current listings as a two-column card grid (one column under 768px),
- * ended listings collapsed underneath.
- *
- * Data rules kept from the pre-redesign bonus tab:
- *   - "Current" = every listing whose status is not `ended` (sold_out and
- *     unknown included — `isEndedListing`). The page promises nothing
- *     about live retailer stock.
- *   - The buy link is the operator's productUrl verbatim, only when it is
- *     an http(s) URL (`isSafeExternalUrl` keeps `javascript:` out of the
- *     href), new tab with noopener/noreferrer, through TrackedStoreLink
- *     so `store_click` keeps firing with surface `album_page` and
- *     `isAffiliate: false`. Ended listings get no buy link.
- *   - Store / edition / bonus-type names follow the locale → original
- *     fallback in `albumBonusDisplay`. Bonus descriptions, images and
- *     lifecycle dates stay unrendered, as before.
- *
- * The summary box carries the counts the old sidebar chips showed
- * (total incl. ended / current / ended), so they stayed on the page when
- * the sidebar went away.
- */
 export async function AlbumPurchasePanel({
   album,
   locale,
+  now = new Date(),
+  performanceOnly = false,
 }: {
   album: AlbumForPurchase;
   locale: string;
+  now?: Date;
+  performanceOnly?: boolean;
 }) {
   const t = await getTranslations({ locale, namespace: "Album" });
+  const { bonusStores, basicOptions } = projectPurchaseOptions(album.listings, now, { performanceOnly });
+  const officialUrl = album.listings
+    .filter((listing) => !performanceOnly || listing.includesPerformanceVideo !== false)
+    .map((listing) => listing.sourceUrl).find(isSafeExternalUrl);
+  const hasOptions = bonusStores.length > 0 || basicOptions.length > 0;
 
-  // 22-v1 empty states are the bare panel, the same on all three tabs.
-  if (album.listings.length === 0) {
-    return (
-      <div className={`${styles.panel} ${styles.empty}`}>
-        {t("bonus.empty")}
-      </div>
-    );
-  }
-
-  const current = album.listings.filter((l) => !isEndedListing(l));
-  const ended = album.listings.filter(isEndedListing);
-  // Same partition the tab badge and dot use (`countActiveBonuses`), so
-  // the summary cannot drift from them.
-  const total = album.listings.reduce((s, l) => s + l.bonuses.length, 0);
-  const currentBonuses = countActiveBonuses(album.listings);
-
-  const card = (listing: AlbumForPurchase["listings"][number]) => {
-    const isEnded = isEndedListing(listing);
+  type Listing = AlbumForPurchase["listings"][number];
+  const option = (listing: Listing & { productUrl: string }, bonuses: Listing["bonuses"] = []) => {
     const edition = resolveEditionLabel(listing, locale);
+    const store = resolveStoreName(listing, locale);
     return (
-      <article
-        key={listing.id}
-        className={`${styles.store} ${isEnded ? styles.storeEnded : ""}`}
-      >
-        <div className={styles.storeHeading}>
-          <div>
-            <h3>{resolveStoreName(listing, locale)}</h3>
-            {edition ? <p className={styles.edition}>{edition}</p> : null}
-          </div>
-          <span className={styles.storeStatus}>
-            {t(`bonus.status.${mapStatusToUiKey(listing.status)}`)}
-          </span>
-        </div>
-        {listing.bonuses.length > 0 ? (
+      <div key={listing.id} className={styles.purchaseOption} data-testid="purchase-option">
+        {edition && <p className={styles.edition}>{edition}</p>}
+        {listing.selectionGuide && <p>{listing.selectionGuide}</p>}
+        {bonuses.length > 0 && (
           <ul className={styles.bonusList}>
-            {listing.bonuses.map((bonus) => (
-              <li key={bonus.id}>{resolveBonusType(bonus, locale)}</li>
-            ))}
+            {bonuses.map((bonus) => {
+              const label = resolveBonusType(bonus, locale);
+              const description = bonus.translations?.find((entry) => entry.locale === locale)?.bonusDescription
+                ?? bonus.originalBonusDescription;
+              return (
+                <li key={bonus.id}>
+                  {isSafeExternalUrl(bonus.bonusImageUrl) && (
+                    // eslint-disable-next-line @next/next/no-img-element -- bonus images use the approved storage URL directly.
+                    <img src={bonus.bonusImageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className={styles.bonusImage} />
+                  )}
+                  <strong>{label}</strong>
+                  {description && <p>{description}</p>}
+                  {bonus.endsAt && (
+                    <p className={styles.edition}>
+                      {t("bonus.deadline", {
+                        time: formatDate(bonus.endsAt, locale, { dateStyle: "medium", timeZone: "UTC" })
+                          + " " + formatTime(bonus.endsAt, locale, { timeStyle: "short", timeZone: "UTC" }) + " UTC",
+                      })}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
           </ul>
-        ) : null}
-        {!isEnded && isSafeExternalUrl(listing.productUrl) ? (
-          <TrackedStoreLink
-            href={listing.productUrl}
-            albumId={String(album.id)}
-            storeKey={resolveStoreKey(listing.originalStoreName)}
-            storeStatus={listing.status}
-            surface="album_page"
-            isAffiliate={false}
-            className={styles.buy}
-          >
-            {t("bonus.buy")}
-            <span aria-hidden="true">↗</span>
-          </TrackedStoreLink>
-        ) : null}
-      </article>
+        )}
+        <TrackedStoreLink
+          href={listing.productUrl}
+          albumId={String(album.id)}
+          storeKey={resolveStoreKey(listing.originalStoreName)}
+          storeStatus={listing.status}
+          surface="album_page"
+          isAffiliate={false}
+          className={styles.buy}
+        >
+          {t("bonus.buyAt", { store })}
+          <span aria-hidden="true">↗</span>
+        </TrackedStoreLink>
+      </div>
     );
   };
 
   return (
     <>
       <h2 className={styles.purchaseHeading}>{t("tab.bonus")}</h2>
-      {total > 0 ? (
-        <div className={styles.bonusSummary}>
-          <strong>{t("stats.bonusSectionLabel")}</strong>
-          <span>{t("bonus.summary.total", { count: total })}</span>
-          <span>{t("bonus.summary.current", { count: currentBonuses })}</span>
-          <span>
-            {t("bonus.summary.ended", { count: total - currentBonuses })}
-          </span>
-        </div>
-      ) : null}
-      {current.length > 0 ? (
-        <div className={styles.storeGrid}>{current.map(card)}</div>
-      ) : null}
-      {ended.length > 0 ? (
-        <details className={styles.endedList}>
-          <summary>{t("bonus.showEnded", { count: ended.length })}</summary>
-          <div className={styles.storeGrid}>{ended.map(card)}</div>
-        </details>
-      ) : null}
+      {bonusStores.length > 0 && (
+        <section className={styles.purchaseSection} aria-label={t("bonus.options")}>
+          <div className={styles.bonusSummary}>
+            <strong>{t("bonus.options")}</strong>
+            <span>{t("bonus.storeCount", { count: bonusStores.length })}</span>
+          </div>
+          <div className={styles.storeGrid}>
+            {bonusStores.map(({ key, options }) => (
+              <article key={key} className={styles.store}>
+                <h3>{resolveStoreName(options[0].listing, locale)}</h3>
+                {options.map(({ listing, bonuses }) => option(listing, bonuses))}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {basicOptions.length > 0 && (
+        <section className={styles.purchaseSection}>
+          <h3>{t("bonus.basicOptions")}</h3>
+          <div className={styles.storeGrid}>
+            {basicOptions.map((listing) => (
+              <article key={listing.id} className={styles.store}>
+                <h4>{resolveStoreName(listing, locale)}</h4>
+                {option(listing)}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {!hasOptions && <p className={`${styles.panel} ${styles.empty}`}>{t("bonus.empty")}</p>}
+      {officialUrl && (
+        <a className={styles.buy} href={officialUrl} target="_blank" rel="noopener noreferrer">
+          {t("bonus.officialInfo")} <span aria-hidden="true">↗</span>
+        </a>
+      )}
     </>
   );
 }

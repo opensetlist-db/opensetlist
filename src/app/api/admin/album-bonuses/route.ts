@@ -1,3 +1,4 @@
+import { parseBonusPurchaseFields, PurchaseInputError } from "@/lib/adminPurchaseFields";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -6,27 +7,13 @@ import { verifyAdminAPI } from "@/lib/admin-auth";
 import { parseBonusTranslations } from "@/lib/adminParsers";
 import { revalidatePublicData } from "@/lib/dataCache";
 
-type CreateBody = {
+type CreateBody = Record<string, unknown> & {
   listingId?: unknown;
   originalBonusType?: unknown;
   originalLanguage?: unknown;
   translations?: unknown;
 };
 
-/**
- * POST /api/admin/album-bonuses
- *
- *   Body: see CreateBody
- *   → 201 { ...bonus }
- *   → 400 invalid input
- *   → 401 unauthorized
- *   → 404 listing not found
- *
- * No unique constraint on (listingId, bonusType) by design — multiple
- * character/design variants on the same listing are intentional (e.g.
- * three 蓮ノ空 unit-themed タペストリー on one Amazon edition; the
- * operator marks the variant inside `originalBonusType` itself).
- */
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
@@ -34,6 +21,7 @@ export async function POST(request: NextRequest) {
   let body: CreateBody;
   try {
     body = (await request.json()) as CreateBody;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
   } catch {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
@@ -61,8 +49,10 @@ export async function POST(request: NextRequest) {
       : "ja";
 
   try {
+    const purchase = parseBonusPurchaseFields(body);
     const created = await prisma.albumStoreBonus.create({
       data: {
+        ...purchase,
         listingId,
         originalBonusType: (body.originalBonusType as string).trim(),
         originalLanguage,
@@ -75,6 +65,7 @@ export async function POST(request: NextRequest) {
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(created), { status: 201 });
   } catch (e) {
+    if (e instanceof PurchaseInputError) return NextResponse.json({ error: e.message }, { status: 400 });
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2003"

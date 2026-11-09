@@ -468,18 +468,9 @@ a.trackRow:focus-visible {
   background: var(--bg-card);
   overflow-wrap: anywhere;
 }
-.storeEnded {
-  background: var(--surface-store-ended);
-  color: var(--text-secondary);
-}
-
-.storeHeading {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.storeHeading h3 {
+.store h3,
+.store h4,
+.purchaseSection h3 {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
@@ -491,17 +482,21 @@ a.trackRow:focus-visible {
   font-size: 12px;
 }
 
-.storeStatus {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  border-radius: 5px;
-  background: var(--status-upcoming-surface);
-  color: var(--status-upcoming-text);
-  font-size: 12px;
+.purchaseSection {
+  margin-bottom: 24px;
 }
-.storeEnded .storeStatus {
-  background: var(--surface-store-ended-status);
-  color: var(--text-secondary);
+.purchaseOption {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.bonusImage {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  margin-bottom: 8px;
 }
 
 .bonusList {
@@ -682,7 +677,7 @@ a.trackRow:focus-visible {
   .store {
     padding: 18px 16px;
   }
-  .storeHeading h3 {
+  .store h3 {
     font-size: 16px;
   }
   .bonusSummary {

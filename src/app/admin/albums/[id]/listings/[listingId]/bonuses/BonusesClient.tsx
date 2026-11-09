@@ -6,12 +6,7 @@ import AlbumBonusFormModal, {
   type BonusInitial,
 } from "@/components/admin/AlbumBonusFormModal";
 
-export type BonusRow = {
-  id: string;
-  originalBonusType: string;
-  originalLanguage: string;
-  translations: { locale: string; bonusType: string | null }[];
-};
+export type BonusRow = Omit<BonusInitial, "listingId" | "id"> & { id: string };
 
 type Props = {
   listingId: string;
@@ -73,13 +68,7 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
                   <button
                     type="button"
                     onClick={() =>
-                      setModal({
-                        listingId,
-                        originalBonusType: b.originalBonusType,
-                        originalLanguage: b.originalLanguage,
-                        translations: b.translations,
-                        id: b.id,
-                      })
+                      setModal({ ...b, listingId })
                     }
                     className="text-blue-600 hover:underline"
                   >

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { collectBdAlbumIds } from "@/lib/albumHighlights";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
+import type { PurchaseBonus } from "@/lib/purchaseAvailability";
 
 describe("collectBdAlbumIds", () => {
   it("returns the distinct non-null bdAlbumIds", () => {
@@ -47,30 +48,29 @@ describe("collectBdAlbumIds", () => {
 });
 
 describe("countActiveBonuses", () => {
-  it("sums bonuses across non-ended listings", () => {
-    const listings = [
-      { status: "active", bonuses: [{}, {}] },
-      { status: "sold_out", bonuses: [{}] },
-      { status: "unknown", bonuses: [{}] },
-    ];
-    // sold_out + unknown still count as active (buyable, unconfirmed).
-    expect(countActiveBonuses(listings)).toBe(4);
+  const bonus: PurchaseBonus = { startsAt: null, endsAt: null, endedAt: null };
+  const listing = (status: string, bonuses: PurchaseBonus[] = [bonus]) => ({
+    status,
+    bonuses,
+    productUrl: "https://example.com/product",
+    originalStoreName: "Store",
+    includesPerformanceVideo: true,
+    isBonusOption: true,
+    storeKey: "store",
+    officialOrder: null,
+    startsAt: null,
+    endsAt: null,
   });
 
-  it("excludes bonuses on ended listings", () => {
-    const listings = [
-      { status: "active", bonuses: [{}, {}] },
-      { status: "ended", bonuses: [{}, {}, {}] },
-    ];
-    expect(countActiveBonuses(listings)).toBe(2);
-  });
-
-  it("returns 0 when every listing is ended", () => {
-    const listings = [
-      { status: "ended", bonuses: [{}] },
-      { status: "ended", bonuses: [{}, {}] },
-    ];
-    expect(countActiveBonuses(listings)).toBe(0);
+  it("counts only currently visible benefits", () => {
+    expect(countActiveBonuses([
+      listing("active", [bonus, bonus]),
+      listing("sold_out"),
+      listing("unknown"),
+      listing("ended"),
+      { ...listing("active"), productUrl: null },
+      listing("active", [{ ...bonus, endsAt: new Date("2000-01-01T00:00:00Z") }]),
+    ])).toBe(4);
   });
 
   it("returns 0 for no listings", () => {
@@ -78,7 +78,7 @@ describe("countActiveBonuses", () => {
   });
 
   it("counts active listings that carry no bonuses as 0", () => {
-    const listings = [{ status: "active", bonuses: [] }];
+    const listings = [listing("active", [])];
     expect(countActiveBonuses(listings)).toBe(0);
   });
 });

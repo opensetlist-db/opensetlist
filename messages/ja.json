@@ -227,6 +227,12 @@
       "events": "関連公演の情報は準備中です。"
     },
     "bonus": {
+      "options": "特典付き購入オプション",
+      "basicOptions": "特典なしの購入オプション",
+      "storeCount": "販売店 {count}店",
+      "deadline": "特典締切：{time}",
+      "buyAt": "{store}で商品を見る",
+      "officialInfo": "公式商品情報",
       "status": {
         "active": "販売中",
         "ended": "終了"
@@ -238,7 +244,7 @@
         "current": "現在 {count}",
         "ended": "終了 {count}"
       },
-      "empty": "登録された店舗情報がありません。"
+      "empty": "購入リンクは登録されていません。"
     },
     "tracks": {
       "discN": "Disc {disc}",

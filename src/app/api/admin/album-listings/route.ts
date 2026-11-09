@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { parseListingPurchaseFields, PurchaseInputError } from "@/lib/adminPurchaseFields";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -10,30 +12,15 @@ import {
 } from "@/lib/adminParsers";
 import { revalidatePublicData } from "@/lib/dataCache";
 
-type CreateBody = {
+type CreateBody = Record<string, unknown> & {
   albumId?: unknown;
   originalStoreName?: unknown;
   originalEditionLabel?: unknown;
   originalLanguage?: unknown;
-  productUrl?: unknown;
   status?: unknown;
   translations?: unknown;
 };
 
-/**
- * POST /api/admin/album-listings
- *
- *   Body: see CreateBody
- *   → 201 { ...listing }
- *   → 400 invalid input
- *   → 401 unauthorized
- *   → 409 unique conflict (album × originalStoreName × originalEditionLabel)
- *
- * Lifecycle columns (startsAt/endsAt/lastVerifiedAt/sourceUrl) stay
- * on the schema but the admin form doesn't surface them — they end
- * up as NULL on rows created here. A future iteration can re-add
- * the inputs without a schema change.
- */
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
@@ -41,6 +28,7 @@ export async function POST(request: NextRequest) {
   let body: CreateBody;
   try {
     body = (await request.json()) as CreateBody;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
   } catch {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
@@ -85,8 +73,11 @@ export async function POST(request: NextRequest) {
   const translations = parseListingTranslations(body.translations);
 
   try {
+    const purchase = parseListingPurchaseFields(body);
     const created = await prisma.albumStoreListing.create({
       data: {
+        ...purchase,
+        optionKey: purchase.isBonusOption == null ? "" : randomUUID(),
         albumId,
         originalStoreName: (body.originalStoreName as string).trim(),
         originalEditionLabel:
@@ -99,10 +90,7 @@ export async function POST(request: NextRequest) {
           body.originalLanguage.trim()
             ? body.originalLanguage.trim()
             : "ja",
-        productUrl:
-          typeof body.productUrl === "string" && body.productUrl.trim()
-            ? body.productUrl.trim()
-            : null,
+
         status: body.status as AlbumStoreListingStatus,
         translations: translations.length
           ? { create: translations }
@@ -113,6 +101,7 @@ export async function POST(request: NextRequest) {
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(created), { status: 201 });
   } catch (e) {
+    if (e instanceof PurchaseInputError) return NextResponse.json({ error: e.message }, { status: 400 });
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2002"

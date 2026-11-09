@@ -20,6 +20,10 @@
 #              real data-loss warning as before.
 set -euo pipefail
 
+# This transaction replaces only the two old edition indexes, keeping
+# their legacy import guarantees. The general drop guard still runs.
+npx prisma db execute --file prisma/purchase-option-identity.sql
+
 if [ "${1:-false}" = "true" ]; then
   echo "Running with --accept-data-loss (manual dispatch)"
   npx prisma db push --accept-data-loss

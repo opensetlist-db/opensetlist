@@ -1,3 +1,4 @@
+import { parseListingPurchaseFields, PurchaseInputError } from "@/lib/adminPurchaseFields";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -12,31 +13,14 @@ import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
-type PatchBody = {
+type PatchBody = Record<string, unknown> & {
   originalStoreName?: unknown;
   originalEditionLabel?: unknown;
   originalLanguage?: unknown;
-  productUrl?: unknown;
   status?: unknown;
   translations?: unknown;
 };
 
-/**
- * PATCH /api/admin/album-listings/[id]
- *
- *   Updates the fields the admin form surfaces. Lifecycle columns
- *   (startsAt/endsAt/lastVerifiedAt/sourceUrl) intentionally NOT
- *   touched — if a row carries non-null values from CSV import or
- *   an earlier UI iteration, the operator's edits don't clobber
- *   them. To clear those, hit the DB directly or wait for a future
- *   admin surface.
- *
- *   → 200 { ...listing }
- *   → 400 invalid input
- *   → 401 unauthorized
- *   → 404 not found (incl. P2025 race window)
- *   → 409 unique conflict
- */
 export async function PATCH(request: NextRequest, { params }: RouteProps) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
@@ -49,6 +33,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   let body: PatchBody;
   try {
     body = (await request.json()) as PatchBody;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
   } catch {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
@@ -94,6 +79,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     : [];
 
   try {
+    const purchase = parseListingPurchaseFields(body);
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.albumStoreListing.findUnique({
         where: { id },
@@ -111,6 +97,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       return tx.albumStoreListing.update({
         where: { id },
         data: {
+          ...purchase,
           originalStoreName: (body.originalStoreName as string).trim(),
           originalEditionLabel:
             typeof body.originalEditionLabel === "string" &&
@@ -122,10 +109,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
             body.originalLanguage.trim()
               ? body.originalLanguage.trim()
               : "ja",
-          productUrl:
-            typeof body.productUrl === "string" && body.productUrl.trim()
-              ? body.productUrl.trim()
-              : null,
+
           status: body.status as AlbumStoreListingStatus,
           translations:
             translationsProvided && translations.length
@@ -145,6 +129,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
+    if (e instanceof PurchaseInputError) return NextResponse.json({ error: e.message }, { status: 400 });
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       if (e.code === "P2002") {
         return NextResponse.json(

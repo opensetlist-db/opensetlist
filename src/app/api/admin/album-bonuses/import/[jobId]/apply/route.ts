@@ -117,7 +117,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
     }
 
     const existing = await tx.albumStoreListing.findMany({
-      where: { albumId: job.albumId! },
+      where: { albumId: job.albumId!, optionKey: "" },
       select: {
         id: true,
         originalStoreName: true,

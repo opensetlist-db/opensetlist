@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -812,6 +813,7 @@ export default async function EventPage({ params }: Props) {
   // computation and the header-badge computation). Pass `referenceNow`
   // through to the second call below so the page is internally
   // consistent.
+  if (event.bdAlbum) await connection();
   const referenceNow = new Date();
   const resolvedStatus = getEventStatus(event, referenceNow);
   const isOngoing = resolvedStatus === "ongoing";

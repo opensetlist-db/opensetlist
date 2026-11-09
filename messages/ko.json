@@ -227,6 +227,12 @@
       "events": "관련 공연 정보 준비 중입니다."
     },
     "bonus": {
+      "options": "특전 구매 옵션",
+      "basicOptions": "특전 없는 구매 옵션",
+      "storeCount": "판매점 {count}곳",
+      "deadline": "특전 마감: {time}",
+      "buyAt": "{store}에서 상품 보기",
+      "officialInfo": "공식 상품 안내",
       "status": {
         "active": "판매중",
         "ended": "종료"
@@ -238,7 +244,7 @@
         "current": "현재 {count}",
         "ended": "종료 {count}"
       },
-      "empty": "등록된 매장 정보가 없습니다."
+      "empty": "등록된 구매 링크가 없습니다."
     },
     "tracks": {
       "discN": "Disc {disc}",

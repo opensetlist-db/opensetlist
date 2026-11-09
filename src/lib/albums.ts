@@ -56,6 +56,7 @@ function albumsListInclude(locale: string) {
         },
       },
     },
+    _count: { select: { bdEvents: { where: { isDeleted: false } } } },
     listings: { include: { bonuses: true } },
   } satisfies Prisma.AlbumInclude;
 }
