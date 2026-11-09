@@ -5,7 +5,7 @@ import ko from "../../../messages/ko.json";
 import { AlbumPurchasePanel, type AlbumForPurchase } from "@/components/albums/detail/AlbumPurchasePanel";
 
 vi.mock("next-intl/server", () => ({
-  getTranslations: async ({ locale, namespace }: { locale: string; namespace: string }) =>
+  getTranslations: async ({ locale, namespace }: { locale: string; namespace: "Album" }) =>
     createTranslator({ locale, namespace, messages: ko }),
 }));
 
