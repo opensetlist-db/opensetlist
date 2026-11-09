@@ -16,6 +16,22 @@ ALTER TABLE public."AlbumStoreBonus"
   ADD COLUMN IF NOT EXISTS "sourceUrl" TEXT,
   ADD COLUMN IF NOT EXISTS "endedAt" TIMESTAMP(3);
 
+-- A historical bonus override outside the parent sale window would change
+-- visibility under intersection. Require review before switching that data.
+DO $check$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public."AlbumStoreBonus" bonus
+    JOIN public."AlbumStoreListing" listing ON listing.id = bonus."listingId"
+    WHERE listing."optionKey" = '' AND listing."includesPerformanceVideo" IS NULL
+      AND (bonus."startsAt" < listing."startsAt" OR bonus."endsAt" > listing."endsAt")
+  ) THEN
+    RAISE EXCEPTION 'Review legacy bonus periods that fall outside the listing sale window';
+  END IF;
+END;
+$check$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS "AlbumStoreListing_option_key"
   ON public."AlbumStoreListing" ("albumId", "originalStoreName", "originalEditionLabel", "optionKey");
 CREATE UNIQUE INDEX IF NOT EXISTS "AlbumStoreListing_null_edition_option_key"

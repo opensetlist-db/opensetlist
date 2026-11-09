@@ -56,6 +56,7 @@ export async function AlbumPurchasePanel({
               const label = resolveBonusType(bonus, locale);
               const description = bonus.translations?.find((entry) => entry.locale === locale)?.bonusDescription
                 ?? bonus.originalBonusDescription;
+              const deadline = [listing.endsAt, bonus.endsAt].filter((date) => date !== null).sort()[0];
               return (
                 <li key={bonus.id}>
                   {isSafeExternalUrl(bonus.bonusImageUrl) && (
@@ -64,11 +65,11 @@ export async function AlbumPurchasePanel({
                   )}
                   <strong>{label}</strong>
                   {description && <p>{description}</p>}
-                  {bonus.endsAt && (
+                  {deadline && (
                     <p className={styles.edition}>
                       {t("bonus.deadline", {
-                        time: formatDate(bonus.endsAt, locale, { dateStyle: "medium", timeZone: "UTC" })
-                          + " " + formatTime(bonus.endsAt, locale, { timeStyle: "short", timeZone: "UTC" }) + " UTC",
+                        time: formatDate(deadline, locale, { dateStyle: "medium", timeZone: "UTC" })
+                          + " " + formatTime(deadline, locale, { timeStyle: "short", timeZone: "UTC" }) + " UTC",
                       })}
                     </p>
                   )}

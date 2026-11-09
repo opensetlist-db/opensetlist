@@ -8,15 +8,16 @@ vi.mock("next-intl/server", () => ({ getTranslations: async () => (key: string) 
 
 import { prisma } from "@/lib/prisma";
 import { POST as createListing } from "@/app/api/admin/album-listings/route";
+import { PATCH as updateBonus } from "@/app/api/admin/album-bonuses/[id]/route";
 import { POST as createBonus } from "@/app/api/admin/album-bonuses/route";
 import { AlbumPurchasePanel, type AlbumForPurchase } from "@/components/albums/detail/AlbumPurchasePanel";
 
 const tag = `purchase-itest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 let albumId: bigint;
 
-function request(path: string, body: unknown) {
+function request(path: string, body: unknown, method = "POST") {
   return new NextRequest(`http://localhost${path}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
 }
 
@@ -53,6 +54,21 @@ describe("admin purchase options to public purchase tab", () => {
         endsAt: guide === "Choice A" ? "2026-11-10T00:00:00+09:00" : null,
       }));
       expect(bonus.status).toBe(201);
+      if (guide === "Choice B") {
+        const { id } = await bonus.json();
+        await prisma.albumStoreBonusTranslation.createMany({ data: [
+          { bonusId: id, locale: "ko", bonusDescription: "Existing description" },
+          { bonusId: id, locale: "ja", bonusType: "Existing title" },
+        ] });
+        const updated = await updateBonus(request("/api/admin/album-bonuses/" + id, {
+          originalBonusType: guide, translations: [{ locale: "ko", bonusType: "Choice B localized" }],
+        }, "PATCH"), { params: Promise.resolve({ id }) });
+        expect(updated.status).toBe(200);
+        expect((await updated.json()).translations).toEqual(expect.arrayContaining([
+          expect.objectContaining({ locale: "ko", bonusType: "Choice B localized", bonusDescription: "Existing description" }),
+          expect.objectContaining({ locale: "ja", bonusType: "Existing title" }),
+        ]));
+      }
     }
     const saved = await prisma.album.findUniqueOrThrow({ where: { id: albumId }, include: {
       listings: { include: { translations: true, bonuses: { include: { translations: true } } } },
@@ -62,6 +78,8 @@ describe("admin purchase options to public purchase tab", () => {
     const at = renderToStaticMarkup(await AlbumPurchasePanel({ album, locale: "ko", now: new Date("2026-11-09T15:00:00Z"), performanceOnly: true }));
     expect(before).toContain("Choice A");
     expect(before).toContain("Choice B");
+    const unfiltered = renderToStaticMarkup(await AlbumPurchasePanel({ album, locale: "ko", now: new Date("2026-11-09T14:59:59.999Z") }));
+    expect(unfiltered).toContain("CD only");
     expect(before).not.toContain("CD only");
     expect(at).not.toContain("Choice A");
     expect(at).toContain("Choice B");

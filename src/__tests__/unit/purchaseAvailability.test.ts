@@ -45,6 +45,9 @@ describe("purchase availability", () => {
 
   it("does not convert an expired bonus option into a basic purchase", () => {
     const expired = option({ bonuses: [benefit(cutoff)] });
+    const before = projectPurchaseOptions([expired], new Date(cutoff.getTime() - 1), { performanceOnly: true });
+    expect(before.bonusCount).toBe(1);
+    expect(before.bonusStores[0].options[0].listing.productUrl).toBe(expired.productUrl);
     const result = projectPurchaseOptions([expired], cutoff, { performanceOnly: true });
     expect(result.bonusStores).toEqual([]);
     expect(result.basicOptions).toEqual([]);

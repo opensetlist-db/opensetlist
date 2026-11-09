@@ -42,20 +42,19 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  // Same contract as the sibling listings/tracks PATCHes: missing
-  // `translations` field = preserve existing rows; explicit empty
-  // array = full-replace wipe. Anything else (null / object /
-  // string) hits 400 — without that guard the parser falls through
-  // to `[]` and the operator's locale rows would be silently wiped
-  // by the deleteMany on a malformed request.
   if (
     body.translations !== undefined &&
-    !Array.isArray(body.translations)
+    (!Array.isArray(body.translations) || body.translations.some((row) =>
+      !row || typeof row !== "object" || typeof row.locale !== "string"))
   ) {
     return NextResponse.json(
       { error: "translations 필드는 배열이어야 합니다." },
       { status: 400 },
     );
+  }
+  const removed = body.removedTranslationLocales;
+  if (removed !== undefined && (!Array.isArray(removed) || removed.some((locale) => typeof locale !== "string"))) {
+    return NextResponse.json({ error: "삭제할 번역 언어를 확인해 주세요." }, { status: 400 });
   }
   const translationsProvided = Array.isArray(body.translations);
   const translations = translationsProvided
@@ -64,56 +63,32 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
 
   try {
     const purchase = parseBonusPurchaseFields(body);
-    const updated = await prisma.$transaction(async (tx) => {
-      const existing = await tx.albumStoreBonus.findUnique({
-        where: { id },
-        select: { id: true },
-      });
-      if (!existing) return null;
-
-      if (translationsProvided) {
-        // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
-        await tx.albumStoreBonusTranslation.deleteMany({
-          where: { bonusId: id },
-        });
-      }
-
-      // Same whitespace-tolerant normalize as POST so a body of
-      // `originalLanguage: "   "` falls back to the "ja" default
-      // rather than persisting a blank.
-      const originalLanguage =
-        typeof body.originalLanguage === "string" &&
-        body.originalLanguage.trim()
-          ? body.originalLanguage.trim()
-          : "ja";
-
-      return tx.albumStoreBonus.update({
-        where: { id },
-        data: {
-          ...purchase,
-          originalBonusType: (body.originalBonusType as string).trim(),
-          originalLanguage,
-          translations:
-            translationsProvided && translations.length
-              ? { create: translations }
-              : undefined,
-        },
-        include: { translations: true },
-      });
+    const originalLanguage = typeof body.originalLanguage === "string"
+      ? body.originalLanguage.trim() || "ja"
+      : "ja";
+    const updated = await prisma.albumStoreBonus.update({
+      where: { id },
+      data: {
+        ...purchase,
+        originalBonusType: (body.originalBonusType as string).trim(),
+        originalLanguage,
+        translations: translationsProvided || removed !== undefined ? {
+          deleteMany: removed !== undefined
+              ? { locale: { in: removed.filter((locale) => !translations.some((row) => row.locale === locale)) } }
+              : translationsProvided && translations.length === 0 ? {} : undefined,
+          upsert: translations.map((row) => ({
+            where: { bonusId_locale: { bonusId: id, locale: row.locale } },
+            create: row,
+            update: row,
+          })),
+        } : undefined,
+      },
+      include: { translations: true },
     });
-
-    if (!updated) {
-      return NextResponse.json(
-        { error: "특전을 찾을 수 없습니다." },
-        { status: 404 },
-      );
-    }
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
     if (e instanceof PurchaseInputError) return NextResponse.json({ error: e.message }, { status: 400 });
-    // Race window: in-tx findUnique passed but a concurrent DELETE
-    // removed the row before update landed.
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2025"

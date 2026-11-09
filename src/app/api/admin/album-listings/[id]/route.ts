@@ -59,19 +59,19 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  // Translations field is optional on PATCH. "Missing" = preserve
-  // existing rows ("I'm only editing the URL"); "empty array" =
-  // explicit full-replace wipe. Any non-array shape hits 400 — the
-  // parser would otherwise return [] for malformed input and the
-  // deleteMany below would silently wipe the operator's locale rows.
   if (
     body.translations !== undefined &&
-    !Array.isArray(body.translations)
+    (!Array.isArray(body.translations) || body.translations.some((row) =>
+      !row || typeof row !== "object" || typeof row.locale !== "string"))
   ) {
     return NextResponse.json(
       { error: "translations 필드는 배열이어야 합니다." },
       { status: 400 },
     );
+  }
+  const removed = body.removedTranslationLocales;
+  if (removed !== undefined && (!Array.isArray(removed) || removed.some((locale) => typeof locale !== "string"))) {
+    return NextResponse.json({ error: "삭제할 번역 언어를 확인해 주세요." }, { status: 400 });
   }
   const translationsProvided = Array.isArray(body.translations);
   const translations = translationsProvided
@@ -80,52 +80,38 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
 
   try {
     const purchase = parseListingPurchaseFields(body);
-    const updated = await prisma.$transaction(async (tx) => {
-      const existing = await tx.albumStoreListing.findUnique({
-        where: { id },
-        select: { id: true },
-      });
-      if (!existing) return null;
+    const updated = await prisma.albumStoreListing.update({
+      where: { id },
+      data: {
+        ...purchase,
+        // Verified choices are no longer safe matches for the store/edition importer.
+        ...(purchase.isBonusOption != null ? { optionKey: id } : {}),
+        originalStoreName: (body.originalStoreName as string).trim(),
+        originalEditionLabel:
+          typeof body.originalEditionLabel === "string" &&
+          body.originalEditionLabel.trim()
+            ? body.originalEditionLabel.trim()
+            : null,
+        originalLanguage:
+          typeof body.originalLanguage === "string" &&
+          body.originalLanguage.trim()
+            ? body.originalLanguage.trim()
+            : "ja",
 
-      if (translationsProvided) {
-        // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
-        await tx.albumStoreListingTranslation.deleteMany({
-          where: { listingId: id },
-        });
-      }
-
-      return tx.albumStoreListing.update({
-        where: { id },
-        data: {
-          ...purchase,
-          originalStoreName: (body.originalStoreName as string).trim(),
-          originalEditionLabel:
-            typeof body.originalEditionLabel === "string" &&
-            body.originalEditionLabel.trim()
-              ? body.originalEditionLabel.trim()
-              : null,
-          originalLanguage:
-            typeof body.originalLanguage === "string" &&
-            body.originalLanguage.trim()
-              ? body.originalLanguage.trim()
-              : "ja",
-
-          status: body.status as AlbumStoreListingStatus,
-          translations:
-            translationsProvided && translations.length
-              ? { create: translations }
-              : undefined,
-        },
-        include: { translations: true },
-      });
+        status: body.status as AlbumStoreListingStatus,
+        translations: translationsProvided || removed !== undefined ? {
+          deleteMany: removed !== undefined
+              ? { locale: { in: removed.filter((locale) => !translations.some((row) => row.locale === locale)) } }
+              : translationsProvided && translations.length === 0 ? {} : undefined,
+          upsert: translations.map((row) => ({
+            where: { listingId_locale: { listingId: id, locale: row.locale } },
+            create: row,
+            update: row,
+          })),
+        } : undefined,
+      },
+      include: { translations: true },
     });
-
-    if (!updated) {
-      return NextResponse.json(
-        { error: "구매처를 찾을 수 없습니다." },
-        { status: 404 },
-      );
-    }
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
@@ -137,8 +123,6 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
           { status: 409 },
         );
       }
-      // Race window: in-tx findUnique passed but a concurrent DELETE
-      // removed the row before update landed.
       if (e.code === "P2025") {
         return NextResponse.json(
           { error: "구매처를 찾을 수 없습니다." },

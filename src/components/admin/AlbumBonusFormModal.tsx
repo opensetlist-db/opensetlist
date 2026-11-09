@@ -79,7 +79,13 @@ export default function AlbumBonusFormModal({
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          bonusImageUrl: initialData?.bonusImageUrl === payload.bonusImageUrl ? undefined : payload.bonusImageUrl,
+          removedTranslationLocales: initialData?.translations
+            .filter((row) => !payload.translations.some((entry) => entry.locale === row.locale))
+            .map((row) => row.locale),
+        }),
       });
       if (res.ok) {
         router.refresh();

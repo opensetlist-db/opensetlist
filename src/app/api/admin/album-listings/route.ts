@@ -33,20 +33,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
 
-  if (typeof body.albumId !== "string" && typeof body.albumId !== "number") {
-    return NextResponse.json(
-      { error: "앨범 ID가 필요합니다." },
-      { status: 400 },
-    );
+  const rawId = body.albumId;
+  if ((typeof rawId !== "string" || !/^[1-9]\d{0,18}$/.test(rawId)) &&
+    (typeof rawId !== "number" || !Number.isSafeInteger(rawId) || rawId < 1)) {
+    return NextResponse.json({ error: "유효하지 않은 앨범 ID입니다." }, { status: 400 });
   }
-  let albumId: bigint;
-  try {
-    albumId = BigInt(body.albumId as string | number);
-  } catch {
-    return NextResponse.json(
-      { error: "유효하지 않은 앨범 ID입니다." },
-      { status: 400 },
-    );
+  const albumId = BigInt(rawId);
+  if (albumId > BigInt("9223372036854775807")) {
+    return NextResponse.json({ error: "유효하지 않은 앨범 ID입니다." }, { status: 400 });
   }
 
   if (
@@ -74,10 +68,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const purchase = parseListingPurchaseFields(body);
+    const id = randomUUID();
     const created = await prisma.albumStoreListing.create({
       data: {
         ...purchase,
-        optionKey: purchase.isBonusOption == null ? "" : randomUUID(),
+        id,
+        optionKey: purchase.isBonusOption == null ? "" : id,
         albumId,
         originalStoreName: (body.originalStoreName as string).trim(),
         originalEditionLabel:

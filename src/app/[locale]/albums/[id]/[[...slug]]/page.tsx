@@ -106,10 +106,11 @@ async function fetchAlbum(id: bigint, locale: string) {
         include: {
           bonuses: {
             include: { translations: { where: localeFilter } },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           },
           translations: { where: localeFilter },
         },
-        orderBy: [{ originalStoreName: "asc" }],
+        orderBy: [{ originalStoreName: "asc" }, { createdAt: "asc" }, { id: "asc" }],
       },
     },
   });

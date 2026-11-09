@@ -217,10 +217,12 @@ async function fetchEvent(id: bigint, locale: string) {
             },
           },
           listings: {
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             include: {
               translations: { where: localeFilter },
               bonuses: {
                 include: { translations: { where: localeFilter } },
+                orderBy: [{ createdAt: "asc" }, { id: "asc" }],
               },
             },
           },

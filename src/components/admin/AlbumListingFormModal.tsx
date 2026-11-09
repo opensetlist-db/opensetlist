@@ -135,7 +135,12 @@ export default function AlbumListingFormModal({
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          removedTranslationLocales: initialData?.translations
+            .filter((row) => !payload.translations.some((entry) => entry.locale === row.locale))
+            .map((row) => row.locale),
+        }),
       });
       if (res.ok) {
         router.refresh();
@@ -198,7 +203,7 @@ export default function AlbumListingFormModal({
                 placeholder="2026-11-30T23:59:00+09:00" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
             </label>
             <label className="block text-sm">
-              공식 안내 / 근거 URL
+              공식 상품 안내 URL
               <input name="sourceUrl" type="text" defaultValue={initialData?.sourceUrl ?? ""}
                 placeholder="https://" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
             </label>
