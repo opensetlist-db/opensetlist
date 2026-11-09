@@ -51,9 +51,10 @@ it("keeps the purchase href, disclosure and click attribution aligned across tag
     expect(cards).toHaveLength(expectedHrefs.length);
 
     cards.forEach((card, index) => {
-      const link = within(card).getByRole("link");
+      const link = within(card).getByRole<HTMLAnchorElement>("link");
       const affiliated = Boolean(tag) && index < 2;
       expect(link.getAttribute("href")).toBe(expectedHrefs[index]);
+      expect(link.relList.contains("sponsored")).toBe(affiliated);
       expect(Boolean(within(card).queryByText(ko.Album.bonus.affiliateDisclosure))).toBe(affiliated);
       fireEvent.click(link);
       expect(gtag).toHaveBeenCalledTimes(index + 1);
