@@ -116,8 +116,15 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       return { conflict: true as const };
     }
 
+    // A manual verification removes this row from the importer. Lock legacy
+    // options before matching so their identity cannot change during apply.
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "AlbumStoreListing"
+      WHERE "albumId" = ${job.albumId} AND "optionKey" = ''
+      ORDER BY id FOR UPDATE
+    `;
     const existing = await tx.albumStoreListing.findMany({
-      where: { albumId: job.albumId!, optionKey: "" },
+      where: { id: { in: locked.map(({ id }) => id) } },
       select: {
         id: true,
         originalStoreName: true,

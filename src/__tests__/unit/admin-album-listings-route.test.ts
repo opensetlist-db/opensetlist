@@ -200,7 +200,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
         "http://x/api/admin/album-listings/list-uuid",
         {
           ...baseValid,
-          translations: [{ locale: "ko", storeName: "아마존 재팬", editionLabel: null }],
+          translations: [{ locale: "ko", storeName: "아마존 재팬" }],
         },
         "PATCH",
       ) as never,
@@ -211,7 +211,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
       prisma.albumStoreListing.update as ReturnType<typeof vi.fn>
     ).mock.calls[0][0];
     expect(updateCall.data.translations.upsert.map((row: { update: unknown }) => row.update)).toEqual([
-      { locale: "ko", storeName: "아마존 재팬", editionLabel: null },
+      { locale: "ko", storeName: "아마존 재팬", editionLabel: undefined },
     ]);
   });
 
