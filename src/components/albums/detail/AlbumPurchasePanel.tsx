@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
-import { TrackedStoreLink } from "@/components/TrackedStoreLink";
+import { PurchaseStoreLink } from "@/components/PurchaseStoreLink";
 import {
   countActiveBonuses,
   isEndedListing,
@@ -10,7 +10,7 @@ import {
   resolveStoreKey,
   resolveStoreName,
 } from "@/lib/albumBonusDisplay";
-import { isSafeExternalUrl, type BigIntStringified } from "@/lib/utils";
+import type { BigIntStringified } from "@/lib/utils";
 import styles from "./albumDetail.module.css";
 
 // Wire shape after the page's `serializeBigIntAsString`.
@@ -36,11 +36,8 @@ export type AlbumForPurchase = BigIntStringified<
  *   - "Current" = every listing whose status is not `ended` (sold_out and
  *     unknown included — `isEndedListing`). The page promises nothing
  *     about live retailer stock.
- *   - The buy link is the operator's productUrl verbatim, only when it is
- *     an http(s) URL (`isSafeExternalUrl` keeps `javascript:` out of the
- *     href), new tab with noopener/noreferrer, through TrackedStoreLink
- *     so `store_click` keeps firing with surface `album_page` and
- *     `isAffiliate: false`. Ended listings get no buy link.
+ *   - Current listings use PurchaseStoreLink for safe external hrefs,
+ *     Amazon JP tag policy, disclosure and store_click attribution.
  *   - Store / edition / bonus-type names follow the locale → original
  *     fallback in `albumBonusDisplay`. Bonus descriptions, images and
  *     lifecycle dates stay unrendered, as before.
@@ -98,19 +95,19 @@ export async function AlbumPurchasePanel({
             ))}
           </ul>
         ) : null}
-        {!isEnded && isSafeExternalUrl(listing.productUrl) ? (
-          <TrackedStoreLink
+        {!isEnded ? (
+          <PurchaseStoreLink
             href={listing.productUrl}
             albumId={String(album.id)}
             storeKey={resolveStoreKey(listing.originalStoreName)}
             storeStatus={listing.status}
             surface="album_page"
-            isAffiliate={false}
+            disclosure={t("bonus.affiliateDisclosure")}
             className={styles.buy}
           >
             {t("bonus.buy")}
             <span aria-hidden="true">↗</span>
-          </TrackedStoreLink>
+          </PurchaseStoreLink>
         ) : null}
       </article>
     );

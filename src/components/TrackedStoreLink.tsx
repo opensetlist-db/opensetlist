@@ -19,10 +19,7 @@ import { trackStoreClick, type StoreClickSurface } from "@/lib/analytics";
  * new tab (same as the original listing-card anchor), which also means
  * navigation never tears down this page before the event flushes.
  *
- * b16 hook: when affiliate-tag injection lands, this wrapper is where
- * the href gets rewritten + `isAffiliate` flips to true (see the
- * trackStoreClick contract comment in lib/analytics.ts). No separate
- * affiliate_click event.
+ * The server purchase link supplies the final href and affiliate status.
  */
 export function TrackedStoreLink({
   href,
@@ -61,7 +58,7 @@ export function TrackedStoreLink({
     <a
       href={href}
       target="_blank"
-      rel="noopener noreferrer"
+      rel={isAffiliate ? "noopener noreferrer sponsored" : "noopener noreferrer"}
       style={style}
       className={className}
       onClick={fireStoreClick}
