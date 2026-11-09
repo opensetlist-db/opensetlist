@@ -45,6 +45,25 @@ pipe):
 npx vitest run 2>&1 | grep -E "FAIL|×|Test Files|Tests "; echo "exit=${PIPESTATUS[0]}"
 ```
 
+### Planning Preview evidence
+
+If a ticket requires Preview evidence, identify a sample that exercises
+the changed behavior before implementation. Check existing dev data with
+the [read-only query tool](#integration--the-shared-dev-database). If no
+sample qualifies, record the required data and plan setup and cleanup in
+the ticket using the guarded QA fixture workflow below. Report an absent
+positive case as unverified on Preview even if the page renders.
+
+### Before the first push
+
+Run these from the task worktree after editing, including when the diff
+only changes tests. Generate first so typecheck uses this checkout's
+schema. Generation writes the local client and requires no DB connection.
+
+```bash
+npm exec --no -- prisma generate && npm exec --no -- tsc --noEmit
+```
+
 Before review, lint every file the branch changed, with warnings
 failing. Warnings do not fail CI, so a file left out of a partial lint
 reaches the PR with its warning (a `hex-colour-literals`, say) as a mere
@@ -60,6 +79,19 @@ files=$(git diff --name-only --diff-filter=d origin/dev...HEAD -- '*.ts' '*.tsx'
 ```
 
 ### Unit — no database
+
+In Windows Codex worktrees, use a writable worktree-local temp directory
+for Vitest if workers fail to start or temp-file renames fail with
+`EPERM`. Run this in a task PowerShell from the worktree root, replacing
+the example path with the relevant unit test:
+
+```powershell
+$vitestTemp = Join-Path $PWD '.claude/tmp/vitest'
+New-Item -ItemType Directory -Force $vitestTemp | Out-Null
+$env:TEMP = $vitestTemp
+$env:TMP = $vitestTemp
+npm test -- --maxWorkers=1 src/__tests__/unit/tz-pin.test.ts
+```
 
 `npx vitest run src/__tests__/unit/event-og-preview.test.ts` exercises the
 event-card preview service with actual bundled fonts/Satori/ImageResponse PNGs,
