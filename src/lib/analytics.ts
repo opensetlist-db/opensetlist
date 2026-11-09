@@ -73,14 +73,6 @@ export function trackStoreClick(params: {
   trackEvent("store_click", gaParams);
 }
 
-// b16 hook contract (no code here yet): when b16's affiliate-tag wrapper
-// rewrites a store URL, the calling TrackedStoreLink should pass
-// `isAffiliate: true` and b16 will extend this event with
-// `affiliate_tag_present: true` + `attribution_window_days: number`
-// (89 for Amazon JP; network-specific elsewhere). There is intentionally
-// NO separate `affiliate_click` event — the funnel stays one stream so
-// the ~10/15 gate can decompose it without joining across event names.
-
 export function trackBdSectionView(params: {
   eventId: string;
   albumId: string;
