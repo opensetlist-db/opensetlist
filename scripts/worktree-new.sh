@@ -23,17 +23,17 @@
 #     (`rm .env.local && cmd //c mklink //H .env.local
 #     "$(cygpath -w <main>/.env.local)"`).
 #     Removing the worktree deletes only its own name for the file.
-#   - src/generated/ (the gitignored Prisma client — normally produced by
-#     `npm ci`'s postinstall, which a linked node_modules never runs).
-#     It is a snapshot: after merging a schema change into the worktree,
-#     run `npx prisma generate` there (it writes only src/generated/).
+#   - the gitignored Prisma client, generated from the new worktree's schema
+#     once its dependencies are linked. The main checkout can be on a
+#     different schema, so its generated client cannot seed this checkout.
 #   - node_modules, LINKED to the main checkout's (a junction on Windows,
 #     a symlink elsewhere), when it satisfies the NEW worktree's lockfile.
 #     The base branch can depend on a package the main checkout's branch
 #     lacks (feature/redesign added aws4fetch while the main checkout sat
 #     on dev → `Cannot find module 'aws4fetch'` in every redesign
 #     worktree). So after linking, the worktree's lockfile is checked
-#     against the linked copy; on a mismatch the link is removed again
+#     against the linked copy; after repairing a mismatch, generate the
+#     client in the task worktree. On a mismatch the link is removed again
 #     and the script exits 4 with the worktree created but WITHOUT
 #     node_modules. It then prints, first, the one command that closes
 #     the gap in the main checkout:
@@ -159,11 +159,6 @@ if [ -f "$main/.worktreeinclude" ]; then
   done < "$main/.worktreeinclude"
 fi
 
-if [ -d "$main/src/generated" ]; then
-  mkdir -p "$path/src"
-  cp -R "$main/src/generated" "$path/src/"
-fi
-
 if [ -d "$main/node_modules" ]; then
   case "${OSTYPE:-}" in
     msys*)
@@ -241,6 +236,7 @@ if [ -d "$main/node_modules" ]; then
           echo "       $relink"
           echo "       node \"$checker\" \"$path\""
           echo "     (or remove the worktree with scripts/worktree-rm.sh and rerun scripts/worktree-new.sh)"
+          echo "     Then run Prisma generation as documented in TESTING.md."
         else
           echo "  1. (no top-level package to install in the main checkout — see the list above)"
         fi
@@ -255,6 +251,10 @@ if [ -d "$main/node_modules" ]; then
       exit 1
       ;;
   esac
+
+  if [ -f "$path/prisma/schema.prisma" ]; then
+    (cd "$path" && ./node_modules/.bin/prisma generate) >&2
+  fi
 else
   echo "note: $main/node_modules is missing — run \`npm ci\` in the worktree" >&2
 fi
