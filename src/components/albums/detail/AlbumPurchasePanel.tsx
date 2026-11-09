@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
-import { TrackedStoreLink } from "@/components/TrackedStoreLink";
+import { PurchaseStoreLink } from "@/components/PurchaseStoreLink";
 import {
   resolveBonusType,
   resolveEditionLabel,
@@ -78,18 +78,18 @@ export async function AlbumPurchasePanel({
             })}
           </ul>
         )}
-        <TrackedStoreLink
+        <PurchaseStoreLink
           href={listing.productUrl}
           albumId={String(album.id)}
           storeKey={resolveStoreKey(listing.originalStoreName)}
           storeStatus={listing.status}
           surface="album_page"
-          isAffiliate={false}
+          disclosure={t("bonus.affiliateDisclosure")}
           className={styles.buy}
         >
           {t("bonus.buyAt", { store })}
           <span aria-hidden="true">↗</span>
-        </TrackedStoreLink>
+        </PurchaseStoreLink>
       </div>
     );
   };

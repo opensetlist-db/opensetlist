@@ -289,7 +289,7 @@ export default function AlbumListingFormModal({
             value={productUrl}
             onChange={(e) => setProductUrl(e.target.value)}
             className="w-full rounded border border-zinc-300 px-3 py-2 font-mono text-xs"
-            placeholder="https://www.amazon.co.jp/dp/... (제휴 파라미터 그대로 붙여넣기)"
+            placeholder="https://www.amazon.co.jp/dp/... (단축 링크는 실제 상품 주소 확인 후 입력)"
           />
           {/* Early-warn before submit when the input parses to something
               other than an http(s) URL — the public purchase card /
