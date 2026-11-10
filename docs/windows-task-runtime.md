@@ -54,8 +54,9 @@ reliably; the explicit session release remains required.
 ```powershell
 $task = 'D:\projects\app\.claude\worktrees\completed-task'
 $released = '0123456789abcdef0123456789abcdef01234567' # actual full handoff HEAD
-powershell -NoProfile -File scripts/task-runtime.ps1 worktree-rm -Path $task -ReleasedHead $released -MergeRef origin/dev -DryRun
-powershell -NoProfile -File scripts/task-runtime.ps1 worktree-rm -Path $task -ReleasedHead $released -MergeRef origin/dev
+$archive = 'D:\archives\completed-task\manifest.json'
+powershell -NoProfile -File scripts/task-runtime.ps1 worktree-rm -Path $task -ReleasedHead $released -MergeRef origin/dev -ArchiveManifest $archive -DryRun
+powershell -NoProfile -File scripts/task-runtime.ps1 worktree-rm -Path $task -ReleasedHead $released -MergeRef origin/dev -ArchiveManifest $archive
 powershell -NoProfile -File scripts/task-runtime.ps1 worktree-rm -Sweep -DryRun
 ```
 

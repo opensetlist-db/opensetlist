@@ -55,11 +55,14 @@ const DATE_FIELDS = new Set([
   "dateStyle",
 ]);
 
-function keyName(prop) {
-  if (prop.type !== "Property" || prop.computed) return null;
-  if (prop.key.type === "Identifier") return prop.key.name;
-  if (prop.key.type === "Literal") return String(prop.key.value);
+function staticName(key, computed) {
+  if (!computed && key.type === "Identifier") return key.name;
+  if (key.type === "Literal") return String(key.value);
   return null;
+}
+
+function keyName(prop) {
+  return prop.type === "Property" ? staticName(prop.key, prop.computed) : null;
 }
 
 // `{…} as const`, `{…} as const satisfies T`, `<T>{…}`: the literal
@@ -108,8 +111,9 @@ function isOmitted(arg) {
 }
 
 function memberName(callee) {
-  if (callee.type !== "MemberExpression" || callee.computed) return null;
-  return callee.property.type === "Identifier" ? callee.property.name : null;
+  return callee.type === "MemberExpression"
+    ? staticName(callee.property, callee.computed)
+    : null;
 }
 
 function isIntlDateTimeFormat(callee) {

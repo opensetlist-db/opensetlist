@@ -64,6 +64,10 @@ tester.run("date-format-timezone", rule, {
       errors: [{ messageId: "unsupportedTimeStyle" }],
     },
     {
+      code: 'd["toLocaleDateString"](locale, { ["timeStyle"]: "short", timeZone: "UTC" });',
+      errors: [{ messageId: "unsupportedTimeStyle" }],
+    },
+    {
       code: 'const F: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" };',
       errors: [{ messageId: "missingTimeZone" }],
     },
