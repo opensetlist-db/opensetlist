@@ -1,10 +1,10 @@
+import { orderSetlistWriteResponse } from "@/lib/readEventDisplayOrder";
 import { NextRequest, NextResponse } from "next/server";
 import {
   liveWriterTransaction,
   withAdminLiveWriterBusy,
 } from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
-import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
@@ -124,7 +124,6 @@ async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
         // Official member order, matching the builder's initial
         // render of the same row (admin event edit page).
         performers: {
-          orderBy: byStageIdentityOrderBy(),
           include: { stageIdentity: { include: { translations: true } } },
         },
         artists: {
@@ -135,8 +134,9 @@ async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
 
     // One bump + one broadcast for the whole logical save, however many
     // rows were shifted above — clients refetch the snapshot once.
+    const ordered = await orderSetlistWriteResponse(tx, eid, item);
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eid);
-    return { item, rev };
+    return { item: ordered, rev };
   }, (r) => r?.rev, { warmFault });
 
   if (!result) {

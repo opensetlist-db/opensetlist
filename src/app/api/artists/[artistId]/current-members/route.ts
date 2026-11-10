@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { membershipOrderBy } from "@/lib/officialOrder";
 import { prisma } from "@/lib/prisma";
 
 type RouteProps = { params: Promise<{ artistId: string }> };
@@ -56,6 +57,7 @@ export async function GET(_req: NextRequest, { params }: RouteProps) {
           { OR: [{ endDate: null }, { endDate: { gte: now } }] },
         ],
       },
+      orderBy: membershipOrderBy(),
       select: { stageIdentityId: true },
     });
 

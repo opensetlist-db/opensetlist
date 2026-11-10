@@ -1,5 +1,7 @@
 "use client";
 
+import type { EventDisplayOrder } from "@/lib/eventDisplayOrder";
+
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
@@ -93,6 +95,7 @@ const DISCONNECTED_CADENCE: PeriodicConfig = {
 interface UseRealtimeEventChannelOptions<T> {
   eventId: string;
   initialItems: T[];
+  initialDisplayOrder?: EventDisplayOrder;
   initialReactionCounts: ReactionCountsMap;
   initialTop3Wishes: FanTop3Entry[];
   // Display locale, threaded into the refetch URL so the route can trim
@@ -138,6 +141,7 @@ interface UseRealtimeEventChannelOptions<T> {
 
 interface UseRealtimeEventChannelResult<T> {
   items: T[];
+  displayOrder?: EventDisplayOrder;
   reactionCounts: ReactionCountsMap;
   top3Wishes: FanTop3Entry[];
   /**
@@ -335,6 +339,7 @@ interface UseRealtimeEventChannelResult<T> {
 export function useRealtimeEventChannel<T>({
   eventId,
   initialItems,
+  initialDisplayOrder,
   initialReactionCounts,
   initialTop3Wishes,
   locale,
@@ -351,6 +356,7 @@ export function useRealtimeEventChannel<T>({
     eventId,
     locale,
     initialItems,
+    initialDisplayOrder,
     initialReactionCounts,
     initialTop3Wishes,
     initialRev,

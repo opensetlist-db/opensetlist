@@ -223,7 +223,7 @@ export function SetlistRow({
   // artist — see `pickRowArtistBadges` for the full rule table.
   //
   // Multi-credit rows (a genuine multi-group collab) get up to
-  // MAX_ROW_BADGES chips in credit order, then a `+N` chip whose
+  // MAX_ROW_BADGES chips in official display order, then a `+N` chip whose
   // title lists the rest.
   const badgeArtists = pickRowArtistBadges(item, eventArtistId);
   // Full unit name on setlist rows — operator preference. UnitBadge
@@ -339,10 +339,10 @@ export function SetlistRow({
             <div className={styles.creditLine}>
               {shownBadges.map(({ artist, label }) => (
                 <UnitBadge
-                  key={artist.id}
+                  key={artist.orderId ?? artist.id}
                   artistColor={artist.color}
                   locale={locale}
-                  artistId={artist.id}
+                  artistId={artist.orderId ?? artist.id}
                   artistSlug={artist.slug}
                   label={label}
                 />
@@ -564,7 +564,7 @@ function UnitBadge({
 }: {
   artistColor: string | null;
   locale: string;
-  artistId: number;
+  artistId: string | number;
   artistSlug: string;
   label: string;
 }) {

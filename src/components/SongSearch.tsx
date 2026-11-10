@@ -77,6 +77,7 @@ export interface SongSearchResult {
   artists: {
     artist: {
       id: number;
+      orderId?: string;
       // Artist.type ('solo' | 'group' | 'unit') — added in
       // PR #post-353 so consumers can classify stageType client-side
       // (the AddItemBottomSheet uses this to decide unit auto-fill

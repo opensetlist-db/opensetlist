@@ -1,5 +1,7 @@
 "use client";
 
+import type { EventDisplayOrder } from "@/lib/eventDisplayOrder";
+
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { FanTop3Entry, ReactionCountsMap } from "@/lib/types/setlist";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
@@ -53,6 +55,7 @@ interface UseLiveSnapshotOptions<T> {
   eventId: string;
   locale: string;
   initialItems: T[];
+  initialDisplayOrder?: EventDisplayOrder;
   initialReactionCounts: ReactionCountsMap;
   initialTop3Wishes: FanTop3Entry[];
   /** SSR snapshot revision (seeds the applied watermark). */
@@ -63,6 +66,7 @@ interface UseLiveSnapshotOptions<T> {
 
 export interface LiveSnapshotData<T> {
   items: T[];
+  displayOrder?: EventDisplayOrder;
   reactionCounts: ReactionCountsMap;
   top3Wishes: FanTop3Entry[];
   status: ResolvedEventStatus | null;
@@ -105,6 +109,7 @@ export interface LiveSnapshotData<T> {
 /** Body of `/api/setlist` (n14 contract; older fields tolerated). */
 interface SnapshotBody<T> {
   items: T[];
+  displayOrder?: EventDisplayOrder;
   reactionCounts?: ReactionCountsMap;
   top3Wishes?: FanTop3Entry[];
   status?: ResolvedEventStatus | null;
@@ -175,12 +180,14 @@ export function useLiveSnapshot<T>({
   eventId,
   locale,
   initialItems,
+  initialDisplayOrder,
   initialReactionCounts,
   initialTop3Wishes,
   initialRev,
   initialCapturedAt,
 }: UseLiveSnapshotOptions<T>) {
   const [items, setItems] = useState<T[]>(initialItems);
+  const [displayOrder, setDisplayOrder] = useState(initialDisplayOrder);
   const [reactionCounts, setReactionCounts] =
     useState<ReactionCountsMap>(initialReactionCounts);
   const [top3Wishes, setTop3Wishes] =
@@ -253,6 +260,7 @@ export function useLiveSnapshot<T>({
   if (prevSnapshotKey !== snapshotKey) {
     setPrevSnapshotKey(snapshotKey);
     setItems(initialItems);
+    setDisplayOrder(initialDisplayOrder);
     setReactionCounts(initialReactionCounts);
     setTop3Wishes(initialTop3Wishes);
     setStatus(null);
@@ -314,6 +322,7 @@ export function useLiveSnapshot<T>({
 
       const apply = (body: SnapshotBody<T>, version: SnapshotVersion | null) => {
         setItems(body.items);
+        setDisplayOrder(body.displayOrder);
         setReactionCounts(body.reactionCounts ?? {});
         // `?? []`: a response that omits the slice resets to empty rather
         // than leaving the SSR seed on screen indefinitely.
@@ -525,6 +534,7 @@ export function useLiveSnapshot<T>({
 
   const data: LiveSnapshotData<T> = {
     items,
+    displayOrder,
     reactionCounts,
     top3Wishes,
     status,

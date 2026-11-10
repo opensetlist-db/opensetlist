@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
   // Each variant row carries id + variantLabel + per-locale translation
   // overrides — enough for the picker to render labels and for the
   // consumer to derive `variantId` from the user's pick.
-  const select: Prisma.SongSelect = {
+  const select = {
     id: true,
     originalTitle: true,
     originalLanguage: true,
@@ -268,11 +268,11 @@ export async function GET(request: NextRequest) {
                 select: { locale: true, title: true, variantLabel: true },
               },
             },
-            orderBy: { id: "asc" },
+            orderBy: { id: "asc" as const },
           },
         }
       : {}),
-  };
+  } satisfies Prisma.SongSelect;
 
   try {
     // Resolver can hit the DB (event/series lookups) — wrapped in
@@ -333,7 +333,12 @@ export async function GET(request: NextRequest) {
       take: RESULT_LIMIT,
     });
 
-    return NextResponse.json(serializeBigInt(songs));
+    return NextResponse.json(serializeBigInt(expandVariants ? songs.map((song) => ({
+      ...song,
+      artists: song.artists.map((credit) => ({
+        ...credit, artist: { ...credit.artist, orderId: String(credit.artist.id) },
+      })),
+    })) : songs));
   } catch (err) {
     // DB connection / Prisma errors. Returning a JSON 500 (instead of
     // letting Next.js render its HTML error page) keeps the

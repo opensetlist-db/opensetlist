@@ -1,3 +1,5 @@
+import { readEventDisplayOrder, withDisplayIds } from "@/lib/readEventDisplayOrder";
+import { createEventDisplayOrdering, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { Prisma, type EventStatus } from "@/generated/prisma/client";
@@ -62,6 +64,7 @@ export type EventSnapshot = {
   capturedAt: Date;
   /** Wire-shaped items (BigInt → number, `confirmCount` flattened). */
   items: LiveSetlistItem[];
+  displayOrder?: EventDisplayOrder;
   reactionCounts: Record<string, Record<string, number>>;
   top3Wishes: FanTop3Entry[];
   /** Random id of the build that produced this value (diagnostics). */
@@ -208,7 +211,7 @@ export async function buildEventSnapshot(
       if (holdMs > 0) await sleep(holdMs);
       if (timing) timing.holdMs = holdMs;
       if (!row.found) {
-        return { row, items: [], reactionGroups: [], top3Wishes: [] };
+        return { row, items: [], reactionGroups: [], top3Wishes: [], displayOrder: { artists: [], guestIds: [] } };
       }
 
       // Statements below run sequentially on the transaction's single
@@ -332,13 +335,14 @@ export async function buildEventSnapshot(
           },
         },
       });
+      const displayOrder = await readEventDisplayOrder(tx, eventId, items);
       const reactionGroups = await tx.setlistItemReaction.groupBy({
         by: ["setlistItemId", "reactionType"],
         where: { setlistItem: { eventId, isDeleted: false } },
         _count: true,
       });
       const top3Wishes = await fetchEventWishlistTop3(eventId, locale, tx);
-      return { row, items, reactionGroups, top3Wishes };
+      return { row, items, reactionGroups, top3Wishes, displayOrder };
     }),
     {
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
@@ -370,9 +374,10 @@ export async function buildEventSnapshot(
   }
   // Flatten Prisma's `_count.confirms` → `confirmCount` (the
   // LiveSetlistItem contract), then BigInt → number for the wire.
+  const displayOrdering = createEventDisplayOrdering(raw.displayOrder);
   const items = serializeBigInt(
     raw.items.map(({ _count, ...rest }) => ({
-      ...rest,
+      ...withDisplayIds(displayOrdering.sortItem(rest)),
       confirmCount: _count.confirms,
     })),
   ) as unknown as LiveSetlistItem[];
@@ -386,6 +391,7 @@ export async function buildEventSnapshot(
     rev: row.setlistRevision === null ? BigInt(0) : BigInt(row.setlistRevision),
     capturedAt: row.capturedAt,
     items,
+    displayOrder: raw.displayOrder,
     reactionCounts,
     top3Wishes: raw.top3Wishes,
     buildId: randomUUID(),
