@@ -217,6 +217,10 @@ function groupKeyForEvent(
   return { kind: "ungrouped", key: UNGROUPED_KEY, ref: null };
 }
 
+/**
+ * Build filter options from the full public catalog, then bucket matching
+ * dates so another family's show cannot control a tour's LIVE badge or order.
+ */
 export async function getEventsListGrouped(
   locale: string,
   referenceNow: Date,
@@ -346,6 +350,7 @@ export async function getEventsListGrouped(
   ]);
 
   const hierarchy = buildArtistHierarchy(artists);
+  /** An orphaned unit or a deleted artist must not become a filter option. */
   function publicRoot(id: bigint) {
     const root = rootOf(hierarchy, id);
     return hierarchy.parentOf.get(root) === null ? root : null;
@@ -359,6 +364,7 @@ export async function getEventsListGrouped(
   }
 
   const seriesById = new Map(seriesRaw.map((s) => [s.id, s]));
+  /** Inherit the closest artist assignment, even when the outer tour has a different one. */
   function seriesRootArtist(id: bigint | null) {
     for (let depth = 0; id !== null && depth < MAX_SERIES_DEPTH; depth++) {
       const series = seriesById.get(id);

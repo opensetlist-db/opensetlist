@@ -2,16 +2,6 @@ import Link from "next/link";
 import { eventListQuery, FILTER_VALUES, type EventListFilter } from "@/lib/eventFilters";
 import { colors } from "@/styles/tokens";
 
-/*
- * Status and artist family filter chips for the concert list.
- *
- * Plain links, not buttons that `router.push`: each filter is its own
- * URL, so back/forward, open-in-new-tab and no-JS all work natively and
- * the current one is announced through `aria-current="page"`. A filter
- * change drops `pastPage` (the past-group page set differs per filter).
- * The locale switcher already carries the query string across locales.
- */
-
 interface Props {
   locale: string;
   active: EventListFilter;
@@ -24,6 +14,10 @@ interface Props {
   allArtistsLabel: string;
 }
 
+/**
+ * Links keep both choices in the URL for browser history and locale switches.
+ * Each change drops the page number because it can change the past-group count.
+ */
 export function ConcertFilterNav({
   locale, active, labels, label, artist, artistOptions, artistLabel, allArtistsLabel,
 }: Props) {
