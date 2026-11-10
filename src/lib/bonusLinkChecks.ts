@@ -48,10 +48,19 @@ export function parseLinkCheck(value: unknown) {
   } else if (phase === "resolve") {
     throw new PurchaseInputError("확인 필요 항목을 해결하려면 확인한 상품 주소가 필요합니다.");
   }
-  return {
+  const input = {
     ...target, storeName, operationId, phase, evidenceUrl, summary, observedAt, productUrl,
     expectedRevision: parseRevision(body.expectedRevision),
-  } as const;
+  };
+  if (phase === "exclude" || phase === "reinclude") {
+    const evidenceType = body.evidenceType;
+    if ((phase === "exclude" && (evidenceType === "expired" || evidenceType === "ended")) ||
+        (phase === "reinclude" && evidenceType === "active")) {
+      return { ...input, phase, evidenceType } as const;
+    }
+    throw new PurchaseInputError("점검 결정에 맞는 근거 유형을 확인해 주세요.");
+  }
+  return { ...input, phase } as const;
 }
 
 type Attempt = { productUrl: string | null; operationId: string };
@@ -137,16 +146,16 @@ export async function applyLinkCheck(input: ReturnType<typeof parseLinkCheck>) {
     if (rows[0] && data.storeName !== rows[0].storeName) {
       throw new BonusLifecycleError("conflict", "최초 시도에 기록된 판매점과 일치해야 합니다.");
     }
-    const operation = phase === "exclude" || phase === "reinclude"
+    const operation = "evidenceType" in data
       ? await tx.albumStoreLinkReviewOperation.create({
         data: {
-          albumId, storeKey, phase, operationId, observedAt,
-          evidenceUrl: data.evidenceUrl, summary: data.summary, requestHash,
+          albumId, storeKey, phase: data.phase, operationId, observedAt,
+          evidenceType: data.evidenceType, evidenceUrl: data.evidenceUrl, summary: data.summary, requestHash,
         },
         omit: { albumId: true, requestHash: true },
       })
       : await tx.albumStoreLinkAttempt.create({
-        data: { ...data, phase, requestHash },
+        data: { ...data, requestHash },
         omit: { albumId: true, requestHash: true },
       });
     return { status: "applied" as const, operation };

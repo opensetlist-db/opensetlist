@@ -14,6 +14,7 @@ const linkActionLabels = {
   initial: "최초 시도", retry: "다음 점검 재시도", resolve: "운영자 확인",
   exclude: "점검 제외", reinclude: "점검 재포함",
 };
+const linkEvidenceLabels = { expired: "기한 만료", ended: "종료·소진 확인", active: "다시 제공 중" };
 
 function instant(date: Date | null) {
   return date ? formatDate(date, "ko", {
@@ -111,7 +112,7 @@ function LinkRows({ entries }: { entries: Awaited<ReturnType<typeof getLinkCheck
               ))}
               {reviewHistory.map((review) => (
                 <li key={review.operationId}>
-                  {linkActionLabels[review.phase]} · {instant(review.observedAt)} · {review.summary}
+                  {linkActionLabels[review.phase]} · {linkEvidenceLabels[review.evidenceType]} · {instant(review.observedAt)} · {review.summary}
                   <div><ExternalLink url={review.evidenceUrl}>점검 결정 근거</ExternalLink></div>
                 </li>
               ))}

@@ -158,8 +158,11 @@ describe("bonus checks against PostgreSQL", () => {
     const publicBefore = await publicOptions();
     expect(publicBefore.bonusCount).toBe(1);
     expect(before.status).toBe(retryUsed ? "review_needed" : "retry_due");
+    expect(before.attempts).toHaveLength(retryUsed ? 2 : 1);
+    expect(before.attempts[0].operationId).toBe(initial.operationId);
     const exclude = { ...base, phase: "exclude", expectedRevision: before.revision, operationId: randomUUID(),
-      observedAt: new Date(Date.now() - 30000).toISOString() };
+      evidenceType: "ended", observedAt: new Date(Date.now() - 30000).toISOString() };
+    expect((await postLink(request(url, { ...exclude, evidenceType: "access_failed" }))).status).toBe(400);
     const results = await Promise.all([postLink(request(url, exclude)), postLink(request(url, exclude))]);
     expect((await Promise.all(results.map(async (response) => (await response.json()).status))).sort())
       .toEqual(["already_applied", "applied"]);
@@ -170,11 +173,22 @@ describe("bonus checks against PostgreSQL", () => {
     expect(excluded.reviewHistory).toHaveLength(1);
     expect(excluded.revision).toBe(before.revision + 1);
     expect(await publicOptions()).toEqual(publicBefore);
+    for (const phase of ["retry", "resolve"]) {
+      expect((await postLink(request(url, { ...base, phase, expectedRevision: excluded.revision,
+        productUrl: phase === "resolve" ? "https://example.com/product" : null,
+        operationId: randomUUID(), observedAt: new Date(Date.now() - 25000).toISOString() }))).status).toBe(409);
+    }
     expect((await postLink(request(url, { ...exclude, summary: "changed" }))).status).toBe(409);
     expect((await postLink(request(url, { ...exclude, operationId: randomUUID() }))).status).toBe(409);
     expect((await postLink(request(url, initial)).then((response) => response.json())).status).toBe("already_applied");
     const reinclude = { ...base, phase: "reinclude", expectedRevision: excluded.revision, operationId: randomUUID(),
-      observedAt: new Date(Date.now() - 20000).toISOString() };
+      evidenceType: "active", observedAt: new Date(Date.now() - 20000).toISOString() };
+    expect((await postLink(request(url, { ...reinclude, evidenceType: "access_failed" }))).status).toBe(400);
+    const olderObservation = new Date(Date.parse(exclude.observedAt) - 1).toISOString();
+    expect((await postLink(request(url, { ...reinclude, observedAt: olderObservation }))).status).toBe(409);
+    const reusedId = await postLink(request(url, { ...reinclude, operationId: exclude.operationId }));
+    expect(reusedId.status).toBe(409);
+    expect(await reusedId.json()).toMatchObject({ code: "operation_mismatch" });
     expect((await postLink(request(url, reinclude))).status).toBe(200);
     expect((await postLink(request(url, reinclude)).then((response) => response.json())).status).toBe("already_applied");
     const restored = await linkRead(reinclude.operationId);
@@ -183,7 +197,6 @@ describe("bonus checks against PostgreSQL", () => {
     expect(restored.attempts).toEqual(before.attempts);
     expect(restored.reviewHistory).toHaveLength(2);
     expect(restored.revision).toBe(before.revision + 2);
-    expect((await postLink(request(url, { ...reinclude, operationId: exclude.operationId }))).status).toBe(409);
     expect(await publicOptions()).toEqual(publicBefore);
     const retry = { ...base, phase: "retry", expectedRevision: restored.revision, operationId: randomUUID(),
       observedAt: new Date(Date.now() - 10000).toISOString() };

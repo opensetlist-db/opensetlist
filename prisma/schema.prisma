@@ -1395,11 +1395,18 @@ enum AlbumStoreLinkReviewPhase {
   reinclude
 }
 
+enum AlbumStoreLinkReviewEvidence {
+  expired
+  ended
+  active
+}
+
 model AlbumStoreLinkReviewOperation {
   albumId     BigInt
   storeKey    String
   operationId String
   phase       AlbumStoreLinkReviewPhase
+  evidenceType AlbumStoreLinkReviewEvidence
   requestHash String
   evidenceUrl String
   summary     String

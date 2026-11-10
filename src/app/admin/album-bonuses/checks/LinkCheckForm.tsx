@@ -68,6 +68,7 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
   function saved(operationId: string) {
     forgetOperation(storageKey, operationId);
     setPending(null);
+    setExclude(false);
     setMessage("저장한 기록을 확인했습니다.");
     setFormVersion((version) => version + 1);
     router.refresh();
@@ -135,6 +136,7 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
       albumId, storeKey: key, storeName: name, operationId, phase: action, expectedRevision: revision,
       observedAt: new Date().toISOString(),
       evidenceUrl: value("evidenceUrl"), summary: value("summary"), productUrl: value("productUrl") || null,
+      ...(isReviewDecision && { evidenceType: value("evidenceType") }),
     });
     void send({ operationId, body }, false);
   }
@@ -148,7 +150,10 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
         <fieldset disabled={busy || pending !== null} className="space-y-2">
           {canExclude && (
             <label className="block">기록할 작업
-              <select value={action} onChange={(event) => setExclude(event.target.value === "exclude")} className={inputClass}>
+              <select value={action} onChange={(event) => {
+                setExclude(event.target.value === "exclude");
+                setMessage("");
+              }} className={inputClass}>
                 <option value={phase}>{labels[phase]}</option>
                 <option value="exclude">{labels.exclude}</option>
               </select>
@@ -167,6 +172,15 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
           {isReviewDecision && <p>{action === "exclude"
             ? "해당 판매점의 조사 대상 특전이 모두 종료·만료됐다는 명확한 근거를 남기세요. 일시품절·접근 실패·정보 누락은 확인 대상으로 남겨 주세요."
             : "다시 점검할 특전이 있다는 근거를 남기세요."}</p>}
+          {isReviewDecision && <label className="block">근거 유형
+            <select name="evidenceType" defaultValue="" required className={inputClass}>
+              <option value="" disabled>선택하세요</option>
+              {action === "exclude" ? <>
+                <option value="expired">기한 만료</option>
+                <option value="ended">종료·소진 확인</option>
+              </> : <option value="active">다시 제공 중</option>}
+            </select>
+          </label>}
           <label className="block">공식 안내 또는 관찰 근거 URL
             <input name="evidenceUrl" type="url" required maxLength={2048} className={inputClass} />
           </label>
