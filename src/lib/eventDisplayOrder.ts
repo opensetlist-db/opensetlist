@@ -3,11 +3,13 @@ import { createResilientOfficialOrdering, type ArtistOrderId, type ArtistOrderKe
 export interface EventDisplayOrder {
   artists: ArtistOrderKey[];
   guestIds: string[];
+  members?: EventDisplayMember[];
 }
 
 type DisplayArtist = { id: ArtistOrderId; orderId?: string; type: string };
 type Membership = { artistId: ArtistOrderId; sortOrder?: number | null; orderArtistId?: string };
-type DisplayMember = { id: string; sortOrder?: number | null; createdAt?: Date | string; artistLinks: readonly Membership[] };
+type DisplayMember = { id: string; sortOrder?: number | null; createdAt?: Date | string; artistLinks?: readonly Membership[] };
+export type EventDisplayMember = { id: string; sortOrder: number | null; createdAt: string; artistLinks: { artistId: string; sortOrder: number | null }[] };
 export const displayArtistId = (a: DisplayArtist) => a.orderId ?? a.id;
 const linkId = (link: Membership) => link.orderArtistId ?? link.artistId;
 
@@ -15,6 +17,8 @@ export function createEventDisplayOrdering(data: EventDisplayOrder) {
   const ordering = createResilientOfficialOrdering(data.artists);
   const artists = new Map(data.artists.map((artist) => [String(artist.id), artist]));
   const guests = new Set(data.guestIds);
+  const members = new Map(data.members?.map((member) => [member.id, member]));
+  const memberOf = (row: DisplayMember): DisplayMember => members.get(row.id) ?? row;
 
   function groupOf(id: string) {
     const seen = new Set<string>();
@@ -30,8 +34,8 @@ export function createEventDisplayOrdering(data: EventDisplayOrder) {
 
   function sortMembers<T>(rows: readonly T[], member: (row: T) => DisplayMember, context: MemberDisplayContext, preferredGroups?: (id: string) => readonly ArtistOrderId[]) {
     return ordering.sortMembers(rows, (row) => {
-      const person = member(row);
-      const membershipOrders = person.artistLinks.map((link) => ({ artistId: linkId(link), sortOrder: link.sortOrder ?? null }));
+      const person = memberOf(member(row));
+      const membershipOrders = (person.artistLinks ?? []).map((link) => ({ artistId: linkId(link), sortOrder: link.sortOrder ?? null }));
       const groupArtistIds = membershipOrders.flatMap(({ artistId }) => {
         const group = groupOf(String(artistId));
         return group === undefined ? [] : [group];
@@ -54,7 +58,7 @@ export function createEventDisplayOrdering(data: EventDisplayOrder) {
       eligibleUnitCredits: units.map((unit) => ({
         artistId: displayArtistId(unit),
         stageIdentityIds: item.performers.filter(({ stageIdentity }) =>
-          stageIdentity.artistLinks.some((link) => String(linkId(link)) === String(displayArtistId(unit))),
+          (memberOf(stageIdentity).artistLinks ?? []).some((link) => String(linkId(link)) === String(displayArtistId(unit))),
         ).map(({ stageIdentity }) => stageIdentity.id),
       })),
     }, () => groups);

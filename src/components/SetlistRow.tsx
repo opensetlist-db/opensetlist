@@ -339,10 +339,10 @@ export function SetlistRow({
             <div className={styles.creditLine}>
               {shownBadges.map(({ artist, label }) => (
                 <UnitBadge
-                  key={artist.id}
+                  key={artist.orderId ?? artist.id}
                   artistColor={artist.color}
                   locale={locale}
-                  artistId={artist.id}
+                  artistId={artist.orderId ?? artist.id}
                   artistSlug={artist.slug}
                   label={label}
                 />
@@ -564,7 +564,7 @@ function UnitBadge({
 }: {
   artistColor: string | null;
   locale: string;
-  artistId: number;
+  artistId: string | number;
   artistSlug: string;
   label: string;
 }) {

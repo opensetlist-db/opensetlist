@@ -192,7 +192,6 @@ export async function buildEventSnapshot(
           startTime: Date | null;
           isDeleted: boolean | null;
           found: boolean;
-          guestIds: string[];
         }[]
       >`
         SELECT now() AS "capturedAt",
@@ -200,8 +199,7 @@ export async function buildEventSnapshot(
                e.status::text AS status,
                e."startTime",
                e."isDeleted",
-               (e.id IS NOT NULL) AS found,
-               ARRAY(SELECT p."stageIdentityId" FROM "EventPerformer" p WHERE p."eventId" = e.id AND p."isGuest") AS "guestIds"
+               (e.id IS NOT NULL) AS found
           FROM (SELECT 1) AS one
           LEFT JOIN "Event" e ON e.id = ${eventId}
       `;
@@ -289,8 +287,6 @@ export async function buildEventSnapshot(
                 select: {
                   id: true,
                   slug: true,
-                  sortOrder: true,
-                  createdAt: true,
                   originalName: true,
                   originalShortName: true,
                   originalLanguage: true,
@@ -301,7 +297,7 @@ export async function buildEventSnapshot(
                   // Sidebar per-unit member sublist re-derivation
                   // (`src/lib/sidebarDerivations.ts`) needs each
                   // performer's unit memberships.
-                  artistLinks: { select: { artistId: true, sortOrder: true } },
+                  artistLinks: { select: { artistId: true } },
                 },
               },
               realPerson: {
@@ -339,7 +335,7 @@ export async function buildEventSnapshot(
           },
         },
       });
-      const displayOrder = await readEventDisplayOrder(tx, items, row.guestIds ?? []);
+      const displayOrder = await readEventDisplayOrder(tx, eventId, items);
       const reactionGroups = await tx.setlistItemReaction.groupBy({
         by: ["setlistItemId", "reactionType"],
         where: { setlistItem: { eventId, isDeleted: false } },

@@ -1,88 +1,64 @@
 import { Prisma } from "@/generated/prisma/client";
-import { createEventDisplayOrdering, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
+import { createEventDisplayOrdering, type EventDisplayMember, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
 
 type Item = {
   stageType: string;
   artists: { artist: { id: bigint; type: string } }[];
+  performers: { stageIdentity: { id: string } }[];
+};
+
+const exactId = (id: bigint) => id > BigInt(Number.MAX_SAFE_INTEGER) ? id.toString() : undefined;
+
+type WireItem = Omit<Item, "performers"> & {
   performers: { stageIdentity: { id: string; artistLinks: { artistId: bigint }[] } }[];
 };
 
-export function withDisplayIds<T extends Item>(item: T) {
+export function withDisplayIds<T extends WireItem>(item: T) {
   return {
     ...item,
-    artists: item.artists.map((row) => ({ ...row, artist: { ...row.artist, orderId: String(row.artist.id) } })),
+    artists: item.artists.map((row) => ({ ...row, artist: { ...row.artist, orderId: exactId(row.artist.id) } })),
     performers: item.performers.map((row) => ({
       ...row, stageIdentity: { ...row.stageIdentity,
-        artistLinks: row.stageIdentity.artistLinks.map((link) => ({ ...link, orderArtistId: String(link.artistId) })),
+        artistLinks: row.stageIdentity.artistLinks.map((link) => ({ ...link, orderArtistId: exactId(link.artistId) })),
       },
     })),
   };
 }
 
+type MemberRow = EventDisplayMember & { isGuest: boolean };
+
 export async function readEventDisplayOrder(
   tx: Prisma.TransactionClient,
+  eventId: bigint,
   items: Item[],
-  guestIds: string[],
 ): Promise<EventDisplayOrder> {
-  if (!items.some((item) => item.artists.length || item.performers.length)) return { artists: [], guestIds };
-  const rows = await tx.artist.findMany({
-    where: { isDeleted: false },
-    select: { id: true, parentArtistId: true, type: true, sortOrder: true },
-  });
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const relevant = new Set<bigint>();
-  function include(id: bigint) {
-    let current: bigint | null = id;
-    while (current !== null && !relevant.has(current)) {
-      const row = byId.get(current);
-      if (!row) break;
-      relevant.add(current);
-      current = row.parentArtistId;
-    }
-  }
-  for (const item of items) {
-    for (const { artist } of item.artists) include(artist.id);
-    for (const { stageIdentity } of item.performers) {
-      for (const { artistId } of stageIdentity.artistLinks) include(artistId);
-    }
-  }
-  return {
-    guestIds,
-    artists: [...relevant].map((id) => {
-      const row = byId.get(id)!;
-      return { ...row, id: String(id), parentArtistId: row.parentArtistId?.toString() ?? null };
-    }),
-  };
-}
-
-type WriterItem = {
-  stageType: string;
-  artists: Item["artists"];
-  performers: { stageIdentity: { id: string } }[];
-};
-
-type WriterMember = {
-  id: string;
-  sortOrder: number | null;
-  createdAt: string;
-  isGuest: boolean;
-  artistLinks: { artistId: string; sortOrder: number | null }[];
-};
-
-export async function orderSetlistWriteResponse<T extends WriterItem>(tx: Prisma.TransactionClient, eventId: bigint, item: T) {
-  if (!item.artists.length && !item.performers.length) return item;
-  const ids = item.performers.map(({ stageIdentity }) => stageIdentity.id);
+  const ids = [...new Set(items.flatMap((item) => item.performers.map(({ stageIdentity }) => stageIdentity.id)))];
+  const artistIds = [...new Set(items.flatMap((item) => item.artists.map(({ artist }) => artist.id)))];
+  if (!ids.length && !artistIds.length) return { artists: [], guestIds: [] };
   const memberWhere = ids.length ? Prisma.sql`si.id IN (${Prisma.join(ids)})` : Prisma.sql`FALSE`;
-  // Writers use READ COMMITTED. Read the ranks and guest flags together
-  // so a concurrent catalog edit cannot split the ordering snapshot.
-  const [metadata] = await tx.$queryRaw<{ artists: EventDisplayOrder["artists"]; members: WriterMember[] }[]>`
+  const linkWhere = ids.length ? Prisma.sql`sa."stageIdentityId" IN (${Prisma.join(ids)})` : Prisma.sql`FALSE`;
+  const artistWhere = artistIds.length ? Prisma.sql`a.id IN (${Prisma.join(artistIds)})` : Prisma.sql`FALSE`;
+  // One read captures the ranks and guest flags even for READ COMMITTED writers.
+  const [metadata] = await tx.$queryRaw<{ artists: EventDisplayOrder["artists"]; members: MemberRow[] }[]>`
+    WITH RECURSIVE links AS (
+      SELECT sa."stageIdentityId", sa."artistId", sa."sortOrder" FROM "StageIdentityArtist" sa
+      WHERE ${linkWhere}
+    ), relevant AS (
+      SELECT a.id, a."parentArtistId", a.type, a."sortOrder"
+      FROM "Artist" a
+      WHERE NOT a."isDeleted" AND (${artistWhere} OR a.id IN (SELECT "artistId" FROM links))
+      UNION
+      SELECT parent.id, parent."parentArtistId", parent.type, parent."sortOrder"
+      FROM "Artist" parent JOIN relevant child ON child."parentArtistId" = parent.id
+      WHERE NOT parent."isDeleted"
+    )
     SELECT
       COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
           'id', a.id::text, 'parentArtistId', a."parentArtistId"::text,
           'type', a.type, 'sortOrder', a."sortOrder"
         ))
-        FROM "Artist" a WHERE NOT a."isDeleted"
+        FROM relevant a
       ), '[]'::jsonb) AS artists,
       COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
@@ -91,7 +67,7 @@ export async function orderSetlistWriteResponse<T extends WriterItem>(tx: Prisma
           'isGuest', COALESCE(ep."isGuest", false),
           'artistLinks', COALESCE((
             SELECT jsonb_agg(jsonb_build_object('artistId', sa."artistId"::text, 'sortOrder', sa."sortOrder"))
-            FROM "StageIdentityArtist" sa WHERE sa."stageIdentityId" = si.id
+            FROM links sa WHERE sa."stageIdentityId" = si.id
           ), '[]'::jsonb)
         ))
         FROM "StageIdentity" si
@@ -99,17 +75,15 @@ export async function orderSetlistWriteResponse<T extends WriterItem>(tx: Prisma
         WHERE ${memberWhere}
       ), '[]'::jsonb) AS members
   `;
-  const members = new Map(metadata.members.map((member) => [member.id, member]));
-  const ordering = createEventDisplayOrdering({
+  return {
     artists: metadata.artists,
+    members: metadata.members.map(({ id, sortOrder, createdAt, artistLinks }) => ({ id, sortOrder, createdAt, artistLinks })),
     guestIds: metadata.members.filter(({ isGuest }) => isGuest).map(({ id }) => id),
-  });
-  const ordered = ordering.sortItem({
-    stageType: item.stageType,
-    artists: item.artists,
-    performers: item.performers.map((row) => ({
-      row, stageIdentity: members.get(row.stageIdentity.id) ?? { ...row.stageIdentity, artistLinks: [] },
-    })),
-  });
-  return { ...item, artists: ordered.artists, performers: ordered.performers.map(({ row }) => row) };
+  };
+}
+
+export async function orderSetlistWriteResponse<T extends Item>(tx: Prisma.TransactionClient, eventId: bigint, item: T) {
+  if (!item.artists.length && !item.performers.length) return item;
+  const ordering = createEventDisplayOrdering(await readEventDisplayOrder(tx, eventId, [item]));
+  return ordering.sortItem(item);
 }

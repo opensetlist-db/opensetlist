@@ -33,7 +33,7 @@ function fetchAdminEvent(tx: Prisma.TransactionClient, id: bigint) {
           performers: {
             orderBy: byStageIdentityOrderBy(),
             include: {
-              stageIdentity: { include: { translations: true, artistLinks: { select: { artistId: true, sortOrder: true } } } },
+              stageIdentity: { include: { translations: true } },
             },
           },
           artists: {
@@ -52,8 +52,7 @@ export async function getAdminEventWithOrderedSetlist(id: bigint) {
   return prisma.$transaction(async (tx) => {
     const row = await fetchAdminEvent(tx, id);
     if (!row) return null;
-    const guests = row.performers.filter((performer) => performer.isGuest).map(({ stageIdentityId }) => stageIdentityId);
-    const ordering = createEventDisplayOrdering(await readEventDisplayOrder(tx, row.setlistItems, guests));
+    const ordering = createEventDisplayOrdering(await readEventDisplayOrder(tx, id, row.setlistItems));
     return { ...row, setlistItems: row.setlistItems.map(ordering.sortItem) };
   }, { isolationLevel: "RepeatableRead" });
 }

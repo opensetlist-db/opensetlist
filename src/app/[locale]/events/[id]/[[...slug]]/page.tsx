@@ -288,7 +288,6 @@ async function fetchEventRow(tx: Prisma.TransactionClient, id: bigint, locale: s
                   artistLinks: {
                     select: {
                       artistId: true,
-                      sortOrder: true,
                     },
                   },
                 },
@@ -321,7 +320,7 @@ async function fetchEvent(id: bigint, locale: string) {
   return prisma.$transaction(async (tx) => {
     const event = await fetchEventRow(tx, id, locale);
     if (!event) return null;
-    const displayOrder = await readEventDisplayOrder(tx, event.setlistItems, event.performers.filter((row) => row.isGuest).map((row) => row.stageIdentityId));
+    const displayOrder = await readEventDisplayOrder(tx, id, event.setlistItems);
     return serializeBigInt({ ...event, setlistItems: event.setlistItems.map(withDisplayIds), displayOrder });
   }, { isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 10_000 });
 }

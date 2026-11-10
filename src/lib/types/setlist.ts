@@ -56,9 +56,7 @@ export type StageIdentityRef = {
   // (`UnitsCard`) can re-derive when a new performer joins the
   // polled setlist mid-show. Empty array when the StageIdentity
   // has no unit affiliations recorded yet.
-  sortOrder?: number | null;
-  createdAt?: string;
-  artistLinks: Array<{ artistId: number; sortOrder?: number | null; orderArtistId?: string }>;
+  artistLinks: Array<{ artistId: number; orderArtistId?: string }>;
 };
 
 export type RealPersonRef = {

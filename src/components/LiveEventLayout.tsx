@@ -384,7 +384,9 @@ export function LiveEventLayout({
   // Lineup swap: same `items` the setlist column renders, so the
   // sidebar and the setlist agree on "has the show produced data yet".
   // Pre-first-poll `items` is the SSR seed, so first paint matches SSR.
-  const showLineup = lineup !== null && effectiveStatus !== "completed" && sidebarUnits.length === 0 && sidebarPerformers.length === 0;
+  const showLineup = lineup !== null &&
+    (effectiveStatus === "upcoming" || effectiveStatus === "ongoing") &&
+    sidebarUnits.length === 0 && sidebarPerformers.length === 0;
   const unitsForCard = showLineup ? lineup.units : sidebarUnits;
   const performersForCard = showLineup ? lineup.performers : sidebarPerformers;
 
