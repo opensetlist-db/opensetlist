@@ -37,7 +37,7 @@ export async function AlbumListRow({
   activeBonusCount,
 }: Props) {
   const t = await getTranslations({ locale, namespace: "Album" });
-  const title = displayOriginalTitle(album, album.translations, locale);
+  const title = displayOriginalTitle(album, album.translations, locale, "paired");
   const year = parseReleaseYear(album.releaseDate);
 
   return (
@@ -67,9 +67,9 @@ export async function AlbumListRow({
             </span>
           )}
         </div>
-        <div className={styles.rowTitle}>{title.main}</div>
+        <div className={styles.rowTitle} lang={album.originalLanguage}>{title.main}</div>
         <div className={styles.rowSub}>
-          {title.sub}
+          {title.sub && <span lang={locale}>{title.sub}</span>}
           {year !== null && (
             <span className={styles.mobileYear}>
               {title.sub ? " · " : ""}

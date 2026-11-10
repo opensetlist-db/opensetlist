@@ -3,9 +3,72 @@ import {
   displayNameWithFallback,
   displayOriginalName,
   displayOriginalTitle,
+  resolveDisplayPair,
   resolveLocalizedField,
   resolveOriginalShortLabel,
 } from "@/lib/display";
+
+describe("resolveDisplayPair", () => {
+  const japanese = (original: string) => ({ original, originalLanguage: "ja" });
+
+  it.each([
+    ["ko", "Say Good-Bye 눈물"],
+    ["en", "Say Good-Bye Namida"],
+  ])("pairs the original with the exact %s spelling", (locale, sub) => {
+    const original = "Say Good-Bye 涙";
+    const translations = [
+      { locale: "ko", title: "Say Good-Bye 눈물" },
+      { locale: "en", title: "Say Good-Bye Namida" },
+    ];
+    expect(resolveDisplayPair(japanese(original), translations, locale, "title", { kind: "title" }))
+      .toEqual({ main: original, sub, status: "present" });
+  });
+
+  it.each(["Ｄａｙ．１", "2026", "Café ♡", "①", "A・ZU・NA"])(
+    "exempts the title %s without rewriting it",
+    (original) => {
+      const translations = [{ locale: "ko", title: "다른 제목" }];
+      expect(resolveDisplayPair(japanese(original), translations, "ko", "title").sub).toBe("다른 제목");
+      expect(resolveDisplayPair(japanese(original), translations, "ko", "title", { kind: "title" }))
+        .toEqual({ main: original, sub: null, status: "exempt" });
+    },
+  );
+
+  it.each([
+    ["？？？", "title-review"],
+    ["A\u200bB", "title-review"],
+    ["μ's 4th Live", "missing"],
+    ["Say Good-Bye 涙", "missing"],
+  ])("keeps %s out of the title exemption", (original, status) => {
+    const translations = [{ locale: "ko", title: "　 " }, { locale: "en", title: "Other locale" }];
+    expect(resolveDisplayPair(japanese(original), translations, "en", "title", { kind: "title" }).sub)
+      .toBe("Other locale");
+    expect(resolveDisplayPair(japanese(original), translations, "ko", "title", { kind: "title" }))
+      .toEqual({ main: original, sub: null, status });
+  });
+
+  it("uses the original for its own language, but keeps a distinct same-language spelling", () => {
+    const source = japanese("涙");
+    const translations = [{ locale: "ja", name: "なみだ" }];
+    expect(resolveDisplayPair(source, translations, "ja", "name"))
+      .toEqual({ main: "涙", sub: "なみだ", status: "present" });
+    expect(resolveDisplayPair(source, translations, "ja-JP", "name").status).toBe("missing");
+    expect(resolveDisplayPair(source, [{ locale: "en", name: "Namida" }], "ja", "name"))
+      .toEqual({ main: "涙", sub: null, status: "original-language" });
+  });
+
+  it.each(["Liella!", "μ's", "Amazon"])("distinguishes confirmed %s from a copy or a missing name", (name) => {
+    const source = japanese(name);
+    const translations = [{ locale: "en", name }];
+    const confirmation = { sameValueConfirmed: true };
+    expect(resolveDisplayPair(source, translations, "en", "name", confirmation))
+      .toEqual({ main: name, sub: null, status: "confirmed-same" });
+    expect(resolveDisplayPair(source, translations, "en", "name"))
+      .toEqual({ main: name, sub: null, status: "unconfirmed-same" });
+    expect(resolveDisplayPair(source, translations, "ko", "name", confirmation))
+      .toEqual({ main: name, sub: null, status: "missing" });
+  });
+});
 
 // `displayName(translation, mode)` was removed (no consumers).
 // Single-translation name resolution flows through
