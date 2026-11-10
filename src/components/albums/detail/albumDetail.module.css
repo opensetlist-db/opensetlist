@@ -424,6 +424,9 @@ a.trackRow:focus-visible {
   color: var(--text-secondary);
   font-size: 12px;
 }
+.eventVenue {
+  font-size: 13px;
+}
 .eventTranslation {
   font-weight: 400;
 }
