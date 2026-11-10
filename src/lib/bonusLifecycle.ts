@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Prisma } from "@/generated/prisma/client";
 import { optionalString, optionalUrl, parseInstant, parsePeriod, parseRevision, PurchaseInputError } from "@/lib/adminPurchaseFields";
 import { prisma } from "@/lib/prisma";
 import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
@@ -18,6 +19,12 @@ export function validOperationId(value: unknown): value is string {
 }
 
 const lifecycleActions = ["end", "restore"] as const;
+
+export function pruneBonusCheckReceipts(tx: Prisma.TransactionClient, bonus: Prisma.AlbumStoreBonusWhereInput) {
+  return tx.albumStoreBonusLifecycleOperation.deleteMany({
+    where: { bonus, action: { notIn: [...lifecycleActions] } },
+  });
+}
 
 function verifiesBonus(action: string) {
   return action === "end" || action === "restore" || action === "maintained";

@@ -95,13 +95,12 @@ function LinkRows({ entries }: { entries: Awaited<ReturnType<typeof getLinkCheck
                 </li>
               ))}
             </ul>
-            {status === "found" ? (
+            {status === "found" && (
               <Link href={`/admin/albums/${target.albumId}/listings`} className="text-blue-600 underline">구매 옵션 관리</Link>
-            ) : (
-              <LinkCheckForm key={`${key}:${revision}`} albumId={String(target.albumId)}
-                storeKey={target.storeKey} storeName={target.storeName} revision={revision}
-                phase={status === "retry_due" ? "retry" : "resolve"} />
             )}
+            <LinkCheckForm key={`${key}:${revision}`} albumId={String(target.albumId)}
+              storeKey={target.storeKey} storeName={target.storeName} revision={revision}
+              phase={status === "retry_due" ? "retry" : status === "review_needed" ? "resolve" : undefined} />
           </li>
         );
       })}

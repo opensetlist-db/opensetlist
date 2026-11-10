@@ -24,10 +24,10 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
   storeKey?: string;
   storeName?: string;
   revision: number;
-  phase: keyof typeof labels;
+  phase?: keyof typeof labels;
 }) {
   const router = useRouter();
-  const storageKey = `bonus-link-check:${JSON.stringify([albumId, storeKey, phase])}`;
+  const storageKey = `bonus-link-check:${JSON.stringify([albumId, storeKey])}`;
   const [busy, setBusy] = useState(true);
   const [pending, setPending] = useState<PendingOperation | null>(null);
   const [message, setMessage] = useState("");
@@ -114,7 +114,7 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || pending) return;
+    if (busy || pending || !phase) return;
     const values = new FormData(event.currentTarget);
     const value = (name: string) => String(values.get(name) ?? "").trim();
     const name = storeName ?? value("storeName");
@@ -132,8 +132,10 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
     void send({ operationId, body }, false);
   }
 
+  if (!phase) return message ? <p role="status">{message}</p> : null;
+
   return (
-    <details open={pending ? true : undefined} className="rounded border border-zinc-200 p-3">
+    <details open={pending || message ? true : undefined} className="rounded border border-zinc-200 p-3">
       <summary className="cursor-pointer font-medium">{labels[phase]}</summary>
       <form key={formVersion} onSubmit={submit} className="mt-3">
         <fieldset disabled={busy || pending !== null} className="space-y-2">
