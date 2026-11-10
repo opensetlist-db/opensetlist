@@ -124,12 +124,21 @@ integration suite.
 
 ### Dev schema preflight before merge
 
-From a trusted, reviewed branch, dispatch
+Check the exact [merge candidate](docs/session-state.md#verify-the-merge-candidate), including code-only PRs. From its local checkout, run the guarded read-only check with the dev session URL. In Windows PowerShell, invoke Git for Windows Bash explicitly.
+
+```bash
+bash scripts/schema-push.sh --check-dev
+```
+
+To check on GitHub, from a trusted, reviewed branch, dispatch
 `gh workflow run migrate-dev.yml --ref <candidate-branch> -f check_only=true`
 and verify the run's `headSha` matches the merge candidate. The job compares
 the current dev database to that schema and runs the existing DROP guard.
 It exits before applying Prisma or post-deploy SQL. A clean check is a
-point-in-time result; the push-triggered migration checks again after merge.
+point-in-time result. The push-triggered migration checks again after merge.
+If either check reports a DROP, identify the branch owning the dev object,
+integrate its merged schema, and rerun on the new candidate. Record the
+candidate tree and result with the other pre-merge evidence.
 
 ### Integration — the shared dev database
 
@@ -267,6 +276,22 @@ setlist item to the event, PUTs a song onto it, and in `finally`
 DELETEs it — a **soft** delete, so an `isDeleted` row stays on that
 event for every run. Point `E2E_UNKNOWN_SONG_EVENT_ID` at a throwaway
 dev event, never one the Preview or another task relies on.
+
+### BD home and admin QA
+
+For an active bonus on a past event shown on the home page, pass the exact album ID to the home fixture scenario. A missing badge fails the check. The scenario covers 320px and 1440px and captures each cell.
+
+```powershell
+node scripts/page-qa.mjs --scenario home --fixture '{"bdAlbum":"135"}' --only-fixture --base <preview-url> --out <evidence-dir>
+```
+
+Use an album confirmed to qualify on that deployment. Verify authenticated form submission on the immutable Preview before falling back to the local API spec for data and cache checks.
+
+`home-event-bd.spec.ts` prints a receipt path under `.claude/tmp/home-bd-fixtures/` before inserting rows. After an interrupted run, stop its worker and recover only that receipt. The recovery command rolls back if any recorded rows remain and is safe to repeat.
+
+```powershell
+node scripts/db-home-bd-fixture-rm.mjs <fixture-receipt.json>
+```
 
 ### Event-detail TTFB — same measurement as CI
 
