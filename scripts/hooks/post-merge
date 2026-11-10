@@ -3,12 +3,9 @@
 # Git post-merge hook: regenerate the Prisma client when a merge (or a
 # `git pull`) changed the schema.
 #
-# Why: `scripts/worktree-new.sh` copies the gitignored `src/generated/`
-# once and links `node_modules`, so `npm ci`'s postinstall
-# (`prisma generate`) never runs in a worktree. Merging a dev that
-# carries a schema change then leaves a stale client, and `tsc` fails
-# with Prisma type errors far from the cause (n15-09a: boardRead.ts
-# after n15-08 added columns).
+# A newly created worktree generates its own client. A later merge can
+# change the schema without refreshing that client, leaving `tsc` errors
+# far from the cause.
 #
 # A post-merge hook can't abort the merge, so a failed generate only
 # warns. Installed by scripts/install-git-hooks.sh into the shared hooks

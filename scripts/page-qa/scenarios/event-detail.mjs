@@ -34,6 +34,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { checkoutRoot } from "../harness.mjs";
+import { checkEventOrdering } from "../event-ordering.mjs";
 
 const LIVE = "111"; // ongoing, 23 actual items, festival (every row has chips)
 const LIVE_EMPTY = "112"; // ongoing, no actual items yet
@@ -573,8 +574,14 @@ const scenario = {
   // A cancelled concert exists only as a fixture row (db-fixture-add with
   // status "cancelled", under the DB slot); the plain run never needs one.
   fixture: {
-    needs: ["cancelled"],
+    needs: [],
+    about: "cancelled event ID or orderingBaseline Preview URL",
     run: async (h, fx) => {
+      if (fx.cancelled == null && fx.orderingBaseline == null) {
+        throw new Error("event-detail fixture needs cancelled or orderingBaseline");
+      }
+      if (fx.orderingBaseline != null) await checkEventOrdering(h, fx, SEED_SONGS.slice(0, 3));
+      if (fx.cancelled == null) return;
       const loc = "ko";
       await h.section("participation cancelled", async () => {
         const id = String(fx.cancelled);

@@ -2,6 +2,9 @@
 
 import { useTranslations } from "next-intl";
 import { displayNameWithFallback } from "@/lib/display";
+import { createOfficialOrdering } from "@/lib/officialOrder";
+
+const memberOrdering = createOfficialOrdering([]);
 
 export interface PerformerOption {
   stageIdentityId: string;
@@ -10,6 +13,9 @@ export interface PerformerOption {
   originalLanguage: string;
   translations: { locale: string; name: string; shortName: string | null }[];
   isGuest: boolean;
+  sortOrder?: number | null;
+  createdAt?: Date | string;
+  artistLinks?: { artistId: number; orderArtistId?: string; sortOrder?: number | null }[];
 }
 
 interface Props {
@@ -17,6 +23,7 @@ interface Props {
   checkedIds: Set<string>;
   onToggle: (stageIdentityId: string) => void;
   locale: string;
+  unitArtistId?: string | null;
 }
 
 /**
@@ -42,15 +49,33 @@ export function PerformerChecklist({
   checkedIds,
   onToggle,
   locale,
+  unitArtistId,
 }: Props) {
   // Reuse the existing `Event.guestLabel` key (`<UnitsCard>` /
   // `<PerformersCard>` already render the muted suffix from this).
   // Avoids adding a parallel `AddItem.guestLabel` and ensures the
   // wording stays consistent across the SETLIST surface.
   const eventT = useTranslations("Event");
+  const members = unitArtistId == null ? [] : performers.flatMap((row) => {
+    const link = row.artistLinks?.find(({ artistId, orderArtistId }) => (orderArtistId ?? String(artistId)) === unitArtistId);
+    return link ? [{ row, link }] : [];
+  });
+  const scoped = unitArtistId == null ? [] : memberOrdering.sortMembers(members, ({ row, link }) => ({
+    id: row.stageIdentityId,
+    sortOrder: row.sortOrder ?? null,
+    createdAt: row.createdAt ?? "1970-01-01T00:00:00Z",
+    membershipOrders: [{ artistId: unitArtistId, sortOrder: link.sortOrder ?? null }],
+    groupArtistIds: [],
+    isGuest: row.isGuest,
+  }), { kind: "artist", artistId: unitArtistId });
+  const memberIds = new Set(members.map(({ row }) => row.stageIdentityId));
+  let index = 0;
+  const displayPerformers = performers.map((row) =>
+    memberIds.has(row.stageIdentityId) ? scoped[index++].row : row,
+  );
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-      {performers.map((p) => {
+      {displayPerformers.map((p) => {
         const name = displayNameWithFallback(
           {
             originalName: p.originalName ?? "",

@@ -26,6 +26,8 @@
     "emptyPast": "まだ曲が登録されたセットリストはありません。",
     "browse": "イベントを探す",
     "liveBadge": "開催中",
+    "bdBonus": "BD特典",
+    "bdBonusFor": "{event}のBD特典",
     "scheduled": "開催予定 · {label}",
     "setlistSongs": "{count, plural, other {#曲のセットリスト}}",
     "setlistWaiting": "セットリストの更新を待っています",
@@ -227,10 +229,17 @@
       "events": "関連公演の情報は準備中です。"
     },
     "bonus": {
+      "options": "特典付き購入オプション",
+      "basicOptions": "特典なしの購入オプション",
+      "storeCount": "販売店 {count}店",
+      "deadline": "特典締切：{time}",
+      "buyAt": "{store}で商品を見る",
+      "officialInfo": "公式商品情報",
       "status": {
         "active": "販売中",
         "ended": "終了"
       },
+      "affiliateDisclosure": "Amazonアソシエイトリンクです。Amazonのアソシエイトとして、OpenSetlistは適格販売により収入を得ています。",
       "buy": "購入する",
       "showEnded": "{count, plural, other {終了済みの店舗を見る (#)}}",
       "summary": {
@@ -238,7 +247,7 @@
         "current": "現在 {count}",
         "ended": "終了 {count}"
       },
-      "empty": "登録された店舗情報がありません。"
+      "empty": "購入リンクは登録されていません。"
     },
     "tracks": {
       "discN": "Disc {disc}",
@@ -361,10 +370,9 @@
       "preorderBadge": "受付中",
       "releasedBadge": "発売中",
       "releaseDateLabel": "発売",
-      "bonusPreviewHeading": "店舗特典プレビュー",
-      "compareCta": "店舗特典を比較する →",
-      "purchaseCta": "BDを購入する →",
-      "detailsCta": "アルバム詳細を見る →"
+      "bonusStoreCount": "特典付き販売店 {count}店",
+      "compareCta": "販売店・特典を見る →",
+      "purchaseCta": "購入先を見る →"
     }
   },
   "EventDetail": {

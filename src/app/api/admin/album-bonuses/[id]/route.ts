@@ -1,32 +1,21 @@
+import { parseBonusPurchaseFields, parseRevision, PurchaseInputError } from "@/lib/adminPurchaseFields";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { pruneBonusCheckReceipts } from "@/lib/bonusLifecycle";
 import { parseBonusTranslations } from "@/lib/adminParsers";
 import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
-type PatchBody = {
+type PatchBody = Record<string, unknown> & {
   originalBonusType?: unknown;
   originalLanguage?: unknown;
   translations?: unknown;
 };
 
-/**
- * PATCH /api/admin/album-bonuses/[id]
- *
- *   listingId is NOT mutable — moving a bonus between listings should
- *   go through delete-then-create so the audit trail (when a05 ships)
- *   stays sane. Translations replaced delete-then-create inside a
- *   $transaction.
- *
- *   Bonus-level lifecycle columns (`startsAt`, `endsAt`,
- *   `bonusImageUrl`, `originalBonusDescription`) intentionally NOT
- *   touched — pre-existing non-null values from CSV import or an
- *   earlier UI iteration stay intact.
- */
 export async function PATCH(request: NextRequest, { params }: RouteProps) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
@@ -39,6 +28,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   let body: PatchBody;
   try {
     body = (await request.json()) as PatchBody;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
   } catch {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
@@ -53,20 +43,19 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  // Same contract as the sibling listings/tracks PATCHes: missing
-  // `translations` field = preserve existing rows; explicit empty
-  // array = full-replace wipe. Anything else (null / object /
-  // string) hits 400 — without that guard the parser falls through
-  // to `[]` and the operator's locale rows would be silently wiped
-  // by the deleteMany on a malformed request.
   if (
     body.translations !== undefined &&
-    !Array.isArray(body.translations)
+    (!Array.isArray(body.translations) || body.translations.some((row) =>
+      !row || typeof row !== "object" || typeof row.locale !== "string"))
   ) {
     return NextResponse.json(
       { error: "translations 필드는 배열이어야 합니다." },
       { status: 400 },
     );
+  }
+  const removed = body.removedTranslationLocales;
+  if (removed !== undefined && (!Array.isArray(removed) || removed.some((locale) => typeof locale !== "string"))) {
+    return NextResponse.json({ error: "삭제할 번역 언어를 확인해 주세요." }, { status: 400 });
   }
   const translationsProvided = Array.isArray(body.translations);
   const translations = translationsProvided
@@ -74,58 +63,58 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     : [];
 
   try {
+    const purchase = parseBonusPurchaseFields(body);
+    const originalLanguage = typeof body.originalLanguage === "string"
+      ? body.originalLanguage.trim() || "ja"
+      : "ja";
+    const revision = parseRevision(body.expectedRevision);
     const updated = await prisma.$transaction(async (tx) => {
-      const existing = await tx.albumStoreBonus.findUnique({
-        where: { id },
-        select: { id: true },
-      });
-      if (!existing) return null;
-
-      if (translationsProvided) {
-        // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
-        await tx.albumStoreBonusTranslation.deleteMany({
-          where: { bonusId: id },
-        });
-      }
-
-      // Same whitespace-tolerant normalize as POST so a body of
-      // `originalLanguage: "   "` falls back to the "ja" default
-      // rather than persisting a blank.
-      const originalLanguage =
-        typeof body.originalLanguage === "string" &&
-        body.originalLanguage.trim()
-          ? body.originalLanguage.trim()
-          : "ja";
-
+      // Evaluate the cutoff after waiting for any concurrent lifecycle write.
+      await tx.$queryRaw`SELECT id FROM "AlbumStoreBonus" WHERE id = ${id} FOR NO KEY UPDATE`;
       return tx.albumStoreBonus.update({
-        where: { id },
+        where: {
+          id,
+          revision,
+          // Once a period expires, publishing it again requires a restoration
+          // with evidence. Metadata-only edits can still preserve that period.
+          OR: purchase.startsAt !== undefined && purchase.endsAt !== undefined ? [
+            { endedAt: null, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+            { startsAt: purchase.startsAt, endsAt: purchase.endsAt },
+          ] : undefined,
+        },
         data: {
+          ...purchase,
+          revision: { increment: 1 },
           originalBonusType: (body.originalBonusType as string).trim(),
           originalLanguage,
-          translations:
-            translationsProvided && translations.length
-              ? { create: translations }
-              : undefined,
+          translations: translationsProvided || removed !== undefined ? {
+            deleteMany: removed !== undefined
+              ? { locale: { in: removed.filter((locale) => !translations.some((row) => row.locale === locale)) } }
+              : translationsProvided && translations.length === 0 ? {} : undefined,
+            upsert: translations.map((row) => ({
+              where: { bonusId_locale: { bonusId: id, locale: row.locale } },
+              create: row,
+              update: row,
+            })),
+          } : undefined,
         },
         include: { translations: true },
       });
-    });
-
-    if (!updated) {
-      return NextResponse.json(
-        { error: "특전을 찾을 수 없습니다." },
-        { status: 404 },
-      );
-    }
+    }, { timeout: 15000 });
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
-    // Race window: in-tx findUnique passed but a concurrent DELETE
-    // removed the row before update landed.
+    if (e instanceof PurchaseInputError) return NextResponse.json({ error: e.message }, { status: 400 });
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2025"
     ) {
+      if (await prisma.albumStoreBonus.findUnique({ where: { id }, select: { id: true } })) {
+        return NextResponse.json(
+          { code: "conflict", error: "특전이 변경되었거나 기간이 끝났습니다. 최신 내용을 확인하고, 재개 시 복구 기능을 사용해 주세요." },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
         { error: "특전을 찾을 수 없습니다." },
         { status: 404 },
@@ -150,10 +139,17 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
   }
 
   try {
-    await prisma.albumStoreBonus.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "AlbumStoreBonus" WHERE id = ${id} FOR UPDATE`;
+      await pruneBonusCheckReceipts(tx, { id });
+      await tx.albumStoreBonus.delete({ where: { id } });
+    });
     revalidatePublicData();
     return NextResponse.json({ ok: true });
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+      return NextResponse.json({ error: "종료·복구 이력이 있는 특전은 삭제할 수 없습니다." }, { status: 409 });
+    }
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2025"

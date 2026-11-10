@@ -2,9 +2,11 @@
 # `prisma db push` for the migrate workflows (migrate-dev.yml,
 # migrate-prod.yml), against $DATABASE_URL.
 #
-#   scripts/schema-push.sh <accept_data_loss: true|false>
+#   scripts/schema-push.sh <true|false|--check-only|--check-dev>
 #
 #   true  → the operator chose `--accept-data-loss` on manual dispatch.
+#   --check-only → run the DROP check and exit before any push.
+#   --check-dev → require a dev session URL, then run --check-only locally.
 #   false → diff the database against the schema first.
 #           1. A diff that DROPs a column, a table, or an index of a table
 #              that stays (scripts/schema-diff-additive.mjs --drops) stops
@@ -20,7 +22,30 @@
 #              real data-loss warning as before.
 set -euo pipefail
 
-if [ "${1:-false}" = "true" ]; then
+mode="${1-false}"
+case "$mode" in
+  true|false|--check-only|--check-dev) ;;
+  *) echo "usage: $0 <true|false|--check-only|--check-dev>" >&2; exit 2 ;;
+esac
+if [ "$#" -gt 1 ]; then
+  echo "Expected at most one schema mode" >&2
+  exit 2
+fi
+
+if [ "$mode" = "--check-dev" ]; then
+  node --input-type=module <<'NODE'
+import "dotenv/config";
+import { pointsAtDevProject } from "./scripts/dev-db-guard.mjs";
+const url = process.env.DATABASE_URL_UNPOOLED ?? "";
+if (!pointsAtDevProject(url) || (new URL(url).port || "5432") !== "5432") {
+  console.error("Read-only schema check requires the dev session DATABASE_URL_UNPOOLED");
+  process.exit(2);
+}
+NODE
+  mode=--check-only
+fi
+
+if [ "$mode" = "true" ]; then
   echo "Running with --accept-data-loss (manual dispatch)"
   npx prisma db push --accept-data-loss
   exit 0
@@ -39,12 +64,17 @@ echo "────────────────────────�
 drops_status=0
 node scripts/schema-diff-additive.mjs --drops "$diff_file" || drops_status=$?
 if [ "$drops_status" -eq 4 ]; then
-  echo "::error::Refusing to push: the schema diff drops the statements above."
-  echo "Hint: a branch-only column from an unmerged PR? re-run migrate-dev --ref <that branch> after this; or dispatch with accept_data_loss=true"
+  echo "::error::Schema check failed: the diff drops the statements above."
+  echo "If these objects belong to an unmerged branch, integrate its schema first, then rerun with deletion protection enabled."
   exit 1
 elif [ "$drops_status" -ne 0 ]; then
   echo "::error::The drop check failed (exit $drops_status); not pushing."
   exit "$drops_status"
+fi
+
+if [ "$mode" = "--check-only" ]; then
+  echo "Schema DROP check passed (diff only)."
+  exit 0
 fi
 
 if node scripts/schema-diff-additive.mjs "$diff_file"; then

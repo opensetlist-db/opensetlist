@@ -45,6 +45,25 @@ pipe):
 npx vitest run 2>&1 | grep -E "FAIL|×|Test Files|Tests "; echo "exit=${PIPESTATUS[0]}"
 ```
 
+### Planning Preview evidence
+
+If a ticket requires Preview evidence, identify a sample that exercises
+the changed behavior before implementation. Check existing dev data with
+the [read-only query tool](#integration--the-shared-dev-database). If no
+sample qualifies, record the required data and plan setup and cleanup in
+the ticket using the guarded QA fixture workflow below. Report an absent
+positive case as unverified on Preview even if the page renders.
+
+### Before the first push
+
+Run these from the task worktree after editing, including when the diff
+only changes tests. Generate first so typecheck uses this checkout's
+schema. Generation writes the local client and requires no DB connection.
+
+```bash
+npm exec --no -- prisma generate && npm exec --no -- tsc --noEmit
+```
+
 Before review, lint every file the branch changed, with warnings
 failing. Warnings do not fail CI, so a file left out of a partial lint
 reaches the PR with its warning (a `hex-colour-literals`, say) as a mere
@@ -60,6 +79,19 @@ files=$(git diff --name-only --diff-filter=d origin/dev...HEAD -- '*.ts' '*.tsx'
 ```
 
 ### Unit — no database
+
+In Windows Codex worktrees, set a writable worktree-local temp directory
+before starting Vitest to avoid worker startup and temp-file rename
+failures. Run this in a task PowerShell from the worktree root, replacing
+the example path with the relevant unit test:
+
+```powershell
+$vitestTemp = Join-Path $PWD '.claude/tmp/vitest'
+New-Item -ItemType Directory -Force $vitestTemp | Out-Null
+$env:TEMP = $vitestTemp
+$env:TMP = $vitestTemp
+npm test -- --maxWorkers=1 src/__tests__/unit/tz-pin.test.ts
+```
 
 `npx vitest run src/__tests__/unit/event-og-preview.test.ts` exercises the
 event-card preview service with actual bundled fonts/Satori/ImageResponse PNGs,
@@ -90,6 +122,24 @@ artifact boundary. No production credentials, DB or storage are used.
 it that way — a unit test that needs real rows belongs in the
 integration suite.
 
+### Dev schema preflight before merge
+
+Check the exact [merge candidate](docs/session-state.md#verify-the-merge-candidate), including code-only PRs. From its local checkout, run the guarded read-only check with the dev session URL. In Windows PowerShell, invoke Git for Windows Bash explicitly.
+
+```bash
+bash scripts/schema-push.sh --check-dev
+```
+
+To check on GitHub, from a trusted, reviewed branch, dispatch
+`gh workflow run migrate-dev.yml --ref <candidate-branch> -f check_only=true`
+and verify the run's `headSha` matches the merge candidate. The job compares
+the current dev database to that schema and runs the existing DROP guard.
+It exits before applying Prisma or post-deploy SQL. A clean check is a
+point-in-time result. The push-triggered migration checks again after merge.
+If either check reports a DROP, identify the branch owning the dev object,
+integrate its merged schema, and rerun on the new candidate. Record the
+candidate tree and result with the other pre-merge evidence.
+
 ### Integration — the shared dev database
 
 There is no separate test database. The integration setup
@@ -98,6 +148,14 @@ throws unless both `DATABASE_URL` and `DATABASE_URL_UNPOOLED` point at
 the dev Supabase project, so a prod URL in the shell cannot slip
 through. Files run one at a time (`fileParallelism: false`).
 
+Before applying an unmerged additive schema to shared dev, record the owning
+PR or branch, added objects, and planned application time in the task's
+execution board. Coordinate with sessions using dev so their standard
+migration runs avoid the pre-merge window. If a concurrent migration hits
+the DROP guard, compare the refused objects with that record. Keep the guard
+enabled, report any unrelated drift separately, and rerun the standard dev
+migration after the owning PR merges to confirm the schema and role checks pass.
+
 The dev DB also backs the Vercel Preview and other sessions' work, so
 know what each suite leaves behind:
 
@@ -105,8 +163,11 @@ know what each suite leaves behind:
 |---|---|---|
 | `board-picks.test.ts` | **writes** | artist, song, series, event, setlist item, `BoardPick` rows; `afterAll` deletes them |
 | `board-wishes.test.ts` | **writes** | artists, songs, series, event, `SongWish` rows; `afterAll` deletes them |
+| `bonus-checks.test.ts` | **writes** | one album, listing, bonus, observations, lifecycle history, link attempts and link review decisions; `afterAll` deletes its own rows |
+| `bonus-lifecycle.test.ts` | **writes** | one album, listing, bonus and lifecycle history; `afterAll` deletes only its own rows |
 | `member-order.test.ts` | **writes** | artist, event, stage identity, performers; `afterAll` deletes them |
 | `official-order.test.ts` | **writes** | `officialorder-itest-` artists, identities, relations, event, explicit voice, song and historical item in a rolled-back transaction; fixed-prefix purge before/after handles interrupted fixtures |
+| `membership-order-management.test.ts` | **writes** | `membershiporder-itest-` artists, identities, historical event, explicit voice/song and relations; real admin/import rank-only handlers, warm expiry, blank/clear/replay/partial failures; fixed-prefix purge before/after and zero-row checks |
 | `n14-live-path.test.ts` | **writes** | event, setlist items, reactions, wishes, confirms; also joins the dev Supabase Realtime channel (anon key) and broadcasts; `afterAll` deletes the rows |
 | `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
@@ -124,6 +185,7 @@ know what each suite leaves behind:
 | `album-list-pagination.test.ts` | **writes** | read-only paging of the whole album catalog and every artist chip against a raw-SQL ordering; then 5 artists (2 deleted sub-units) and 29 albums dated 2099 or undated whose slug starts `c07itest<ts>`, with `AlbumArtist` links; `beforeAll` purges earlier `c07itest` leftovers, `afterAll` deletes them and asserts none are left |
 | `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
+| `purchase-options.test.ts` | **writes** | isolated album, listings and bonuses through admin handlers; `afterAll` hard-deletes its fixture |
 
 Every `*.test.ts` here needs a row, and every row a file:
 `npm run check:testing-md` (a CI step right after Lint) fails otherwise. The
@@ -165,6 +227,23 @@ made through the admin UI, which only soft-deletes): `node
 scripts/db-fixture-rm.mjs --dry-run …` — guarded hard delete, usage in
 its header; never an ad-hoc delete script.
 
+### Festival display-order regression
+
+Run the existing `page-qa` event-detail scenario with a fixture file
+containing `{"orderingBaseline":"https://<baseline-preview>"}`:
+
+```bash
+node scripts/page-qa.mjs --scenario event-detail --base https://<candidate-preview> --fixture <fixture.json> --only-fixture --out <evidence-dir>
+```
+
+Use a known-good ordering deployment as the baseline, or also set
+`orderingReference` to a reviewed Preview when the baseline predates the
+ordering change. All deployments must read the same dev data. The check probes the status
+and item counts first, compares the two scheduled festival days and blocks
+browser API writes. Event 8's empty setlist is recorded as SKIP. The isolated
+11/2-credit positive control lives in `official-order.test.ts` and runs with
+the dev integration suite.
+
 ### E2E — through the app
 
 `playwright.config.ts` starts `npm run dev` on `localhost:3000` unless
@@ -179,7 +258,9 @@ the skip count.
 | `album.spec.ts` | GET only | `E2E_ALBUM_ID`, `E2E_SINGLE_ID`, `E2E_LIVE_ALBUM_ID` |
 | `album-cross-links.spec.ts` | GET only | `E2E_MULTI_ALBUM_SONG_ID`, `E2E_DISCOGRAPHY_ARTIST_ID`, `E2E_BD_SERIES_ID` |
 | `bonus-scrape.spec.ts` | GET only | `E2E_BONUS_ALBUM_ID` |
+| `bonus-lifecycle.spec.ts` | **writes** | local app, dev DB URLs and `ADMIN_PASSWORD`; creates and deletes its own album, listings, bonuses and history |
 | `event-bd-section.spec.ts` | GET only | `E2E_BD_EVENT_ID`, `E2E_PLAIN_EVENT_ID` |
+| `home-event-bd.spec.ts` | **writes** | local app, guarded dev DB, `ADMIN_PASSWORD`; creates and removes its own album, event, song, options and lifecycle history |
 | `home.spec.ts` | GET only | none — asserts roles, landmarks and URLs, so any dev catalog state passes |
 | `search.spec.ts` | GET only | a catalog where `a` matches >20 songs (any seeded dev DB) |
 | `event-og-publication.spec.ts` | **writes**, explicitly skipped unless `EVENT_CARD_R2_E2E=1` | dev DB + `opensetlist-images-dev` bucket + `R2_KEY_PREFIX=test`; writes nine retained PNGs, logs exact keys, purges/cleans only `og02e2e-` fixtures; actual nine normal/Twitterbot HTML+PNG responses, CLI retry, canonical auto-navigation and JS-free mobile/keyboard fallback; requires matching production `TEST_BASE_URL` / `NEXT_PUBLIC_BASE_URL` |
@@ -195,6 +276,22 @@ setlist item to the event, PUTs a song onto it, and in `finally`
 DELETEs it — a **soft** delete, so an `isDeleted` row stays on that
 event for every run. Point `E2E_UNKNOWN_SONG_EVENT_ID` at a throwaway
 dev event, never one the Preview or another task relies on.
+
+### BD home and admin QA
+
+For an active bonus on a past event shown on the home page, pass the exact album ID to the home fixture scenario. A missing badge fails the check. The scenario covers 320px and 1440px and captures each cell.
+
+```powershell
+node scripts/page-qa.mjs --scenario home --fixture '{"bdAlbum":"135"}' --only-fixture --base <preview-url> --out <evidence-dir>
+```
+
+Use an album confirmed to qualify on that deployment. Verify authenticated form submission on the immutable Preview before falling back to the local API spec for data and cache checks.
+
+`home-event-bd.spec.ts` prints a receipt path under `.claude/tmp/home-bd-fixtures/` before inserting rows. After an interrupted run, stop its worker and recover only that receipt. The recovery command rolls back if any recorded rows remain and is safe to repeat.
+
+```powershell
+node scripts/db-home-bd-fixture-rm.mjs <fixture-receipt.json>
+```
 
 ### Event-detail TTFB — same measurement as CI
 
@@ -309,9 +406,15 @@ is started from.
 
 ## Windows task tools
 
-Use `powershell -NoProfile -File scripts/task-runtime.ps1 serve-build
+Run the local production build and full unit suite sequentially from the task
+worktree. For Vitest worker or temp-file failures, use the
+[worktree-local TEMP/TMP setup](#unit--no-database).
+
+For local admin QA, serve a production build with
+`powershell -NoProfile -File scripts/task-runtime.ps1 serve-build
 -Runtime GitBash -Port 3191` to select Git Bash explicitly, or select
-`-Runtime WSL -Distro <name>` with Linux Node installed. Windows removal
+`-Runtime WSL -Distro <name>` with Linux Node installed. Stop it with the same
+command plus `-Stop` before archiving the task's evidence. Windows removal
 uses the same entry point with `worktree-rm -Path <absolute-path>
 -ReleasedHead <full-handoff-head> -MergeRef origin/dev` (first add `-DryRun`).
 It always runs natively and refuses dirty, active, unmerged, or unsafe paths.

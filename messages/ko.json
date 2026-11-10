@@ -26,6 +26,8 @@
     "emptyPast": "아직 곡이 등록된 세트리스트가 없습니다.",
     "browse": "이벤트 찾아보기",
     "liveBadge": "공연 중",
+    "bdBonus": "BD 특전",
+    "bdBonusFor": "{event} BD 특전",
     "scheduled": "공연 예정 · {label}",
     "setlistSongs": "{count, plural, other {#곡의 세트리스트}}",
     "setlistWaiting": "세트리스트 업데이트를 기다리고 있어요",
@@ -227,10 +229,17 @@
       "events": "관련 공연 정보 준비 중입니다."
     },
     "bonus": {
+      "options": "특전 구매 옵션",
+      "basicOptions": "특전 없는 구매 옵션",
+      "storeCount": "판매점 {count}곳",
+      "deadline": "특전 마감: {time}",
+      "buyAt": "{store}에서 상품 보기",
+      "officialInfo": "공식 상품 안내",
       "status": {
         "active": "판매중",
         "ended": "종료"
       },
+      "affiliateDisclosure": "Amazon 제휴 링크입니다. OpenSetlist는 Amazon 어소시에이트로서 적격 구매를 통해 수익을 얻습니다.",
       "buy": "구매하기",
       "showEnded": "{count, plural, other {종료된 매장 보기 (#)}}",
       "summary": {
@@ -238,7 +247,7 @@
         "current": "현재 {count}",
         "ended": "종료 {count}"
       },
-      "empty": "등록된 매장 정보가 없습니다."
+      "empty": "등록된 구매 링크가 없습니다."
     },
     "tracks": {
       "discN": "Disc {disc}",
@@ -361,10 +370,9 @@
       "preorderBadge": "예약 수락 중",
       "releasedBadge": "발매 중",
       "releaseDateLabel": "발매",
-      "bonusPreviewHeading": "매장특전 미리보기",
-      "compareCta": "매장특전 비교하기 →",
-      "purchaseCta": "BD 구매하기 →",
-      "detailsCta": "앨범 상세 보기 →"
+      "bonusStoreCount": "특전 제공 판매점 {count}곳",
+      "compareCta": "구매처·특전 보기 →",
+      "purchaseCta": "구매처 보기 →"
     }
   },
   "EventDetail": {

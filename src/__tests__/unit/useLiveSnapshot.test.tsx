@@ -119,6 +119,24 @@ describe("useLiveSnapshot runner — R2 hint contract", () => {
     expect(hook.result.current.data.startTime).toBe("2026-11-14T09:00:00Z");
   });
 
+  it("accepts display ordering with a newer capture of the same revision", async () => {
+    const hook = mount(5);
+    const read = async (capturedAt: string, memberId: string) => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({
+        items: [{ id: memberId }],
+        status: "ongoing",
+        rev: 5,
+        capturedAt,
+        displayOrder: { artists: [], guestIds: [memberId] },
+      })));
+      await run(hook, generic);
+    };
+    await read(T1, "new");
+    await read(T0, "old");
+    expect(hook.result.current.data.items).toEqual([{ id: "new" }]);
+    expect(hook.result.current.data.displayOrder?.guestIds).toEqual(["new"]);
+  });
+
   it("a request without a descriptor is the plain maintenance request", async () => {
     fetchMock.mockResolvedValue(response(5, "satisfied"));
     const hook = mount(5);

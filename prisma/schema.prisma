@@ -306,8 +306,8 @@ model Artist {
   // isSideProject: a cross-IP side project / collaboration unit — e.g.
   // a unit whose members come from several series — that is a
   // top-level Artist like a main group but must not get its own column
-  // on the fan board. It stays in song catalogs and in the prediction
-  // picker's chips; only the board's group list drops it.
+  // on the fan board. Festival prediction catalogs include it only
+  // when explicitly assigned through EventCollaborationArtist.
   isSideProject     Boolean        @default(false)
   originalName      String
   originalShortName String?
@@ -317,20 +317,21 @@ model Artist {
   deletedAt         DateTime?
   createdAt         DateTime       @default(now())
 
-  parentArtist Artist?               @relation("ArtistChildren", fields: [parentArtistId], references: [id])
-  subArtists   Artist[]              @relation("ArtistChildren")
-  translations ArtistTranslation[]
-  groupLinks   ArtistGroup[]
-  stageLinks   StageIdentityArtist[]
-  songCredits  SongArtist[]
-  eventSeries  EventSeries[]
+  parentArtist        Artist?                    @relation("ArtistChildren", fields: [parentArtistId], references: [id])
+  subArtists          Artist[]                   @relation("ArtistChildren")
+  translations        ArtistTranslation[]
+  groupLinks          ArtistGroup[]
+  stageLinks          StageIdentityArtist[]
+  songCredits         SongArtist[]
+  eventSeries         EventSeries[]
   // Fan board (n15) picks and per-group wishes (n15-08) filed under
   // this root group.
-  boardPicks   BoardPick[]
-  songWishes   SongWish[]
-  events       Event[]
-  albums       AlbumArtist[]
-  setlistItems SetlistItemArtist[]
+  boardPicks          BoardPick[]
+  songWishes          SongWish[]
+  events              Event[]
+  collaborationEvents EventCollaborationArtist[]
+  albums              AlbumArtist[]
+  setlistItems        SetlistItemArtist[]
 
   @@index([parentArtistId])
   @@index([isDeleted])
@@ -642,23 +643,24 @@ model Event {
   logoMode            LogoDisplayMode @default(inherit)
   logoAssetId         String?
 
-  eventSeries  EventSeries?          @relation(fields: [eventSeriesId], references: [id])
-  logoAsset    ImageAsset?           @relation("EventLogo", fields: [logoAssetId], references: [id], onDelete: Restrict)
-  artist       Artist?               @relation(fields: [artistId], references: [id])
-  bdAlbum      Album?                @relation("EventBdAlbum", fields: [bdAlbumId], references: [id])
-  translations EventTranslation[]
-  setlistItems SetlistItem[]
-  performers   EventPerformer[]
-  impressions  EventImpression[]
-  wishes       SongWish[]
-  boardPicks   BoardPick[]
+  eventSeries          EventSeries?               @relation(fields: [eventSeriesId], references: [id])
+  logoAsset            ImageAsset?                @relation("EventLogo", fields: [logoAssetId], references: [id], onDelete: Restrict)
+  artist               Artist?                    @relation(fields: [artistId], references: [id])
+  bdAlbum              Album?                     @relation("EventBdAlbum", fields: [bdAlbumId], references: [id])
+  translations         EventTranslation[]
+  setlistItems         SetlistItem[]
+  performers           EventPerformer[]
+  collaborationArtists EventCollaborationArtist[]
+  impressions          EventImpression[]
+  wishes               SongWish[]
+  boardPicks           BoardPick[]
   // Realtime R2: SetlistItemReaction carries a denormalized eventId
   // so Supabase Realtime postgres_changes can filter pushes by event
   // (the channel filter only supports columns on the changed table,
   // not joins). Backfilled in prisma/post-deploy.sql; populated on
   // INSERT in src/app/api/reactions/route.ts.
-  reactions    SetlistItemReaction[]
-  cardPublications EventCardPublication[]
+  reactions            SetlistItemReaction[]
+  cardPublications     EventCardPublication[]
 
   @@index([eventSeriesId])
   @@index([artistId])
@@ -666,6 +668,21 @@ model Event {
   @@index([date, status])
   @@index([isDeleted])
   @@index([logoAssetId])
+}
+
+// An explicit collaboration appearance, independent of its members'
+// other affiliations. Only top-level isSideProject artists are accepted
+// by the admin API. A collaboration's own headlined show needs no row.
+model EventCollaborationArtist {
+  id       String @id @default(uuid())
+  eventId  BigInt
+  artistId BigInt
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, artistId])
+  @@index([artistId])
 }
 
 model EventTranslation {
@@ -1142,6 +1159,8 @@ model Album {
   listings        AlbumStoreListing[]
   bdEvents        Event[]               @relation("EventBdAlbum")
   bonusImportJobs AlbumBonusImportJob[]
+  storeLinkAttempts AlbumStoreLinkAttempt[]
+  storeLinkReviewOperations AlbumStoreLinkReviewOperation[]
 }
 
 model AlbumArtist {
@@ -1243,48 +1262,34 @@ model AlbumTrackTranslation {
 }
 
 // ── ALBUM STORE LISTING ───────────────────────────────
-// One row = one (album × store × edition) purchase entry. Holds the
-// product URL and lifecycle (status + start/end + lastVerifiedAt) for
-// that specific store offering. A 通常盤 album with no bonus is just
-// a listing whose `bonuses` array is empty.
-//
-// storeName is intentionally a free-text String — the operator may
-// type "amazon_jp", "Amazon Japan", "アニメイト", or anything else.
-// No DB-level validation and no catalog table; the admin form's
-// datalist autocomplete (b05) suggests previously-used names to
-// keep typos rare without enforcing a closed set. Same goes for
-// editionLabel — free-form "通常盤" / "初回限定盤A" / "Memorial BOX".
-//
-// productUrl is the complete purchase URL including any affiliate
-// parameters the operator already embedded (Amazon JP tag etc.).
-// No render-time tag injection happens — what's stored is what's
-// rendered as the anchor href.
-//
-// @@unique enforces one row per (album, originalStoreName,
-// originalEditionLabel) when originalEditionLabel is non-NULL. The
-// NULL-edition slice (operator's "通常盤" entries) is handled by a
-// partial unique index in prisma/post-deploy.sql, which Prisma's
-// schema language can't express directly.
+// One row per purchase choice, even if its store, edition and URL match another.
 model AlbumStoreListing {
-  id                   String                  @id @default(uuid())
-  albumId              BigInt
-  originalStoreName    String // free-text, no validation
-  originalEditionLabel String? // null = single edition (通常盤 fallthrough)
-  originalLanguage     String                  @default("ja")
-  productUrl           String? // complete URL incl. affiliate params; rendered verbatim
-  status               AlbumStoreListingStatus @default(unknown)
-  startsAt             DateTime? // pre-order open / sale start
-  endsAt               DateTime? // pre-order close / sale end
-  lastVerifiedAt       DateTime? // operator's last 'I checked' timestamp — UI shows stale warning after 30d
-  sourceUrl            String? // 公式 news URL where the offer was announced
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
+  id                       String                  @id @default(uuid())
+  albumId                  BigInt
+  originalStoreName        String // free-text, no validation
+  originalEditionLabel     String? // null = single edition (通常盤 fallthrough)
+  originalLanguage         String                  @default("ja")
+  productUrl               String?
+  optionKey                String                  @default("") // empty for legacy importer identity
+  storeKey                 String?
+  officialOrder            Int?
+  selectionGuide           String?
+  includesPerformanceVideo Boolean?
+  isBonusOption            Boolean?
+  status                   AlbumStoreListingStatus @default(unknown)
+  startsAt                 DateTime? // pre-order open / sale start
+  endsAt                   DateTime? // pre-order close / sale end
+  lastVerifiedAt           DateTime? // operator's last 'I checked' timestamp — UI shows stale warning after 30d
+  sourceUrl                String? // 公式 news URL where the offer was announced
+  revision                 Int                     @default(0)
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
 
   album        Album                          @relation(fields: [albumId], references: [id], onDelete: Cascade)
   bonuses      AlbumStoreBonus[]
   translations AlbumStoreListingTranslation[]
 
-  @@unique([albumId, originalStoreName, originalEditionLabel])
+  @@unique([albumId, originalStoreName, originalEditionLabel, optionKey], map: "AlbumStoreListing_option_key")
   @@index([albumId, status])
   @@index([albumId, originalStoreName])
 }
@@ -1309,20 +1314,7 @@ model AlbumStoreListingTranslation {
 }
 
 // ── ALBUM STORE BONUS ─────────────────────────────────
-// One row = one bonus variant tied to a listing. Multiple rows on the
-// same listing express character/design variants of the "same" bonus
-// (e.g. the three 蓮ノ空 unit-themed タペストリー sold under one
-// Amazon JP edition). No category enum — the free-text bonusType
-// label captures both the form ("B2 タペストリー") and the variant
-// ("(Mira)" / "(Cerise)" / "(DOLLCHESTRA)").
-//
-// startsAt/endsAt are nullable overrides; when null the bonus inherits
-// the parent listing's lifecycle. Set them only when a bonus has a
-// shorter window than the listing itself (e.g. an 早期予約特典 that
-// closes before general sale ends).
-//
-// Bonus has no status of its own — listing.status is the source of
-// truth. When the listing ends, all its bonus variants end with it.
+// A benefit supplied with this purchase choice. Its own window intersects the sale window.
 model AlbumStoreBonus {
   id                       String    @id @default(uuid())
   listingId                String
@@ -1330,16 +1322,99 @@ model AlbumStoreBonus {
   originalBonusDescription String?
   originalLanguage         String    @default("ja")
   bonusImageUrl            String? // R2 or Amazon CDN URL — see album-image-source-policy
-  startsAt                 DateTime? // null → inherit listing.startsAt
-  endsAt                   DateTime? // null → inherit listing.endsAt
+  sourceUrl                String?
+  endedAt                  DateTime?
+  startsAt                 DateTime?
+  endsAt                   DateTime?
+  lastVerifiedAt           DateTime?
+  revision                 Int       @default(0)
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
   listing      AlbumStoreListing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
   translations AlbumStoreBonusTranslation[]
+  lifecycle    AlbumStoreBonusLifecycleOperation[]
   // No unique — character/design variants on the same listing are intentional
 
   @@index([listingId])
+}
+
+enum AlbumStoreBonusLifecycleAction {
+  end
+  restore
+  maintained
+  review_needed
+  access_failed
+}
+
+// The operation is both a retry receipt and the operator's preserved evidence.
+model AlbumStoreBonusLifecycleOperation {
+  bonusId      String
+  operationId  String
+  action       AlbumStoreBonusLifecycleAction
+  requestHash  String
+  evidenceUrl  String
+  summary      String
+  observedAt   DateTime
+  appliedAt    DateTime @default(now())
+  before       Json
+  after        Json
+
+  bonus AlbumStoreBonus @relation(fields: [bonusId], references: [id], onDelete: Restrict)
+
+  @@id([bonusId, operationId])
+  @@index([bonusId, appliedAt])
+}
+
+enum AlbumStoreLinkAttemptPhase {
+  initial
+  retry
+  resolve
+}
+
+model AlbumStoreLinkAttempt {
+  albumId     BigInt
+  storeKey    String
+  phase       AlbumStoreLinkAttemptPhase
+  storeName   String
+  operationId String
+  requestHash String
+  evidenceUrl String
+  summary     String
+  observedAt  DateTime
+  productUrl  String?
+
+  album Album @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  @@id([albumId, storeKey, phase])
+  @@unique([albumId, storeKey, operationId])
+}
+
+enum AlbumStoreLinkReviewPhase {
+  exclude
+  reinclude
+}
+
+enum AlbumStoreLinkReviewEvidence {
+  expired
+  ended
+  active
+}
+
+model AlbumStoreLinkReviewOperation {
+  albumId     BigInt
+  storeKey    String
+  operationId String
+  phase       AlbumStoreLinkReviewPhase
+  evidenceType AlbumStoreLinkReviewEvidence
+  requestHash String
+  evidenceUrl String
+  summary     String
+  observedAt  DateTime
+
+  album Album @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  @@id([albumId, storeKey, operationId])
 }
 
 // Per-locale overrides for the bonus's display strings. Both fields are

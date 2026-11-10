@@ -23,6 +23,7 @@
 // slug a second time when prompted.
 
 import { prisma } from "../src/lib/prisma";
+import { pruneBonusCheckReceipts } from "../src/lib/bonusLifecycle";
 import * as readline from "node:readline/promises";
 
 const slug = process.argv[2];
@@ -70,6 +71,13 @@ if (!slug) {
   }
 
   await prisma.$transaction(async (tx) => {
+    // Lock listings before bonuses so an importer can finish taking its album FK lock.
+    await tx.$queryRaw`SELECT id FROM "AlbumStoreListing" WHERE "albumId" = ${album.id} ORDER BY id FOR UPDATE`;
+    await tx.$queryRaw`
+      SELECT b.id FROM "AlbumStoreBonus" b JOIN "AlbumStoreListing" l ON b."listingId" = l.id
+      WHERE l."albumId" = ${album.id} ORDER BY b.id FOR UPDATE OF b
+    `;
+    await pruneBonusCheckReceipts(tx, { listing: { albumId: album.id } });
     // 1. AlbumTrackTranslation children (explicit — AlbumTrack delete won't cascade them at DB level)
     const trackIds = (
       await tx.albumTrack.findMany({ where: { albumId: album.id }, select: { id: true } })

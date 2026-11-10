@@ -31,7 +31,8 @@ export interface ArtistHierarchy {
    *  festival consumer currently reads roots only. */
   sortOrderOf: Map<string, number>;
   /** Ids with `Artist.isSideProject` — dropped from the fan board's
-   *  group list (`fanBoardRootIds`), kept everywhere else. */
+   *  group list (`fanBoardRootIds`); festival picker eligibility also
+   *  requires an explicit per-event assignment. */
   sideProjects: Set<string>;
 }
 

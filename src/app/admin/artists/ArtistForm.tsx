@@ -12,7 +12,8 @@ import {
   fetchAdminArtists,
   UnlistedArtistOption,
 } from "@/components/admin/artistPicker";
-import { compareMemberOrder } from "@/lib/memberOrder";
+import { createOfficialOrdering, isOfficialRank } from "@/lib/officialOrder";
+import MembershipOrderInput from "./MembershipOrderInput";
 
 type Translation = { locale: string; name: string; shortName: string; bio: string };
 type StageIdentityInput = {
@@ -39,6 +40,7 @@ type ExistingStageIdentity = {
   type: string;
   color: string | null;
   sortOrder: number | null;
+  membershipSortOrder?: number | null;
   // ISO string (the edit page passes the row through serializeBigInt);
   // the second key of the official member order.
   createdAt: string;
@@ -62,9 +64,9 @@ type AllStageIdentityOption = {
 
 type ArtistFormProps = {
   initialData?: {
-    id: number;
+    id: string | number;
     type: string;
-    parentArtistId: number | null;
+    parentArtistId: string | number | null;
     hasBoard: boolean;
     category: string | null;
     isMainUnit: boolean;
@@ -85,17 +87,23 @@ const ARTIST_TYPES = ["solo", "group", "unit"];
 
 const INT_RE = /^-?\d+$/;
 
-// Same order the server reads members in (`src/lib/memberOrder.ts`):
-// sortOrder (nulls last) → createdAt → id, so after a local edit or a
-// link the list already shows what a reload would.
-function sortExistingMembers(list: ExistingStageIdentity[]): ExistingStageIdentity[] {
-  return [...list].sort(compareMemberOrder);
+// Same explicit-context contract as the filtered server membership read.
+function sortMembersForArtist(list: ExistingStageIdentity[], artistId: string | number): ExistingStageIdentity[] {
+  // Only this already selected artist context matters here; no affiliation
+  // is inferred. The same common comparator backs the filtered SQL read.
+  return createOfficialOrdering([]).sortMembers(list, (member) => ({
+    ...member, groupArtistIds: [],
+    membershipOrders: [{ artistId, sortOrder: member.membershipSortOrder ?? null }],
+  }), { kind: "artist", artistId });
 }
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
 export default function ArtistForm({ initialData }: ArtistFormProps) {
   const router = useRouter();
+  function sortExistingMembers(list: ExistingStageIdentity[]) {
+    return initialData ? sortMembersForArtist(list, initialData.id) : [...list];
+  }
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState(initialData?.type ?? "group");
   const [parentArtistId, setParentArtistId] = useState(
@@ -140,17 +148,24 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   const [editSISortOrder, setEditSISortOrder] = useState("");
   const [showLinkSI, setShowLinkSI] = useState(false);
   const [existingSIs, setExistingSIs] = useState(
-    initialData?.existingStageIdentities ?? []
+    () => sortExistingMembers(initialData?.existingStageIdentities ?? [])
   );
+  const duplicateRelationshipRanks = existingSIs.some((member, index) =>
+    member.membershipSortOrder != null && existingSIs.some((other, otherIndex) =>
+      index !== otherIndex && other.membershipSortOrder === member.membershipSortOrder));
 
   // Available groups, artists, and all stage identities for selectors
   const [groups, setGroups] = useState<
     { id: string; translations: { locale: string; name: string }[] }[]
   >([]);
   const [artists, setArtists] = useState<
-    { id: number; translations: { locale: string; name: string }[] }[]
+    { id: number; parentArtistId: number | null; sortOrder: number | null; translations: { locale: string; name: string }[] }[]
   >([]);
   const [allSIOptions, setAllSIOptions] = useState<AllStageIdentityOption[]>([]);
+  const duplicateArtistRank = sortOrder.trim() !== "" && artists.some((artist) =>
+    String(artist.id) !== String(initialData?.id) && String(artist.parentArtistId ?? "") === parentArtistId && artist.sortOrder === Number(sortOrder));
+  const duplicateDefaultRank = existingSIs.some((member, index) => member.sortOrder !== null &&
+    existingSIs.some((other, otherIndex) => index !== otherIndex && other.sortOrder === member.sortOrder));
 
   useEffect(() => {
     fetch("/api/admin/groups")
@@ -397,7 +412,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         alert("새 멤버 본명의 원본 이름(originalName)은 필수입니다.");
         return;
       }
-      if (si.sortOrder.trim() && !INT_RE.test(si.sortOrder.trim())) {
+      if (si.sortOrder.trim() && (!INT_RE.test(si.sortOrder.trim()) || !isOfficialRank(Number(si.sortOrder)))) {
         alert("멤버 정렬 순서는 정수여야 합니다 (비우면 미지정).");
         return;
       }
@@ -411,7 +426,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       return;
     }
     const trimmedSortOrder = sortOrder.trim();
-    if (trimmedSortOrder && !INT_RE.test(trimmedSortOrder)) {
+    if (trimmedSortOrder && (!INT_RE.test(trimmedSortOrder) || !isOfficialRank(Number(trimmedSortOrder)))) {
       alert("정렬 순서는 정수여야 합니다 (비우면 미지정).");
       return;
     }
@@ -507,7 +522,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
             <option value="">없음</option>
             <UnlistedArtistOption value={parentArtistId} options={artists} />
             {artists
-              .filter((a) => a.id !== initialData?.id)
+              .filter((a) => String(a.id) !== String(initialData?.id))
               .map((a) => {
                 const name =
                   a.translations.find((t) => t.locale === "ko")?.name ??
@@ -569,13 +584,10 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         )}
       </label>
 
-      {/* Festival display fields. Colour is the group/unit badge colour
-         (chips, board columns); sortOrder and isSideProject are read
-         only for top-level artists (no parent) — the festival group
-         chips order by sortOrder, and a side project gets no column
-         on the fan board (it stays in the prediction picker). */}
+      {/* Artist rank applies to roots and siblings; side-project behavior
+          remains limited to festival root artists. */}
       <div className="rounded border border-zinc-200 p-3">
-        <div className="mb-2 text-sm font-medium">페스 표시</div>
+        <div className="mb-2 text-sm font-medium">아티스트 표시 순서·색</div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label
@@ -608,7 +620,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
               htmlFor="artist-festival-sort-order"
               className="mb-1 block text-xs text-zinc-600"
             >
-              정렬 순서
+              아티스트 공식 표시 순서
             </label>
             <input
               id="artist-festival-sort-order"
@@ -630,9 +642,10 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           사이드 프로젝트 (페스 보드에서 제외)
         </label>
         <p className="mt-1 text-xs text-zinc-400">
-          정렬 순서·사이드 프로젝트는 상위 아티스트가 없는 최상위
-          아티스트에만 적용됩니다.
+          순서는 루트 그룹 또는 같은 상위 아티스트의 유닛·솔로 사이에 적용됩니다.
+          사이드 프로젝트 제외는 최상위 아티스트에만 적용됩니다.
         </p>
+        {duplicateArtistRank && <p role="status" className="text-sm text-amber-800">같은 비교 범위의 아티스트 순서가 중복됩니다. 동률은 숫자 ID로 표시합니다.</p>}
       </div>
 
       {/* Groups */}
@@ -794,14 +807,17 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           </button>
         </div>
 
+        <p className="mb-2 text-xs text-zinc-500">기본순은 모든 소속의 fallback입니다. 관계순은 지금 편집하는 아티스트에만 우선 적용됩니다.</p>
+        {duplicateRelationshipRanks && <p role="status" className="mb-2 text-sm text-amber-800">같은 관계순이 있습니다. 동률은 기본순·생성시각·ID로 표시합니다.</p>}
+        {duplicateDefaultRank && <p role="status" className="mb-2 text-sm text-amber-800">같은 기본 멤버순이 있습니다. 기본순 동률은 생성시각·ID로 표시합니다.</p>}
         {/* Existing stage identities (edit mode) */}
         {existingSIs.length > 0 && (
           <div className="mb-3 space-y-2">
             {existingSIs.map((si) => (
-              <div key={si.id}>
+              <div key={si.id} data-testid="admin-member" data-member-id={si.id}>
                 {editingSI === si.id ? (
                   <div className="rounded border border-blue-200 bg-blue-50 p-3 space-y-2">
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <select
                         value={editSIType}
                         onChange={(e) => setEditSIType(e.target.value)}
@@ -825,7 +841,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                       <input
                         type="number"
                         step={1}
-                        aria-label="정렬 순서"
+                        aria-label="기본 멤버 순서"
                         placeholder="정렬 순서 (비우면 미지정)"
                         value={editSISortOrder}
                         onChange={(e) => setEditSISortOrder(e.target.value)}
@@ -837,7 +853,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         type="button"
                         onClick={async () => {
                           const trimmedSIOrder = editSISortOrder.trim();
-                          if (trimmedSIOrder && !INT_RE.test(trimmedSIOrder)) {
+                          if (trimmedSIOrder && (!INT_RE.test(trimmedSIOrder) || !isOfficialRank(Number(trimmedSIOrder)))) {
                             alert("멤버 정렬 순서는 정수여야 합니다 (비우면 미지정).");
                             return;
                           }
@@ -890,7 +906,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 rounded border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50 p-3">
                     {si.color && (
                       <span
                         className="inline-block h-3 w-3 rounded-full"
@@ -899,7 +915,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                     )}
                     {si.sortOrder !== null && (
                       <span className="text-xs tabular-nums text-zinc-500">
-                        #{si.sortOrder}
+                        <span aria-hidden="true">#{si.sortOrder}</span><span className="sr-only">기본순 {si.sortOrder}</span>
                       </span>
                     )}
                     <span className="font-medium">{si.name}</span>
@@ -965,6 +981,10 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                     </div>
                   </div>
                 )}
+                {initialData && <MembershipOrderInput artistId={initialData.id} memberId={si.id} name={si.name}
+                  value={si.membershipSortOrder ?? null}
+                  onSaved={(value) => setExistingSIs((previous) => sortExistingMembers(previous.map((member) =>
+                    member.id === si.id ? { ...member, membershipSortOrder: value } : member)))} />}
               </div>
             ))}
           </div>
@@ -1083,7 +1103,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                 <input
                   type="number"
                   step={1}
-                  aria-label="정렬 순서"
+                  aria-label="기본 멤버 순서"
                   placeholder="정렬 순서 (비우면 미지정)"
                   value={si.sortOrder}
                   onChange={(e) => updateSI(i, "sortOrder", e.target.value)}

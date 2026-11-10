@@ -86,6 +86,7 @@ function album(over: Record<string, unknown> = {}): Any {
     translations: [{ locale: "ko", title: "블룸 더 스마일" }],
     artists: [],
     listings: [],
+    _count: { bdEvents: 0 },
     ...over,
   };
 }

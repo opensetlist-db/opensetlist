@@ -86,7 +86,7 @@ const FIXTURE_ASSET_KEY = "qa-fixture/";
 // at it). `prefixColumn` is the column the prefix is checked against; `owned` are
 // the child tables deleted with the parent (found by their FK to it).
 const ENTITIES = [
-  { flag: "events", table: "Event", idType: "bigint", prefixColumn: "originalName", owned: ["EventTranslation", "EventPerformer"] },
+  { flag: "events", table: "Event", idType: "bigint", prefixColumn: "originalName", owned: ["EventTranslation", "EventPerformer", "EventCollaborationArtist"] },
   { flag: "series", table: "EventSeries", idType: "bigint", prefixColumn: "originalName", owned: ["EventSeriesTranslation"] },
   { flag: "albums", table: "Album", idType: "bigint", prefixColumn: "originalTitle", owned: ["AlbumTranslation", "AlbumArtist"] },
   { flag: "assets", table: "ImageAsset", idType: "text", prefixColumn: "objectKey", owned: [] },
@@ -193,7 +193,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * would make the reference check incomplete (the queries below address
  * tables in `public` by bare name), so it refuses instead of guessing.
  */
-async function referencingKeys(client, table) {
+export async function referencingKeys(client, table) {
   const r = await client.query(
     `SELECT c.conname, ns.nspname AS schema, ch.relname AS child, a.attname AS col,
             NOT a.attnotnull AS nullable, pa.attname AS pcol, cardinality(c.conkey) AS ncols

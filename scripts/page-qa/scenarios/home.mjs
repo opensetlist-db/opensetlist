@@ -23,6 +23,44 @@ const LIVE_CARD = `${LIVE} a[class*="__compact"]`;
 const LIVE_TEXT = ["liveEyebrow", "cardTitle", "dateLine", "venue", "meta", "liveCta", "liveBadge"];
 const CONTRAST_WIDTHS = [390, 1440];
 
+async function checkBdBadge(h, page, selector, name) {
+  const badge = page.locator(selector).first();
+  if (!(await badge.count())) {
+    h.check(`${name} rendered`, false, "expected a past event with an active BD bonus");
+    return;
+  }
+  const geometry = await badge.evaluate((link) => {
+    const text = [...link.childNodes].find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
+    const range = document.createRange();
+    if (text) range.selectNodeContents(text);
+    const svg = link.querySelector("svg");
+    const icon = svg?.getBoundingClientRect();
+    const bounds = link.getBoundingClientRect();
+    return {
+      lines: text ? range.getClientRects().length : 0,
+      iconWidth: icon?.width,
+      iconHeight: icon?.height,
+      iconVisible: svg && getComputedStyle(svg).visibility === "visible",
+      target: bounds.height,
+      fits: bounds.left >= 0 && bounds.right <= innerWidth,
+      overflow: document.documentElement.scrollWidth - innerWidth,
+    };
+  });
+  h.check(`${name} one line, icon and 44px target`,
+    geometry.lines === 1 && geometry.iconVisible && geometry.iconWidth > 0 && geometry.iconHeight > 0 &&
+      geometry.target >= 44 && geometry.fits && geometry.overflow <= 0, JSON.stringify(geometry));
+  const eventLink = badge.locator("xpath=preceding-sibling::a[1]");
+  if (!(await eventLink.count())) {
+    h.check(`${name} independent keyboard link`, false, "expected a sibling event link");
+    return;
+  }
+  await eventLink.focus();
+  await page.keyboard.press("Tab");
+  h.check(`${name} keyboard tab and focus ring`, await badge.evaluate((link) =>
+    link === document.activeElement && link.matches(":focus-visible") &&
+    getComputedStyle(link).outlineStyle === "solid" && getComputedStyle(link).outlineWidth === "3px"));
+}
+
 const scenario = {
   name: "home",
 
@@ -164,9 +202,28 @@ const scenario = {
   },
 
   fixture: {
-    needs: ["livelogo", "livebroken"],
-    about: "two owned ongoing Events: a valid logo and an unreachable logo, with long names",
+    needs: [],
+    about: "bdAlbum for an active bonus on a past event, or livelogo and livebroken for two owned ongoing events",
     async run(h, f) {
+      if (f.bdAlbum !== undefined) {
+        const id = String(f.bdAlbum);
+        if (!/^\d+$/.test(id)) throw new Error("bdAlbum must be an album id");
+        for (const loc of h.quick ? ["ko"] : ["ja", "ko", "en"]) {
+          for (const width of [320, 1440]) {
+            await h.section(`BD fixture ${loc}/${width}`, async () => {
+              const { page, ctx } = await h.open(`/${loc}`, { width });
+              try {
+                await checkBdBadge(h, page, `[data-testid="home-bd-bonus"][href*="/albums/${id}/"]`, `${loc}/${width} BD bonus`);
+                await h.shot(page, `fixture-bd-${loc}-${width}`);
+              } finally {
+                await ctx.close();
+              }
+            });
+          }
+        }
+        return;
+      }
+      if (!f.livelogo || !f.livebroken) throw new Error("Provide bdAlbum or both livelogo and livebroken");
       for (const loc of h.quick ? ["ko"] : ["ja", "ko", "en"]) {
         for (const width of [390, 1440]) {
           await h.section(`LIVE fixture ${loc}/${width}`, async () => {

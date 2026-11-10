@@ -8,18 +8,8 @@ import AlbumListingFormModal, {
 } from "@/components/admin/AlbumListingFormModal";
 import { isSafeExternalUrl } from "@/lib/utils";
 
-export type ListingRow = {
+export type ListingRow = Omit<ListingInitial, "albumId" | "id"> & {
   id: string;
-  originalStoreName: string;
-  originalEditionLabel: string | null;
-  originalLanguage: string;
-  productUrl: string | null;
-  status: "active" | "sold_out" | "ended" | "unknown";
-  translations: {
-    locale: string;
-    storeName: string | null;
-    editionLabel: string | null;
-  }[];
   bonusCount: number;
 };
 
@@ -62,7 +52,7 @@ export default function ListingsClient({
         method: "DELETE",
       });
       if (res.ok) router.refresh();
-      else alert("삭제에 실패했습니다.");
+      else alert((await res.json().catch(() => null))?.error ?? "삭제에 실패했습니다.");
     } catch {
       alert("삭제에 실패했습니다. 네트워크를 확인해 주세요.");
     }

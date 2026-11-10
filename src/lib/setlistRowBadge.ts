@@ -3,7 +3,7 @@ import type { ArtistRef, LiveSetlistItem } from "@/lib/types/setlist";
 /**
  * Decide which Artist(s) a public setlist row credits with a badge
  * under the title — the row's "who is performing this?" answer.
- * Returns the badge artists in credit order (possibly empty); the row
+ * Returns the badge artists in display order (possibly empty); the row
  * renders the first `MAX_ROW_BADGES` as chips and folds the rest into
  * a `+N` chip.
  *
@@ -55,7 +55,7 @@ export function pickRowArtistBadges(
   if (credited.length === 0) return [];
   if (item.stageType !== "full_group") return credited;
   if (eventArtistId === undefined) return [];
-  return credited.some((a) => String(a.id) !== eventArtistId) ? credited : [];
+  return credited.some((a) => (a.orderId ?? String(a.id)) !== eventArtistId) ? credited : [];
 }
 
 /**

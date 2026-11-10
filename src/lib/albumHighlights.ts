@@ -74,6 +74,7 @@ export function albumCardInclude(locale: string) {
         },
       },
     },
+    _count: { select: { bdEvents: { where: { isDeleted: false } } } },
     listings: {
       include: { bonuses: true },
     },

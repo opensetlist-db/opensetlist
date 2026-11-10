@@ -1,12 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   resolveEventBdState,
-  selectTopBonuses,
   type AlbumBdInput,
-  type AlbumStoreListingBdInput,
-  type AlbumStoreBonusBdInput,
   type EventBdInput,
 } from "@/lib/eventBdState";
+import type { PurchaseBonus, PurchaseListing } from "@/lib/purchaseAvailability";
 
 const NOW = new Date("2026-05-15T03:00:00.000Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -34,12 +32,15 @@ function album(overrides: Partial<AlbumBdInput> = {}): AlbumBdInput {
 }
 
 function listing(
-  overrides: Partial<AlbumStoreListingBdInput> & {
-    originalStoreName?: string;
-  } = {},
-): AlbumStoreListingBdInput & { originalStoreName: string } {
+  overrides: Partial<PurchaseListing> = {},
+): PurchaseListing {
   return {
     status: "active",
+    productUrl: "https://example.com/product",
+    includesPerformanceVideo: true,
+    isBonusOption: true,
+    storeKey: null,
+    officialOrder: null,
     startsAt: null,
     endsAt: null,
     bonuses: [],
@@ -49,12 +50,12 @@ function listing(
 }
 
 function bonus(
-  overrides: Partial<AlbumStoreBonusBdInput> = {},
-): AlbumStoreBonusBdInput {
+  overrides: Partial<PurchaseBonus> = {},
+): PurchaseBonus {
   return {
     startsAt: null,
     endsAt: null,
-    bonusImageUrl: null,
+    endedAt: null,
     ...overrides,
   };
 }
@@ -246,106 +247,5 @@ describe("resolveEventBdState — post-link buckets (album resolves)", () => {
       listings: [listing({ status: "sold_out", bonuses: [bonus()] })],
     });
     expect(resolveEventBdState(event, bd, NOW)).toBe("bd_preorder");
-  });
-});
-
-describe("selectTopBonuses", () => {
-  it("caps at the supplied limit (default 3)", () => {
-    const listings = [
-      listing({
-        bonuses: [bonus(), bonus(), bonus(), bonus(), bonus()],
-      }),
-    ];
-    expect(selectTopBonuses(listings, NOW)).toHaveLength(3);
-    expect(selectTopBonuses(listings, NOW, 2)).toHaveLength(2);
-  });
-
-  it("excludes ended listings entirely", () => {
-    const listings = [
-      listing({ status: "ended", bonuses: [bonus(), bonus()] }),
-    ];
-    expect(selectTopBonuses(listings, NOW)).toHaveLength(0);
-  });
-
-  it("excludes bonuses past their effective endsAt", () => {
-    const listings = [
-      listing({
-        bonuses: [
-          bonus({ endsAt: new Date(NOW.getTime() - DAY_MS) }),
-          bonus({ endsAt: new Date(NOW.getTime() + DAY_MS) }),
-        ],
-      }),
-    ];
-    expect(selectTopBonuses(listings, NOW)).toHaveLength(1);
-  });
-
-  it("orders by store priority — Amazon before アニメイト", () => {
-    const animateBonus = bonus();
-    const amazonBonus = bonus();
-    const listings = [
-      listing({ originalStoreName: "アニメイト", bonuses: [animateBonus] }),
-      listing({ originalStoreName: "Amazon JP", bonuses: [amazonBonus] }),
-    ];
-    const top = selectTopBonuses(listings, NOW);
-    expect(top[0].bonus).toBe(amazonBonus);
-    expect(top[1].bonus).toBe(animateBonus);
-  });
-
-  it("orders unknown stores at the end of the priority list", () => {
-    const wellKnownBonus = bonus();
-    const noNameBonus = bonus();
-    const listings = [
-      listing({
-        originalStoreName: "Some random store",
-        bonuses: [noNameBonus],
-      }),
-      listing({ originalStoreName: "Amazon JP", bonuses: [wellKnownBonus] }),
-    ];
-    const top = selectTopBonuses(listings, NOW);
-    expect(top[0].bonus).toBe(wellKnownBonus);
-    expect(top[1].bonus).toBe(noNameBonus);
-  });
-
-  it("within the same store rank, active leads sold_out", () => {
-    const soldOutBonus = bonus();
-    const activeBonus = bonus();
-    const listings = [
-      listing({
-        originalStoreName: "Amazon JP",
-        status: "sold_out",
-        bonuses: [soldOutBonus],
-      }),
-      listing({
-        originalStoreName: "Amazon JP",
-        status: "active",
-        bonuses: [activeBonus],
-      }),
-    ];
-    const top = selectTopBonuses(listings, NOW);
-    expect(top[0].bonus).toBe(activeBonus);
-    expect(top[1].bonus).toBe(soldOutBonus);
-  });
-
-  it("within the same rank and status, image-bearing bonus leads imageless", () => {
-    const noImage = bonus();
-    const hasImage = bonus({ bonusImageUrl: "https://example.com/cover.jpg" });
-    const listings = [
-      listing({
-        originalStoreName: "Amazon JP",
-        bonuses: [noImage, hasImage],
-      }),
-    ];
-    const top = selectTopBonuses(listings, NOW);
-    expect(top[0].bonus).toBe(hasImage);
-    expect(top[1].bonus).toBe(noImage);
-  });
-
-  it("pairs each bonus with its parent listing in the output", () => {
-    const targetListing = listing({
-      originalStoreName: "Amazon JP",
-      bonuses: [bonus()],
-    });
-    const top = selectTopBonuses([targetListing], NOW);
-    expect(top[0].listing).toBe(targetListing);
   });
 });

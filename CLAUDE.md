@@ -323,6 +323,7 @@ Hard rules:
 - NEVER commit directly to main — always PR from dev or hotfix/*
 - NEVER use production DB locally — .env must point to dev DB
 - NEVER merge a PR yourself — always open the PR, then ask the owner to merge. This applies to every PR including dev → main release PRs and feature → dev PRs
+- Before an authorized PR merge, [verify the current merge candidate](./docs/session-state.md#verify-the-merge-candidate).
 - Run `git add ...` and `git commit -m "..."` as **two separate Bash tool calls**, not chained with `&&`. The owner runs a `PreToolUse` hook (`~/.claude/hooks/review-staged.js`) that calls `git diff --cached` to review the staged change against this CLAUDE.md before each commit. Chained `add && commit` leaves the index empty at hook time, the hook logs `exit:empty-diff`, and the review never runs. Splitting the calls puts staging done before the commit Bash invocation so the hook actually reviews. Committing without a manual approval pause is fine — the hook is the safety net; if it finds issues it blocks the commit, otherwise the commit proceeds and the owner sees the result.
 - Run `git push` as **its own Bash tool call** when any HEAD-mutating git command precedes it in the same chain (`commit`, `rebase`, `merge`, `reset`, `cherry-pick`, `revert`, `pull`, `am`). The push-review hook (`~/.claude/hooks/review-prepush.js`) computes the branch-vs-base diff from HEAD before the chain runs, so a chained `commit && push` would review pre-commit HEAD and miss the new commits — the hook auto-blocks these chains. Non-mutating chains like `git fetch && git push` or `git push && echo done` are fine.
 - Always create a version tag for production releases
@@ -332,8 +333,10 @@ Hard rules:
   queries the old schema until the migration lands (v0.19.0, 2026-10-12:
   four minutes of 500s on song pages). Order: `gh workflow run backup.yml`
   → `gh workflow run migrate-prod.yml --ref dev` (additive changes are
-  harmless to the app still serving) → verify the column in the `db pull`
-  step → merge the release PR → tag. Non-additive changes need a different
+  harmless to the app still serving) → confirm the public-role exposure check
+  passes and verify the schema in the `db pull` step → merge the release PR →
+  tag. If the exposure check fails, repair the grants and verify the workflow
+  succeeds before merging. Non-additive changes need a different
   plan (expand/contract) and must not be merged this way at all.
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
 
@@ -343,6 +346,8 @@ Two `PreToolUse` hooks (owner-level, in `~/.claude/hooks/`) review changes befor
 
 - **Commit-time** — `review-staged.js`, Haiku 4.5, against `git diff --cached`. Fast hard-rule + bug/security check on the staged change. Bypass: include `[skip-review]` in the commit command.
 - **Push-time** — `review-prepush.js`, Sonnet 4.6, against the full branch-vs-base diff (base picked from `.coderabbit.yaml` `auto_review.base_branches`). Mirrors `.coderabbit.yaml` focus areas so CodeRabbit-class findings (cross-file, N+1, layering) surface before push, not after the ~10-min PR-time wait. Chunks diffs >100KB per-file and reviews in parallel; skips entirely above 1.5MB. CodeRabbit does not auto-review this repo (it needs ≥10 stars), so a PR gets its review only from an `@coderabbitai review` comment. Bypass: `SKIP_PUSH_REVIEW=1 git push` or `git push --no-verify`.
+
+Before an authorized manual CodeRabbit request, use `gh repo view --json visibility` to verify `PUBLIC` and `gh pr view --json headRefOid,baseRefOid,files` to inspect the current tracked diff scope. State the confirmed public diff scope in any tool approval request. Private review material requires separate authorization.
 
 Both block on findings. The push-time hook treats a review timeout like any other infra failure (network/API down): the push proceeds with a note that the local review was skipped, and the `@coderabbitai review` comment covers the PR — so a large diff never needs a manual bypass. Treat blocked output the same as a CodeRabbit comment — fix or argue, don't bypass on autopilot.
 

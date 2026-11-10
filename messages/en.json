@@ -26,6 +26,8 @@
     "emptyPast": "No setlists with songs have been registered yet.",
     "browse": "Explore events",
     "liveBadge": "Live now",
+    "bdBonus": "BD bonuses",
+    "bdBonusFor": "BD bonuses for {event}",
     "scheduled": "Upcoming · {label}",
     "setlistSongs": "{count, plural, other {#-song setlist}}",
     "setlistWaiting": "Waiting for setlist updates",
@@ -227,10 +229,17 @@
       "events": "Related event listing is coming soon."
     },
     "bonus": {
+      "options": "Purchase options with bonuses",
+      "basicOptions": "Purchase options without bonuses",
+      "storeCount": "{count, plural, one {# store} other {# stores}}",
+      "deadline": "Bonus deadline: {time}",
+      "buyAt": "View product at {store}",
+      "officialInfo": "Official product information",
       "status": {
         "active": "Available",
         "ended": "Ended"
       },
+      "affiliateDisclosure": "Amazon affiliate link. As an Amazon Associate, OpenSetlist earns from qualifying purchases.",
       "buy": "Buy",
       "showEnded": "{count, plural, one {Show # ended store} other {Show # ended stores}}",
       "summary": {
@@ -238,7 +247,7 @@
         "current": "Current {count}",
         "ended": "Ended {count}"
       },
-      "empty": "No store info registered yet."
+      "empty": "No purchase links are listed."
     },
     "tracks": {
       "discN": "Disc {disc}",
@@ -361,10 +370,9 @@
       "preorderBadge": "Pre-order open",
       "releasedBadge": "Released",
       "releaseDateLabel": "Release",
-      "bonusPreviewHeading": "Store bonuses preview",
-      "compareCta": "Compare store bonuses →",
-      "purchaseCta": "Buy BD →",
-      "detailsCta": "View album details →"
+      "bonusStoreCount": "{count, plural, one {# store with bonuses} other {# stores with bonuses}}",
+      "compareCta": "View stores and bonuses →",
+      "purchaseCta": "View purchase options →"
     }
   },
   "EventDetail": {

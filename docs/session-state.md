@@ -18,9 +18,13 @@ same revision → managed handoff + managed board summary
 
 Create a task config using `scripts/session-state/fixtures/task.json` as a shape
 example. It is a synthetic fixture, independent of any historical approval or
-completed task. List **every required context document**, including repository
-instructions, applicable local instructions, the task/spec and relevant source
-references; the tool cannot discover your workflow's mandatory reading list.
+completed task. List every required document whose contents govern the task
+in `task.documents`, including repository and local instructions, the
+ticket/spec, and any approvals or release instructions relied on. Read wiki
+indexes and progress boards for navigation at startup. Track the governing
+documents they point to so a status update on another ticket does not
+invalidate this task's receipts. If an index or board itself contains an
+applicable instruction or approval, track that document too.
 Document paths may be absolute, or relative to `--root` (default: state file
 directory). Keep operator paths and state files outside tracked content, for
 example in `.claude/tmp/session/`. Parent directories must already exist.
@@ -111,6 +115,50 @@ For a tooling task without device testing, use an empty attestation requirement
 list. Define the actual required independent reviews; a green provider status
 or a skipped check never substitutes for an explicit review pass.
 
+## PR handoff and external review
+
+Start the state file when assigning a ticket that requires PR follow-up.
+Record the PR and current head with `observe-pr`. Use `record-check`
+for CI and Preview, with the run or deployment URL in `ref`. Use
+`record-review` for the SHA the reviewer actually reviewed, with the
+review link in `ref`.
+
+For an external review, keep the approval and packet in operator-owned
+files. Record their reference with `record-evidence` on the approved
+head. The approval record names the destination, approved material and
+exclusions, and the user's approval source. If the user gives an
+earliest call time, record that timestamp and source in the same record.
+Keep approval and execution separate. An approved review remains
+`unrun` until it executes. Check the packet against the approved head, scope and earliest
+call time before sending. Use the retry ledger below for observed
+provider rate limits.
+
+After a review fix, observe the new head and record its checks separately.
+Link the prior review and the fix commit as evidence. Keep the review
+attached to the SHA it covered, even if an operator authorizes merge
+based on that review and the fix. The `complete` rules below still apply.
+
+### Verify the merge candidate
+
+1. Before an authorized merge, read the live target branch SHA with
+   `git ls-remote --exit-code origin refs/heads/<base>` and confirm the PR's
+   current head and required checks. Use the actual PR target branch. A
+   cached PR base or an earlier green check can describe an older candidate.
+2. Fetch the base and head. Fetch GitHub's candidate from
+   `refs/pull/<pr>/merge` and verify its first parent is the live base
+   and its second is the PR head. If it is stale or unavailable, compute
+   the candidate locally with `git merge-tree --write-tree <base-sha> <head-sha>`
+   and require exit status zero. Resolve conflicts through the normal
+   review process. If the base moved, compare the candidate diff against
+   the reviewed patch and rerun the relevant checks on the combined tree.
+3. Record the reviewed head, current base, candidate tree and check results
+   in the handoff, and link it with `record-evidence`. Include the
+   [read-only dev schema check](../TESTING.md#dev-schema-preflight-before-merge) for this tree.
+   Recheck head and base immediately before merging. Before recording
+   completion, verify the target
+   branch contains the PR's reported merge result and its tree matches the
+   candidate. For a merge commit, also verify the base and head parents.
+
 ## Observation and transition events
 
 All events are JSON files passed to `apply --revision N --event event.json`.
@@ -127,6 +175,24 @@ stale event. Events accept only the fields below and `type`.
 | `schedule-retry` | `reviewId`, `notBefore`, `ref` |
 | `consume-retry` | `sessionId`, `reviewId` |
 | `complete` | `sessionId` |
+
+Example open PR observation. Replace the synthetic PR number, URLs, head and
+timestamp with the values you observed.
+
+```json
+{
+  "type": "observe-pr",
+  "pr": {
+    "number": 123,
+    "url": "https://github.com/example/project/pull/123",
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "state": "open",
+    "mergeCommit": null,
+    "observedAt": "2026-10-23T05:00:00.000Z",
+    "ref": "https://github.com/example/project/pull/123"
+  }
+}
+```
 
 Example check: `{"type":"record-check","entry":{"id":"unit","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"pass","ref":"unit.log","observedAt":"2026-10-23T05:00:00.000Z"}}`.
 An attestation distinguishes actual device execution time from when a message
@@ -151,6 +217,11 @@ If that request fails or the process crashes, the budget stays used; there is
 no automatic refund or duplicate dispatch. A returned action is advisory and
 does not send a message. Concurrent GitHub merge after an observation remains
 possible: recheck remotely immediately before any external request.
+
+Before applying `complete`, run `heartbeat --dry-run` with the current revision
+and session ID. Read and acknowledge the documents listed as unread or changed,
+resolve any unavailable documents, and confirm `contextReady` at the latest
+revision.
 
 `complete` requires merged PR/merge SHA, current document receipts and explicit
 pass evidence for every configured current-head gate. Required review passes

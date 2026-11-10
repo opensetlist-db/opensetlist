@@ -161,6 +161,7 @@ async function fetchSong(id: bigint) {
                   artist: { include: { translations: true } },
                 },
               },
+              _count: { select: { bdEvents: { where: { isDeleted: false } } } },
               listings: {
                 include: { bonuses: true },
               },

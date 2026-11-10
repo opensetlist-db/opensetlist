@@ -191,7 +191,7 @@ export default async function AlbumsPage({
                             album={album}
                             locale={locale}
                             artistName={artistName}
-                            activeBonusCount={countActiveBonuses(album.listings)}
+                            activeBonusCount={countActiveBonuses(album.listings, album._count.bdEvents > 0)}
                           />
                         </li>
                       );

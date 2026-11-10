@@ -386,25 +386,26 @@ export function AddItemBottomSheet({
   // for this show stays unchecked (defaults shouldn't hallucinate
   // members into the event's roster). User can still manually check
   // them if they actually performed.
+  // Classify stageType from the song's credited artists. `type` is
+  // carried on every SongSearch v2 response (post-353 addition);
+  // we cast through `as` because the API returns it as the
+  // enum-string but the SongSearchResult types it as the broader
+  // `string` for forward-compat. The deriveStageType helper rejects
+  // unknown values gracefully (falls through to `full_group`), so
+  // the cast is safe even if the API ever returns an unexpected
+  // value.
+  const songArtists = selectedSong?.artists.map((sa) => ({
+    artistId: sa.artist.id,
+    type: sa.artist.type as "solo" | "group" | "unit",
+  })) ?? [];
+
+  const { unitArtistId: unitId } = deriveStageType(itemType, songArtists);
+  const unitArtistId = unitId === null ? null : selectedSong?.artists[0].artist.orderId ?? String(unitId);
+
   useEffect(() => {
     if (itemType !== "song" || !selectedSong || !eventPerformers) return;
 
-    // Classify stageType from the song's credited artists. `type` is
-    // carried on every SongSearch v2 response (post-353 addition);
-    // we cast through `as` because the API returns it as the
-    // enum-string but the SongSearchResult types it as the broader
-    // `string` for forward-compat. The deriveStageType helper rejects
-    // unknown values gracefully (falls through to `full_group`), so
-    // the cast is safe even if the API ever returns an unexpected
-    // value.
-    const songArtists = selectedSong.artists.map((sa) => ({
-      artistId: sa.artist.id,
-      type: sa.artist.type as "solo" | "group" | "unit",
-    }));
-
-    const { stageType, unitArtistId } = deriveStageType("song", songArtists);
-
-    if (stageType === "unit" && unitArtistId !== null) {
+    if (unitArtistId !== null) {
       // Fetch unit members + intersect with event performers.
       let cancelled = false;
       fetch(`/api/artists/${unitArtistId}/current-members`)
@@ -450,7 +451,7 @@ export function AddItemBottomSheet({
         .map((p) => p.stageIdentityId),
     );
     dispatch({ type: "SET_PERFORMERS", payload: allActive });
-  }, [selectedSong, itemType, eventPerformers]);
+  }, [selectedSong, itemType, eventPerformers, unitArtistId]);
 
   // Reset the form on close so the next open starts clean. The
   // eventPerformers cache is preserved (the data hasn't changed)
@@ -696,6 +697,7 @@ export function AddItemBottomSheet({
                       </label>
                       <PerformerChecklist
                         performers={eventPerformers}
+                        unitArtistId={unitArtistId}
                         checkedIds={performerIds}
                         onToggle={handleTogglePerformer}
                         locale={locale}
