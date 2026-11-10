@@ -93,6 +93,8 @@ Omit `kind` for names or variant labels. A translation entry carries `locale`,
 same spelling for that locale. The ready export keeps supplied row order. Store
 one version of the report per target database.
 
+Run the CLI with Node.js 24 and the checkout's installed dependencies.
+
 ```sh
 node scripts/catalog-display-review.mjs candidate.json --ready-dir ready > review.json
 node scripts/catalog-display-review.mjs stored.json --audit > audit.json

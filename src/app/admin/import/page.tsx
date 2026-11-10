@@ -77,10 +77,7 @@ export default function ImportPage() {
   }
 
   async function handleImport() {
-    if (!csvText.trim()) {
-      setError("CSV 데이터가 없습니다.");
-      return;
-    }
+    if (!csvText.trim()) return;
 
     setLoading(true);
     setError("");

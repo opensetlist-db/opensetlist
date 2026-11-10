@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { locales } from "../src/i18n/routing.ts";
-import { resolveOriginalLanguage } from "../src/lib/csv-parse.ts";
+import { isSameSpellingSource, resolveOriginalLanguage } from "../src/lib/csv-parse.ts";
 import { resolveDisplayPair } from "../src/lib/display.ts";
 
 const nameFields = { name: "originalName", shortName: "originalShortName" };
@@ -12,10 +12,12 @@ const titleFields = { title: "originalTitle", variantLabel: "variantLabel" };
 const eventFields = { ...nameFields, organizerName: "organizerName" };
 const incompleteStatuses = new Set(["missing-original", "missing", "unconfirmed-same", "title-review"]);
 
+/** Match the server's trimmed cell values when binding a review to a CSV row. */
 function csvCells({ header, row }) {
   return Object.fromEntries(header.map((col, index) => [col, row[index]?.trim()]));
 }
 
+/** Find other entries the candidate references through the importer columns. */
 function relatedKeys({ file, ...record }) {
   const row = csvCells(record);
   const kind = file.split(/[.-]/)[0];
@@ -38,6 +40,7 @@ function relatedKeys({ file, ...record }) {
   );
 }
 
+/** Map each import shape to the review fields its CSV can write. */
 function csvTargets(file, cells) {
   switch (file.split(/[.-]/)[0]) {
     case "artists":
@@ -63,7 +66,10 @@ function csvTargets(file, cells) {
   }
 }
 
-/** @param {{ key: string, csv?: { file: string, header: string[], row: string[] }[], fields: object[] }} entry */
+/**
+ * Verify that each ready CSV row matches the reviewed effective values.
+ * @param {{ key: string, csv?: { file: string, header: string[], row: string[] }[], fields: object[] }} entry
+ */
 export function verifyReviewedCsv({ key, csv = [], fields }) {
   if (!csv.length) throw new Error(`${key}: ready entry has no CSV rows`);
   for (const [csvIndex, record] of csv.entries()) {
@@ -93,6 +99,11 @@ export function verifyReviewedCsv({ key, csv = [], fields }) {
         for (const locale of locales) {
           const translation = review.translations.find((item) => item.locale === locale);
           const value = translatedCell(locale) || stored?.translations?.find((item) => item.locale === locale)?.value || "";
+          if (field === "name" && !kind && !value &&
+              (Object.keys(columns).some((key) => cells[`${prefix}${locale}_${key}`]) ||
+               (file.startsWith("groups") && cells[`${locale}_description`]))) {
+            throw new Error(`${key}: ${prefix}${locale}_name is required for its translation row`);
+          }
           if ((translation?.value ?? "") !== value ||
               (translation?.sameValueConfirmed && cells[`${prefix}${locale}_${field}_same_source`] !== translation.source)) {
             throw new Error(`${key}: CSV ${locale} ${prefix}${field} differs from reviewed value or source`);
@@ -103,6 +114,7 @@ export function verifyReviewedCsv({ key, csv = [], fields }) {
   }
 }
 
+/** Classify stored or proposed display fields and propagate holds to dependents. */
 export function reviewCatalog(entries, { audit = false } = {}) {
   const keys = new Set(entries.map(({ key }) => key));
   if (keys.size !== entries.length) throw new Error("Duplicate review key");
@@ -120,7 +132,7 @@ export function reviewCatalog(entries, { audit = false } = {}) {
         const entry = translations.find((item) => item.locale === locale);
         const status = !original?.trim() ? "missing-original" : resolveDisplayPair(
           { original, originalLanguage }, translations, locale, "value",
-          { kind, sameValueConfirmed: !!entry?.sameValueConfirmed && !!entry?.source },
+          { kind, sameValueConfirmed: !!entry?.sameValueConfirmed && isSameSpellingSource(entry.source) },
         ).status;
         const missing = incompleteStatuses.has(status);
         if (!audit && (missing || (status === "present" && !entry?.source))) {
@@ -164,6 +176,7 @@ export function reviewCatalog(entries, { audit = false } = {}) {
   return { ready: ready.map(({ key }) => key), held, incomplete, statuses, reviewed };
 }
 
+/** Assemble and validate the full ready bundle before writing any output. */
 function writeReadyCsvs(dir, entries, ready) {
   const keys = new Set(ready);
   const files = new Map();

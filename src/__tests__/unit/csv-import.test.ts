@@ -93,6 +93,45 @@ describe("catalog display completeness", () => {
       .toEqual([]);
   });
 
+  it("requires a name before adding a short name to a new locale row", () => {
+    const fields = [["originalName", "name", "required"]] as const;
+    const existing = {
+      originalName: "藍", originalLanguage: "ja",
+      translations: [{ locale: "ko", name: "아이" }, { locale: "en", name: "Ai" }],
+    };
+    const patch = { locale: "ja", shortName: "あい" };
+    expect(catalogDisplayIssues({}, existing, {}, [patch], fields))
+      .toEqual(["ja_name: 번역 행에 이름이 필요합니다"]);
+    expect(catalogDisplayIssues({}, existing, {}, [{ ...patch, name: "藍" }], fields)).toEqual([]);
+  });
+
+  it("applies the importer's source URL requirement in offline review", () => {
+    const field = {
+      field: "name", original: "Liella!", originalLanguage: "ja", originalSource: "fixed:original",
+      translations: [
+        { locale: "ko", value: "리에라!", source: "fixed:ko" },
+        { locale: "en", value: "Liella!", source: "fixed:en", sameValueConfirmed: true },
+      ],
+    };
+    expect(reviewCatalog([{ key: "artist:liella", fields: [field] }]).ready).toEqual([]);
+    field.translations[1].source = "https://example.com/confirmed-fixture";
+    expect(reviewCatalog([{ key: "artist:liella", fields: [field] }]).ready).toEqual(["artist:liella"]);
+  });
+
+  it("requires a name in a new group locale row even when CSV only patches its description", () => {
+    const stored = {
+      original: "藍", originalLanguage: "ja",
+      translations: [{ locale: "ko", value: "아이" }, { locale: "en", value: "Ai" }],
+    };
+    const csv = [{ file: "groups.csv", header: ["slug", "ja_description"], row: ["ai", "説明"] }];
+    expect(() => verifyReviewedCsv({ key: "group:ai", fields: [{ field: "name", stored, ...stored }], csv }))
+      .toThrow("ja_name is required");
+    const translations = [...stored.translations, { locale: "ja", value: "藍" }];
+    expect(() => verifyReviewedCsv({
+      key: "group:ai", fields: [{ field: "name", ...stored, stored: { ...stored, translations }, translations }], csv,
+    })).not.toThrow();
+  });
+
   it("checks the merged state for changed fields and lets unrelated legacy edits through", () => {
     const legacy = { ...mixed, translations: [ko] };
     const complete = { ...mixed, translations: [ko, en] };

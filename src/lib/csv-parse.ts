@@ -8,6 +8,11 @@ export function parseArtistSlugs(value: string | undefined | null): string[] {
   return value.trim().split(/\s+/).filter(Boolean);
 }
 
+/** An identical localized spelling needs a source URL in the review and CSV. */
+export function isSameSpellingSource(source: unknown): source is string {
+  return typeof source === "string" && /^https?:\/\//i.test(source) && URL.canParse(source);
+}
+
 /**
  * Resolve originalLanguage from CSV row value, with default "ja".
  *

@@ -1,5 +1,5 @@
 import { locales } from "@/i18n/routing";
-import { ImportValidationError } from "@/lib/csv-parse";
+import { ImportValidationError, isSameSpellingSource } from "@/lib/csv-parse";
 import { resolveDisplayPair } from "@/lib/display";
 
 type TranslationPatch = { locale: string } & Record<string, unknown>;
@@ -17,10 +17,7 @@ function text(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
-function confirmed(source: string | undefined) {
-  return !!source && URL.canParse(source) && /^https?:\/\//i.test(source);
-}
-
+/** Compare the values that Prisma will persist, leaving unchanged legacy fields alone. */
 export function catalogDisplayIssues(
   row: Record<string, string>,
   existing: DisplayRecord | null,
@@ -43,6 +40,13 @@ export function catalogDisplayIssues(
       const patch = patches.find((t) => t.locale === locale)?.[field];
       return { locale, before, value: patch === undefined ? before : text(patch) };
     });
+    if (kind === "required") {
+      for (const { locale, value } of translations) {
+        if (!value.trim() && patches.some((patch) => patch.locale === locale)) {
+          issues.push(`${prefix}${locale}_${field}: 번역 행에 이름이 필요합니다`);
+        }
+      }
+    }
     if (existing && original === previous && originalLanguage === previousLanguage &&
         translations.every(({ before, value }) => before === value)) continue;
     if (!original.trim()) {
@@ -55,7 +59,7 @@ export function catalogDisplayIssues(
       const key = `${prefix}${locale}_${field}`;
       const { status } = resolveDisplayPair({ original, originalLanguage }, translations, locale, "value", {
         kind: kind === "title" ? "title" : undefined,
-        sameValueConfirmed: confirmed(row[`${key}_same_source`]),
+        sameValueConfirmed: isSameSpellingSource(row[`${key}_same_source`]),
       });
       if (status === "missing" || status === "unconfirmed-same" || status === "title-review") {
         issues.push(`${key}: ${status}`);
