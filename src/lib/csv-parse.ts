@@ -30,37 +30,13 @@ export function resolveOriginalLanguage(value: string | undefined | null): strin
   return normalized;
 }
 
-export interface TranslationRow {
-  locale: string;
-  title: string;
-  variantLabel: string | null;
-}
-
-/**
- * Resolve song translations from a CSV row.
- * Returns { translations, removedLocales } where:
- * - translations: locale rows to upsert (title and/or variantLabel present)
- * - removedLocales: locales with no data that should be deleted from DB
- */
-export function resolveSongTranslations(row: Record<string, string>): {
-  translations: TranslationRow[];
-  removedLocales: string[];
-} {
-  const LOCALES = ["ja", "ko", "en"] as const;
-
-  const translations: TranslationRow[] = [];
-  for (const locale of LOCALES) {
-    const title = row[`${locale}_title`] || "";
-    const variantLabel = row[`${locale}_variantLabel`] || null;
-    if (title || variantLabel) {
-      translations.push({ locale, title, variantLabel });
-    }
-  }
-
-  const presentLocales = new Set(translations.map((t) => t.locale));
-  const removedLocales = LOCALES.filter((l) => !presentLocales.has(l));
-
-  return { translations, removedLocales };
+/** CSV translations are partial patches. Blank cells preserve stored fields. */
+export function resolveSongTranslations(row: Record<string, string>) {
+  return ["ja", "ko", "en"].map((locale) => ({
+    locale,
+    title: row[`${locale}_title`] || undefined,
+    variantLabel: row[`${locale}_variantLabel`] || undefined,
+  })).filter(({ title, variantLabel }) => title || variantLabel);
 }
 
 export type OriginalsFieldMap<T> = ReadonlyArray<{
