@@ -23,6 +23,7 @@ vi.mock("@/lib/logoSeriesGraph", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     event: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
     eventSeries: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
     eventSeriesTranslation: { upsert: vi.fn(), updateMany: vi.fn() },
@@ -92,6 +93,10 @@ describe("organizerName resolution", () => {
 });
 
 describe("getEventsListGrouped — organizer groups", () => {
+  beforeEach(() => {
+    mocked.artist.findMany.mockResolvedValue([]);
+  });
+
   function standaloneEvent(id: number, organizerName: string, translations: unknown[]) {
     return {
       id: BigInt(id),
@@ -108,6 +113,8 @@ describe("getEventsListGrouped — organizer groups", () => {
       originalCity: null,
       originalVenue: null,
       translations,
+      performers: [],
+      collaborationArtists: [],
       _count: { setlistItems: 0 },
     };
   }

@@ -195,11 +195,6 @@ const DECIDED: Record<string, Record<Locale, string>> = {
     ja: "イベント一覧",
     ko: "이벤트 목록",
   },
-  "EventList.subtitle": {
-    en: "Find an event. Explore the live archive.",
-    ja: "公演を見つけて、ライブの記録をたどる。",
-    ko: "공연을 찾고, 라이브의 기록을 만나보세요.",
-  },
   "EventList.filterLabel": {
     en: "Filter events",
     ja: "イベントの絞り込み",

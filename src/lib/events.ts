@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
-import { getEventStatus } from "@/lib/eventStatus";
+import { getEventStatus, ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 import {
   LOGO_EVENT_SELECT,
@@ -9,6 +9,7 @@ import {
   type PublicLogo,
 } from "@/lib/logoResolution";
 import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
+import { buildArtistHierarchy, rootOf } from "@/lib/artistHierarchyTree";
 import type { EventSeriesType } from "@/generated/prisma/enums";
 
 type SeriesTranslation = {
@@ -35,18 +36,6 @@ type SeriesAncestor = {
       shortName: string | null;
     }[];
   } | null;
-};
-
-type ArtistForGroup = {
-  id: number;
-  originalName: string | null;
-  originalShortName: string | null;
-  originalLanguage: string;
-  translations: {
-    locale: string;
-    name: string;
-    shortName: string | null;
-  }[];
 };
 
 type EventTranslation = {
@@ -166,6 +155,8 @@ export type EventsListGroup = {
 };
 
 export type EventsListData = {
+  artist: string | null;
+  artistOptions: { id: string; name: string }[];
   /**
    * Groups with at least one active event (ongoing, upcoming, or a
    * future-dated cancelled show). All events of the group are kept
@@ -226,11 +217,16 @@ function groupKeyForEvent(
   return { kind: "ungrouped", key: UNGROUPED_KEY, ref: null };
 }
 
+/**
+ * Build filter options from the full public catalog, then bucket matching
+ * dates so another family's show cannot control a tour's LIVE badge or order.
+ */
 export async function getEventsListGrouped(
   locale: string,
   referenceNow: Date,
+  requestedArtist?: string | string[],
 ): Promise<EventsListData> {
-  const [eventsRaw, seriesRaw, logoGraph] = await Promise.all([
+  const [eventsRaw, seriesRaw, logoGraph, artists, credits] = await Promise.all([
     prisma.event.findMany({
       where: { isDeleted: false },
       select: {
@@ -246,6 +242,29 @@ export async function getEventsListGrouped(
         originalLanguage: true,
         originalCity: true,
         originalVenue: true,
+        collaborationArtists: {
+          where: { artist: { isSideProject: true, parentArtistId: null } },
+          select: { artistId: true },
+        },
+        performers: {
+          where: {
+            event: {
+              OR: [
+                { eventSeriesId: null, artistId: null },
+                { eventSeries: { artistId: null } },
+              ],
+            },
+          },
+          select: {
+            stageIdentity: {
+              select: {
+                artistLinks: {
+                  select: { artistId: true, startDate: true, endDate: true },
+                },
+              },
+            },
+          },
+        },
         translations: {
           select: {
             locale: true,
@@ -275,6 +294,7 @@ export async function getEventsListGrouped(
       where: { isDeleted: false },
       select: {
         id: true,
+        artistId: true,
         parentSeriesId: true,
         type: true,
         originalName: true,
@@ -302,53 +322,131 @@ export async function getEventsListGrouped(
     // calls revalidatePublicData(), so this uncached page picks up a
     // logo change on the next request without its own tag.
     getLogoSeriesGraph(),
-  ]);
-
-  const seriesList = serializeBigInt(seriesRaw) as unknown as SeriesAncestor[];
-  const ancestry = new Map(seriesList.map((s) => [s.id, s]));
-  const events: EventForList[] = eventsRaw.map((raw) => {
-    const ev = serializeBigInt(raw) as unknown as EventForList &
-      Partial<Record<"logoMode" | "logoAsset" | "artist", unknown>>;
-    // Resolver inputs stay server-internal: only `logo` is public.
-    delete ev.logoMode;
-    delete ev.logoAsset;
-    delete ev.artist;
-    ev.logo = resolveEventLogo(raw, logoGraph);
-    ev.artTitle = null;
-    return ev;
-  });
-
-  // Second-pass fetch: artists referenced by series-less events. Done
-  // after the events query so we know which artistIds to look up
-  // (typically a small set — Hasunosora, Nijigasaki, ... — even at
-  // scale). A separate query keeps the main `findMany` lean and lets
-  // us skip the join entirely when no event uses Event.artistId yet.
-  const standaloneArtistIds = new Set<string>();
-  for (const ev of events) {
-    if (ev.eventSeriesId == null && ev.artistId != null) {
-      standaloneArtistIds.add(String(ev.artistId));
-    }
-  }
-  const artistMap = new Map<string, ArtistForGroup>();
-  if (standaloneArtistIds.size > 0) {
-    const artistsRaw = await prisma.artist.findMany({
-      where: {
-        id: { in: Array.from(standaloneArtistIds).map((id) => BigInt(id)) },
-      },
+    prisma.artist.findMany({
+      where: { isDeleted: false },
       select: {
         id: true,
+        parentArtistId: true,
+        isSideProject: true,
         originalName: true,
         originalShortName: true,
         originalLanguage: true,
         translations: {
+          where: { locale },
           select: { locale: true, name: true, shortName: true },
         },
       },
-    });
-    for (const a of serializeBigInt(artistsRaw) as unknown as ArtistForGroup[]) {
-      artistMap.set(String(a.id), a);
-    }
+      orderBy: { id: "asc" },
+    }),
+    // Deduplicate in the DB so a tour's setlist credits are sent once per artist and day.
+    prisma.$queryRaw<{ eventId: bigint; artistId: bigint }[]>`
+      SELECT DISTINCT item."eventId", credit."artistId"
+      FROM "SetlistItemArtist" credit
+      JOIN "SetlistItem" item ON item.id = credit."setlistItemId"
+      JOIN "Event" event ON event.id = item."eventId"
+      WHERE NOT event."isDeleted" AND NOT item."isDeleted"
+        AND item.status <> 'rumoured' AND item."performanceType" <> 'video_playback'
+    `,
+  ]);
+
+  const hierarchy = buildArtistHierarchy(artists);
+  /** An orphaned unit or a deleted artist must not become a filter option. */
+  function publicRoot(id: bigint) {
+    const root = rootOf(hierarchy, id);
+    return hierarchy.parentOf.get(root) === null ? root : null;
   }
+
+  const creditsByEvent = new Map<bigint, bigint[]>();
+  for (const { eventId, artistId } of credits) {
+    const ids = creditsByEvent.get(eventId) ?? [];
+    ids.push(artistId);
+    creditsByEvent.set(eventId, ids);
+  }
+
+  const seriesById = new Map(seriesRaw.map((s) => [s.id, s]));
+  /** Inherit the closest artist assignment, even when the outer tour has a different one. */
+  function seriesRootArtist(id: bigint | null) {
+    for (let depth = 0; id !== null && depth < MAX_SERIES_DEPTH; depth++) {
+      const series = seriesById.get(id);
+      if (!series) break;
+      const root = series.artistId != null ? publicRoot(series.artistId) : null;
+      if (root !== null) return root;
+      id = series.parentSeriesId;
+    }
+    return null;
+  }
+
+  const availableRoots = new Set<string>();
+  const eventsWithRoots = eventsRaw.map((event) => {
+    const primaryRoot = event.eventSeriesId !== null
+      ? seriesRootArtist(event.eventSeriesId)
+      : event.artistId === null ? null : publicRoot(event.artistId);
+    const roots = new Set<string>();
+    if (primaryRoot !== null) roots.add(primaryRoot);
+    for (const id of [
+      ...(creditsByEvent.get(event.id) ?? []),
+      ...event.collaborationArtists.map((link) => link.artistId),
+    ]) {
+      const root = publicRoot(id);
+      if (root !== null) roots.add(root);
+    }
+
+    // Roster membership can identify a group at a joint event when the
+    // identity has one eligible home family. For past shows require a
+    // dated affiliation so an undated current link cannot add a group.
+    if (primaryRoot === null) {
+      const day = (event.date ?? event.startTime).toISOString().slice(0, 10);
+      const status = getEventStatus(event, referenceNow);
+      const past = status === "completed" ||
+        (status === "cancelled" && event.startTime < referenceNow) ||
+        // An old admin LIVE override affects display, not the affiliation date.
+        event.startTime.getTime() + ONGOING_BUFFER_MS <= referenceNow.getTime();
+      for (const { stageIdentity } of event.performers) {
+        const families = new Map<string, boolean>();
+        for (const link of stageIdentity.artistLinks) {
+          const root = publicRoot(link.artistId);
+          if (root === null || hierarchy.sideProjects.has(root)) continue;
+          if (link.startDate && link.startDate.toISOString().slice(0, 10) > day) continue;
+          if (link.endDate && link.endDate.toISOString().slice(0, 10) < day) continue;
+          families.set(root, families.get(root) === true || link.startDate !== null);
+        }
+        if (families.size === 1) {
+          for (const [root, dated] of families) {
+            if (!past || dated) roots.add(root);
+          }
+        }
+      }
+    }
+    for (const root of roots) availableRoots.add(root);
+    return { event, roots };
+  });
+
+  const artist = typeof requestedArtist === "string" && availableRoots.has(requestedArtist)
+    ? requestedArtist
+    : null;
+  const artistOptions = artists
+    .filter((row) => availableRoots.has(String(row.id)))
+    .map((row) => ({
+      id: String(row.id),
+      name: displayNameWithFallback(row, row.translations, locale, "short"),
+    }));
+  const artistMap = new Map(artists.map((row) => [String(row.id), row]));
+  const seriesList = serializeBigInt(seriesRaw) as unknown as SeriesAncestor[];
+  const ancestry = new Map(seriesList.map((s) => [s.id, s]));
+  const events: EventForList[] = eventsWithRoots
+    .filter(({ roots }) => artist === null || roots.has(artist))
+    .map(({ event }) => {
+      const ev = serializeBigInt(event) as unknown as EventForList &
+        Partial<Record<"logoMode" | "logoAsset" | "artist" | "performers" | "collaborationArtists", unknown>>;
+      delete ev.logoMode;
+      delete ev.logoAsset;
+      delete ev.artist;
+      delete ev.performers;
+      delete ev.collaborationArtists;
+      ev.logo = resolveEventLogo(event, logoGraph);
+      ev.artTitle = null;
+      return ev;
+    });
 
   // Typography-art text (see `EventForList.artTitle`). The artist layer
   // only applies to series-less events — exactly the ones whose artists
@@ -493,5 +591,5 @@ export async function getEventsListGrouped(
   activeGroups.sort((a, b) => a.earliestStart - b.earliestStart || firstId(a) - firstId(b));
   pastGroups.sort((a, b) => b.latestStart - a.latestStart || firstId(a) - firstId(b));
 
-  return { activeGroups, pastGroups };
+  return { activeGroups, pastGroups, artist, artistOptions };
 }

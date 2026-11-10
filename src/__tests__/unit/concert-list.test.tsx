@@ -22,6 +22,7 @@ vi.mock("@/lib/logoSeriesGraph", async () => {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    $queryRaw: vi.fn(),
     event: { findMany: vi.fn() },
     eventSeries: { findMany: vi.fn() },
     artist: { findMany: vi.fn() },
@@ -48,6 +49,7 @@ import { Pagination } from "@/components/Pagination";
 import { EventArt } from "@/components/shared/EventArt";
 
 const mocked = prisma as unknown as {
+  $queryRaw: ReturnType<typeof vi.fn>;
   event: { findMany: ReturnType<typeof vi.fn> };
   eventSeries: { findMany: ReturnType<typeof vi.fn> };
   artist: { findMany: ReturnType<typeof vi.fn> };
@@ -76,6 +78,8 @@ function event(id: number, over: Record<string, unknown> = {}) {
     logoMode: "inherit",
     logoAsset: null,
     artist: null,
+    performers: [],
+    collaborationArtists: [],
     ...over,
   };
 }
@@ -111,6 +115,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   graph.rows = [];
   mocked.artist.findMany.mockResolvedValue([]);
+  mocked.$queryRaw.mockResolvedValue([]);
 });
 
 describe("getEventsListGrouped — display fields", () => {
@@ -248,12 +253,72 @@ describe("getEventsListGrouped — display fields", () => {
   });
 });
 
+describe("getEventsListGrouped — artist families", () => {
+  it("keeps dated joint appearances and direct credits, and recomputes each tour from its matching dates", async () => {
+    mocked.artist.findMany.mockResolvedValue([
+      { id: BigInt(7), parentArtistId: null, originalName: "Parent", translations: [{ locale: "ko", name: "그룹" }] },
+      { id: BigInt(8), parentArtistId: BigInt(7), originalName: "Unit", translations: [] },
+      { id: BigInt(9), parentArtistId: null, originalName: "Other", translations: [] },
+      { id: BigInt(10), parentArtistId: null, originalName: "Collaboration", translations: [], isSideProject: true },
+    ]);
+    mocked.eventSeries.findMany.mockResolvedValue([
+      series(1),
+      series(2, { parentSeriesId: BigInt(1), artistId: BigInt(8) }),
+      series(3, { parentSeriesId: BigInt(1), artistId: BigInt(9) }),
+    ]);
+    const roster = (startDate: Date | null, endDate: Date | null = null) => [{
+      stageIdentity: { artistLinks: [
+        { artistId: BigInt(8), startDate, endDate },
+        { artistId: BigInt(10), startDate, endDate },
+      ] },
+    }];
+    const past = new Date("2026-10-01T12:00:00Z");
+    const starts = new Date("2026-10-01T00:00:00Z");
+    mocked.event.findMany.mockResolvedValue([
+      event(1, { eventSeriesId: BigInt(2), artistId: BigInt(9), startTime: past }),
+      event(2, { eventSeriesId: BigInt(3), status: "ongoing" }),
+      event(3, { startTime: past, performers: roster(null) }),
+      event(4, { startTime: past, performers: roster(starts, starts) }),
+      event(5, { startTime: past, collaborationArtists: [{ artistId: BigInt(10) }] }),
+      event(6, { startTime: past, performers: roster(new Date("2026-10-02T00:00:00Z")) }),
+      event(7, { artistId: BigInt(99) }),
+      event(8, { startTime: past }),
+      event(9, { organizerName: "Joint festival", performers: roster(null) }),
+      event(10, { startTime: past, status: "ongoing", organizerName: "Old joint festival", performers: roster(null) }),
+    ]);
+    mocked.$queryRaw.mockResolvedValue([{ eventId: BigInt(8), artistId: BigInt(8) }]);
+    const all = await getEventsListGrouped("ko", NOW);
+    const ids = (groups: typeof all.pastGroups) => groups.flatMap((group) => group.events.map((event) => event.id));
+    expect(ids([...all.activeGroups, ...all.pastGroups]).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(all.artistOptions).toEqual([
+      { id: "7", name: "그룹" }, { id: "9", name: "Other" }, { id: "10", name: "Collaboration" },
+    ]);
+    const parent = await getEventsListGrouped("ko", NOW, "7");
+    expect(parent.artist).toBe("7");
+    expect(ids(parent.activeGroups)).toEqual([9]);
+    expect(ids(parent.pastGroups)).toEqual([1, 4, 8]);
+    expect(parent.pastGroups[0]).toMatchObject({ id: "series:1", hasOngoing: false });
+    const other = await getEventsListGrouped("ko", NOW, "9");
+    expect(ids([...other.activeGroups, ...other.pastGroups])).toEqual([2]);
+    const collaboration = await getEventsListGrouped("ko", NOW, "10");
+    expect(ids([...collaboration.activeGroups, ...collaboration.pastGroups])).toEqual([5]);
+    const invalid = await getEventsListGrouped("ko", NOW, ["7", "9"]);
+    expect(invalid).toEqual(all);
+    expect((await getEventsListGrouped("ko", NOW, "8")).artist).toBeNull();
+    expect((await getEventsListGrouped("ko", NOW, "99")).artist).toBeNull();
+  });
+});
+
 describe("<ConcertFilterNav />", () => {
   const labels = { all: "All", ongoing: "Live now", upcoming: "Upcoming", completed: "Completed" };
 
   it("links every filter to its own URL without pastPage and marks the current one", () => {
     render(
-      <ConcertFilterNav locale="en" active="upcoming" labels={labels} label="Filter events" />,
+      <ConcertFilterNav
+        locale="en" active="upcoming" labels={labels} label="Filter events"
+        artist={null} artistOptions={[{ id: "7", name: "Group A" }]}
+        artistLabel="Filter by group" allArtistsLabel="All groups"
+      />,
     );
     const nav = screen.getByRole("navigation", { name: "Filter events" });
     const links = within(nav).getAllByRole("link");
@@ -268,6 +333,7 @@ describe("<ConcertFilterNav />", () => {
       "page",
     );
     expect(screen.getByRole("link", { name: "All" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Group A" })).toHaveAttribute("href", "/en/events?filter=upcoming&artist=7");
   });
 });
 
