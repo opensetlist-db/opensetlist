@@ -1,7 +1,8 @@
 // Concert-list regression boundary. Reads the app; optional new-row fixtures
 // are created/removed separately under the shared dev-DB slot protocol.
 const ROW = "main a[data-status]";
-const FILTER = "main header + nav a";
+const FILTER = 'main [data-testid="event-status-filter"] a';
+const ARTIST = 'main [data-testid="event-artist-filter"] a';
 
 async function markContrast(page) {
   // The page uses Tailwind rather than CSS modules. Add inert diagnostic
@@ -11,7 +12,7 @@ async function markContrast(page) {
     mark("main h1, main h3, main h4", "title");
     mark("main a[data-status] p", "metadata");
     mark("main a[data-status] time", "date");
-    mark("main header + nav a", "filter");
+    mark('main [data-testid="event-status-filter"] a', "filter");
     mark('main a[data-status] time + div > span', "status");
     for (const status of ["ongoing", "upcoming", "completed", "cancelled"]) {
       mark(`main a[data-status="${status}"] time + div > span:first-child`, `status-${status}`);
@@ -55,19 +56,23 @@ const scenario = {
         const rows = await rowState(page);
         check(name("canonical single row links"), rows.length > 0 && rows.every((r) =>
           r.href.startsWith(`/${loc}/events/`) && /^\d+\/[a-z0-9_-]+$/.test(r.href.split("/events/")[1])), `${rows.length} rows`);
-        const cut = await h.clipped(page, ["main h1", "main h3", "main h4", `${ROW} p`]);
+        const cut = await h.clipped(page, ["main h1", "main h3", "main h4", `${ROW} p`, ARTIST]);
         check(name("titles and metadata wrap"), cut.length === 0, JSON.stringify(cut));
         const layout = await page.evaluate(() => {
           const rows = [...document.querySelectorAll("main a[data-status]")];
           return {
             artLeft: rows.every((r) => r.querySelector('[data-testid="event-art"]').getBoundingClientRect().right <= r.querySelector("h4").getBoundingClientRect().left + 1),
             title: getComputedStyle(document.querySelector("main h1")).fontSize,
-            filters: [...document.querySelectorAll("main header + nav a")].map((a) => ({ h: a.getBoundingClientRect().height, current: a.getAttribute("aria-current") })),
+            filters: [...document.querySelectorAll('main [data-testid="event-status-filter"] a')].map((a) => ({ h: a.getBoundingClientRect().height, current: a.getAttribute("aria-current") })),
+            artists: [...document.querySelectorAll('main [data-testid="event-artist-filter"] a')].map((a) => ({ h: a.getBoundingClientRect().height, current: a.getAttribute("aria-current"), text: a.textContent.trim() })),
+            header: { heading: !!document.querySelector("main header h1"), paragraphs: document.querySelectorAll("main header p").length },
             liveGroups: [...document.querySelectorAll("main section[data-live]")].map((s) => ({ rows: s.querySelectorAll('a[data-status="ongoing"]').length, toggles: s.querySelectorAll("button").length })),
           };
         });
         check(name("art left, full UTC year, title scale"), layout.artLeft && rows.every((r) => /\d{4}/.test(r.date)) && layout.title === (width < 700 ? "26px" : "32px"), JSON.stringify(layout));
         check(name("four 44px filters, one selected"), layout.filters.length === 4 && layout.filters.every((f) => f.h >= 44) && layout.filters.filter((f) => f.current === "page").length === 1, JSON.stringify(layout.filters));
+        check(name("heading and eyebrow without introduction"), layout.header.heading && layout.header.paragraphs === 1, JSON.stringify(layout.header));
+        check(name("group filters wrap, 44px, all selected"), layout.artists.length > 1 && layout.artists.every((f) => f.h >= 44 && f.text) && layout.artists.filter((f) => f.current === "page").length === 1 && layout.artists[0].current === "page", JSON.stringify(layout.artists));
         if (layout.liveGroups.length) check(name("LIVE groups stay expanded"), layout.liveGroups.every((g) => g.rows > 0 && g.toggles === 0), JSON.stringify(layout.liveGroups));
         else h.skip(name("LIVE group"), "no ongoing event in current data");
         if ([390, 1440].includes(width)) {
@@ -84,6 +89,41 @@ const scenario = {
     }
 
     for (const loc of h.LOCALES) {
+      await h.section(`${loc} group filter query`, async () => {
+        const { page } = await h.open(`/${loc}/events?filter=completed&pastPage=2`, { width: 1440 });
+        const group = page.locator(ARTIST).nth(1);
+        const id = new URL(await group.evaluate((a) => a.href)).searchParams.get("artist");
+        await h.afterNav(page, {
+          url: (u) => u.searchParams.get("artist") === id && u.searchParams.get("filter") === "completed" && !u.searchParams.has("pastPage"),
+          ready: `[data-testid="event-artist-filter"] a[aria-current="page"][href$="artist=${id}"]`,
+          action: () => group.click(),
+        });
+        const filtered = await rowState(page);
+        h.check(`${loc} group + completed rows or empty reset`, filtered.length ? filtered.every((r) => ["completed", "cancelled"].includes(r.status)) : await page.locator(`main a[href="/${loc}/events"]`).count() > 0, String(filtered.length));
+        const pages = await page.locator('main nav a[href*="pastPage="]').evaluateAll((links) => links.map((a) => a.href));
+        if (pages.length) h.check(`${loc} group pagination preserves both filters`, pages.every((x) => { const q = new URL(x).searchParams; return q.get("artist") === id && q.get("filter") === "completed"; }), pages.join(" "));
+        else h.skip(`${loc} group pagination`, "one past page");
+        const status = page.locator(`${FILTER}[href*="filter=upcoming"]`);
+        await h.afterNav(page, {
+          url: (u) => u.searchParams.get("artist") === id && u.searchParams.get("filter") === "upcoming",
+          ready: '[data-testid="event-status-filter"] a[aria-current="page"][href*="filter=upcoming"]',
+          action: () => status.click(),
+        });
+        const upcomingRows = await rowState(page);
+        h.check(`${loc} group + upcoming rows or empty reset`, upcomingRows.length ? upcomingRows.every((r) => r.status === "upcoming") : await page.locator(`main a[href="/${loc}/events"]`).count() > 0, String(upcomingRows.length));
+        await h.afterNav(page, {
+          url: (u) => u.searchParams.get("artist") === id && u.searchParams.get("filter") === "completed",
+          ready: '[data-testid="event-status-filter"] a[aria-current="page"][href*="filter=completed"]',
+          action: () => page.goBack(),
+        });
+        h.check(`${loc} back restores filtered rows`, JSON.stringify(await rowState(page)) === JSON.stringify(filtered), page.url());
+        await h.afterNav(page, {
+          url: (u) => !u.searchParams.has("artist") && u.searchParams.get("filter") === "completed",
+          ready: '[data-testid="event-artist-filter"] a[aria-current="page"]:first-child',
+          action: () => page.locator(ARTIST).first().click(),
+        });
+        h.check(`${loc} all groups retains status`, new URL(page.url()).searchParams.get("filter") === "completed", page.url());
+      });
       await h.section(`${loc} filters, pages, history`, async () => {
         const { page } = await h.open(`/${loc}/events?pastPage=2`, { width: 390 });
         await h.afterNav(page, {
@@ -109,13 +149,13 @@ const scenario = {
           priorSearch = new URL(page.url()).search;
           h.check(`${loc} page 2 changes actual rows without splitting past rows`, priorRows.length > 0 && priorRows.every((r) => !firstRows.some((f) => f.href === r.href)), JSON.stringify(priorRows.map((r) => r.href)));
         } else h.skip(`${loc} past pagination`, "only one page of past groups");
-        await h.afterNav(page, { url: (u) => u.search === "?filter=upcoming", ready: 'header + nav a[aria-current="page"][href$="filter=upcoming"]', action: () => h.pressOn(page, `${FILTER}[href$="filter=upcoming"]`) });
+        await h.afterNav(page, { url: (u) => u.search === "?filter=upcoming", ready: '[data-testid="event-status-filter"] a[aria-current="page"][href$="filter=upcoming"]', action: () => h.pressOn(page, `${FILTER}[href$="filter=upcoming"]`) });
         await page.waitForFunction(() => [...document.querySelectorAll("main a[data-status]")].every((a) => a.dataset.status === "upcoming"));
         const upcoming = await rowState(page);
         if (upcoming.length) h.check(`${loc} upcoming filter`, upcoming.every((r) => r.status === "upcoming"), String(upcoming.length));
         else h.skip(`${loc} upcoming populated control`, "no upcoming event in current data; fixture checks require one");
         if (lastPage > 1) h.check(`${loc} filter drops an existing pastPage`, priorSearch.includes("pastPage=2") && !new URL(page.url()).searchParams.has("pastPage"), `${priorSearch} -> ${new URL(page.url()).search}`);
-        await h.afterNav(page, { url: /filter=completed/, ready: 'header + nav a[aria-current="page"][href$="filter=completed"]', action: () => page.goBack() });
+        await h.afterNav(page, { url: /filter=completed/, ready: '[data-testid="event-status-filter"] a[aria-current="page"][href$="filter=completed"]', action: () => page.goBack() });
         h.check(`${loc} browser history restores filter`, new URL(page.url()).searchParams.get("filter") === "completed", page.url());
         h.check(`${loc} history restores actual page and rows`, new URL(page.url()).search === priorSearch && JSON.stringify(await rowState(page)) === JSON.stringify(priorRows), "canonical ordered row sequence");
         const bound = await h.open(`/${loc}/events?filter=completed&pastPage=999999`, { width: 1440 });
@@ -132,6 +172,19 @@ const scenario = {
         h.check(`${loc} filter URL canonical consolidates`, new URL(canonical).pathname === `/${loc}/events` && !new URL(canonical).search, canonical);
       });
     }
+
+    await h.section("group locale", async () => {
+      const first = await h.open("/ko/events", { width: 1440 });
+      const id = new URL(await first.page.locator(ARTIST).nth(1).evaluate((a) => a.href)).searchParams.get("artist");
+      const { page } = await h.open(`/ko/events?artist=${id}&filter=completed&pastPage=2`, { width: 1440 });
+      await h.afterNav(page, {
+        url: (u) => u.pathname === "/ja/events" && u.searchParams.get("artist") === id && u.searchParams.get("filter") === "completed" && u.searchParams.get("pastPage") === "2",
+        ready: `[data-testid="event-artist-filter"] a[aria-current="page"][href$="artist=${id}"]`,
+        action: () => page.locator('header button[lang="ja"]:visible').first().click(),
+      });
+      h.check("locale switch preserves group, status, page", new URL(page.url()).searchParams.get("pastPage") === "2", page.url());
+
+    });
 
     await h.section("collapse and date timezone", async () => {
       const { page } = await h.open("/ko/events", { width: 390 });
