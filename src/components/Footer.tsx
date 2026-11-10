@@ -42,7 +42,7 @@ function FooterLink({ href, active, children }: FooterLinkProps) {
  * the right; stacked below 700px. Content column matches the 1200px main
  * content width with 24px minimum side gutters (20px on phones).
  */
-export function Footer() {
+export function Footer({ showAmazonAssociateDisclosure = false }: { showAmazonAssociateDisclosure?: boolean }) {
   const t = useTranslations("Footer");
   const tHeader = useTranslations("Header");
   const pathname = usePathname();
@@ -80,6 +80,11 @@ export function Footer() {
           >
             {t("unofficial")}
           </p>
+          {showAmazonAssociateDisclosure && (
+            <p lang="en" className="my-3 max-w-[500px] text-[12px]" style={{ color: colors.textPrimary }}>
+              {t("amazonAssociateDisclosure")}
+            </p>
+          )}
         </div>
         <nav
           aria-label={t("navLabel")}

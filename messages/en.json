@@ -239,7 +239,7 @@
         "active": "Available",
         "ended": "Ended"
       },
-      "affiliateDisclosure": "Amazon affiliate link. As an Amazon Associate, OpenSetlist earns from qualifying purchases.",
+      "affiliateDisclosure": "We earn from qualifying Amazon purchases.",
       "buy": "Buy",
       "showEnded": "{count, plural, one {Show # ended store} other {Show # ended stores}}",
       "summary": {
@@ -844,7 +844,8 @@
     "contact": "Contact",
     "copyright": "© {year} OpenSetlist",
     "unofficial": "An unofficial fan site. Not affiliated with performers, organizers or rights holders.",
-    "navLabel": "Site information"
+    "navLabel": "Site information",
+    "amazonAssociateDisclosure": "As an Amazon Associate, OpenSetlist earns from qualifying purchases."
   },
   "SharedImage": {
     "noImage": "No image"

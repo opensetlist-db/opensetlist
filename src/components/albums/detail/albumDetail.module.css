@@ -432,6 +432,12 @@ a.trackRow:focus-visible {
   font-weight: 700;
 }
 
+.affiliateDisclosure {
+  margin: 0 0 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .bonusSummary {
   display: flex;
   flex-wrap: wrap;
@@ -476,7 +482,7 @@ a.trackRow:focus-visible {
   font-weight: 700;
 }
 
-.edition {
+.deadline {
   margin: 4px 0 0;
   color: var(--text-secondary);
   font-size: 12px;

@@ -1,13 +1,13 @@
 import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
-import { PurchaseStoreLink } from "@/components/PurchaseStoreLink";
+import { TrackedStoreLink } from "@/components/TrackedStoreLink";
 import {
   resolveBonusType,
-  resolveEditionLabel,
   resolveStoreKey,
   resolveStoreName,
 } from "@/lib/albumBonusDisplay";
-import { performanceOfficialUrl, projectPurchaseOptions } from "@/lib/purchaseAvailability";
+import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
+import { resolvePurchaseLink } from "@/lib/purchaseLink";
 import { formatDate, formatTime, isSafeExternalUrl, type BigIntStringified } from "@/lib/utils";
 import styles from "./albumDetail.module.css";
 
@@ -37,14 +37,18 @@ export async function AlbumPurchasePanel({
 }) {
   const t = await getTranslations({ locale, namespace: "Album" });
   const { bonusStores, basicOptions } = projectPurchaseOptions(album.listings, now, { performanceOnly });
-  const officialUrl = performanceOnly
-    ? performanceOfficialUrl(album.listings)
-    : album.listings.map((listing) => listing.sourceUrl).find(isSafeExternalUrl);
   const hasOptions = bonusStores.length > 0 || basicOptions.length > 0;
+
+  const tag = process.env.AMAZON_JP_ASSOCIATE_TAG;
+  const hasAffiliateLink = ({ productUrl }: { productUrl: string }) =>
+    resolvePurchaseLink(productUrl, tag)?.isAffiliate === true;
+  const showDisclosure = basicOptions.some(hasAffiliateLink) ||
+    bonusStores.some(({ options }) => options.some(({ listing }) => hasAffiliateLink(listing)));
 
   type Listing = AlbumForPurchase["listings"][number];
   const option = (listing: Listing & { productUrl: string }, bonuses: Listing["bonuses"] = []) => {
-    const edition = resolveEditionLabel(listing, locale);
+    const link = resolvePurchaseLink(listing.productUrl, tag);
+    if (!link) return null;
     const store = resolveStoreName(listing, locale);
     // Report catalog seller keys, with the legacy buckets as a fallback for missing or malformed keys.
     const storeKey = listing.storeKey && /^[\p{L}\p{N}][\p{L}\p{N} _!&.-]{0,99}$/u.test(listing.storeKey)
@@ -52,8 +56,6 @@ export async function AlbumPurchasePanel({
       : resolveStoreKey(listing.originalStoreName);
     return (
       <div key={listing.id} className={styles.purchaseOption} data-testid="purchase-option">
-        {edition && <p className={styles.edition}>{edition}</p>}
-        {listing.selectionGuide && <p>{listing.selectionGuide}</p>}
         {bonuses.length > 0 && (
           <ul className={styles.bonusList}>
             {bonuses.map((bonus) => {
@@ -70,7 +72,7 @@ export async function AlbumPurchasePanel({
                   <strong>{label}</strong>
                   {description && <p>{description}</p>}
                   {deadline && (
-                    <p className={styles.edition}>
+                    <p className={styles.deadline}>
                       {t("bonus.deadline", {
                         time: formatDate(deadline, locale, { dateStyle: "medium", timeZone: "UTC" })
                           + " " + formatTime(deadline, locale, { timeStyle: "short", timeZone: "UTC" }) + " UTC",
@@ -82,20 +84,19 @@ export async function AlbumPurchasePanel({
             })}
           </ul>
         )}
-        <PurchaseStoreLink
-          href={listing.productUrl}
+        <TrackedStoreLink
+          {...link}
           albumId={String(album.id)}
           albumSlug={album.slug}
           purchaseOption={bonuses.length > 0 ? "with_bonus" : "without_bonus"}
           storeKey={storeKey}
           storeStatus={listing.status}
           surface="album_page"
-          disclosure={t("bonus.affiliateDisclosure")}
           className={styles.buy}
         >
           {t("bonus.buyAt", { store })}
           <span aria-hidden="true">↗</span>
-        </PurchaseStoreLink>
+        </TrackedStoreLink>
       </div>
     );
   };
@@ -103,6 +104,9 @@ export async function AlbumPurchasePanel({
   return (
     <>
       <h2 className={styles.purchaseHeading}>{t("tab.bonus")}</h2>
+      {showDisclosure && (
+        <p className={styles.affiliateDisclosure}>{t("bonus.affiliateDisclosure")}</p>
+      )}
       {bonusStores.length > 0 && (
         <section className={styles.purchaseSection} aria-label={t("bonus.options")}>
           <div className={styles.bonusSummary}>
@@ -133,11 +137,6 @@ export async function AlbumPurchasePanel({
         </section>
       )}
       {!hasOptions && <p className={`${styles.panel} ${styles.empty}`}>{t("bonus.empty")}</p>}
-      {officialUrl && (
-        <a className={styles.buy} href={officialUrl} target="_blank" rel="noopener noreferrer">
-          {t("bonus.officialInfo")} <span aria-hidden="true">↗</span>
-        </a>
-      )}
     </>
   );
 }

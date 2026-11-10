@@ -87,7 +87,7 @@ export default async function LocaleLayout({
           <Nav />
           <span id="main-content" tabIndex={-1} className="outline-none" />
           {children}
-          <Footer />
+          <Footer showAmazonAssociateDisclosure={Boolean(process.env.AMAZON_JP_ASSOCIATE_TAG?.trim())} />
           <SpeedInsights />
         </NextIntlClientProvider>
       </body>

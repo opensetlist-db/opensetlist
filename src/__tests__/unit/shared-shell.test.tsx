@@ -150,6 +150,13 @@ describe("<LanguageSwitcher />", () => {
 });
 
 describe("<Footer />", () => {
+  it("shows the Amazon Associate statement only when enabled", () => {
+    const { rerender } = render(<Footer showAmazonAssociateDisclosure />);
+    expect(screen.getByText("amazonAssociateDisclosure")).toHaveAttribute("lang", "en");
+    rerender(<Footer />);
+    expect(screen.queryByText("amazonAssociateDisclosure")).toBeNull();
+  });
+
   it("shows the unofficial statement, legal links, contact and UTC year", () => {
     pathname = "/privacy";
     render(<Footer />);
