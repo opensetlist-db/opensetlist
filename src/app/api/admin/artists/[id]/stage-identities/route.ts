@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
+import { serializeBigInt, serializeBigIntAsString } from "@/lib/utils";
 import { resolveCanonicalSlug } from "@/lib/slug";
 import {
   badRequest,
@@ -18,8 +18,36 @@ import {
 } from "../../_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { isOfficialRank } from "@/lib/officialOrder";
 
 type Props = { params: Promise<{ id: string }> };
+
+/** Rank-only write: omission preserves and explicit null clears. */
+export async function PUT(request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+  const { id } = await params;
+  if (!/^[1-9]\d{0,18}$/.test(id) || BigInt(id) > BigInt("9223372036854775807")) return badRequest("Invalid artist ID");
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const member = requireString(parsed.body.stageIdentityId, "stageIdentityId");
+  if (!member.ok) return badRequest(member.message);
+  const sortOrder = parsed.body.sortOrder;
+  if (sortOrder !== undefined && !isOfficialRank(sortOrder)) {
+    return badRequest("sortOrder must be null or a signed 32-bit integer");
+  }
+  const where = { stageIdentityId: member.value, artistId: BigInt(id) };
+  const relation = await prisma.$transaction(async (tx) => {
+    if (sortOrder !== undefined) {
+      const result = await tx.stageIdentityArtist.updateMany({ where: { ...where, artist: { isDeleted: false } }, data: { sortOrder } });
+      if (!result.count) return null;
+    }
+    return tx.stageIdentityArtist.findUnique({ where: { stageIdentityId_artistId: where, artist: { isDeleted: false } } });
+  });
+  if (!relation) return NextResponse.json({ error: "기존 멤버 연결을 찾을 수 없습니다." }, { status: 404 });
+  if (sortOrder !== undefined) revalidatePublicData();
+  return NextResponse.json(serializeBigIntAsString(relation));
+}
 
 export async function POST(request: NextRequest, { params }: Props) {
   const unauthorized = await verifyAdminAPI();

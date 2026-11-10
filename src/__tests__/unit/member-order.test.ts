@@ -27,7 +27,7 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: vi.fn(),
     event: { findFirst: vi.fn() },
     eventPerformer: { findMany: vi.fn() },
-    artist: { findUnique: vi.fn() },
+    artist: { findUnique: vi.fn(), findMany: vi.fn() },
     stageIdentity: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -182,15 +182,24 @@ describe("GET /api/events/[id]/performers (performer checklists)", () => {
 });
 
 describe("GET /api/admin/stage-identities (admin pickers)", () => {
-  it("lists identities in the official member order", async () => {
-    si.findMany.mockResolvedValue([]);
+  it("remains available when catalog hierarchy contains a cycle", async () => {
+    vi.mocked(prisma.artist.findMany).mockResolvedValue([
+      { id: BigInt(10), parentArtistId: BigInt(2), type: "group", sortOrder: null },
+      { id: BigInt(2), parentArtistId: BigInt(10), type: "group", sortOrder: null },
+    ] as Awaited<ReturnType<typeof prisma.artist.findMany>>);
+    const rows = ["b", "a"].map((id) => ({ id, sortOrder: null, createdAt: "2024-01-01T00:00:00Z", artistLinks: [{ artistId: BigInt(id === "a" ? 2 : 10), sortOrder: null }] }));
+    si.findMany.mockResolvedValue(rows);
     const res = await ADMIN_SI_GET();
     expect(res.status).toBe(200);
-    expect(si.findMany.mock.calls[0][0].orderBy).toEqual([
-      { sortOrder: { sort: "asc", nulls: "last" } },
-      { createdAt: "asc" },
-      { id: "asc" },
-    ]);
+    expect((await res.json()).map((member: { id: string }) => member.id)).toEqual(["a", "b"]);
+  });
+  it("lists identities in the official member order", async () => {
+    const row = (id: string, rank: number | null) => ({ id, sortOrder: rank, createdAt: "2024-01-01T00:00:00Z", artistLinks: [] });
+    si.findMany.mockResolvedValue([row("c", null), row("b", 2), row("a", 1)]);
+    vi.mocked(prisma.artist.findMany).mockResolvedValue([]);
+    const res = await ADMIN_SI_GET();
+    expect(res.status).toBe(200);
+    expect((await res.json()).map((member: { id: string }) => member.id)).toEqual(["a", "b", "c"]);
   });
 });
 

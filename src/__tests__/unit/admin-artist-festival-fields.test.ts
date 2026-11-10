@@ -11,7 +11,8 @@ vi.mock("@/lib/dataCache", () => ({ revalidatePublicData: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: vi.fn(),
-    artist: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
+    $executeRaw: vi.fn(),
+    artist: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
     artistTranslation: { upsert: vi.fn(), deleteMany: vi.fn() },
     artistGroup: { deleteMany: vi.fn() },
   },
@@ -43,6 +44,7 @@ beforeEach(() => {
   );
   artist.update.mockResolvedValue({ id: BigInt(20), translations: [] });
   artist.create.mockResolvedValue({ id: BigInt(21), translations: [] });
+  artist.findMany.mockResolvedValue([]);
 });
 
 describe("nullableHexColor", () => {
@@ -125,6 +127,33 @@ const put = (body: unknown) =>
   );
 
 describe("PUT /api/admin/artists/[id] — festival fields", () => {
+  it("rejects self/descendant and existing ancestor cycles before deleting translations or groups", async () => {
+    const rows = [
+      { id: BigInt(21), parentArtistId: BigInt(20) },
+      { id: BigInt(22), parentArtistId: BigInt(21) },
+      { id: BigInt(30), parentArtistId: BigInt(31) },
+      { id: BigInt(31), parentArtistId: BigInt(30) },
+    ];
+    artist.findMany.mockResolvedValue(rows);
+    expect((await put({ ...BASE_BODY, parentArtistId: "99" })).status).toBe(200);
+    expect(prisma.artistTranslation.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.artistGroup.deleteMany).toHaveBeenCalledTimes(1);
+    expect(artist.update).toHaveBeenCalledTimes(1);
+    for (const parentArtistId of ["20", "21", "22", "30"]) {
+      const res = await put({ ...BASE_BODY, parentArtistId });
+      expect(res.status).toBe(400);
+    }
+    expect(prisma.artistTranslation.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.artistGroup.deleteMany).toHaveBeenCalledTimes(1);
+    expect(artist.update).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(5);
+  });
+
+  it("allows clearing a cyclic parent so operators can repair it", async () => {
+    artist.findMany.mockResolvedValue([{ id: BigInt(20), parentArtistId: BigInt(20) }]);
+    expect((await put({ ...BASE_BODY, parentArtistId: null })).status).toBe(200);
+    expect(artist.update.mock.calls[0][0].data.parentArtistId).toBeNull();
+  });
   it("writes them when sent", async () => {
     const res = await put({ ...BASE_BODY, color: "#e91e8c", sortOrder: 5, isSideProject: true });
     expect(res.status).toBe(200);
@@ -182,6 +211,18 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
 
   beforeEach(() => {
     artist.findUnique.mockResolvedValue({ id: BigInt(20), type: "group" });
+  });
+
+  it("rejects a parent cycle without changing the stored parent, while retaining row feedback", async () => {
+    artist.findUnique.mockImplementation(async ({ where }: { where: { slug: string } }) => ({ id: BigInt(where.slug === "root" ? 99 : 20), type: "group" }));
+    expect((await importCsv("slug,ja_name,parentArtist_slug\nside,サイド,root")).status).toBe(200);
+    const parentWrites = () => artist.update.mock.calls.filter(([args]) => Object.hasOwn(args.data, "parentArtistId"));
+    expect(parentWrites()).toHaveLength(1);
+    expect(parentWrites()[0][0].data.parentArtistId).toBe(BigInt(99));
+    const res = await importCsv("slug,ja_name,parentArtist_slug\nside,サイド,side");
+    expect(res.status).toBe(200);
+    expect((await res.json()).log).toContain('ERROR: artists.csv parentArtist_slug "side" creates a cycle (artist side) — parent kept');
+    expect(parentWrites()).toHaveLength(1);
   });
 
   it("update: columns omitted from the header leave the stored values alone", async () => {
