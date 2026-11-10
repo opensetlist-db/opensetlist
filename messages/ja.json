@@ -393,8 +393,9 @@
   "EventList": {
     "eyebrow": "EVENTS & SETLISTS",
     "title": "イベント一覧",
-    "subtitle": "公演を見つけて、ライブの記録をたどる。",
     "filterLabel": "イベントの絞り込み",
+    "artistFilterLabel": "グループで絞り込む",
+    "allArtists": "すべてのグループ",
     "activeHeading": "開催中・これからのイベント",
     "pastHeading": "過去のイベント",
     "seriesType": {

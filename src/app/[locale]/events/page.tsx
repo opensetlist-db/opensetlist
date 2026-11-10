@@ -7,6 +7,7 @@ import { eventHref } from "@/lib/eventHref";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { formatDate, nonBlank } from "@/lib/utils";
 import {
+  eventListQuery,
   FILTER_VALUES,
   type EventListFilter,
 } from "@/lib/eventFilters";
@@ -31,14 +32,12 @@ const ROW_DATE_FORMAT: Intl.DateTimeFormatOptions = {
   timeZone: "UTC",
 };
 
-function parseFilter(raw: string | undefined): EventListFilter {
-  return (FILTER_VALUES as readonly string[]).includes(raw ?? "")
-    ? (raw as EventListFilter)
-    : "all";
+function parseFilter(raw: string | string[] | undefined): EventListFilter {
+  return FILTER_VALUES.find((value) => value === raw) ?? "all";
 }
 
-function parsePage(raw: string | undefined): number {
-  const n = parseInt(raw ?? "1", 10);
+function parsePage(raw: string | string[] | undefined): number {
+  const n = typeof raw === "string" ? parseInt(raw, 10) : 1;
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
@@ -77,7 +76,7 @@ export default async function EventsPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ filter?: string; pastPage?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await params;
   const sp = await searchParams;
@@ -87,7 +86,7 @@ export default async function EventsPage({
   const t = await getTranslations("Event");
   const tl = await getTranslations("EventList");
   const now = new Date();
-  const { activeGroups, pastGroups } = await getEventsListGrouped(locale, now);
+  const { activeGroups, pastGroups, artist, artistOptions } = await getEventsListGrouped(locale, now, sp.artist);
 
   const filterLabels: Record<EventListFilter, string> = {
     all: t("filter.all"),
@@ -237,12 +236,6 @@ export default async function EventsPage({
 
   const isEmpty = preparedActive.length === 0 && allPastPrepared.length === 0;
 
-  // Keep `?filter=` on Pagination links so the user's filter survives
-  // page navigation. Drop the param when filter is "all" so the URL
-  // stays clean at the default.
-  const paginationOtherParams: Record<string, string> =
-    filter === "all" ? {} : { filter };
-
   const renderGroup = (g: PreparedGroup) => (
     <ConcertGroup
       key={g.key}
@@ -293,12 +286,6 @@ export default async function EventsPage({
           >
             {tl("title")}
           </h1>
-          <p
-            className="m-0 text-[14px] min-[700px]:text-[15px]"
-            style={{ color: colors.textSecondary }}
-          >
-            {tl("subtitle")}
-          </p>
         </header>
 
         <ConcertFilterNav
@@ -306,6 +293,10 @@ export default async function EventsPage({
           active={filter}
           labels={filterLabels}
           label={tl("filterLabel")}
+          artist={artist}
+          artistOptions={artistOptions}
+          artistLabel={tl("artistFilterLabel")}
+          allArtistsLabel={tl("allArtists")}
         />
 
         {isEmpty ? (
@@ -323,7 +314,7 @@ export default async function EventsPage({
             >
               {tl("empty")}
             </h2>
-            {filter !== "all" && (
+            {(filter !== "all" || artist !== null) && (
               <p className="mb-0 mt-4">
                 <Link
                   href={`/${locale}/events`}
@@ -383,7 +374,7 @@ export default async function EventsPage({
                     currentPage={pastPage}
                     totalPages={pastTotalPages}
                     pageParamKey="pastPage"
-                    otherParams={paginationOtherParams}
+                    otherParams={eventListQuery(filter, artist)}
                     labels={{
                       nav: tl("pastHeading"),
                       prev: tl("prev"),
@@ -413,8 +404,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "EventList" });
   return {
     title: t("title"),
-    // Canonical is the unfiltered list; filter query params
-    // (`?filter=…`, `?pastPage=…`) consolidate onto it.
+    // Canonical is the unfiltered list, independent of the filters and page.
     alternates: staticAlternates(locale, "/events"),
   };
 }

@@ -393,8 +393,9 @@
   "EventList": {
     "eyebrow": "EVENTS & SETLISTS",
     "title": "Events",
-    "subtitle": "Find an event. Explore the live archive.",
     "filterLabel": "Filter events",
+    "artistFilterLabel": "Filter by group",
+    "allArtists": "All groups",
     "activeHeading": "Live & upcoming events",
     "pastHeading": "Past events",
     "seriesType": {

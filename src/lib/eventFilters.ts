@@ -16,3 +16,10 @@ export const FILTER_VALUES = [
 ] as const;
 
 export type EventListFilter = (typeof FILTER_VALUES)[number];
+
+export function eventListQuery(filter: EventListFilter, artist: string | null) {
+  const query: Record<string, string> = {};
+  if (filter !== "all") query.filter = filter;
+  if (artist !== null) query.artist = artist;
+  return query;
+}
