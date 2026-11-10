@@ -84,11 +84,14 @@ export async function PUT(request: NextRequest, { params }: Props) {
           releaseDate: releaseDate === undefined ? undefined : releaseDate ? new Date(releaseDate) : null,
           baseVersionId: baseVersionId === undefined ? undefined : baseVersionId ? BigInt(baseVersionId) : null,
           translations: {
-            upsert: translations.map(({ locale, title, variantLabel }) => ({
-              where: { songId_locale: { songId, locale } },
-              create: { locale, title: songTranslationTitle(title, nextTitle, nextLanguage, locale), variantLabel },
-              update: { title: title === undefined ? undefined : songTranslationTitle(title, nextTitle, nextLanguage, locale), variantLabel },
-            })),
+            upsert: translations
+              .filter((row) => row.title?.trim() || row.variantLabel ||
+                current.translations.some((saved) => saved.locale === row.locale))
+              .map(({ locale, title, variantLabel }) => ({
+                where: { songId_locale: { songId, locale } },
+                create: { locale, title: songTranslationTitle(title, nextTitle, nextLanguage, locale), variantLabel },
+                update: { title: title === undefined ? undefined : songTranslationTitle(title, nextTitle, nextLanguage, locale), variantLabel },
+              })),
           },
           artists: artistCredits?.length ? {
             create: artistCredits.map((ac: { artistId: number; role: string }) => ({

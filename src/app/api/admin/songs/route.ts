@@ -146,10 +146,12 @@ export async function POST(request: NextRequest) {
           releaseDate: releaseDate ? new Date(releaseDate) : null,
           baseVersionId: baseVersionId ? BigInt(baseVersionId) : null,
           translations: {
-            create: translations.map((row) => ({
-              ...row,
-              title: songTranslationTitle(row.title, originalTitle, originalLanguage, row.locale),
-            })),
+            create: translations
+              .filter((row) => row.title?.trim() || row.variantLabel)
+              .map((row) => ({
+                ...row,
+                title: songTranslationTitle(row.title, originalTitle, originalLanguage, row.locale),
+              })),
           },
           artists: artistCredits?.length
             ? {
