@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, parseReleaseYear } from "@/lib/utils";
@@ -93,8 +94,11 @@ export async function ArtistAlbumsSection({
     const bonusCount = countActiveBonuses(album.listings, album._count.bdEvents > 0);
     return (
       <li key={`${album.id}`}>
-        <Link
+        <TrackedAlbumLink
           href={entityPath("albums", locale, album.id, album.slug)}
+          albumId={String(album.id)}
+          albumSlug={album.slug}
+          surface="artist_albums"
           className={styles.albumRow}
         >
           {/* Decorative: the title next to it names the album, so the
@@ -133,7 +137,7 @@ export async function ArtistAlbumsSection({
           <span className={styles.arrow} aria-hidden="true">
             ›
           </span>
-        </Link>
+        </TrackedAlbumLink>
       </li>
     );
   };

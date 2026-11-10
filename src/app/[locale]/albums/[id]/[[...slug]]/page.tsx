@@ -314,6 +314,8 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
         tabs={tabs}
         active={activeTab}
         basePath={entityPath("albums", locale, album.id, album.slug)}
+        albumId={String(album.id)}
+        albumSlug={album.slug}
         ariaLabel={t("tabsAriaLabel")}
         indicatorLabel={t("stats.bonusSectionLabel")}
       />

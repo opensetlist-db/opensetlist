@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
 import { parseReleaseYear } from "@/lib/utils";
@@ -41,8 +41,11 @@ export async function AlbumListRow({
   const year = parseReleaseYear(album.releaseDate);
 
   return (
-    <Link
+    <TrackedAlbumLink
       href={entityPath("albums", locale, album.id, album.slug)}
+      albumId={String(album.id)}
+      albumSlug={album.slug}
+      surface="album_list"
       className={styles.row}
     >
       <AlbumListCover src={album.imageUrl} />
@@ -79,6 +82,6 @@ export async function AlbumListRow({
       <span className={styles.arrow} aria-hidden="true">
         ›
       </span>
-    </Link>
+    </TrackedAlbumLink>
   );
 }

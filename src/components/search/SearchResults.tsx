@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { CoverImage } from "@/components/shared/CoverImage";
 import type { SearchType } from "@/lib/globalSearch/params";
 import type { ResultRowView } from "@/lib/globalSearch/view";
@@ -111,11 +112,12 @@ function ResultRow({
   row: ResultRowView;
   matchedLabel: string;
 }) {
-  return (
-    <Link
-      href={row.href}
-      className={`${styles.row} flex min-h-20 items-center gap-2.5 rounded py-4 min-[700px]:gap-3.5 min-[700px]:py-[18px]`}
-    >
+  const props = {
+    href: row.href,
+    className: `${styles.row} flex min-h-20 items-center gap-2.5 rounded py-4 min-[700px]:gap-3.5 min-[700px]:py-[18px]`,
+  };
+  const content = (
+    <>
       {row.initial !== null && (
         <span
           aria-hidden="true"
@@ -179,8 +181,13 @@ function ResultRow({
       <span style={{ color: colors.primary }}>
         <SearchIcon name="chevron" size={16} />
       </span>
-    </Link>
+    </>
   );
+  return row.album ? (
+    <TrackedAlbumLink {...props} {...row.album} surface="search_results">
+      {content}
+    </TrackedAlbumLink>
+  ) : <Link {...props}>{content}</Link>;
 }
 
 function Meta({

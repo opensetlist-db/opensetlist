@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import styles from "./albumDetail.module.css";
 
 /*
@@ -26,6 +27,8 @@ export function AlbumTabs<K extends string>({
   tabs,
   active,
   basePath,
+  albumId,
+  albumSlug,
   ariaLabel,
   indicatorLabel,
 }: {
@@ -33,31 +36,46 @@ export function AlbumTabs<K extends string>({
   active: K;
   /** Canonical album path; each tab appends `?tab=<key>`. */
   basePath: string;
+  albumId: string;
+  albumSlug: string;
   ariaLabel: string;
   /** Accessible name of the bonus dot (e.g. "매장특전"). */
   indicatorLabel: string;
 }) {
   return (
     <nav className={styles.tabs} aria-label={ariaLabel}>
-      {tabs.map((tab) => (
-        <Link
-          key={tab.key}
-          href={`${basePath}?tab=${tab.key}`}
-          scroll={false}
-          className={styles.tab}
-          aria-current={tab.key === active ? "page" : undefined}
-        >
-          {tab.label}
-          <span className={styles.count}>{tab.count}</span>
-          {tab.indicator ? (
-            <span
-              className={styles.bonusDot}
-              role="img"
-              aria-label={indicatorLabel}
-            />
-          ) : null}
-        </Link>
-      ))}
+      {tabs.map((tab) => {
+        const props = {
+          href: `${basePath}?tab=${tab.key}`,
+          scroll: false,
+          className: styles.tab,
+          "aria-current": tab.key === active ? "page" as const : undefined,
+        };
+        const content = (
+          <>
+            {tab.label}
+            <span className={styles.count}>{tab.count}</span>
+            {tab.indicator ? (
+              <span
+                className={styles.bonusDot}
+                role="img"
+                aria-label={indicatorLabel}
+              />
+            ) : null}
+          </>
+        );
+        return tab.key === "bonus" ? (
+          <TrackedAlbumLink
+            key={tab.key}
+            {...props}
+            albumId={albumId}
+            albumSlug={albumSlug}
+            surface="album_purchase_tab"
+          >
+            {content}
+          </TrackedAlbumLink>
+        ) : <Link key={tab.key} {...props}>{content}</Link>;
+      })}
     </nav>
   );
 }

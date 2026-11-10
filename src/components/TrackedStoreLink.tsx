@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { trackStoreClick, type StoreClickSurface } from "@/lib/analytics";
+import { trackStoreClick, type StoreClickSurface, type StorePurchaseOption } from "@/lib/analytics";
 
 /*
  * External store link that fires the `store_click` GA4 event on click,
@@ -24,6 +24,8 @@ import { trackStoreClick, type StoreClickSurface } from "@/lib/analytics";
 export function TrackedStoreLink({
   href,
   albumId,
+  albumSlug,
+  purchaseOption,
   storeKey,
   storeStatus,
   surface,
@@ -35,6 +37,8 @@ export function TrackedStoreLink({
 }: {
   href: string;
   albumId: string;
+  albumSlug: string;
+  purchaseOption: StorePurchaseOption;
   storeKey: string;
   storeStatus: string;
   surface: StoreClickSurface;
@@ -47,6 +51,8 @@ export function TrackedStoreLink({
   const fireStoreClick = () =>
     trackStoreClick({
       albumId,
+      albumSlug,
+      purchaseOption,
       storeKey,
       storeStatus,
       surface,
@@ -61,7 +67,9 @@ export function TrackedStoreLink({
       rel={isAffiliate ? "noopener noreferrer sponsored" : "noopener noreferrer"}
       style={style}
       className={className}
-      onClick={fireStoreClick}
+      onClick={(e) => {
+        if (e.button === 0) fireStoreClick();
+      }}
       onAuxClick={(e) => {
         // Middle-click (and some browsers' modifier-click) opens a new
         // tab via `auxclick`, not `click`, so the onClick above never
