@@ -26,6 +26,8 @@
     "emptyPast": "まだ曲が登録されたセットリストはありません。",
     "browse": "イベントを探す",
     "liveBadge": "開催中",
+    "bdBonus": "BD特典",
+    "bdBonusFor": "{event}のBD特典",
     "scheduled": "開催予定 · {label}",
     "setlistSongs": "{count, plural, other {#曲のセットリスト}}",
     "setlistWaiting": "セットリストの更新を待っています",
@@ -368,10 +370,9 @@
       "preorderBadge": "受付中",
       "releasedBadge": "発売中",
       "releaseDateLabel": "発売",
-      "bonusPreviewHeading": "店舗特典プレビュー",
-      "compareCta": "店舗特典を比較する →",
-      "purchaseCta": "BDを購入する →",
-      "detailsCta": "アルバム詳細を見る →"
+      "bonusStoreCount": "特典付き販売店 {count}店",
+      "compareCta": "販売店・特典を見る →",
+      "purchaseCta": "購入先を見る →"
     }
   },
   "EventDetail": {

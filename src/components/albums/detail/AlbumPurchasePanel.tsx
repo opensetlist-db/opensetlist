@@ -7,7 +7,7 @@ import {
   resolveStoreKey,
   resolveStoreName,
 } from "@/lib/albumBonusDisplay";
-import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
+import { performanceOfficialUrl, projectPurchaseOptions } from "@/lib/purchaseAvailability";
 import { formatDate, formatTime, isSafeExternalUrl, type BigIntStringified } from "@/lib/utils";
 import styles from "./albumDetail.module.css";
 
@@ -37,9 +37,9 @@ export async function AlbumPurchasePanel({
 }) {
   const t = await getTranslations({ locale, namespace: "Album" });
   const { bonusStores, basicOptions } = projectPurchaseOptions(album.listings, now, { performanceOnly });
-  const officialUrl = album.listings
-    .filter((listing) => !performanceOnly || listing.includesPerformanceVideo !== false)
-    .map((listing) => listing.sourceUrl).find(isSafeExternalUrl);
+  const officialUrl = performanceOnly
+    ? performanceOfficialUrl(album.listings)
+    : album.listings.map((listing) => listing.sourceUrl).find(isSafeExternalUrl);
   const hasOptions = bonusStores.length > 0 || basicOptions.length > 0;
 
   type Listing = AlbumForPurchase["listings"][number];

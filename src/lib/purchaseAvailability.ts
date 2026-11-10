@@ -22,6 +22,28 @@ export type PurchaseListing = {
   bonuses: readonly PurchaseBonus[];
 };
 
+// Cached home and event reads only need the inputs to the shared projection.
+export const PURCHASE_AVAILABILITY_SELECT = {
+  status: true,
+  productUrl: true,
+  originalStoreName: true,
+  includesPerformanceVideo: true,
+  isBonusOption: true,
+  storeKey: true,
+  officialOrder: true,
+  startsAt: true,
+  endsAt: true,
+  bonuses: { select: { startsAt: true, endsAt: true, endedAt: true } },
+} as const;
+
+export function performanceOfficialUrl(
+  listings: readonly { includesPerformanceVideo: boolean | null; sourceUrl: string | null }[],
+) {
+  return listings.find(
+    (listing) => listing.includesPerformanceVideo !== false && isSafeExternalUrl(listing.sourceUrl),
+  )?.sourceUrl;
+}
+
 function inWindow(start: Instant, end: Instant, now: number) {
   return (start === null || new Date(start).getTime() <= now)
     && (end === null || now < new Date(end).getTime());

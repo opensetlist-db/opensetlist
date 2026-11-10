@@ -6,7 +6,8 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, serializeBigIntAsString } from "@/lib/utils";
+import { serializeBigInt } from "@/lib/utils";
+import { PURCHASE_AVAILABILITY_SELECT } from "@/lib/purchaseAvailability";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import {
   displayNameWithFallback,
@@ -190,45 +191,18 @@ async function fetchEventRow(tx: Prisma.TransactionClient, id: bigint, locale: s
           },
         },
       },
-      // BD album linked via `Event.bdAlbumId` (added in v0.14.0). Pulled
-      // here so `<EventBdSection>` can resolve its state machine + render
-      // the album / top-3 매장特典 preview without a second roundtrip.
-      // Nested include order matches the album-page (`getAlbum`) shape so
-      // `displayOriginalTitle` / `displayOriginalName` / `resolveStoreName`
-      // / `resolveBonusType` all run against identical translation slices.
-      // Returns null when `bdAlbumId` is null (most events at MVP); the
-      // component handles the null safely.
       bdAlbum: {
-        include: {
-          translations: { where: localeFilter },
-          artists: {
-            include: {
-              // Same egress rule as the other artist relations in this
-              // query: `originalBio` / `bio` are the widest free-text
-              // columns and nothing on the BD render path reads them
-              // (the section only needs the name for
-              // `displayOriginalName`). The soft-delete pair is dead
-              // weight here too — the section doesn't render it.
-              artist: {
-                omit: { originalBio: true, isDeleted: true, deletedAt: true },
-                include: {
-                  translations: {
-                    where: localeFilter,
-                    omit: { bio: true },
-                  },
-                },
-              },
-            },
-          },
+        select: {
+          id: true,
+          slug: true,
+          originalTitle: true,
+          originalLanguage: true,
+          imageUrl: true,
+          releaseDate: true,
+          translations: { where: localeFilter, select: { locale: true, title: true } },
           listings: {
-            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-            include: {
-              translations: { where: localeFilter },
-              bonuses: {
-                include: { translations: { where: localeFilter } },
-                orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-              },
-            },
+            orderBy: [{ originalStoreName: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+            select: { ...PURCHASE_AVAILABILITY_SELECT, sourceUrl: true },
           },
         },
       },
@@ -320,8 +294,15 @@ async function fetchEvent(id: bigint, locale: string) {
   return prisma.$transaction(async (tx) => {
     const event = await fetchEventRow(tx, id, locale);
     if (!event) return null;
+    const { bdAlbum } = event;
     const displayOrder = await readEventDisplayOrder(tx, id, event.setlistItems);
-    return serializeBigInt({ ...event, setlistItems: event.setlistItems.map(withDisplayIds), displayOrder });
+    return serializeBigInt({
+      ...event,
+      setlistItems: event.setlistItems.map(withDisplayIds),
+      displayOrder,
+      // Preserve the exact ID used by the canonical purchase link.
+      bdAlbum: bdAlbum && { ...bdAlbum, id: String(bdAlbum.id) },
+    });
   }, { isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 10_000 });
 }
 
@@ -363,7 +344,7 @@ const getEventLogoRow = cachedQuery(
 // under the same key. Keying on the resolved status makes the
 // upcoming → completed transition a fresh miss instead.
 const getEventCached = cachedQuery(
-  "event-detail",
+  "event-detail-bd-summary",
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- key-only arg (see above)
   (id: bigint, locale: string, _status: ResolvedEventStatus) =>
     fetchEvent(id, locale),
@@ -1403,6 +1384,16 @@ export default async function EventPage({ params }: Props) {
         venueLine={venue}
       />
 
+      {resolvedStatus === "completed" && event.bdAlbum && (
+        <EventBdSection
+          eventId={String(event.id)}
+          startTime={event.startTime}
+          album={event.bdAlbum}
+          locale={locale}
+          referenceNow={referenceNow}
+        />
+      )}
+
       {/* Cancelled: say so before anything else on the page (18-v3
           `.notice.cancel`); the sections below keep their own cancelled
           behaviour (no board, locked wishes, no score). */}
@@ -1435,55 +1426,6 @@ export default async function EventPage({ params }: Props) {
         eventId={id}
         isOngoing={isOngoing}
         locale={locale}
-        // Rendered as a server-component slot. `LiveEventLayout` is a
-        // client component that owns the column-layout grid + sibling
-        // order between `<LiveSetlist>` and `<EventImpressions>`; passing
-        // EventBdSection's JSX through as a node keeps the section
-        // server-rendered (state machine + bonus selection on the server)
-        // without making LiveEventLayout aware of the BD data shape.
-        bdSection={
-          <EventBdSection
-            event={{
-              id: event.id,
-              startTime: event.startTime,
-              // Use the page's snap-frozen `resolvedStatus`
-              // (getEventStatus at request time), not the raw stored
-              // `event.status` — they can disagree at a clock boundary
-              // (stored status updated lazily), and a mismatch would let
-              // the BD purchase CTA open while the page renders `ongoing`
-              // (resolveEventBdState's D+0 ad gate keys off `=== "ongoing"`).
-              // `resolvedStatus` is the UI status; its only value outside
-              // the DB EventStatus enum is `"upcoming"`, which the resolver
-              // treats the same as the DB's pre-event `"scheduled"` (neither
-              // is ongoing/cancelled → time-based logic takes over), so map
-              // it across to satisfy EventStatus.
-              status: resolvedStatus === "upcoming" ? "scheduled" : resolvedStatus,
-              bdAlbumId: event.bdAlbumId ?? null,
-              // Run the bdAlbum subtree through serializeBigIntAsString
-              // so the **type system** narrows to BigIntStringified
-              // (string ids + ISO-string Dates) — the same contract the
-              // bonus-display helpers (resolveStoreName /
-              // resolveBonusType) expect, sourced from AlbumInfoCard /
-              // ListingCard / AlbumBonusTab. At runtime this is
-              // effectively a deep clone: getEvent already ran
-              // serializeBigInt over the whole tree, so the bigints are
-              // already Numbers (not bigints) by the time we get here —
-              // serializeBigIntAsString's replacer only matches
-              // `typeof === "bigint"`, leaves Numbers alone. The
-              // section's read sites (template literals,
-              // React keys, bonus-helper translation lookups) are all
-              // coercion-tolerant between Number and string, so the
-              // residual type/runtime mismatch on id columns is the
-              // same shape every other Prisma-payload consumer in this
-              // file accepts (see LiveSetlistItem cast at line 881).
-              bdAlbum: event.bdAlbum
-                ? serializeBigIntAsString(event.bdAlbum)
-                : null,
-            }}
-            locale={locale}
-            referenceNow={referenceNow}
-          />
-        }
         unknownArtistLabel={aT("unknown")}
         unknownPerformerLabel={t("unknownPerformer")}
         unknownSongLabel={st("unknown")}
