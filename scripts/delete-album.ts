@@ -71,8 +71,7 @@ if (!slug) {
   }
 
   await prisma.$transaction(async (tx) => {
-    // Prevent new check receipts before cascading through existing listings and bonuses.
-    await tx.$queryRaw`SELECT id FROM "Album" WHERE id = ${album.id} FOR UPDATE`;
+    // Lock listings before bonuses so an importer can finish taking its album FK lock.
     await tx.$queryRaw`SELECT id FROM "AlbumStoreListing" WHERE "albumId" = ${album.id} ORDER BY id FOR UPDATE`;
     await tx.$queryRaw`
       SELECT b.id FROM "AlbumStoreBonus" b JOIN "AlbumStoreListing" l ON b."listingId" = l.id
