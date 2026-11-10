@@ -15,6 +15,8 @@ vi.mock("@/lib/prisma", () => ({
     albumStoreListingTranslation: {
       deleteMany: vi.fn(),
     },
+    albumStoreBonusLifecycleOperation: { deleteMany: vi.fn() },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
 }));
@@ -307,6 +309,9 @@ describe("DELETE /api/admin/album-listings/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     verifyMock.mockResolvedValue(null);
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (run: (tx: typeof prisma) => Promise<unknown>) => run(prisma),
+    );
   });
 
   it("returns 404 when listing is missing (P2025)", async () => {

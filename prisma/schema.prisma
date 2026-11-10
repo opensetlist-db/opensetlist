@@ -1159,6 +1159,7 @@ model Album {
   listings        AlbumStoreListing[]
   bdEvents        Event[]               @relation("EventBdAlbum")
   bonusImportJobs AlbumBonusImportJob[]
+  storeLinkAttempts AlbumStoreLinkAttempt[]
 }
 
 model AlbumArtist {
@@ -1324,6 +1325,7 @@ model AlbumStoreBonus {
   endedAt                  DateTime?
   startsAt                 DateTime?
   endsAt                   DateTime?
+  lastVerifiedAt           DateTime?
   revision                 Int       @default(0)
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
@@ -1339,6 +1341,9 @@ model AlbumStoreBonus {
 enum AlbumStoreBonusLifecycleAction {
   end
   restore
+  maintained
+  review_needed
+  access_failed
 }
 
 // The operation is both a retry receipt and the operator's preserved evidence.
@@ -1358,6 +1363,30 @@ model AlbumStoreBonusLifecycleOperation {
 
   @@id([bonusId, operationId])
   @@index([bonusId, appliedAt])
+}
+
+enum AlbumStoreLinkAttemptPhase {
+  initial
+  retry
+  resolve
+}
+
+model AlbumStoreLinkAttempt {
+  albumId     BigInt
+  storeKey    String
+  phase       AlbumStoreLinkAttemptPhase
+  storeName   String
+  operationId String
+  requestHash String
+  evidenceUrl String
+  summary     String
+  observedAt  DateTime
+  productUrl  String?
+
+  album Album @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  @@id([albumId, storeKey, phase])
+  @@unique([albumId, storeKey, operationId])
 }
 
 // Per-locale overrides for the bonus's display strings. Both fields are

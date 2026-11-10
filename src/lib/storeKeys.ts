@@ -16,3 +16,9 @@ export function resolveStoreKey(storeName: string | null | undefined): string {
   }
   return "other";
 }
+
+export function officialStoreKey(storeName: string) {
+  const normalized = storeName.normalize("NFKC").trim().toLowerCase();
+  const known = resolveStoreKey(normalized);
+  return known === "other" ? normalized : known;
+}

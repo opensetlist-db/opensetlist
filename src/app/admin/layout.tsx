@@ -15,6 +15,7 @@ const navItems = [
   { href: "/admin/wishes", label: "희망곡" },
   { href: "/admin/contest-reports", label: "정정 요청" },
   { href: "/admin/album-bonuses/import-review", label: "특전 임포트 검토" },
+  { href: "/admin/album-bonuses/checks", label: "BD 특전 점검" },
   { href: "/admin/import", label: "CSV 가져오기" },
   { href: "/admin/slug-generator", label: "Slug 생성기" },
   { href: "/admin/translation-debug", label: "번역 디버그" },

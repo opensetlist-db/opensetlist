@@ -137,6 +137,7 @@ know what each suite leaves behind:
 |---|---|---|
 | `board-picks.test.ts` | **writes** | artist, song, series, event, setlist item, `BoardPick` rows; `afterAll` deletes them |
 | `board-wishes.test.ts` | **writes** | artists, songs, series, event, `SongWish` rows; `afterAll` deletes them |
+| `bonus-checks.test.ts` | **writes** | one album, listing, bonus, observations, lifecycle history and link attempts; `afterAll` deletes its own rows |
 | `bonus-lifecycle.test.ts` | **writes** | one album, listing, bonus and lifecycle history; `afterAll` deletes only its own rows |
 | `member-order.test.ts` | **writes** | artist, event, stage identity, performers; `afterAll` deletes them |
 | `official-order.test.ts` | **writes** | `officialorder-itest-` artists, identities, relations, event, explicit voice, song and historical item in a rolled-back transaction; fixed-prefix purge before/after handles interrupted fixtures |
