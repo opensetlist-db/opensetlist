@@ -3,6 +3,7 @@
 // single source of truth for the contracts.
 
 import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
+import { ADMIN_LOCALES } from "@/lib/adminLocales";
 
 /**
  * Accepts a JSON-shaped string or number and coerces to `bigint`.
@@ -135,18 +136,23 @@ export function parseListingTranslations(
  */
 export function parsePattern3TrackTranslations(
   input: unknown,
-): { locale: string; title: string }[] {
-  return Array.isArray(input)
-    ? (input as Array<{ locale: unknown; title: unknown }>)
-        .filter(
-          (t) =>
-            typeof t.locale === "string" &&
-            typeof t.title === "string" &&
-            (t.title as string).trim(),
-        )
-        .map((t) => ({
-          locale: t.locale as string,
-          title: (t.title as string).trim(),
-        }))
-    : [];
+): { locale: string; title: string }[] | null {
+  if (input === undefined) return [];
+  if (!Array.isArray(input)) return null;
+  const rows: { locale: string; title: string }[] = [];
+  const seen = new Set<string>();
+  for (const value of input) {
+    if (!value || typeof value !== "object") return null;
+    const { locale, title } = value as { locale?: unknown; title?: unknown };
+    if (typeof locale !== "string" || !locale.trim() || typeof title !== "string") {
+      return null;
+    }
+    const normalizedLocale = locale.trim();
+    if (!ADMIN_LOCALES.some((allowed) => allowed === normalizedLocale) || seen.has(normalizedLocale)) {
+      return null;
+    }
+    seen.add(normalizedLocale);
+    if (title.trim()) rows.push({ locale: normalizedLocale, title: title.trim() });
+  }
+  return rows;
 }

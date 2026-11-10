@@ -105,4 +105,12 @@ describe("parsePattern3TrackTranslations", () => {
       { locale: "en", title: "Drama" },
     ]);
   });
+
+  it("rejects a malformed or duplicate translation without accepting a partial replacement", () => {
+    const ko = { locale: "ko", title: "드라마" };
+    expect(parsePattern3TrackTranslations([ko])).toEqual([ko]);
+    expect(parsePattern3TrackTranslations([ko, null])).toBeNull();
+    expect(parsePattern3TrackTranslations([ko, { ...ko, locale: " ko " }])).toBeNull();
+    expect(parsePattern3TrackTranslations([{ ...ko, locale: "en-us" }])).toBeNull();
+  });
 });
