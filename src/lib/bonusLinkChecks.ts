@@ -26,7 +26,8 @@ export function parseLinkCheck(value: unknown) {
   const observedAt = parseInstant(body.observedAt, "관찰 시각");
   const productUrl = optionalUrl(body, "productUrl") ?? null;
   if (!storeName || !validOperationId(operationId) ||
-      (phase !== "initial" && phase !== "retry" && phase !== "resolve") ||
+      (phase !== "initial" && phase !== "retry" && phase !== "resolve" &&
+       phase !== "exclude" && phase !== "reinclude") ||
       !evidenceUrl || !summary || !observedAt || observedAt > new Date()) {
     throw new PurchaseInputError("판매점, 시도 유형, 근거 URL, 요약 및 관찰 시각을 확인해 주세요.");
   }
@@ -34,6 +35,9 @@ export function parseLinkCheck(value: unknown) {
     throw new PurchaseInputError("공식 판매점 이름과 식별자가 일치해야 합니다.");
   }
   if (productUrl) {
+    if (phase === "exclude" || phase === "reinclude") {
+      throw new PurchaseInputError("점검 제외와 재포함은 근거만 기록합니다.");
+    }
     const { hostname, pathname, searchParams } = new URL(productUrl);
     if (/^(?:\/+|\/(?:index\.[a-z]+|home|top)\/?)$/i.test(pathname) ||
         /\/(?:s|search|searchresults|search-results|catalogsearch)(?:[/.]|$)/i.test(pathname) ||
@@ -50,28 +54,43 @@ export function parseLinkCheck(value: unknown) {
   } as const;
 }
 
-type Attempt = { phase: "initial" | "retry" | "resolve"; productUrl: string | null; operationId: string };
+type Attempt = { productUrl: string | null; operationId: string };
+type ReviewOperation = { phase: "exclude" | "reinclude"; operationId: string };
 
-export function linkCheckState<T extends Attempt>(attempts: T[], operationId?: string) {
-  const revision = attempts.length;
-  const status = attempts.some((attempt) => attempt.productUrl !== null) ? "found" :
-    revision === 0 ? "untried" : revision === 1 ? "retry_due" : "review_needed";
-  return { revision, status, attempts, operation: attempts.find((attempt) => attempt.operationId === operationId) ?? null };
+export function linkCheckState<T extends Attempt, R extends ReviewOperation>(
+  attempts: T[], reviewHistory: R[], operationId?: string,
+) {
+  const status = reviewHistory.at(-1)?.phase === "exclude" ? "excluded" :
+    attempts.some((attempt) => attempt.productUrl !== null) ? "found" :
+    attempts.length === 0 ? "untried" : attempts.length === 1 ? "retry_due" : "review_needed";
+  return {
+    revision: attempts.length + reviewHistory.length, status, attempts, reviewHistory,
+    operation: attempts.find((attempt) => attempt.operationId === operationId) ??
+      reviewHistory.find((review) => review.operationId === operationId) ?? null,
+  };
 }
 
 const notFound = () => new BonusLifecycleError("not_found", "앨범을 찾을 수 없습니다.");
 
 export async function getLinkCheck(target: ReturnType<typeof parseLinkCheckTarget>, operationId?: string) {
   const album = await prisma.album.findUnique({
+    relationLoadStrategy: "join",
     where: { id: target.albumId },
-    select: { storeLinkAttempts: {
-      where: { storeKey: target.storeKey },
-      orderBy: { phase: "asc" },
-      omit: { albumId: true, requestHash: true },
-    } },
+    select: {
+      storeLinkAttempts: {
+        where: { storeKey: target.storeKey },
+        orderBy: { phase: "asc" },
+        omit: { albumId: true, requestHash: true },
+      },
+      storeLinkReviewOperations: {
+        where: { storeKey: target.storeKey },
+        orderBy: { observedAt: "asc" },
+        omit: { albumId: true, requestHash: true },
+      },
+    },
   });
   if (!album) throw notFound();
-  return linkCheckState(album.storeLinkAttempts, operationId);
+  return linkCheckState(album.storeLinkAttempts, album.storeLinkReviewOperations, operationId);
 }
 
 export async function applyLinkCheck(input: ReturnType<typeof parseLinkCheck>) {
@@ -91,7 +110,12 @@ export async function applyLinkCheck(input: ReturnType<typeof parseLinkCheck>) {
       orderBy: { phase: "asc" },
       omit: { albumId: true },
     });
-    const state = linkCheckState(rows, operationId);
+    const reviews = await tx.albumStoreLinkReviewOperation.findMany({
+      where: { albumId, storeKey },
+      orderBy: { observedAt: "asc" },
+      omit: { albumId: true },
+    });
+    const state = linkCheckState(rows, reviews, operationId);
     if (state.operation) {
       const { requestHash: previousHash, ...operation } = state.operation;
       if (requestHash !== previousHash) {
@@ -99,18 +123,32 @@ export async function applyLinkCheck(input: ReturnType<typeof parseLinkCheck>) {
       }
       return { status: "already_applied" as const, operation };
     }
-    const requiredStatus = { initial: "untried", retry: "retry_due", resolve: "review_needed" } as const;
-    if (expectedRevision !== state.revision || state.status !== requiredStatus[phase] ||
-        (rows.length > 0 && observedAt <= rows[rows.length - 1].observedAt)) {
-      throw new BonusLifecycleError("conflict", "이미 처리되었거나 더 최근의 시도가 있습니다. 목록을 다시 확인해 주세요.");
+    const requiredStatus = { initial: "untried", retry: "retry_due", resolve: "review_needed", reinclude: "excluded" };
+    const allowed = phase === "exclude"
+      ? state.status === "retry_due" || state.status === "review_needed"
+      : state.status === requiredStatus[phase];
+    const latestAttempt = rows.at(-1);
+    const latestReview = reviews.at(-1);
+    if (expectedRevision !== state.revision || !allowed ||
+        (latestAttempt && observedAt <= latestAttempt.observedAt) ||
+        (latestReview && observedAt <= latestReview.observedAt)) {
+      throw new BonusLifecycleError("conflict", "현재 상태 또는 기록 시각이 변경되었습니다. 목록을 다시 확인해 주세요.");
     }
     if (rows[0] && data.storeName !== rows[0].storeName) {
       throw new BonusLifecycleError("conflict", "최초 시도에 기록된 판매점과 일치해야 합니다.");
     }
-    const operation = await tx.albumStoreLinkAttempt.create({
-      data: { ...data, requestHash },
-      omit: { albumId: true, requestHash: true },
-    });
+    const operation = phase === "exclude" || phase === "reinclude"
+      ? await tx.albumStoreLinkReviewOperation.create({
+        data: {
+          albumId, storeKey, phase, operationId, observedAt,
+          evidenceUrl: data.evidenceUrl, summary: data.summary, requestHash,
+        },
+        omit: { albumId: true, requestHash: true },
+      })
+      : await tx.albumStoreLinkAttempt.create({
+        data: { ...data, phase, requestHash },
+        omit: { albumId: true, requestHash: true },
+      });
     return { status: "applied" as const, operation };
   });
 }

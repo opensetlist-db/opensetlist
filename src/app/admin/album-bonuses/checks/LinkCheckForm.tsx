@@ -8,7 +8,10 @@ import { forgetOperation, storedOperation, storeOperation, type PendingOperation
 const endpoint = "/api/admin/album-bonuses/link-checks";
 const inputClass = "mt-1 block w-full rounded border border-zinc-300 bg-white px-3 py-2";
 const buttonClass = "rounded border border-zinc-300 bg-white px-3 py-2 disabled:opacity-50";
-const labels = { initial: "최초 시도 기록", retry: "재시도 결과 기록", resolve: "확인한 상품 주소 기록" };
+const labels = {
+  initial: "최초 시도 기록", retry: "재시도 결과 기록", resolve: "확인한 상품 주소 기록",
+  exclude: "점검 제외 기록", reinclude: "점검 재포함 기록",
+};
 
 async function read(albumId: string, operation: PendingOperation) {
   const target = JSON.parse(operation.body);
@@ -32,6 +35,10 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
   const [pending, setPending] = useState<PendingOperation | null>(null);
   const [message, setMessage] = useState("");
   const [formVersion, setFormVersion] = useState(0);
+  const [exclude, setExclude] = useState(false);
+  const canExclude = phase === "retry" || phase === "resolve";
+  const action = exclude ? "exclude" : phase;
+  const isReviewDecision = action === "exclude" || action === "reinclude";
 
   useEffect(() => {
     let current = true;
@@ -114,7 +121,7 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || pending || !phase) return;
+    if (busy || pending || !action) return;
     const values = new FormData(event.currentTarget);
     const value = (name: string) => String(values.get(name) ?? "").trim();
     const name = storeName ?? value("storeName");
@@ -125,20 +132,28 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
     }
     const operationId = crypto.randomUUID();
     const body = JSON.stringify({
-      albumId, storeKey: key, storeName: name, operationId, phase, expectedRevision: revision,
+      albumId, storeKey: key, storeName: name, operationId, phase: action, expectedRevision: revision,
       observedAt: new Date().toISOString(),
       evidenceUrl: value("evidenceUrl"), summary: value("summary"), productUrl: value("productUrl") || null,
     });
     void send({ operationId, body }, false);
   }
 
-  if (!phase) return message ? <p role="status">{message}</p> : null;
+  if (!phase && !pending) return message ? <p role="status">{message}</p> : null;
 
   return (
     <details open={pending || message ? true : undefined} className="rounded border border-zinc-200 p-3">
-      <summary className="cursor-pointer font-medium">{labels[phase]}</summary>
-      <form key={formVersion} onSubmit={submit} className="mt-3">
+      <summary className="cursor-pointer font-medium">{phase ? labels[phase] : "저장 기록 확인"}</summary>
+      {action && <form key={formVersion} onSubmit={submit} className="mt-3">
         <fieldset disabled={busy || pending !== null} className="space-y-2">
+          {canExclude && (
+            <label className="block">기록할 작업
+              <select value={action} onChange={(event) => setExclude(event.target.value === "exclude")} className={inputClass}>
+                <option value={phase}>{labels[phase]}</option>
+                <option value="exclude">{labels.exclude}</option>
+              </select>
+            </label>
+          )}
           {phase === "initial" && (
             <>
               <label className="block">공식 판매점 이름
@@ -146,18 +161,21 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
               </label>
             </>
           )}
-          <label className="block">확인한 상품 주소 {phase !== "resolve" && "(미확보 시 비워 두세요)"}
+          {!isReviewDecision && <label className="block">확인한 상품 주소 {phase !== "resolve" && "(미확보 시 비워 두세요)"}
             <input name="productUrl" type="url" required={phase === "resolve"} maxLength={2048} className={inputClass} />
-          </label>
+          </label>}
+          {isReviewDecision && <p>{action === "exclude"
+            ? "해당 판매점의 조사 대상 특전이 모두 종료·만료됐다는 명확한 근거를 남기세요. 일시품절·접근 실패·정보 누락은 확인 대상으로 남겨 주세요."
+            : "다시 점검할 특전이 있다는 근거를 남기세요."}</p>}
           <label className="block">공식 안내 또는 관찰 근거 URL
             <input name="evidenceUrl" type="url" required maxLength={2048} className={inputClass} />
           </label>
           <label className="block">관찰 요약
             <textarea name="summary" required maxLength={2048} className={inputClass} />
           </label>
-          <button type="submit" className={buttonClass}>시도 결과 저장</button>
+          <button type="submit" className={buttonClass}>{isReviewDecision ? "점검 결정 저장" : "시도 결과 저장"}</button>
         </fieldset>
-      </form>
+      </form>}
       <p role="status">{message || (busy ? "확인 중…" : "")}</p>
       {pending && <button type="button" disabled={busy} className={buttonClass} onClick={() => void send(pending, true)}>
         반영 여부 조회 후 미반영 시 같은 요청 보내기
