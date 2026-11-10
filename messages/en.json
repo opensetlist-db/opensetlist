@@ -26,6 +26,8 @@
     "emptyPast": "No setlists with songs have been registered yet.",
     "browse": "Explore events",
     "liveBadge": "Live now",
+    "bdBonus": "BD bonuses",
+    "bdBonusFor": "BD bonuses for {event}",
     "scheduled": "Upcoming · {label}",
     "setlistSongs": "{count, plural, other {#-song setlist}}",
     "setlistWaiting": "Waiting for setlist updates",
@@ -368,10 +370,9 @@
       "preorderBadge": "Pre-order open",
       "releasedBadge": "Released",
       "releaseDateLabel": "Release",
-      "bonusPreviewHeading": "Store bonuses preview",
-      "compareCta": "Compare store bonuses →",
-      "purchaseCta": "Buy BD →",
-      "detailsCta": "View album details →"
+      "bonusStoreCount": "{count, plural, one {# store with bonuses} other {# stores with bonuses}}",
+      "compareCta": "View stores and bonuses →",
+      "purchaseCta": "View purchase options →"
     }
   },
   "EventDetail": {

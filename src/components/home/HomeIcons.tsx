@@ -23,6 +23,15 @@ export function HomePinIcon() {
   );
 }
 
+export function HomeGiftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.icon}>
+      <rect x="3" y="8" width="18" height="4" rx="1" />
+      <path d="M5 12v8h14v-8M12 8v12m0-12H9a2.5 2.5 0 1 1 2.5-3c.3.7.5 1.5.5 3Zm0 0h3a2.5 2.5 0 1 0-2.5-3c-.3.7-.5 1.5-.5 3Z" />
+    </svg>
+  );
+}
+
 export function HomeChevronIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.icon}>

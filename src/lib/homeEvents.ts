@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
 import { MS_PER_DAY } from "@/lib/eventTiming";
+import { PURCHASE_AVAILABILITY_SELECT } from "@/lib/purchaseAvailability";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 import {
   LOGO_EVENT_SELECT,
@@ -141,6 +142,17 @@ function findUpcoming(now: Date) {
   });
 }
 
+const HOME_PAST_SELECT = {
+  ...HOME_EVENT_SELECT,
+  bdAlbum: {
+    select: {
+      id: true,
+      slug: true,
+      listings: { select: PURCHASE_AVAILABILITY_SELECT },
+    },
+  },
+} as const;
+
 function findPast(now: Date, since: Date | null) {
   return prisma.event.findMany({
     where: {
@@ -148,7 +160,7 @@ function findPast(now: Date, since: Date | null) {
       ...HAS_VISIBLE_SONG,
       ...pastStatusWhere(now, since),
     },
-    select: HOME_EVENT_SELECT,
+    select: HOME_PAST_SELECT,
     // id breaks ties so two shows at the same instant keep a stable order.
     orderBy: [{ startTime: "desc" }, { id: "desc" }],
     take: HOME_TAKE,
@@ -243,10 +255,14 @@ function toHomeEvent(
   };
 }
 
+type HomePastEvent = HomeEvent & {
+  bdAlbum: Prisma.EventGetPayload<{ select: typeof HOME_PAST_SELECT }>["bdAlbum"];
+};
+
 export interface HomeData {
   ongoing: HomeEvent[];
   upcoming: HomeEvent[];
-  past: HomeEvent[];
+  past: HomePastEvent[];
   pastMode: HomePastMode;
 }
 
@@ -274,7 +290,10 @@ export async function loadHomeData(
   return {
     ongoing: ongoing.map((e) => toHomeEvent(e, graph, count(e.id))),
     upcoming: upcoming.map((e) => toHomeEvent(e, graph, null)),
-    past: past.rows.map((e) => toHomeEvent(e, graph, count(e.id))),
+    past: past.rows.map((e) => ({
+      ...toHomeEvent(e, graph, count(e.id)),
+      bdAlbum: e.bdAlbum,
+    })),
     pastMode: past.mode,
   };
 }
@@ -298,7 +317,7 @@ export async function loadHomeData(
  * entry's shape so a deploy never decodes an old-shape value.
  */
 export const getCachedHomeData = cachedQuery(
-  "home-events-v2",
+  "home-events-v3",
   async (bucketMs: number) =>
     loadHomeData(new Date(bucketMs), await getLogoSeriesGraph()),
   { revalidate: CACHE_TTL.home },

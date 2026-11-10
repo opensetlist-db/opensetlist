@@ -4,7 +4,7 @@ import EventStatusTicker from "@/components/EventStatusTicker";
 import { EventArt } from "@/components/shared/EventArt";
 import type { HomeCardView } from "@/lib/homeView";
 import { motion } from "@/styles/tokens";
-import { HomeChevronIcon, HomePinIcon } from "./HomeIcons";
+import { HomeChevronIcon, HomeGiftIcon, HomePinIcon } from "./HomeIcons";
 import styles from "./home.module.css";
 
 /*
@@ -22,19 +22,21 @@ import styles from "./home.module.css";
 export async function CompactEventCard({
   view,
   live = false,
+  bonusHref,
 }: {
   view: HomeCardView;
   live?: boolean;
+  bonusHref?: string | null;
 }) {
   const t = await getTranslations("Home");
   const songs = view.songCount ?? 0;
   const songLine =
     songs > 0 ? t("setlistSongs", { count: songs }) : t("setlistWaiting");
 
-  return (
+  const eventLink = (
     <Link
       href={view.href}
-      className={`${styles.compact} ${live ? styles.live : ""}`}
+      className={bonusHref ? styles.compactBody : `${styles.compact} ${live ? styles.live : ""}`}
     >
       <EventArt
         logoUrl={view.logoUrl}
@@ -79,5 +81,22 @@ export async function CompactEventCard({
       <HomeChevronIcon />
       {live && <EventStatusTicker startTime={view.startTimeIso} />}
     </Link>
+  );
+
+  if (!bonusHref) return eventLink;
+  return (
+    <article className={`${styles.compact} ${styles.compactWithBonus}`}>
+      {eventLink}
+      <Link
+        href={bonusHref}
+        prefetch={false}
+        className={styles.bonusBadge}
+        data-testid="home-bd-bonus"
+        aria-label={t("bdBonusFor", { event: view.dayLabel ? `${view.title} · ${view.dayLabel}` : view.title })}
+      >
+        <HomeGiftIcon />
+        {t("bdBonus")}
+      </Link>
+    </article>
   );
 }
