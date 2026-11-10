@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
-import { getEventStatus } from "@/lib/eventStatus";
+import { getEventStatus, ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 import {
   LOGO_EVENT_SELECT,
@@ -245,8 +245,10 @@ export async function getEventsListGrouped(
         performers: {
           where: {
             event: {
-              artistId: null,
-              OR: [{ eventSeriesId: null }, { eventSeries: { artistId: null } }],
+              OR: [
+                { eventSeriesId: null, artistId: null },
+                { eventSeries: { artistId: null } },
+              ],
             },
           },
           select: {
@@ -370,11 +372,11 @@ export async function getEventsListGrouped(
 
   const availableRoots = new Set<string>();
   const eventsWithRoots = eventsRaw.map((event) => {
-    const seriesRoot = seriesRootArtist(event.eventSeriesId);
-    const eventRoot = event.artistId === null ? null : publicRoot(event.artistId);
+    const primaryRoot = event.eventSeriesId !== null
+      ? seriesRootArtist(event.eventSeriesId)
+      : event.artistId === null ? null : publicRoot(event.artistId);
     const roots = new Set<string>();
-    if (seriesRoot !== null) roots.add(seriesRoot);
-    if (eventRoot !== null) roots.add(eventRoot);
+    if (primaryRoot !== null) roots.add(primaryRoot);
     for (const id of [
       ...(creditsByEvent.get(event.id) ?? []),
       ...event.collaborationArtists.map((link) => link.artistId),
@@ -386,11 +388,13 @@ export async function getEventsListGrouped(
     // Roster membership can identify a group at a joint event when the
     // identity has one eligible home family. For past shows require a
     // dated affiliation so an undated current link cannot add a group.
-    if (seriesRoot === null && eventRoot === null) {
+    if (primaryRoot === null) {
       const day = (event.date ?? event.startTime).toISOString().slice(0, 10);
       const status = getEventStatus(event, referenceNow);
       const past = status === "completed" ||
-        (status === "cancelled" && event.startTime < referenceNow);
+        (status === "cancelled" && event.startTime < referenceNow) ||
+        // An old admin LIVE override affects display, not the affiliation date.
+        event.startTime.getTime() + ONGOING_BUFFER_MS <= referenceNow.getTime();
       for (const { stageIdentity } of event.performers) {
         const families = new Map<string, boolean>();
         for (const link of stageIdentity.artistLinks) {

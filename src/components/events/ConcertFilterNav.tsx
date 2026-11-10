@@ -49,11 +49,11 @@ export function ConcertFilterNav({
   const navClass = "flex flex-wrap gap-1.5 min-[700px]:gap-2";
   return (
     <div className="mb-6 mt-[22px] space-y-2 min-[700px]:mb-[30px] min-[700px]:mt-[26px]">
-      <nav aria-label={label} className={navClass}>
+      <nav aria-label={label} data-testid="event-status-filter" className={navClass}>
         {FILTER_VALUES.map((value) => pill(value, value, artist, value === active, labels[value]))}
       </nav>
       {artistOptions.length > 0 && (
-        <nav aria-label={artistLabel} className={navClass}>
+        <nav aria-label={artistLabel} data-testid="event-artist-filter" className={navClass}>
           {pill("all", active, null, artist === null, allArtistsLabel)}
           {artistOptions.map(({ id, name }) => pill(id, active, id, id === artist, name))}
         </nav>

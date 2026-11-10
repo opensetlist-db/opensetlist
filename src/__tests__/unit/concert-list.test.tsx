@@ -264,6 +264,7 @@ describe("getEventsListGrouped — artist families", () => {
     mocked.eventSeries.findMany.mockResolvedValue([
       series(1),
       series(2, { parentSeriesId: BigInt(1), artistId: BigInt(8) }),
+      series(3, { parentSeriesId: BigInt(1), artistId: BigInt(9) }),
     ]);
     const roster = (startDate: Date | null, endDate: Date | null = null) => [{
       stageIdentity: { artistLinks: [
@@ -274,8 +275,8 @@ describe("getEventsListGrouped — artist families", () => {
     const past = new Date("2026-10-01T12:00:00Z");
     const starts = new Date("2026-10-01T00:00:00Z");
     mocked.event.findMany.mockResolvedValue([
-      event(1, { eventSeriesId: BigInt(2), startTime: past }),
-      event(2, { eventSeriesId: BigInt(1), artistId: BigInt(9), status: "ongoing" }),
+      event(1, { eventSeriesId: BigInt(2), artistId: BigInt(9), startTime: past }),
+      event(2, { eventSeriesId: BigInt(3), status: "ongoing" }),
       event(3, { startTime: past, performers: roster(null) }),
       event(4, { startTime: past, performers: roster(starts, starts) }),
       event(5, { startTime: past, collaborationArtists: [{ artistId: BigInt(10) }] }),
@@ -283,11 +284,12 @@ describe("getEventsListGrouped — artist families", () => {
       event(7, { artistId: BigInt(99) }),
       event(8, { startTime: past }),
       event(9, { organizerName: "Joint festival", performers: roster(null) }),
+      event(10, { startTime: past, status: "ongoing", organizerName: "Old joint festival", performers: roster(null) }),
     ]);
     mocked.$queryRaw.mockResolvedValue([{ eventId: BigInt(8), artistId: BigInt(8) }]);
     const all = await getEventsListGrouped("ko", NOW);
     const ids = (groups: typeof all.pastGroups) => groups.flatMap((group) => group.events.map((event) => event.id));
-    expect(ids([...all.activeGroups, ...all.pastGroups]).sort()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(ids([...all.activeGroups, ...all.pastGroups]).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(all.artistOptions).toEqual([
       { id: "7", name: "그룹" }, { id: "9", name: "Other" }, { id: "10", name: "Collaboration" },
     ]);
@@ -296,7 +298,10 @@ describe("getEventsListGrouped — artist families", () => {
     expect(ids(parent.activeGroups)).toEqual([9]);
     expect(ids(parent.pastGroups)).toEqual([1, 4, 8]);
     expect(parent.pastGroups[0]).toMatchObject({ id: "series:1", hasOngoing: false });
-    expect(ids((await getEventsListGrouped("ko", NOW, "10")).pastGroups)).toEqual([5]);
+    const other = await getEventsListGrouped("ko", NOW, "9");
+    expect(ids([...other.activeGroups, ...other.pastGroups])).toEqual([2]);
+    const collaboration = await getEventsListGrouped("ko", NOW, "10");
+    expect(ids([...collaboration.activeGroups, ...collaboration.pastGroups])).toEqual([5]);
     const invalid = await getEventsListGrouped("ko", NOW, ["7", "9"]);
     expect(invalid).toEqual(all);
     expect((await getEventsListGrouped("ko", NOW, "8")).artist).toBeNull();
