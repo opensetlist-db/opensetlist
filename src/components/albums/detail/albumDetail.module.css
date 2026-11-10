@@ -476,7 +476,7 @@ a.trackRow:focus-visible {
   font-weight: 700;
 }
 
-.edition {
+.deadline {
   margin: 4px 0 0;
   color: var(--text-secondary);
   font-size: 12px;
@@ -490,6 +490,11 @@ a.trackRow:focus-visible {
   gap: 10px;
   border-top: 1px solid var(--border);
   padding-top: 12px;
+}
+.affiliateDisclosure {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 .bonusImage {
   display: block;

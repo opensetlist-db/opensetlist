@@ -239,7 +239,7 @@
         "active": "Available",
         "ended": "Ended"
       },
-      "affiliateDisclosure": "Amazon affiliate link. As an Amazon Associate, OpenSetlist earns from qualifying purchases.",
+      "affiliateDisclosure": "Amazon Associate · We earn commission.",
       "buy": "Buy",
       "showEnded": "{count, plural, one {Show # ended store} other {Show # ended stores}}",
       "summary": {
