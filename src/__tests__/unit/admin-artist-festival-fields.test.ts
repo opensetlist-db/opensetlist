@@ -210,11 +210,11 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
     );
 
   beforeEach(() => {
-    artist.findUnique.mockResolvedValue({ id: BigInt(20), type: "group" });
+    artist.findUnique.mockResolvedValue({ id: BigInt(20), type: "group", translations: [{ locale: "ko", name: "사이드" }, { locale: "en", name: "Side" }] });
   });
 
   it("rejects a parent cycle without changing the stored parent, while retaining row feedback", async () => {
-    artist.findUnique.mockImplementation(async ({ where }: { where: { slug: string } }) => ({ id: BigInt(where.slug === "root" ? 99 : 20), type: "group" }));
+    artist.findUnique.mockImplementation(async ({ where }: { where: { slug: string } }) => ({ id: BigInt(where.slug === "root" ? 99 : 20), type: "group", translations: [{ locale: "ko", name: "사이드" }, { locale: "en", name: "Side" }] }));
     expect((await importCsv("slug,ja_name,parentArtist_slug\nside,サイド,root")).status).toBe(200);
     const parentWrites = () => artist.update.mock.calls.filter(([args]) => Object.hasOwn(args.data, "parentArtistId"));
     expect(parentWrites()).toHaveLength(1);
@@ -280,7 +280,7 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
   it("create: one invalid cell is enough to skip; valid rows still import", async () => {
     artist.findUnique.mockResolvedValue(null);
     const res = await importCsv(
-      ["slug,ja_name,sortOrder,isSideProject", "bad-one,バッド,3,treu", "good-one,グッド,4,true"].join("\n"),
+      ["slug,ja_name,sortOrder,isSideProject,ko_name,en_name", "bad-one,バッド,3,treu,,", "good-one,グッド,4,true,굿,Good"].join("\n"),
     );
     const body = await res.json();
     const warns = body.log.filter((l: string) => l.startsWith("WARN"));
@@ -297,7 +297,7 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
 
   it("create: defaults when the CSV carries nothing", async () => {
     artist.findUnique.mockResolvedValue(null);
-    await importCsv(["slug,ja_name", "new-one,ニュー"].join("\n"));
+    await importCsv(["slug,ja_name,ko_name,en_name", "new-one,ニュー,뉴,New"].join("\n"));
     expect(artist.create.mock.calls[0][0].data).toMatchObject({
       sortOrder: null,
       isSideProject: false,

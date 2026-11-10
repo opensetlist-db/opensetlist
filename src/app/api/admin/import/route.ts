@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { locales } from "@/i18n/routing";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
@@ -23,6 +24,7 @@ import {
   lockEvent,
 } from "@/lib/liveBroadcast";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { validateCatalogDisplay } from "@/lib/catalog-import-display";
 import { importMembershipOrders } from "@/lib/membershipOrderImport";
 import { ArtistParentCycleError, validateArtistParent } from "@/lib/adminArtistParent";
 import {
@@ -35,6 +37,36 @@ import {
   parseCsvNullableIntCell,
   parseIsoInstant,
 } from "@/lib/admin-input";
+
+const NAME_FIELDS = [
+  ["originalName", "name", "required"],
+  ["originalShortName", "shortName"],
+] as const;
+const TITLE_FIELDS = [["originalTitle", "title", "title"]] as const;
+const EVENT_NAME_FIELDS = [
+  ["originalName", "name", "title"],
+  ["originalShortName", "shortName"],
+  ["organizerName", "organizerName"],
+] as const;
+
+function namePatches(row: Record<string, string>, prefix = "") {
+  return locales.map((locale) => ({
+    locale,
+    name: row[`${prefix}${locale}_name`] || undefined,
+    shortName: row[`${prefix}${locale}_shortName`] || undefined,
+  })).filter(({ name, shortName }) => name || shortName);
+}
+
+function withRequiredName<T extends { name?: string }>(translation: T) {
+  return { ...translation, name: translation.name ?? "" };
+}
+
+// Keep the existing partial commits, but wait for them before expiring the cache.
+async function settleGroupWrites(writes: Promise<unknown>[]) {
+  const outcomes = await Promise.allSettled(writes);
+  const failed = outcomes.find((outcome) => outcome.status === "rejected");
+  if (failed) throw failed.reason;
+}
 
 // Derive the valid sets from the generated enum objects so a future
 // schema change auto-propagates here. The legacy `anime`/`game`
@@ -186,13 +218,9 @@ async function importArtists(rows: Record<string, string>[]) {
     const slug = row.slug;
     if (!slug) continue;
 
-    const jaTranslation = row.ja_name ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null } : null;
-    const koTranslation = row.ko_name ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null } : null;
-    const enTranslation = row.en_name ? { locale: "en", name: row.en_name, shortName: row.en_shortName || null } : null;
-    const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
-    if (translations.length === 0) continue;
-
-    const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
+    const existing = await prisma.artist.findUnique({ where: { slug }, include: { translations: true } });
+    const translations = namePatches(row);
+    const originalLanguage = resolveOriginalLanguage(row.originalLanguage || existing?.originalLanguage);
     const source = pickOriginalSource(translations, originalLanguage);
     const originals = buildOriginals(row, source, originalLanguage, [
       { override: "originalName", sourceKey: "name", out: "originalName" },
@@ -221,8 +249,6 @@ async function importArtists(rows: Record<string, string>[]) {
     // sparse Artist.color backfill, which is set on a separate pass.
     const colorUpdate =
       row.color === undefined ? undefined : row.color || null;
-
-    const existing = await prisma.artist.findUnique({ where: { slug } });
 
     // An invalid cell is never guessed at. On an update it is treated
     // as absent (undefined) so the stored value survives. On a create
@@ -271,14 +297,16 @@ async function importArtists(rows: Record<string, string>[]) {
       parseCsvBooleanCell(row.isSideProject)
     );
 
+    if (createBlocked) continue;
+    validateCatalogDisplay(`Artist "${slug}"`, row, existing, originals, translations, NAME_FIELDS);
     if (existing) {
       const effectiveType = artistType ?? existing.type;
       await prisma.artist.update({
         where: { slug },
         data: {
           type: artistType,
-          category,
-          isMainUnit: effectiveType === "unit" ? csvIsMainUnit : false,
+          category: row.category === undefined ? undefined : category,
+          isMainUnit: effectiveType !== "unit" ? false : row.isMainUnit === undefined ? undefined : csvIsMainUnit,
           color: colorUpdate,
           sortOrder: sortOrderUpdate,
           isSideProject: sideProjectUpdate,
@@ -289,17 +317,12 @@ async function importArtists(rows: Record<string, string>[]) {
       for (const t of translations) {
         await prisma.artistTranslation.upsert({
           where: { artistId_locale: { artistId: existing.id, locale: t.locale } },
-          create: { artistId: existing.id, ...t },
+          create: { artistId: existing.id, ...t, name: t.name ?? "" },
           update: { name: t.name, shortName: t.shortName },
         });
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);
     } else {
-      // A new row with an invalid sortOrder / isSideProject cell is not
-      // created (see dropInvalidCell). The later passes look artists up
-      // by slug, so they skip this row on their own — no parent link,
-      // no group links for an artist that does not exist.
-      if (createBlocked) continue;
       const originalName = ensureOriginalName(originals, slug, "Artist", originalLanguage);
       const newType = artistType ?? "group";
       const artist = await prisma.artist.create({
@@ -314,7 +337,7 @@ async function importArtists(rows: Record<string, string>[]) {
           isSideProject: sideProjectUpdate ?? false,
           ...originals,
           originalName,
-          translations: { create: translations },
+          translations: { create: translations.map(withRequiredName) },
         },
       });
       results.push(`CREATED: ${slug} → ${artist.id}`);
@@ -452,42 +475,28 @@ async function importArtists(rows: Record<string, string>[]) {
 async function importGroups(rows: Record<string, string>[]) {
   const results: string[] = [];
 
-  // Pre-shape every row so the per-row mutation below has no parsing
-  // left to do. Skip rows missing a slug — they have no upsert key
-  // and would be silently dropped.
-  type Prepared = {
-    slug: string;
-    type: GroupType | null;
-    category: GroupCategory | null;
-    hasBoard: boolean;
-    originals: Record<string, string | null>;
-    translations: Array<{
-      locale: string;
-      name: string;
-      shortName: string | null;
-      description: string | null;
-    }>;
-    originalLanguage: string;
-  };
-  const prepared: Prepared[] = [];
-  for (const row of rows) {
+  const withSlugs = rows.filter((row) => row.slug);
+  if (!withSlugs.length) return { count: 0, log: results };
+  const slugs = new Set<string>();
+  for (const { slug } of withSlugs) {
+    if (slugs.has(slug)) throw new ImportValidationError(`Group "${slug}" — 중복 슬러그`);
+    slugs.add(slug);
+  }
+  const existingRows = await prisma.group.findMany({
+    where: { slug: { in: [...slugs] } },
+    include: { translations: true },
+  });
+  const existingBySlug = new Map(existingRows.map((group) => [group.slug, group]));
+  const prepared = withSlugs.map((row) => {
     const slug = row.slug;
-    if (!slug) continue;
-
-    const jaTranslation = row.ja_name
-      ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null, description: row.ja_description || null }
-      : null;
-    const koTranslation = row.ko_name
-      ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null, description: row.ko_description || null }
-      : null;
-    const enTranslation = row.en_name
-      ? { locale: "en", name: row.en_name, shortName: row.en_shortName || null, description: row.en_description || null }
-      : null;
-    const translations = [jaTranslation, koTranslation, enTranslation].filter(
-      Boolean,
-    ) as Prepared["translations"];
-
-    const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
+    const existing = existingBySlug.get(slug) ?? null;
+    const translations = locales.map((locale) => ({
+      locale,
+      name: row[`${locale}_name`] || undefined,
+      shortName: row[`${locale}_shortName`] || undefined,
+      description: row[`${locale}_description`] || undefined,
+    })).filter(({ name, shortName, description }) => name || shortName || description);
+    const originalLanguage = resolveOriginalLanguage(row.originalLanguage || existing?.originalLanguage);
     const source = pickOriginalSource(translations, originalLanguage);
     const originals = buildOriginals(row, source, originalLanguage, [
       { override: "originalName", sourceKey: "name", out: "originalName" },
@@ -495,7 +504,9 @@ async function importGroups(rows: Record<string, string>[]) {
       { override: "originalDescription", sourceKey: "description", out: "originalDescription" },
     ]);
 
-    prepared.push({
+    return {
+      row,
+      existing,
       slug,
       type: parseGroupType(row.type, slug),
       category: parseGroupCategory(row.category, slug),
@@ -503,46 +514,32 @@ async function importGroups(rows: Record<string, string>[]) {
       originals,
       translations,
       originalLanguage,
-    });
-  }
-  if (prepared.length === 0) return { count: 0, log: results };
-
-  // Single round trip to learn which slugs already exist; everything
-  // else fans out on top of the result. Mirrors the pattern in
-  // `importArtists`'s third pass.
-  const existingRows = await prisma.group.findMany({
-    where: { slug: { in: prepared.map((p) => p.slug) } },
-    select: { id: true, slug: true },
+    };
   });
-  const existingByslug = new Map(
-    existingRows
-      .filter((g): g is { id: string; slug: string } => g.slug != null)
-      .map((g) => [g.slug, g.id]),
-  );
 
   // Updates run in parallel: per-row update + translation upserts in
   // a single Promise.all. Each row is independent so contention
   // between them on the connection pool is fine. No transaction —
   // CSV import is tolerant of partial failures (operator re-runs).
-  const toUpdate = prepared.filter((p) => existingByslug.has(p.slug));
-  await Promise.all(
+  const toUpdate = prepared.filter((p) => p.existing !== null);
+  await settleGroupWrites(
     toUpdate.map(async (p) => {
-      const id = existingByslug.get(p.slug)!;
+      const id = p.existing!.id;
+      validateCatalogDisplay(`Group "${p.slug}"`, p.row, p.existing, p.originals, p.translations, NAME_FIELDS);
       await prisma.group.update({
         where: { id },
         data: {
-          type: p.type,
-          category: p.category,
-          hasBoard: p.hasBoard,
-          originalLanguage: p.originalLanguage,
+          type: p.row.type === undefined ? undefined : p.type,
+          category: p.row.category === undefined ? undefined : p.category,
+          hasBoard: p.row.hasBoard === undefined ? undefined : p.hasBoard,
           ...p.originals,
         },
       });
-      await Promise.all(
+      await settleGroupWrites(
         p.translations.map((t) =>
           prisma.groupTranslation.upsert({
             where: { groupId_locale: { groupId: id, locale: t.locale } },
-            create: { groupId: id, ...t },
+            create: { groupId: id, ...withRequiredName(t) },
             update: { name: t.name, shortName: t.shortName, description: t.description },
           }),
         ),
@@ -553,9 +550,10 @@ async function importGroups(rows: Record<string, string>[]) {
 
   // Creates: emit the nested-create form (translations created in
   // the same statement as the Group), Promise.all in parallel.
-  const toCreate = prepared.filter((p) => !existingByslug.has(p.slug));
-  await Promise.all(
+  const toCreate = prepared.filter((p) => p.existing === null);
+  await settleGroupWrites(
     toCreate.map(async (p) => {
+      validateCatalogDisplay(`Group "${p.slug}"`, p.row, null, p.originals, p.translations, NAME_FIELDS);
       const originalName = ensureOriginalName(
         p.originals,
         p.slug,
@@ -571,7 +569,7 @@ async function importGroups(rows: Record<string, string>[]) {
           originalLanguage: p.originalLanguage,
           ...p.originals,
           originalName,
-          translations: { create: p.translations },
+          translations: { create: p.translations.map(withRequiredName) },
         },
       });
       results.push(`CREATED: ${p.slug} → ${group.id}`);
@@ -588,18 +586,17 @@ async function importMembers(rows: Record<string, string>[]) {
     const charSlug = row.character_slug;
     if (!charSlug) continue;
 
-    const translations = [];
-    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null });
-    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null });
-    if (row.en_name) translations.push({ locale: "en", name: row.en_name, shortName: row.en_shortName || null });
-    if (translations.length === 0) continue;
-
-    const siOriginalLanguage = resolveOriginalLanguage(row.originalLanguage);
+    const existingSi = await prisma.stageIdentity.findUnique({
+      where: { slug: charSlug }, include: { translations: true },
+    });
+    const translations = namePatches(row);
+    const siOriginalLanguage = resolveOriginalLanguage(row.originalLanguage || existingSi?.originalLanguage);
     const siSource = pickOriginalSource(translations, siOriginalLanguage);
     const siOriginals = buildOriginals(row, siSource, siOriginalLanguage, [
       { override: "originalName", sourceKey: "name", out: "originalName" },
       { override: "originalShortName", sourceKey: "shortName", out: "originalShortName" },
     ]);
+    validateCatalogDisplay(`StageIdentity "${charSlug}"`, row, existingSi, siOriginals, translations, NAME_FIELDS);
 
     // Look up artists by slug
     const artistSlugs = (row.artist_slugs || "").split(/\s+/).filter(Boolean);
@@ -612,21 +609,27 @@ async function importMembers(rows: Record<string, string>[]) {
     // Upsert RealPerson if VA info provided
     let realPersonId: string | undefined;
     const vaSlug = `va-${charSlug}`;
-    if (row.va_ja_name || row.va_ko_name || row.va_en_name) {
-      const vaTranslations = [];
-      if (row.va_ja_name) vaTranslations.push({ locale: "ja", name: row.va_ja_name, shortName: row.va_ja_shortName || null, stageName: null as string | null });
-      if (row.va_ko_name) vaTranslations.push({ locale: "ko", name: row.va_ko_name, shortName: row.va_ko_shortName || null, stageName: null as string | null });
-      if (row.va_en_name) vaTranslations.push({ locale: "en", name: row.va_en_name, shortName: row.va_en_shortName || null, stageName: null as string | null });
-
-      const vaOriginalLanguage = resolveOriginalLanguage(row.va_originalLanguage || row.originalLanguage);
+    const vaTranslations = locales.map((locale) => ({
+      locale,
+      name: row[`va_${locale}_name`] || undefined,
+      shortName: row[`va_${locale}_shortName`] || undefined,
+      stageName: row[`va_${locale}_stageName`] || undefined,
+    })).filter(({ name, shortName, stageName }) => name || shortName || stageName);
+    if (vaTranslations.length || row.va_originalName || row.va_originalShortName || row.va_originalStageName || row.va_originalLanguage) {
+      const existingRp = await prisma.realPerson.findUnique({
+        where: { slug: vaSlug }, include: { translations: true },
+      });
+      const vaOriginalLanguage = resolveOriginalLanguage(row.va_originalLanguage || existingRp?.originalLanguage || row.originalLanguage);
       const vaSource = pickOriginalSource(vaTranslations, vaOriginalLanguage);
       const vaOriginals = buildOriginals(row, vaSource, vaOriginalLanguage, [
         { override: "va_originalName", sourceKey: "name", out: "originalName" },
         { override: "va_originalShortName", sourceKey: "shortName", out: "originalShortName" },
         { override: "va_originalStageName", sourceKey: "stageName", out: "originalStageName" },
       ]);
-
-      const existingRp = await prisma.realPerson.findUnique({ where: { slug: vaSlug } });
+      validateCatalogDisplay(`RealPerson "${vaSlug}"`, row, existingRp, vaOriginals, vaTranslations, [
+        ...NAME_FIELDS,
+        ["originalStageName", "stageName"],
+      ], "va_");
       if (existingRp) {
         await prisma.realPerson.update({
           where: { id: existingRp.id },
@@ -635,7 +638,7 @@ async function importMembers(rows: Record<string, string>[]) {
         for (const t of vaTranslations) {
           await prisma.realPersonTranslation.upsert({
             where: { realPersonId_locale: { realPersonId: existingRp.id, locale: t.locale } },
-            create: { realPersonId: existingRp.id, ...t },
+            create: { realPersonId: existingRp.id, ...withRequiredName(t) },
             update: { name: t.name, shortName: t.shortName, stageName: t.stageName },
           });
         }
@@ -647,15 +650,12 @@ async function importMembers(rows: Record<string, string>[]) {
             slug: vaSlug,
             ...vaOriginals,
             originalName,
-            translations: { create: vaTranslations },
+            translations: { create: vaTranslations.map(withRequiredName) },
           },
         });
         realPersonId = rp.id;
       }
     }
-
-    // Upsert StageIdentity
-    const existingSi = await prisma.stageIdentity.findUnique({ where: { slug: charSlug } });
 
     // `sortOrder` (official member order, `src/lib/memberOrder.ts`) is
     // preserve-on-missing, unlike this CSV's `color` (which clobbers):
@@ -682,8 +682,8 @@ async function importMembers(rows: Record<string, string>[]) {
       await prisma.stageIdentity.update({
         where: { slug: charSlug },
         data: {
-          type: (row.character_type as "character" | "persona") || "character",
-          color: row.color || null,
+          type: (row.character_type as "character" | "persona") || undefined,
+          color: row.color === undefined ? undefined : row.color || null,
           sortOrder: sortOrderUpdate,
           ...siOriginals,
         },
@@ -692,7 +692,7 @@ async function importMembers(rows: Record<string, string>[]) {
       for (const t of translations) {
         await prisma.stageIdentityTranslation.upsert({
           where: { stageIdentityId_locale: { stageIdentityId: existingSi.id, locale: t.locale } },
-          create: { stageIdentityId: existingSi.id, ...t },
+          create: { stageIdentityId: existingSi.id, ...withRequiredName(t) },
           update: { name: t.name, shortName: t.shortName },
         });
       }
@@ -737,7 +737,7 @@ async function importMembers(rows: Record<string, string>[]) {
           sortOrder: sortOrderUpdate ?? null,
           ...siOriginals,
           originalName,
-          translations: { create: translations },
+          translations: { create: translations.map(withRequiredName) },
           artistLinks: artistIds.length
             ? {
                 create: artistIds.map((aid) => ({
@@ -773,10 +773,10 @@ async function importAlbums(rows: Record<string, string>[]) {
     const enTranslation = row.en_title ? { locale: "en", title: row.en_title } : null;
     const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; title: string }[];
 
-    const originalTitle = row.originalTitle || "";
-    const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
-
-    const existing = await prisma.album.findUnique({ where: { slug } });
+    const existing = await prisma.album.findUnique({ where: { slug }, include: { translations: true } });
+    const originalTitle = row.originalTitle || existing?.originalTitle || "";
+    const originalLanguage = resolveOriginalLanguage(row.originalLanguage || existing?.originalLanguage);
+    validateCatalogDisplay(`Album "${slug}"`, row, existing, { originalTitle, originalLanguage }, translations, TITLE_FIELDS);
 
     let albumId: bigint;
     if (existing) {
@@ -786,8 +786,8 @@ async function importAlbums(rows: Record<string, string>[]) {
           type: (row.type as "single" | "album" | "ep" | "live_album" | "soundtrack") || undefined,
           originalTitle,
           originalLanguage,
-          releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
-          labelName: row.labelName || null,
+          releaseDate: row.releaseDate ? new Date(row.releaseDate) : row.releaseDate === "" ? null : undefined,
+          labelName: row.labelName === undefined ? undefined : row.labelName || null,
         },
       });
       for (const t of translations) {
@@ -905,7 +905,7 @@ async function importSongs(rows: Record<string, string>[]) {
   //   - Pattern 1 row whose (album, disc, track) tuple is new → create
   //   - any pattern whose tuple already exists → skip the create
   //     (Pattern 3 still upserts AlbumTrackTranslation rows below with
-  //     update:{} so first-time-translated rows fill in but existing
+  //     skipDuplicates so first-time-translated rows fill in but existing
   //     operator-translated rows aren't stomped).
   const distinctAlbumSlugs = Array.from(
     new Set(
@@ -925,19 +925,13 @@ async function importSongs(rows: Record<string, string>[]) {
   const distinctAlbumIds = Array.from(albumsBySlug.values());
   const trackKey = (albumId: bigint, disc: number, track: number): string =>
     `${albumId.toString()}-${disc}-${track}`;
-  const existingTrackIdByKey: Map<string, string> = distinctAlbumIds.length === 0
-    ? new Map<string, string>()
-    : new Map(
-        (
-          await prisma.albumTrack.findMany({
-            where: { albumId: { in: distinctAlbumIds } },
-            select: { id: true, albumId: true, discNumber: true, trackNumber: true },
-          })
-        ).map(
-          (t) =>
-            [trackKey(t.albumId, t.discNumber, t.trackNumber), t.id] as [string, string],
-        ),
-      );
+  const existingTracks = distinctAlbumIds.length === 0 ? [] : await prisma.albumTrack.findMany({
+    where: { albumId: { in: distinctAlbumIds } },
+    include: { translations: true },
+  });
+  const existingTrackByKey = new Map(
+    existingTracks.map((t) => [trackKey(t.albumId, t.discNumber, t.trackNumber), t]),
+  );
 
   // Duplicate-under-another-slug check (see src/lib/songDuplicate.ts).
   // Both lookups run BEFORE the first pass: once a row is upserted its
@@ -951,18 +945,17 @@ async function importSongs(rows: Record<string, string>[]) {
   // `trim()` also strips tabs and newlines, and the two must agree. The
   // backslashes are doubled because the tagged template sends the
   // cooked string: a bare `\s` would reach Postgres as `s`.
-  const songRows = rows.filter((r) => r.slug && r.originalTitle);
-  const existingSlugSet = new Set(
+  const songRows = rows.filter((r) => r.slug);
+  const existingSongs =
     songRows.length === 0
       ? []
-      : (
-          await prisma.song.findMany({
-            where: { slug: { in: songRows.map((r) => r.slug) } },
-            select: { slug: true },
-          })
-        ).map((s) => s.slug),
-  );
-  const newSongRows = songRows.filter((r) => !existingSlugSet.has(r.slug));
+      : await prisma.song.findMany({
+          where: { slug: { in: songRows.map((r) => r.slug) } },
+          include: { translations: true },
+        });
+  const existingBySlug = new Map(existingSongs.map((s) => [s.slug, s]));
+  const existingSlugSet = new Set(existingBySlug.keys());
+  const newSongRows = songRows.filter((r) => r.originalTitle && !existingSlugSet.has(r.slug));
   const normalizedNewTitles = Array.from(
     new Set(newSongRows.map((r) => normalizeSongText(r.originalTitle))),
   );
@@ -1022,11 +1015,18 @@ async function importSongs(rows: Record<string, string>[]) {
   }
 
   // First pass: upsert songs, translations, artists, album tracks
-  for (const row of rows) {
+  for (const row of songRows) {
     const slug = row.slug;
-    if (!slug || !row.originalTitle) continue;
-
-    const { translations: allTranslations, removedLocales } = resolveSongTranslations(row);
+    const existing = seenSlugs.has(slug)
+      ? await prisma.song.findUnique({ where: { slug }, include: { translations: true } })
+      : existingBySlug.get(slug) ?? null;
+    const originalTitle = row.originalTitle || existing?.originalTitle || "";
+    const originalLanguage = resolveOriginalLanguage(row.originalLanguage || existing?.originalLanguage);
+    const allTranslations = resolveSongTranslations(row);
+    const variantLabel = row.variantLabel || undefined;
+    validateCatalogDisplay(`Song "${slug}"`, row, existing, {
+      originalTitle, originalLanguage, variantLabel,
+    }, allTranslations, [...TITLE_FIELDS, ["variantLabel", "variantLabel"]]);
 
     // Resolve baseVersionId eagerly so the song_variant_must_have_base
     // CHECK constraint (post-deploy.sql) is satisfied at INSERT time —
@@ -1039,29 +1039,29 @@ async function importSongs(rows: Record<string, string>[]) {
       baseSlug && baseSlug !== "-" ? songIdBySlug.get(baseSlug) : undefined;
     const wantsVariant = (row.variantLabel ?? "").trim() !== "";
     const deferVariantToPass2 = wantsVariant && resolvedBaseVersionId === undefined;
-    const variantLabelForPass1 = deferVariantToPass2 ? null : (row.variantLabel || null);
+    const variantLabelForPass1 = deferVariantToPass2 ? undefined : variantLabel;
 
     // Upsert Song
     const song = await prisma.song.upsert({
       where: { slug },
       create: {
         slug,
-        originalTitle: row.originalTitle,
-        originalLanguage: resolveOriginalLanguage(row.originalLanguage),
+        originalTitle,
+        originalLanguage,
         variantLabel: variantLabelForPass1,
         baseVersionId: resolvedBaseVersionId,
         releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
         sourceNote: row.sourceNote || null,
       },
       update: {
-        originalTitle: row.originalTitle,
+        originalTitle: row.originalTitle || undefined,
         originalLanguage: row.originalLanguage ? resolveOriginalLanguage(row.originalLanguage) : undefined,
         variantLabel: variantLabelForPass1,
         // Only set baseVersionId when resolved here — otherwise leave any
         // existing value alone for the second pass to finalize.
         ...(resolvedBaseVersionId !== undefined ? { baseVersionId: resolvedBaseVersionId } : {}),
-        releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
-        sourceNote: row.sourceNote || null,
+        releaseDate: row.releaseDate ? new Date(row.releaseDate) : row.releaseDate === "" ? null : undefined,
+        sourceNote: row.sourceNote === undefined ? undefined : row.sourceNote || null,
       },
     });
 
@@ -1075,19 +1075,11 @@ async function importSongs(rows: Record<string, string>[]) {
       results.push(`UPSERT: ${slug} → ${song.id}`);
     }
 
-    // Delete translations for locales no longer in CSV
-    if (removedLocales.length > 0) {
-      // eslint-disable-next-line no-restricted-syntax -- removes only the locales dropped from the CSV; the rest are upserted below
-      await prisma.songTranslation.deleteMany({
-        where: { songId: song.id, locale: { in: removedLocales } },
-      });
-    }
-
     for (const t of allTranslations) {
       await prisma.songTranslation.upsert({
         where: { songId_locale: { songId: song.id, locale: t.locale } },
-        create: { songId: song.id, locale: t.locale, title: t.title, variantLabel: t.variantLabel || null },
-        update: { title: t.title, variantLabel: t.variantLabel || null },
+        create: { songId: song.id, ...t, title: t.title ?? "" },
+        update: { title: t.title, variantLabel: t.variantLabel },
       });
     }
 
@@ -1127,44 +1119,11 @@ async function importSongs(rows: Record<string, string>[]) {
   // Idempotency: a tuple (albumId, discNumber, trackNumber) that already
   // exists in the DB is left untouched — preserves any admin-UX edits the
   // operator made between imports. For Pattern 3 we still upsert the
-  // translation rows with update:{}, which fills in missing locales on
+  // translation rows without overwriting existing locales on
   // a partial-data re-import without overwriting locales the operator
   // hand-translated. New tuples (most common case on a first-time IP
   // onboarding or a brand-new release) take the create path with the
   // dispatched data.
-  const upsertPattern3Translations = async (
-    albumTrackId: string,
-    row: Record<string, string>,
-  ) => {
-    const localePairs: ReadonlyArray<{ locale: string; title: string | undefined }> = [
-      { locale: "ja", title: row.ja_title },
-      { locale: "ko", title: row.ko_title },
-      { locale: "en", title: row.en_title },
-    ];
-    // Parallelize the up-to-3 locale upserts per track. Each one is an
-    // independent (albumTrackId, locale) write so they can race safely;
-    // the sequential `for await` we had first reviewed three rows for
-    // every Pattern 3 track when the trimmed-title filter is N/A —
-    // pure latency tax for no ordering benefit.
-    await Promise.all(
-      localePairs
-        .filter(({ title }) => (title ?? "").trim() !== "")
-        .map(({ locale, title }) =>
-          prisma.albumTrackTranslation.upsert({
-            where: { albumTrackId_locale: { albumTrackId, locale } },
-            create: {
-              albumTrackId,
-              locale,
-              title: (title ?? "").trim(),
-            },
-            // Empty update preserves the operator's admin-UX edits on
-            // existing locale rows; only missing locales get filled in.
-            update: {},
-          }),
-        ),
-    );
-  };
-
   for (const row of rows) {
     const albumSlug = (row.album_slug ?? "").trim();
     if (!albumSlug || !row.track_number) continue;
@@ -1191,14 +1150,28 @@ async function importSongs(rows: Record<string, string>[]) {
       continue;
     }
     const key = trackKey(albumId, discNumber, trackNumber);
-    const existingTrackId = existingTrackIdByKey.get(key);
+    const existingTrack = existingTrackByKey.get(key);
+    const directTitle = trackType !== null && isPattern3AlbumTrackVariant(trackType) && !parentSlug;
+    const translations = locales.map((locale) => ({ locale, title: row[`${locale}_title`] })).filter(({ title }) => title);
+    const trackLabel = `AlbumTrack "${albumSlug}" disc=${discNumber} track=${trackNumber}`;
 
-    if (existingTrackId) {
-      // Tuple already exists — skip create. Pattern 3 still upserts
-      // translations with update:{} so locales added in a later CSV
-      // pass fill in cleanly without overwriting operator edits.
-      if (trackType && !parentSlug) {
-        await upsertPattern3Translations(existingTrackId, row);
+    if (existingTrack) {
+      if (directTitle && existingTrack.variant === trackType &&
+          existingTrack.songId === null && existingTrack.parentSongId === null) {
+        const added = translations.filter((patch) => !existingTrack.translations.some((t) => t.locale === patch.locale));
+        validateCatalogDisplay(trackLabel, row, {
+          ...existingTrack, originalLanguage: existingTrack.titleLanguage,
+        }, {}, added, [["title", "title", "title"]]);
+        if (added.length) {
+          await prisma.albumTrackTranslation.createMany({
+            data: added.map((t) => ({ albumTrackId: existingTrack.id, ...t })),
+            skipDuplicates: true,
+          });
+          const refreshed = await prisma.albumTrack.findUnique({
+            where: { id: existingTrack.id }, include: { translations: true },
+          });
+          if (refreshed) existingTrackByKey.set(key, refreshed);
+        }
       }
       continue;
     }
@@ -1257,15 +1230,19 @@ async function importSongs(rows: Record<string, string>[]) {
         );
         continue;
       }
+      const title = row.originalTitle || null;
+      const titleLanguage = resolveOriginalLanguage(row.originalLanguage);
+      validateCatalogDisplay(trackLabel, row, null, {
+        title, originalLanguage: titleLanguage,
+      }, translations, [["title", "title", "title"]]);
       createData = {
         albumId,
         discNumber,
         trackNumber,
         variant: trackType,
-        title: row.originalTitle || null,
-        titleLanguage: row.originalLanguage
-          ? resolveOriginalLanguage(row.originalLanguage)
-          : null,
+        title,
+        titleLanguage,
+        translations: { create: translations },
       };
     } else {
       // Unreachable — the allowlist guard above already rejected
@@ -1276,15 +1253,12 @@ async function importSongs(rows: Record<string, string>[]) {
       continue;
     }
 
-    const created = await prisma.albumTrack.create({ data: createData });
-    existingTrackIdByKey.set(key, created.id);
+    const created = await prisma.albumTrack.create({ data: createData, include: { translations: true } });
+    existingTrackByKey.set(key, created);
     results.push(
       `TRACK CREATED: ${albumSlug} disc=${discNumber} track=${trackNumber} (${trackType ?? "vocal"})`,
     );
 
-    if (trackType && !parentSlug) {
-      await upsertPattern3Translations(created.id, row);
-    }
   }
 
   // Second pass: finalize baseVersionId AND restore variantLabel for any
@@ -1310,7 +1284,7 @@ async function importSongs(rows: Record<string, string>[]) {
       results.push(`WARN: baseVersion not found: ${baseSlug} (for ${row.slug})`);
       continue;
     }
-    const finalVariantLabel = (row.variantLabel ?? "").trim() || null;
+    const finalVariantLabel = row.variantLabel || undefined;
     await prisma.song.update({
       where: { id: songId },
       data: { baseVersionId: baseId, variantLabel: finalVariantLabel },
@@ -1339,54 +1313,28 @@ async function importEvents(rows: Record<string, string>[]) {
     const seriesRows = rows.filter((r) => r.series_slug === slug);
     const row = seriesRows[0];
 
-    // series_{locale}_organizerName (主催 label for multi-artist series)
-    // is preserve-on-blank: an empty / missing cell becomes `undefined`,
-    // which Prisma drops from the upsert `update`, so re-importing a CSV
-    // that predates the column never wipes an admin-set translation.
-    // Unlike the series name columns (read from the first row only), the
-    // organizer is taken from the first row of the series that fills it:
-    // multi-day CSVs often carry the series columns on just one day.
-    function seriesOrganizer(locale: "ja" | "ko" | "en") {
-      for (const r of seriesRows) {
-        const v = r[`series_${locale}_organizerName`]?.trim();
-        if (v) return v;
-      }
-      return undefined;
-    }
-    function buildSeriesTranslation(locale: "ja" | "ko" | "en") {
-      const name = row[`series_${locale}_name`];
-      if (!name) return null;
-      return {
-        locale,
-        name,
-        shortName: row[`series_${locale}_shortName`] || null,
-        organizerName: seriesOrganizer(locale),
-      };
-    }
-    const translations = (["ja", "ko", "en"] as const)
-      .map(buildSeriesTranslation)
-      .filter((t) => t !== null);
-    // Locales that supply an organizer but no series name. The name is
-    // NOT NULL, so these can't create a translation row — they only
-    // patch an existing one (handled below; WARNed when there is none).
-    const organizerOnly = (["ja", "ko", "en"] as const)
-      .filter((l) => !row[`series_${l}_name`])
-      .map((l) => ({ locale: l, organizerName: seriesOrganizer(l) }))
-      .filter((t): t is { locale: "ja" | "ko" | "en"; organizerName: string } => !!t.organizerName);
+    const existing = await prisma.eventSeries.findUnique({ where: { slug }, include: { translations: true } });
+    const translations = locales.map((locale) => ({
+      locale,
+      name: row[`series_${locale}_name`] || undefined,
+      shortName: row[`series_${locale}_shortName`] || undefined,
+      organizerName: seriesRows.find((r) => r[`series_${locale}_organizerName`])?.[`series_${locale}_organizerName`],
+    })).filter(({ name, shortName, organizerName }) => name || shortName || organizerName);
 
     const artistId = row.artist_slug
       ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
-      : null;
+      : existing?.artistId ?? null;
 
-    const seriesOriginalLanguage = resolveOriginalLanguage(row.series_originalLanguage || row.originalLanguage);
+    const seriesOriginalLanguage = resolveOriginalLanguage(row.series_originalLanguage || existing?.originalLanguage || row.originalLanguage);
     const seriesSource = pickOriginalSource(translations, seriesOriginalLanguage);
     const seriesOriginals = buildOriginals(row, seriesSource, seriesOriginalLanguage, [
       { override: "series_originalName", sourceKey: "name", out: "originalName" },
       { override: "series_originalShortName", sourceKey: "shortName", out: "originalShortName" },
       { override: "series_originalDescription", sourceKey: null, out: "originalDescription" },
+      { override: "series_organizerName", sourceKey: "organizerName", out: "organizerName" },
     ]);
 
-    const existing = await prisma.eventSeries.findUnique({ where: { slug } });
+    validateCatalogDisplay(`EventSeries "${slug}"`, row, existing, seriesOriginals, translations, EVENT_NAME_FIELDS, "series_");
 
     if (existing) {
       await prisma.eventSeries.update({
@@ -1400,18 +1348,9 @@ async function importEvents(rows: Record<string, string>[]) {
       for (const t of translations) {
         await prisma.eventSeriesTranslation.upsert({
           where: { eventSeriesId_locale: { eventSeriesId: existing.id, locale: t.locale } },
-          create: { eventSeriesId: existing.id, ...t },
+          create: { eventSeriesId: existing.id, ...withRequiredName(t) },
           update: { name: t.name, shortName: t.shortName, organizerName: t.organizerName },
         });
-      }
-      for (const t of organizerOnly) {
-        const { count } = await prisma.eventSeriesTranslation.updateMany({
-          where: { eventSeriesId: existing.id, locale: t.locale },
-          data: { organizerName: t.organizerName },
-        });
-        if (count === 0) {
-          results.push(`WARN: Series ${slug} series_${t.locale}_organizerName ignored — no ${t.locale} translation row; supply series_${t.locale}_name`);
-        }
       }
       results.push(`UPDATED Series: ${slug} → ${existing.id}`);
     } else {
@@ -1424,12 +1363,9 @@ async function importEvents(rows: Record<string, string>[]) {
           hasBoard: true,
           ...seriesOriginals,
           originalName,
-          translations: translations.length ? { create: translations } : undefined,
+          translations: translations.length ? { create: translations.map(withRequiredName) } : undefined,
         },
       });
-      for (const t of organizerOnly) {
-        results.push(`WARN: Series ${slug} series_${t.locale}_organizerName ignored — no ${t.locale} translation row; supply series_${t.locale}_name`);
-      }
       results.push(`CREATED Series: ${slug} → ${series.id}`);
     }
   }
@@ -1460,68 +1396,21 @@ async function importEvents(rows: Record<string, string>[]) {
     const slug = row.event_slug;
     if (!slug) continue;
 
-    // Event translation rows: create a per-locale row whenever ANY of
-    // name / shortName / city / venue is supplied for that locale.
-    // EventTranslation.name is NOT NULL in the schema, so when the
-    // operator only supplies city/venue (a common case for events whose
-    // Korean event name hasn't been picked yet but the venue mapping
-    // exists — e.g. Niji 8th Live where the city/venue is well-known
-    // 사이타마 / 벨루나돔 but the official Korean event name is
-    // pending), we fall back to originalName (or ja_name as a final
-    // fallback) so the row passes the NOT NULL constraint while still
-    // surfacing the city/venue translation to the locale page.
-    function buildEventTranslation(locale: "ja" | "ko" | "en") {
-      const name = row[`${locale}_name`];
-      const shortName = row[`${locale}_shortName`];
-      const city = row[`${locale}_city`];
-      const venue = row[`${locale}_venue`];
-      const organizerName = row[`${locale}_organizerName`]?.trim();
-      if (!name && !shortName && !city && !venue && !organizerName) return null;
-      return {
-        locale,
-        // Name fallback hierarchy: locale-specific → originalName → ja_name.
-        // ja_name fallback is the bottom rung because operator-authored
-        // events.csv rows that omit ja_name (Latin-only originalName)
-        // would otherwise leave the locale row with an empty name when
-        // ja_name itself is the fallback.
-        name: name || row.originalName || row.ja_name || "",
-        shortName: shortName || null,
-        city: city || null,
-        venue: venue || null,
-        // Preserve-on-blank (undefined → Prisma skips the column on
-        // update), unlike city/venue: organizer translations are mostly
-        // set in the admin form, and older events.csv files don't carry
-        // the column at all.
-        organizerName: organizerName || undefined,
-      };
-    }
-    const jaTranslation = buildEventTranslation("ja");
-    const koTranslation = buildEventTranslation("ko");
-    const enTranslation = buildEventTranslation("en");
-    const translations = [jaTranslation, koTranslation, enTranslation].filter((t) => t !== null);
-    // The name fallback in buildEventTranslation exists only to satisfy
-    // NOT NULL on a NEW row. On re-import, a row that carries only
-    // city / venue / organizer for a locale must not overwrite the
-    // existing translated name with originalName / ja_name (or "").
-    const explicitNameLocales = new Set(
-      (["ja", "ko", "en"] as const).filter((l) => row[`${l}_name`])
-    );
-    // Locales where the row carries any of the clobber-on-blank fields
-    // (name / shortName / city / venue). Before organizerName existed,
-    // a locale with none of them produced no translation at all, so a
-    // re-import never touched that locale's shortName / city / venue.
-    // An organizer-only locale must keep that behaviour: it patches
-    // organizerName and nothing else, instead of writing null over the
-    // existing shortName / city / venue.
-    const clobberFieldLocales = new Set(
-      (["ja", "ko", "en"] as const).filter(
-        (l) => row[`${l}_name`] || row[`${l}_shortName`] || row[`${l}_city`] || row[`${l}_venue`]
-      )
+    const existing = await prisma.event.findUnique({ where: { slug }, include: { translations: true } });
+    const translations = locales.map((locale) => ({
+      locale,
+      name: row[`${locale}_name`] || undefined,
+      shortName: row[`${locale}_shortName`] || undefined,
+      city: row[`${locale}_city`] || undefined,
+      venue: row[`${locale}_venue`] || undefined,
+      organizerName: row[`${locale}_organizerName`] || undefined,
+    })).filter(({ name, shortName, city, venue, organizerName }) =>
+      name || shortName || city || venue || organizerName
     );
 
     const seriesId = row.series_slug
       ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
-      : null;
+      : existing?.eventSeriesId ?? null;
 
     // Resolve bdAlbumId. Three cases:
     //   - row.bdAlbum_slug missing / empty → keep existing value on update,
@@ -1532,16 +1421,19 @@ async function importEvents(rows: Record<string, string>[]) {
     const bdAlbumSlugTrimmed = (row.bdAlbum_slug ?? "").trim();
     const bdAlbumIdResolved = bdAlbumSlugTrimmed ? bdAlbumIdBySlug.get(bdAlbumSlugTrimmed) ?? null : null;
 
-    const eventOriginalLanguage = resolveOriginalLanguage(row.originalLanguage);
+    const eventOriginalLanguage = resolveOriginalLanguage(row.originalLanguage || existing?.originalLanguage);
     const eventSource = pickOriginalSource(translations, eventOriginalLanguage);
     const eventOriginals = buildOriginals(row, eventSource, eventOriginalLanguage, [
       { override: "originalName", sourceKey: "name", out: "originalName" },
       { override: "originalShortName", sourceKey: "shortName", out: "originalShortName" },
       { override: "originalCity", sourceKey: "city", out: "originalCity" },
       { override: "originalVenue", sourceKey: "venue", out: "originalVenue" },
+      { override: "organizerName", sourceKey: "organizerName", out: "organizerName" },
     ]);
 
-    const existing = await prisma.event.findUnique({ where: { slug } });
+    validateCatalogDisplay(`Event "${slug}"`, row, existing, eventOriginals, translations, [
+      ...EVENT_NAME_FIELDS, ["originalCity", "city"], ["originalVenue", "venue"],
+    ]);
 
     // engagementOpensAt (ISO UTC, optional): per-event override for the
     // Wishlist / Predicted Setlist open window. Same preserve-on-blank
@@ -1601,12 +1493,12 @@ async function importEvents(rows: Record<string, string>[]) {
         data: {
           type: (row.event_type as "concert" | "festival" | "fan_meeting" | "showcase" | "virtual_live") || undefined,
           eventSeriesId: seriesId,
-          date: row.date ? new Date(row.date) : null,
+          date: row.date ? new Date(row.date) : row.date === "" ? null : undefined,
           // startTime is NOT NULL in the schema, so only overwrite when
           // the CSV row actually carries a value — missing/blank means
           // "keep the existing value", not "clear it".
           ...(row.startTime ? { startTime: new Date(row.startTime) } : {}),
-          country: row.country || null,
+          country: row.country === undefined ? undefined : row.country || null,
           // bdAlbumId: only overwrite when the CSV row supplied a slug
           // that actually resolved. Missing/blank column + unresolved
           // slug both preserve the existing DB value so admin-UI edits
@@ -1620,12 +1512,12 @@ async function importEvents(rows: Record<string, string>[]) {
       for (const t of translations) {
         await prisma.eventTranslation.upsert({
           where: { eventId_locale: { eventId: existing.id, locale: t.locale } },
-          create: { eventId: existing.id, ...t },
+          create: { eventId: existing.id, ...withRequiredName(t) },
           update: {
-            ...(explicitNameLocales.has(t.locale) ? { name: t.name } : {}),
-            ...(clobberFieldLocales.has(t.locale)
-              ? { shortName: t.shortName, city: t.city, venue: t.venue }
-              : {}),
+            name: t.name,
+            shortName: t.shortName,
+            city: t.city,
+            venue: t.venue,
             organizerName: t.organizerName,
           },
         });
@@ -1644,14 +1536,14 @@ async function importEvents(rows: Record<string, string>[]) {
           status: "scheduled",
           eventSeriesId: seriesId,
           bdAlbumId: bdAlbumIdResolved,
-          date: row.date ? new Date(row.date) : null,
+          date: row.date ? new Date(row.date) : row.date === "" ? null : undefined,
           startTime: new Date(row.startTime),
           engagementOpensAt: engagementOpensAt ?? null,
           boardEnabled: boardEnabled ?? false,
-          country: row.country || null,
+          country: row.country === undefined ? undefined : row.country || null,
           ...eventOriginals,
           originalName,
-          translations: translations.length ? { create: translations } : undefined,
+          translations: translations.length ? { create: translations.map(withRequiredName) } : undefined,
         },
       });
       results.push(`CREATED: ${slug} → ${event.id}`);
