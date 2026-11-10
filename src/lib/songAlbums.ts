@@ -21,6 +21,7 @@
 // arrays. Sharing the exact same shape across both surfaces avoids
 // the "tab badge says 5, sidebar says 4" divergence that earlier
 // Album-page work hit.
+import type { PurchaseListing } from "@/lib/purchaseAvailability";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
 
 // Structural input shape. Stays narrow (only fields the transformer
@@ -51,10 +52,8 @@ export type SongAlbumsAlbum = {
       translations: Array<{ locale: string; name: string }>;
     };
   }>;
-  listings: Array<{
-    status: string;
-    bonuses: Array<unknown>;
-  }>;
+  listings: PurchaseListing[];
+  _count?: { bdEvents: number };
 };
 
 export type SongAlbumRow = {
@@ -138,6 +137,6 @@ export function getSongAlbums(
     discNumber: track.discNumber,
     trackNumber: track.trackNumber,
     isCanonical: i === 0,
-    activeBonusCount: countActiveBonuses(track.album.listings),
+    activeBonusCount: countActiveBonuses(track.album.listings, (track.album._count?.bdEvents ?? 0) > 0),
   }));
 }

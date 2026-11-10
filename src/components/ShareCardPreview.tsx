@@ -258,6 +258,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
       <div
         ref={ref}
         data-share-card=""
+        data-testid="personal-share-card"
         style={{
           width: CARD_CAPTURE_WIDTH_PX,
           background: P.surface,
@@ -374,6 +375,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
               <span
                 {...captureShift("score-percent")}
+                data-testid="personal-share-primary-score"
                 style={{ fontSize: 74, fontWeight: 500, lineHeight: 1, letterSpacing: "-4px", color: P.accent }}
               >
                 {predictions.length}
@@ -385,6 +387,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
           ) : total > 0 ? (
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
               <span
+                data-testid="personal-share-primary-score"
                 {...captureShift("score-percent")}
                 style={{ fontSize: 74, fontWeight: 500, lineHeight: 1, letterSpacing: "-4px", color: P.accent }}
               >

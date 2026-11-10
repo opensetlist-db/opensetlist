@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
 
 export type BonusFormPayload = {
+  startsAt: string | null;
+  endsAt: string | null;
+  sourceUrl: string | null;
+  bonusImageUrl: string | null;
+  originalBonusDescription: string | null;
   listingId: string;
   originalBonusType: string;
   originalLanguage: string;
@@ -45,10 +50,17 @@ export default function AlbumBonusFormModal({
       setTranslations((prev) => [...prev, { locale: next, bonusType: null }]);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
+    const form = new FormData(e.currentTarget);
+    const value = (name: string) => String(form.get(name) ?? "").trim() || null;
     const payload: BonusFormPayload = {
+      startsAt: value("startsAt"),
+      endsAt: value("endsAt"),
+      sourceUrl: value("sourceUrl"),
+      bonusImageUrl: value("bonusImageUrl"),
+      originalBonusDescription: value("originalBonusDescription"),
       listingId,
       originalBonusType: originalBonusType.trim(),
       originalLanguage,
@@ -67,7 +79,13 @@ export default function AlbumBonusFormModal({
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          bonusImageUrl: initialData?.bonusImageUrl === payload.bonusImageUrl ? undefined : payload.bonusImageUrl,
+          removedTranslationLocales: initialData?.translations
+            .filter((row) => !payload.translations.some((entry) => entry.locale === row.locale))
+            .map((row) => row.locale),
+        }),
       });
       if (res.ok) {
         router.refresh();
@@ -94,6 +112,35 @@ export default function AlbumBonusFormModal({
           {initialData?.id ? "특전 편집" : "새 특전"}
         </h2>
 
+        <fieldset className="my-4 space-y-3">
+          <legend className="font-medium">구매 안내 정보</legend>
+          <p className="text-xs text-zinc-600">시간대가 포함된 확정 시각만 입력하세요. 날짜만 확인된 경우 근거 URL을 남기고 시각은 비워 두세요.</p>
+            <label className="block text-sm">
+              시작 시각
+              <input name="startsAt" type="text" defaultValue={initialData?.startsAt ?? ""}
+                placeholder="2026-11-09T10:00:00+09:00" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              종료 시각
+              <input name="endsAt" type="text" defaultValue={initialData?.endsAt ?? ""}
+                placeholder="2026-11-30T23:59:00+09:00" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              공식 안내 / 근거 URL
+              <input name="sourceUrl" type="text" defaultValue={initialData?.sourceUrl ?? ""}
+                placeholder="https://" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              특전 이미지 URL
+              <input name="bonusImageUrl" type="text" defaultValue={initialData?.bonusImageUrl ?? ""}
+                placeholder="R2 또는 Amazon CDN" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              특전 설명 (원어)
+              <input name="originalBonusDescription" type="text" defaultValue={initialData?.originalBonusDescription ?? ""}
+                placeholder="" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+        </fieldset>
         <div className="grid grid-cols-[1fr_auto] gap-4">
           <div>
             <label className="mb-1 block text-sm font-medium">

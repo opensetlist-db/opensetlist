@@ -162,7 +162,8 @@ export function SetlistSection({
   const started = startedFor === eventId;
   const showTabs = canPredictNow
     ? storedHasPredictions || started
-    : status !== "upcoming" && storedHasPredictions;
+    : status !== "upcoming" &&
+      (storedHasPredictions || (started && readHasPredictions(eventId)));
   const defaultTab: SetlistTab = canPredictNow ? "predicted" : "actual";
   const renderedTab: SetlistTab = !showTabs
     ? "actual"

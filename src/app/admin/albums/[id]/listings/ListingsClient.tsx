@@ -8,18 +8,8 @@ import AlbumListingFormModal, {
 } from "@/components/admin/AlbumListingFormModal";
 import { isSafeExternalUrl } from "@/lib/utils";
 
-export type ListingRow = {
+export type ListingRow = Omit<ListingInitial, "albumId" | "id"> & {
   id: string;
-  originalStoreName: string;
-  originalEditionLabel: string | null;
-  originalLanguage: string;
-  productUrl: string | null;
-  status: "active" | "sold_out" | "ended" | "unknown";
-  translations: {
-    locale: string;
-    storeName: string | null;
-    editionLabel: string | null;
-  }[];
   bonusCount: number;
 };
 

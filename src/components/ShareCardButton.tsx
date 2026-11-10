@@ -129,6 +129,7 @@ export function ShareCardButton({
             before primary CTA" the wishlist-button-polish mockup
             calls for. */}
         <PrimaryButton
+          testId="personal-share-open"
           onClick={() => {
             // GA4 Phase 1B: include `mode` so post-analysis can
             // segment the share funnel by lifecycle stage —

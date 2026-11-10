@@ -437,7 +437,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
           albumStoreBonusTranslation: { createMany: vi.fn() },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
-        return fn(tx);
+        return fn({ ...tx, $queryRaw: vi.fn().mockResolvedValue([]) });
       },
     );
 
@@ -519,7 +519,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
           albumStoreBonusTranslation: { createMany: vi.fn() },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
-        return fn(tx);
+        return fn({ ...tx, $queryRaw: vi.fn().mockResolvedValue([]) });
       },
     );
 
@@ -592,7 +592,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
           albumStoreBonusTranslation: { createMany: createManyBonusTranslation },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
-        return fn(tx);
+        return fn({ ...tx, $queryRaw: vi.fn().mockResolvedValue([]) });
       },
     );
 
@@ -642,7 +642,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
           albumStoreBonusTranslation: { createMany: vi.fn() },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
-        return fn(tx);
+        return fn({ ...tx, $queryRaw: vi.fn().mockResolvedValue([]) });
       },
     );
 
@@ -710,7 +710,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
           albumStoreBonusTranslation: { createMany: vi.fn() },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
-        return fn(tx);
+        return fn({ ...tx, $queryRaw: vi.fn().mockResolvedValue([]) });
       },
     );
 
@@ -792,7 +792,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
           albumStoreBonusTranslation: { createMany: createManyBonusTranslation },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
-        return fn(tx);
+        return fn({ ...tx, $queryRaw: vi.fn().mockResolvedValue([]) });
       },
     );
 
@@ -869,7 +869,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
           albumStoreBonusTranslation: { createMany: createManyBonusTranslation },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
-        return fn(tx);
+        return fn({ ...tx, $queryRaw: vi.fn().mockResolvedValue([]) });
       },
     );
 

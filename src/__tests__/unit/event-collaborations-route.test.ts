@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const db = vi.hoisted(() => ({
   event: { findFirst: vi.fn(), update: vi.fn() },
-  artist: { findMany: vi.fn(), count: vi.fn() },
+  artist: { findMany: vi.fn() },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -28,7 +29,7 @@ beforeEach(() => {
   vi.mocked(verifyAdminAPI).mockResolvedValue(null);
   db.event.findFirst.mockResolvedValue({ id: BigInt(107), collaborationArtists: [{ artistId: BigInt(41) }] });
   db.event.update.mockResolvedValue({ id: BigInt(107) });
-  db.artist.count.mockImplementation(async ({ where }: { where: { id: { in: bigint[] } } }) => where.id.in.length);
+  db.$queryRaw.mockResolvedValue([{ id: BigInt(41) }]);
   db.artist.findMany.mockResolvedValue([
     { id: BigInt(41), originalName: "AiScReam", translations: [] },
     { id: BigInt(82), originalName: "GKSS", translations: [{ name: "GKSS" }] },
@@ -58,9 +59,11 @@ describe("event collaboration settings", () => {
   it("serializes atomic replacement under the event lock, then invalidates its cache", async () => {
     expect((await PATCH(request({ artistIds: ["41"] }), props())).status).toBe(200);
     expect(lockEvent).toHaveBeenCalledWith(db, BigInt(107));
-    expect(db.artist.count).toHaveBeenCalledWith({ where: {
-      id: { in: [BigInt(41)] }, isDeleted: false, isSideProject: true, parentArtistId: null,
-    } });
+    const [sql, selected] = db.$queryRaw.mock.calls[0];
+    expect(sql.join(" ")).toContain('AND NOT "isDeleted" AND "isSideProject" AND "parentArtistId" IS NULL');
+    expect(sql.join(" ")).toContain("ORDER BY id FOR SHARE");
+    expect(selected.values).toEqual([BigInt(41)]);
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.event.update.mock.invocationCallOrder[0]);
     expect(db.event.update).toHaveBeenCalledWith({
       where: { id: BigInt(107) },
       data: { collaborationArtists: { deleteMany: {}, create: [{ artistId: BigInt(41) }] } },
@@ -87,7 +90,7 @@ describe("event collaboration settings", () => {
 
   it("rejects deleted, non-root or non-collaboration artists without replacing existing assignments", async () => {
     expect((await PATCH(request({ artistIds: ["41"] }), props())).status).toBe(200);
-    db.artist.count.mockResolvedValue(0);
+    db.$queryRaw.mockResolvedValue([]);
     const response = await PATCH(request({ artistIds: ["82"] }), props());
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: "invalid_collaboration" });

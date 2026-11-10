@@ -61,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: RouteProps) {
   let classifications;
   if (job.albumId) {
     const listings = await prisma.albumStoreListing.findMany({
-      where: { albumId: job.albumId },
+      where: { albumId: job.albumId, optionKey: "" },
       select: {
         id: true,
         originalStoreName: true,

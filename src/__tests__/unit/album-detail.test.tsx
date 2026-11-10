@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import type { ReactElement } from "react";
 
 // Translators echo the key (plus vars) so assertions read the contract,
@@ -172,6 +172,12 @@ function listing(over: Record<string, unknown>): Any {
     originalStoreName: "Store",
     originalEditionLabel: null,
     productUrl: "https://example.com/p",
+    startsAt: null,
+    endsAt: null,
+    storeKey: null,
+    officialOrder: null,
+    includesPerformanceVideo: true,
+    isBonusOption: true,
     translations: [],
     bonuses: [],
     ...over,
@@ -180,11 +186,14 @@ function listing(over: Record<string, unknown>): Any {
 const bonus = (id: string, type: string): Any => ({
   id,
   originalBonusType: type,
+  startsAt: null,
+  endsAt: null,
+  endedAt: null,
   translations: [],
 });
 
 describe("AlbumPurchasePanel", () => {
-  it("summarises bonuses, links only current safe URLs, collapses ended stores", async () => {
+  it("shows current bonuses and safe purchase links without an ended archive", async () => {
     const el = await AlbumPurchasePanel({
       locale: "ko",
       album: {
@@ -192,15 +201,16 @@ describe("AlbumPurchasePanel", () => {
         listings: [
           listing({ id: "a", originalStoreName: "Amazon", bonuses: [bonus("1", "Sleeve")] }),
           listing({ id: "b", originalStoreName: "Bad URL", productUrl: "javascript:alert(1)", bonuses: [bonus("2", "Card")] }),
-          listing({ id: "c", originalStoreName: "Sold out", status: "sold_out" }),
+          listing({ id: "c", originalStoreName: "Sold out", status: "sold_out", bonuses: [bonus("5", "Sticker")] }),
           listing({ id: "d", originalStoreName: "Gone", status: "ended", bonuses: [bonus("3", "Poster"), bonus("4", "Badge")] }),
         ],
       } as Any,
     });
     const { container } = render(el as ReactElement);
-    expect(screen.getByText('Album.bonus.summary.total:{"count":4}')).toBeTruthy();
-    expect(screen.getByText('Album.bonus.summary.current:{"count":2}')).toBeTruthy();
-    expect(screen.getByText('Album.bonus.summary.ended:{"count":2}')).toBeTruthy();
+    expect(screen.getByText("Sleeve")).toBeTruthy();
+    expect(screen.getByText("Sticker")).toBeTruthy();
+    expect(screen.queryByText("Poster")).toBeNull();
+    expect(screen.queryByText("Card")).toBeNull();
 
     const buyLinks = container.querySelectorAll('a[target="_blank"]');
     // Amazon + sold_out (still "current"); never the javascript: URL or the ended store.
@@ -210,10 +220,7 @@ describe("AlbumPurchasePanel", () => {
       expect(a.getAttribute("href")).toBe("https://example.com/p");
     });
 
-    const ended = container.querySelector("details")!;
-    expect(ended.hasAttribute("open")).toBe(false);
-    expect(within(ended).getByText("Gone")).toBeTruthy();
-    expect(within(ended).queryByRole("link")).toBeNull();
+    expect(container.querySelector("details")).toBeNull();
 
     fireEvent.click(buyLinks[0]);
     expect(trackStoreClick).toHaveBeenCalledWith(

@@ -297,6 +297,11 @@ Branches:
              still go feature/* → dev first, then get merged into it.
              Remove this entry and the feature/redesign filters in
              .github/workflows/ and .coderabbit.yaml once that final PR merges.
+  feature/event-og-renewal — integration branch for event share-card renewal.
+             Event OG task PRs start from and target this branch. Collect
+             implementation and integration QA here, then open one PR to dev.
+             Production rollout follows the existing dev → main release flow.
+             The owner performs every merge, including task integration merges.
 
 Release flow:
   feature/* → PR → dev → test on Preview → PR → main (Vercel deploys production on this merge) → git tag v*.*.* (triggers migrate-prod + release record)

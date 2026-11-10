@@ -141,11 +141,7 @@ describe("POST /api/admin/album-listings", () => {
     expect(call.data.productUrl).toBeNull();
   });
 
-  it("does NOT set the dropped lifecycle columns on create", async () => {
-    // The handoff drops sourceUrl/startsAt/endsAt/lastVerifiedAt from
-    // the admin form. A POST that omits them shouldn't end up writing
-    // any of those keys — Prisma's default-null handles the schema
-    // side, and we want to confirm the route isn't sneaking them in.
+  it("leaves omitted lifecycle fields unset on create", async () => {
     (prisma.albumStoreListing.create as ReturnType<typeof vi.fn>).mockResolvedValue(
       { id: "uuid-1", albumId: BigInt(1), originalStoreName: "amazon_jp" },
     );
@@ -154,7 +150,7 @@ describe("POST /api/admin/album-listings", () => {
     );
     const call = (prisma.albumStoreListing.create as ReturnType<typeof vi.fn>)
       .mock.calls[0][0];
-    expect("sourceUrl" in call.data).toBe(false);
+    expect(call.data.sourceUrl).toBeUndefined();
     expect("startsAt" in call.data).toBe(false);
     expect("endsAt" in call.data).toBe(false);
     expect("lastVerifiedAt" in call.data).toBe(false);
@@ -184,23 +180,17 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
   });
 
   it("returns 404 when listing not found", async () => {
-    (
-      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(null);
+    (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("missing", { code: "P2025", clientVersion: "test" }),
+    );
     const res = await PATCH_LISTING(
       jsonRequest("http://x/api/admin/album-listings/list-uuid", baseValid, "PATCH") as never,
       { params },
     );
     expect(res.status).toBe(404);
-    expect(
-      prisma.albumStoreListingTranslation.deleteMany,
-    ).not.toHaveBeenCalled();
   });
 
-  it("replaces translations delete-then-create on update", async () => {
-    (
-      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ id: "list-uuid" });
+  it("updates locale overrides without rebuilding retained rows", async () => {
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "list-uuid",
       translations: [],
@@ -210,31 +200,22 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
         "http://x/api/admin/album-listings/list-uuid",
         {
           ...baseValid,
-          translations: [{ locale: "ko", storeName: "아마존 재팬", editionLabel: null }],
+          translations: [{ locale: "ko", storeName: "아마존 재팬" }],
         },
         "PATCH",
       ) as never,
       { params },
     );
     expect(res.status).toBe(200);
-    expect(
-      prisma.albumStoreListingTranslation.deleteMany,
-    ).toHaveBeenCalledWith({ where: { listingId: "list-uuid" } });
     const updateCall = (
       prisma.albumStoreListing.update as ReturnType<typeof vi.fn>
     ).mock.calls[0][0];
-    expect(updateCall.data.translations.create).toEqual([
-      { locale: "ko", storeName: "아마존 재팬", editionLabel: null },
+    expect(updateCall.data.translations.upsert.map((row: { update: unknown }) => row.update)).toEqual([
+      { locale: "ko", storeName: "아마존 재팬", editionLabel: undefined },
     ]);
   });
 
-  it("does NOT touch the dropped lifecycle columns on update", async () => {
-    // Per the handoff, PATCH must preserve pre-existing values in
-    // sourceUrl/startsAt/endsAt/lastVerifiedAt that may have been
-    // set by CSV import or an earlier UI iteration.
-    (
-      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ id: "list-uuid" });
+  it("preserves omitted lifecycle fields on update", async () => {
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "list-uuid",
       translations: [],
@@ -246,7 +227,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
     const updateCall = (
       prisma.albumStoreListing.update as ReturnType<typeof vi.fn>
     ).mock.calls[0][0];
-    expect("sourceUrl" in updateCall.data).toBe(false);
+    expect(updateCall.data.sourceUrl).toBeUndefined();
     expect("startsAt" in updateCall.data).toBe(false);
     expect("endsAt" in updateCall.data).toBe(false);
     expect("lastVerifiedAt" in updateCall.data).toBe(false);
@@ -255,9 +236,6 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
   it("preserves existing translations when body omits the field", async () => {
     // CR finding: a thin client that PATCHes only the URL shouldn't
     // wipe per-locale labels.
-    (
-      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ id: "list-uuid" });
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue(
       { id: "list-uuid", translations: [] },
     );
@@ -267,11 +245,6 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
       { params },
     );
     expect(res.status).toBe(200);
-    // The deleteMany of translations is the destructive step — must
-    // be skipped when the field is missing.
-    expect(
-      prisma.albumStoreListingTranslation.deleteMany,
-    ).not.toHaveBeenCalled();
     const updateCall = (
       prisma.albumStoreListing.update as ReturnType<typeof vi.fn>
     ).mock.calls[0][0];
@@ -281,9 +254,6 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
   it("rejects 400 when translations is a non-array (CR follow-up)", async () => {
     // Without this guard, the parser falls through to [] and the
     // deleteMany silently wipes existing rows.
-    (
-      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ id: "list-uuid" });
     const res = await PATCH_LISTING(
       jsonRequest(
         "http://x/api/admin/album-listings/list-uuid",
@@ -293,18 +263,12 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
       { params },
     );
     expect(res.status).toBe(400);
-    expect(
-      prisma.albumStoreListingTranslation.deleteMany,
-    ).not.toHaveBeenCalled();
     expect(prisma.albumStoreListing.update).not.toHaveBeenCalled();
   });
 
   it("wipes translations on explicit empty array (full-replace)", async () => {
     // Distinguish "field missing" (preserve) from "[] supplied"
     // (full-replace clear).
-    (
-      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ id: "list-uuid" });
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue(
       { id: "list-uuid", translations: [] },
     );
@@ -317,15 +281,12 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
       { params },
     );
     expect(res.status).toBe(200);
-    expect(
-      prisma.albumStoreListingTranslation.deleteMany,
-    ).toHaveBeenCalledWith({ where: { listingId: "list-uuid" } });
+    expect(prisma.albumStoreListing.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ translations: { deleteMany: {}, upsert: [] } }),
+    }));
   });
 
   it("maps P2025 → 404 (concurrent DELETE race)", async () => {
-    (
-      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ id: "list-uuid" });
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("vanished", {
         code: "P2025",

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { parseJsonBody } from "@/lib/admin-input";
 import { prisma } from "@/lib/prisma";
@@ -71,10 +72,14 @@ export async function PATCH(request: NextRequest, { params }: Props) {
       await lockEvent(tx, eventId);
       const event = await tx.event.findFirst({ where: { id: eventId, isDeleted: false }, select: { id: true } });
       if (!event) return "missing";
-      const eligible = await tx.artist.count({
-        where: { id: { in: artistIds }, isDeleted: false, isSideProject: true, parentArtistId: null },
-      });
-      if (eligible !== artistIds.length) return "invalid";
+      // Hold eligibility stable through the assignment write, including soft deletes and reparenting.
+      const eligible = artistIds.length === 0 ? [] : await tx.$queryRaw<{ id: bigint }[]>`
+        SELECT id FROM "Artist"
+        WHERE id IN (${Prisma.join(artistIds)})
+          AND NOT "isDeleted" AND "isSideProject" AND "parentArtistId" IS NULL
+        ORDER BY id FOR SHARE
+      `;
+      if (eligible.length !== artistIds.length) return "invalid";
       await tx.event.update({
         where: { id: eventId },
         data: { collaborationArtists: { deleteMany: {}, create: artistIds.map((artistId) => ({ artistId })) } },

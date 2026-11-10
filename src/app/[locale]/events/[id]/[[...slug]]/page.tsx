@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -217,10 +218,12 @@ async function fetchEvent(id: bigint, locale: string) {
             },
           },
           listings: {
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             include: {
               translations: { where: localeFilter },
               bonuses: {
                 include: { translations: { where: localeFilter } },
+                orderBy: [{ createdAt: "asc" }, { id: "asc" }],
               },
             },
           },
@@ -813,6 +816,8 @@ export default async function EventPage({ params }: Props) {
   // computation and the header-badge computation). Pass `referenceNow`
   // through to the second call below so the page is internally
   // consistent.
+  // Render BD events per request so expired options cannot remain in cached HTML.
+  if (event.bdAlbum) await connection();
   const referenceNow = new Date();
   const resolvedStatus = getEventStatus(event, referenceNow);
   const isOngoing = resolvedStatus === "ongoing";
