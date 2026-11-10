@@ -202,8 +202,8 @@ describe("AlbumPurchasePanel", () => {
         listings: [
           listing({ id: "a", originalStoreName: "Amazon", bonuses: [bonus("1", "Sleeve")] }),
           listing({ id: "b", originalStoreName: "Bad URL", productUrl: "javascript:alert(1)", bonuses: [bonus("2", "Card")] }),
-          listing({ id: "c", originalStoreName: "Sold out", status: "sold_out", bonuses: [bonus("5", "Sticker")] }),
-          listing({ id: "e", originalStoreName: "Basic", isBonusOption: false }),
+          listing({ id: "c", originalStoreName: "A-on STORE Powered by A!SMART", storeKey: "a-on store powered by a!smart", status: "sold_out", bonuses: [bonus("5", "Sticker")] }),
+          listing({ id: "e", originalStoreName: "Basic", storeKey: "https://example.com/private?q=1", isBonusOption: false }),
           listing({ id: "d", originalStoreName: "Gone", status: "ended", bonuses: [bonus("3", "Poster"), bonus("4", "Badge")] }),
         ],
       } as Any,
@@ -226,11 +226,15 @@ describe("AlbumPurchasePanel", () => {
 
     fireEvent.click(buyLinks[0]);
     expect(trackStoreClick).toHaveBeenCalledWith(
-      expect.objectContaining({ albumId: "135", albumSlug: "dream", surface: "album_page", isAffiliate: false, purchaseOption: "with_bonus" }),
+      expect.objectContaining({ albumId: "135", albumSlug: "dream", surface: "album_page", isAffiliate: false, purchaseOption: "with_bonus", storeKey: "amazon_jp" }),
+    );
+    fireEvent.click(screen.getByRole("link", { name: /A!SMART/ }));
+    expect(trackStoreClick).toHaveBeenLastCalledWith(
+      expect.objectContaining({ storeKey: "a-on store powered by a!smart" }),
     );
     fireEvent.click(screen.getByRole("link", { name: /Basic/ }));
     expect(trackStoreClick).toHaveBeenLastCalledWith(
-      expect.objectContaining({ albumId: "135", purchaseOption: "without_bonus" }),
+      expect.objectContaining({ albumId: "135", purchaseOption: "without_bonus", storeKey: "other" }),
     );
   });
 
