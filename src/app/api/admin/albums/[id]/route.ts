@@ -30,7 +30,7 @@ class CoverConflict extends Error {}
  *     labelName?: string | null,
  *     imageUrl?: string | null,          // omit = cover untouched
  *     expectedImageUrl?: string | null, // required with imageUrl
- *     translations?: { locale, title }[],
+ *     translations?: { locale, title, sameSource?: string }[],
  *     artistIds?: (string | number)[],
  *   }
  *   → 200 { ...album }
@@ -119,7 +119,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         translations: [...finalTranslations.values()],
       };
       const titleChanged = albumTitleChanged(exists, nextTitle);
-      if (titleChanged) {
+      if (titleChanged || translations?.some((row) => row.sameSource)) {
         const sourceChanged = exists.originalTitle !== nextTitle.originalTitle ||
           exists.originalLanguage !== nextTitle.originalLanguage;
         const issues = albumTitleIssues(nextTitle, sourceChanged ? translations ?? [] : undefined);
@@ -139,10 +139,10 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
           ...info,
           translations: translations && titleChanged ? {
             deleteMany: { locale: { in: removedLocales } },
-            upsert: translations.filter((row) => row.title).map((row) => ({
-              where: { albumId_locale: { albumId, locale: row.locale } },
-              create: row,
-              update: { title: row.title },
+            upsert: translations.filter((row) => row.title).map(({ locale, title }) => ({
+              where: { albumId_locale: { albumId, locale } },
+              create: { locale, title },
+              update: { title },
             })),
           } : undefined,
           artists:

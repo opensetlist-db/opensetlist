@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     const album = await prisma.album.create({
       data: {
         slug, type, originalTitle, originalLanguage, releaseDate, labelName,
-        translations: { create: translations },
+        translations: { create: translations.map(({ locale, title }) => ({ locale, title })) },
         artists: { create: artistIds.map((artistId) => ({ artistId })) },
       },
       select: { id: true },

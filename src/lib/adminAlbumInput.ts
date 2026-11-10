@@ -59,7 +59,7 @@ export function parseAlbumInput(body: Record<string, unknown>) {
     labelName = typeof body.labelName === "string" ? body.labelName.trim() || null : null;
   }
 
-  let translations: { locale: string; title: string }[] | undefined;
+  let translations: { locale: string; title: string; sameSource?: string }[] | undefined;
   if (body.translations !== undefined) {
     if (!Array.isArray(body.translations)) {
       throw new AlbumInputError("translations 필드는 배열이어야 합니다.");
@@ -72,9 +72,13 @@ export function parseAlbumInput(body: Record<string, unknown>) {
       }
       const locale = row.locale.trim();
       const title = row.title.trim();
+      if (row.sameSource !== undefined && typeof row.sameSource !== "string") {
+        throw new AlbumInputError("동일 표기 출처는 URL로 입력해 주세요.");
+      }
       if (seen.has(locale)) throw new AlbumInputError(`중복된 앨범 번역 언어입니다 (${locale}).`);
       seen.add(locale);
-      translations.push({ locale, title });
+      const sameSource = row.sameSource?.trim();
+      translations.push(sameSource ? { locale, title, sameSource } : { locale, title });
     }
   }
 

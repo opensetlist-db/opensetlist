@@ -6,9 +6,10 @@ import AlbumCoverEditor, { type CoverProvenance } from "./AlbumCoverEditor";
 import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
 import { ALBUM_TYPES } from "@/lib/albumConstants";
 import { albumTitleIssues } from "@/lib/albumTitlePolicy";
+import { resolveDisplayPair } from "@/lib/display";
 import { UnlistedArtistOption } from "@/components/admin/artistPicker";
 
-type Translation = { locale: string; title: string };
+type Translation = { locale: string; title: string; sameSource?: string };
 
 type AlbumFormProps = {
   initialData: {
@@ -126,7 +127,9 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
     value: string,
   ) {
     setTranslations((prev) =>
-      prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)),
+      prev.map((t, i) => i !== index ? t : {
+        ...t, sameSource: undefined, [field]: value,
+      }),
     );
   }
   function addTranslation() {
@@ -153,8 +156,8 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
       releaseDate: releaseDate || null,
       labelName: labelName.trim() || null,
       // imageUrl deliberately absent: the server leaves the cover alone.
-      translations: translations.flatMap(({ locale, title }) =>
-        title.trim() ? [{ locale, title: title.trim() }] : [],
+      translations: translations.flatMap(({ locale, title, sameSource }) =>
+        title.trim() ? [{ locale, title: title.trim(), sameSource: sameSource?.trim() || undefined }] : [],
       ),
       artistIds,
     };
@@ -163,10 +166,10 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
     const existingTitles = new Map(initialData.translations.map((row) => [row.locale, row.title.trim()]));
     const nextLocales = new Set(next.translations.map((row) => row.locale));
     const translationEdits = next.translations.filter(
-      (row) => sourceChanged || row.title !== existingTitles.get(row.locale),
+      (row) => sourceChanged || row.sameSource || row.title !== existingTitles.get(row.locale),
     );
     for (const [locale, title] of existingTitles) {
-      if (title && !nextLocales.has(locale)) translationEdits.push({ locale, title: "" });
+      if (title && !nextLocales.has(locale)) translationEdits.push({ locale, title: "", sameSource: undefined });
     }
     if (creating || sourceChanged || translationEdits.length) {
       const issues = albumTitleIssues(next);
@@ -227,7 +230,10 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
             <input
               id={`${infoFormId}-title`}
               value={originalTitle}
-              onChange={(e) => setOriginalTitle(e.target.value)}
+              onChange={(e) => {
+                setOriginalTitle(e.target.value);
+                setTranslations((rows) => rows.map((row) => ({ ...row, sameSource: undefined })));
+              }}
               className="w-full rounded border border-zinc-300 px-3 py-2"
               required
             />
@@ -236,7 +242,10 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
             <label className="mb-1 block text-sm font-medium">원어</label>
             <select
               value={originalLanguage}
-              onChange={(e) => setOriginalLanguage(e.target.value)}
+              onChange={(e) => {
+                setOriginalLanguage(e.target.value);
+                setTranslations((rows) => rows.map((row) => ({ ...row, sameSource: undefined })));
+              }}
               className="rounded border border-zinc-300 px-3 py-2"
             >
               {ADMIN_LANGUAGES.map((l) => (
@@ -339,7 +348,7 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
           {translations.map((tr, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 rounded border border-zinc-200 bg-white p-3"
+              className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-white p-3"
             >
               <select
                 value={tr.locale}
@@ -367,7 +376,7 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
                 placeholder="제목"
                 value={tr.title}
                 onChange={(e) => updateTranslation(i, "title", e.target.value)}
-                className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+                className="min-w-0 flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
               />
               {translations.length > 1 && (
                 <button
@@ -379,6 +388,20 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
                 >
                   삭제
                 </button>
+              )}
+              {resolveDisplayPair(
+                { original: originalTitle.trim(), originalLanguage },
+                [{ locale: tr.locale, title: tr.title.trim() }], tr.locale, "title", { kind: "title" },
+              ).status === "unconfirmed-same" && (
+                <label className="w-full text-xs text-zinc-600">
+                  {tr.locale} 동일 표기 출처 URL
+                  <input
+                    type="url"
+                    value={tr.sameSource ?? ""}
+                    onChange={(e) => updateTranslation(i, "sameSource", e.target.value)}
+                    className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                  />
+                </label>
               )}
             </div>
           ))}

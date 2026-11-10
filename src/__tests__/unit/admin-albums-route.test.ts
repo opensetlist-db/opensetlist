@@ -86,6 +86,30 @@ describe("POST /api/admin/albums", () => {
     expect(prisma.album.create).toHaveBeenCalledTimes(1);
     expect(vi.mocked(prisma.album.create).mock.calls[0][0].data.originalTitle).toBe("永久hours");
   });
+
+  it("requires evidence on the exact matching locale when creating a title", async () => {
+    const originalTitle = "μ's Best Album";
+    const create = (koSource?: string) => POST(baseJsonRequest("http://x/api/admin/albums", {
+      ...baseBody,
+      originalTitle,
+      translations: [
+        { locale: "ko", title: originalTitle, sameSource: koSource },
+        { locale: "en", title: originalTitle, sameSource: "https://example.com/en" },
+      ],
+    }, "POST") as never);
+    for (const source of [undefined, "file:///reference"]) {
+      const rejected = await create(source);
+      expect(rejected.status).toBe(400);
+      expect(await rejected.json()).toEqual({ error: "앨범 제목: ko 원문 동일 표기 검수 필요" });
+    }
+    expect(prisma.album.create).not.toHaveBeenCalled();
+
+    vi.mocked(prisma.album.create).mockResolvedValueOnce({ id: BigInt(42) } as never);
+    expect((await create("https://example.com/ko")).status).toBe(201);
+    expect(vi.mocked(prisma.album.create).mock.calls[0][0].data.translations?.create).toEqual([
+      { locale: "ko", title: originalTitle }, { locale: "en", title: originalTitle },
+    ]);
+  });
 });
 
 describe("PATCH /api/admin/albums/[id]", () => {
@@ -229,6 +253,29 @@ describe("PATCH /api/admin/albums/[id]", () => {
       deleteMany: { locale: { in: [] } },
       upsert: [{ update: { title: "Say Good-Bye Namida" } }],
     });
+  });
+
+  it("accepts a same-title PATCH only when its translation carries a source URL", async () => {
+    const originalTitle = "μ's Best Album";
+    vi.mocked(prisma.album.findUnique).mockResolvedValue({
+      ...storedTitle,
+      originalTitle,
+      translations: [{ locale: "en", title: "Best Album by μ's" }],
+    } as never);
+    const patch = (sameSource?: string) => PATCH(jsonRequest("http://x/api/admin/albums/42", {
+      translations: [{ locale: "ko", title: originalTitle, sameSource }],
+    }) as never, { params });
+
+    expect((await patch()).status).toBe(400);
+    expect(prisma.album.update).not.toHaveBeenCalled();
+    expect((await patch("https://example.com/ko")).status).toBe(200);
+    expect(vi.mocked(prisma.album.update).mock.calls[0][0].data.translations?.upsert).toEqual([
+      {
+        where: { albumId_locale: { albumId: BigInt(42), locale: "ko" } },
+        create: { locale: "ko", title: originalTitle },
+        update: { title: originalTitle },
+      },
+    ]);
   });
 
   it("requires the translations to be explicitly submitted again when changing the original", async () => {
