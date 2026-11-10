@@ -54,6 +54,7 @@ test("admin ends and restores one bonus on the public purchase tab", async ({ pa
     await expect(page.getByText(`${tag}-sibling`, { exact: true })).toBeVisible();
     await expect(page.getByText(`${tag}-other`, { exact: true })).toBeVisible();
     await expect(page.getByText(`${tag}-audio`, { exact: true })).toHaveCount(0);
+    await expect(page.locator('a[href^="https://www.amazon.co.jp/dp/B000000001"]')).toBeVisible();
     await expect(page.locator('a[href^="https://www.amazon.co.jp/dp/B000000002"]')).toBeVisible();
     await page.goto(adminUrl);
     await page.getByTestId(`bonus-lifecycle-open-${target.id}`).click();
