@@ -5,6 +5,11 @@ on:
     branches: [dev]
   workflow_dispatch:
     inputs:
+      check_only:
+        description: 'Compare this revision with the dev schema and report DROP statements'
+        type: boolean
+        required: false
+        default: false
       accept_data_loss:
         description: 'Allow destructive schema changes (drops enum values, columns, etc.). Not needed for additive-only diffs.'
         type: boolean
@@ -20,24 +25,30 @@ jobs:
         with:
           node-version: '20'
       - run: npm install
-      - name: Push schema to dev DB
+      - name: Check or push dev schema
         env:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL_UNPOOLED }}
+          CHECK_ONLY: ${{ inputs.check_only }}
           ACCEPT_DATA_LOSS: ${{ inputs.accept_data_loss }}
         # Additive-only diffs pass --accept-data-loss automatically (a new
         # unique index is always flagged). A diff that drops a column, a
         # table, or an index of a kept table FAILS the job instead, with
         # the statements printed: db push drops an EMPTY column silently,
-        # and on dev that column is usually an unmerged branch's (re-run
-        # this workflow with --ref <that branch> afterwards). An intended
-        # drop needs a manual dispatch with accept_data_loss=true. See
-        # scripts/schema-push.sh.
-        run: bash scripts/schema-push.sh "${ACCEPT_DATA_LOSS:-false}"
+        # and on dev that column is usually an unmerged branch's. Include
+        # its schema before running a guarded migration again.
+        run: |
+          if [[ "$CHECK_ONLY" == "true" ]]; then
+            bash scripts/schema-push.sh --check-only
+          else
+            bash scripts/schema-push.sh "${ACCEPT_DATA_LOSS:-false}"
+          fi
       - name: Apply post-deploy SQL (idempotent partial indexes etc.)
+        if: inputs.check_only != true
         env:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL_UNPOOLED }}
         run: npx prisma db execute --file prisma/post-deploy.sql
       - name: Check anon/authenticated exposure of public tables
+        if: inputs.check_only != true
         env:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL_UNPOOLED }}
         # Supabase grants anon/authenticated ALL on every new public table

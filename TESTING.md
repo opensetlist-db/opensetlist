@@ -122,6 +122,15 @@ artifact boundary. No production credentials, DB or storage are used.
 it that way — a unit test that needs real rows belongs in the
 integration suite.
 
+### Dev schema preflight before merge
+
+From a trusted, reviewed branch, dispatch
+`gh workflow run migrate-dev.yml --ref <candidate-branch> -f check_only=true`
+and verify the run's `headSha` matches the merge candidate. The job compares
+the current dev database to that schema and runs the existing DROP guard.
+It exits before applying Prisma or post-deploy SQL. A clean check is a
+point-in-time result; the push-triggered migration checks again after merge.
+
 ### Integration — the shared dev database
 
 There is no separate test database. The integration setup
@@ -200,6 +209,23 @@ unchanged, and it prints the `db-fixture-rm` command for the same rows.
 made through the admin UI, which only soft-deletes): `node
 scripts/db-fixture-rm.mjs --dry-run …` — guarded hard delete, usage in
 its header; never an ad-hoc delete script.
+
+### Festival display-order regression
+
+Run the existing `page-qa` event-detail scenario with a fixture file
+containing `{"orderingBaseline":"https://<baseline-preview>"}`:
+
+```bash
+node scripts/page-qa.mjs --scenario event-detail --base https://<candidate-preview> --fixture <fixture.json> --only-fixture --out <evidence-dir>
+```
+
+Use a known-good ordering deployment as the baseline, or also set
+`orderingReference` to a reviewed Preview when the baseline predates the
+ordering change. All deployments must read the same dev data. The check probes the status
+and item counts first, compares the two scheduled festival days and blocks
+browser API writes. Event 8's empty setlist is recorded as SKIP. The isolated
+11/2-credit positive control lives in `official-order.test.ts` and runs with
+the dev integration suite.
 
 ### E2E — through the app
 
