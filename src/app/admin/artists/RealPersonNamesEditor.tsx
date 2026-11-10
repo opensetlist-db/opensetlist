@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { locales } from "@/i18n/routing";
 
-type Translation = { locale: string; name: string; shortName?: string | null; stageName?: string | null };
+import IdentitySameSourceInputs, { clearIdentitySameSources } from "@/components/admin/IdentitySameSourceInputs";
+import type { IdentitySameSources } from "@/lib/adminIdentityNames";
+
+type Translation = IdentitySameSources & { locale: string; name: string; shortName?: string | null; stageName?: string | null };
 
 export type RealPersonNames = {
   id: string;
@@ -25,8 +28,12 @@ export default function RealPersonNamesEditor({ person, onSaved }: {
     originalStageName: person.originalStageName ?? "",
   });
   const [rows, setRows] = useState(() => Object.fromEntries(person.translations.map((row) => [row.locale, row])));
-  function updateTranslation(locale: string, field: "name" | "shortName" | "stageName", value: string) {
-    setRows((current) => ({ ...current, [locale]: { ...current[locale], locale, [field]: value } }));
+  function updateOriginal(field: keyof typeof source, value: string) {
+    setSource((current) => ({ ...current, [field]: value }));
+    setRows((current) => Object.fromEntries(Object.entries(current).map(([locale, row]) => [locale, clearIdentitySameSources(row)])));
+  }
+  function updateTranslation(locale: string, field: "name" | "shortName" | "stageName" | keyof IdentitySameSources, value: string) {
+    setRows((current) => ({ ...current, [locale]: { ...current[locale], locale, ...(!field.endsWith("SameSource") ? { [field + "SameSource"]: undefined } : {}), [field]: value } }));
   }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -72,11 +79,11 @@ export default function RealPersonNamesEditor({ person, onSaved }: {
           ["originalName", "원본 이름"], ["originalShortName", "원본 짧은 이름"], ["originalStageName", "원본 예명"],
         ] as const).map(([field, label]) => (
           <input key={field} aria-label={"성우/본명 " + label} placeholder={label}
-            value={source[field]} onChange={(e) => setSource((current) => ({ ...current, [field]: e.target.value }))}
+            value={source[field]} onChange={(e) => updateOriginal(field, e.target.value)}
             className="rounded border border-zinc-300 px-2 py-1 text-sm" />
         ))}
         <select aria-label="성우/본명 원문 언어" value={source.originalLanguage}
-          onChange={(e) => setSource((current) => ({ ...current, originalLanguage: e.target.value }))}
+          onChange={(e) => updateOriginal("originalLanguage", e.target.value)}
           className="rounded border border-zinc-300 px-2 py-1 text-sm">
           {[...locales, "zh-CN"].map((locale) => <option key={locale}>{locale}</option>)}
         </select>
@@ -89,6 +96,8 @@ export default function RealPersonNamesEditor({ person, onSaved }: {
               value={rows[locale]?.[field] ?? ""} onChange={(e) => updateTranslation(locale, field, e.target.value)}
               className="rounded border border-zinc-300 px-2 py-1 text-sm" />
           ))}
+          {rows[locale] && <IdentitySameSourceInputs row={rows[locale]} source={source}
+            onChange={(field, value) => updateTranslation(locale, field, value)} />}
         </fieldset>
       ))}
       {error && <p role="alert" className="mb-2 text-sm text-red-700">{error}</p>}

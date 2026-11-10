@@ -84,6 +84,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
         originalShortName: shortName ? shortName.value : stored.originalShortName,
         originalLanguage: language?.value ?? stored.originalLanguage,
         translations: rows,
+        sameNameConfirmations: translations.sameNameConfirmations,
       }, stored);
       if (message) return badRequest(message);
       return tx.stageIdentity.update({

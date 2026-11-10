@@ -202,7 +202,7 @@ export function parseRealPerson(
     originalLanguage: language.value,
     translations: translations.value,
   };
-  const message = checkIdentityNames(prefix, person);
+  const message = checkIdentityNames(prefix, { ...person, sameNameConfirmations: translations.sameNameConfirmations });
   return message ? { ok: false, message } : { ok: true, value: person };
 }
 
@@ -242,6 +242,7 @@ export function parseStageIdentity(
     originalShortName: shortName.value,
     originalLanguage: language.value,
     translations: translations.value,
+    sameNameConfirmations: translations.sameNameConfirmations,
   });
   if (message) return { ok: false, message };
 

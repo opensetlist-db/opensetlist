@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
     originalShortName: shortName.value,
     originalLanguage: language.value,
     translations: translations.value,
+    sameNameConfirmations: translations.sameNameConfirmations,
   });
   if (nameError) return badRequest(nameError);
 

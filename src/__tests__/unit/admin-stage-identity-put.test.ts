@@ -100,6 +100,23 @@ describe("PUT /api/admin/stage-identities/[id] — translations", () => {
     expect(en.create.shortName).toBeNull();
   });
 
+  it("requires evidence for the same English spelling and only passes name data to Prisma", async () => {
+    si.findUnique.mockResolvedValue({ ...stored, originalName: "Megumi" });
+    const english = { locale: "en", name: "Megumi" };
+    const korean = { locale: "ko", name: "메구미" };
+    const source = "https://example.com/cast";
+    for (const translations of [
+      [korean, english],
+      [{ ...korean, nameSameSource: source }, english],
+      [korean, { ...english, nameSameSource: "javascript:void(0)" }],
+    ]) {
+      expect((await put({ translations })).status).toBe(400);
+    }
+    expect(si.update).not.toHaveBeenCalled();
+    expect((await put({ translations: [korean, { ...english, nameSameSource: source }] })).status).toBe(200);
+    expect(si.update.mock.calls[0][0].data.translations.upsert[1].create).toEqual(english);
+  });
+
   it("still 400s on a malformed translations array before touching the DB", async () => {
     for (const body of [
       { translations: "ko" },

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import IdentitySameSourceInputs, { clearIdentitySameSources } from "@/components/admin/IdentitySameSourceInputs";
+import type { IdentitySameSources } from "@/lib/adminIdentityNames";
 import { josa } from "es-hangul";
 import {
   ADMIN_UNKNOWN_NAME,
@@ -17,7 +19,7 @@ import MembershipOrderInput from "./MembershipOrderInput";
 import { locales } from "@/i18n/routing";
 import RealPersonNamesEditor, { type RealPersonNames } from "./RealPersonNamesEditor";
 
-type Translation = { locale: string; name: string; shortName: string; bio: string };
+type Translation = IdentitySameSources & { locale: string; name: string; shortName: string; bio: string };
 type StageIdentityInput = {
   type: "character" | "persona";
   color: string;
@@ -27,13 +29,13 @@ type StageIdentityInput = {
   originalName: string;
   originalShortName: string;
   originalLanguage: string;
-  translations: { locale: string; name: string; shortName: string }[];
+  translations: (IdentitySameSources & { locale: string; name: string; shortName: string })[];
   realPerson?: {
     originalName: string;
     originalShortName: string;
     originalStageName: string;
     originalLanguage: string;
-    translations: { locale: string; name: string; shortName: string; stageName: string }[];
+    translations: (IdentitySameSources & { locale: string; name: string; shortName: string; stageName: string })[];
   };
 };
 
@@ -48,6 +50,8 @@ type ExistingStageIdentity = {
   createdAt: string;
   name: string;
   vaName: string | null;
+  originalName: string;
+  originalLanguage: string;
   translations?: { locale: string; name: string }[];
   realPerson?: RealPersonNames;
 };
@@ -60,6 +64,9 @@ type AllStageIdentityOption = {
   id: string;
   name: string;
   artistName: string;
+  originalName: string;
+  originalLanguage: string;
+  translations: { locale: string; name: string }[];
   type: string;
   color: string | null;
   sortOrder: number | null;
@@ -159,6 +166,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   const [editSIType, setEditSIType] = useState("character");
   const [editSIColor, setEditSIColor] = useState("");
   const [editSINames, setEditSINames] = useState<Record<string, string>>({});
+  const [editSINameSources, setEditSINameSources] = useState<Record<string, string>>({});
   const [editSISortOrder, setEditSISortOrder] = useState("");
   const [showLinkSI, setShowLinkSI] = useState(false);
   const [existingSIs, setExistingSIs] = useState(
@@ -205,6 +213,9 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
               color: si.color ?? null,
               sortOrder: si.sortOrder ?? null,
               createdAt: si.createdAt,
+              originalName: si.originalName,
+              originalLanguage: si.originalLanguage,
+              translations: si.translations,
             }))
           )
         );
@@ -217,7 +228,12 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     value: string
   ) {
     setTranslations((prev) =>
-      prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
+      prev.map((t, i) => i === index ? {
+        ...t,
+        ...(field === "locale" || field === "name" ? { nameSameSource: undefined } : {}),
+        ...(field === "locale" || field === "shortName" ? { shortNameSameSource: undefined } : {}),
+        [field]: value,
+      } : t)
     );
   }
 
@@ -266,7 +282,9 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     value: string
   ) {
     setStageIdentities((prev) =>
-      prev.map((si, i) => (i === index ? { ...si, [field]: value } : si))
+      prev.map((si, i) => i === index ? {
+        ...si, [field]: value, translations: si.translations.map(clearIdentitySameSources),
+      } : si)
     );
   }
 
@@ -280,7 +298,9 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         i === siIndex && si.realPerson
           ? {
               ...si,
-              realPerson: { ...si.realPerson, [field]: value },
+              realPerson: {
+                ...si.realPerson, [field]: value, translations: si.realPerson.translations.map(clearIdentitySameSources),
+              },
             }
           : si
       )
@@ -304,7 +324,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   function updateSITranslation(
     siIndex: number,
     locale: string,
-    field: "name" | "shortName",
+    field: "name" | "shortName" | keyof IdentitySameSources,
     value: string
   ) {
     setStageIdentities((prev) =>
@@ -313,7 +333,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           ? {
               ...si,
               translations: si.translations.map((t) =>
-                t.locale === locale ? { ...t, [field]: value } : t
+                t.locale === locale ? { ...t, ...(!field.endsWith("SameSource") ? { [field + "SameSource"]: undefined } : {}), [field]: value } : t
               ),
             }
           : si
@@ -324,7 +344,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   function updateRPTranslation(
     siIndex: number,
     locale: string,
-    field: "name" | "shortName" | "stageName",
+    field: "name" | "shortName" | "stageName" | keyof IdentitySameSources,
     value: string
   ) {
     setStageIdentities((prev) =>
@@ -335,7 +355,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
               realPerson: {
                 ...si.realPerson,
                 translations: si.realPerson.translations.map((t) =>
-                  t.locale === locale ? { ...t, [field]: value } : t
+                  t.locale === locale ? { ...t, ...(!field.endsWith("SameSource") ? { [field + "SameSource"]: undefined } : {}), [field]: value } : t
                 ),
               },
             }
@@ -717,7 +737,10 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           <label className="mb-1 block text-xs text-zinc-600">원본 언어</label>
           <select
             value={originalLanguage}
-            onChange={(e) => setOriginalLanguage(e.target.value)}
+            onChange={(e) => {
+              setOriginalLanguage(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
             className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
           >
             {ORIGINAL_LANGUAGES.map((l) => (
@@ -730,14 +753,20 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         <input
           placeholder="원본 이름 (필수)"
           value={originalName}
-          onChange={(e) => setOriginalName(e.target.value)}
+          onChange={(e) => {
+              setOriginalName(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
           className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
           required
         />
         <input
           placeholder="원본 짧은 이름 (선택)"
           value={originalShortName}
-          onChange={(e) => setOriginalShortName(e.target.value)}
+          onChange={(e) => {
+              setOriginalShortName(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
           className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
         />
         <textarea
@@ -805,6 +834,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                 }
                 className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
+              <IdentitySameSourceInputs row={tr} source={{ originalName, originalShortName, originalLanguage }}
+                onChange={(field, value) => updateTranslation(i, field, value)} />
               <textarea
                 placeholder="소개 (선택)"
                 value={tr.bio}
@@ -858,14 +889,20 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         className="rounded border border-zinc-300 px-2 py-1 text-sm"
                       />
                       {locales.map((locale) => (
-                        <input
-                          key={locale}
-                          aria-label={`멤버 이름 (${locale})`}
-                          placeholder={`이름 (${locale})`}
-                          value={editSINames[locale] ?? ""}
-                          onChange={(e) => setEditSINames((names) => ({ ...names, [locale]: e.target.value }))}
-                          className="rounded border border-zinc-300 px-2 py-1 text-sm"
-                        />
+                        <div key={locale}>
+                          <input
+                            aria-label={`멤버 이름 (${locale})`}
+                            placeholder={`이름 (${locale})`}
+                            value={editSINames[locale] ?? ""}
+                            onChange={(e) => {
+                              setEditSINames((names) => ({ ...names, [locale]: e.target.value }));
+                              setEditSINameSources((sources) => ({ ...sources, [locale]: "" }));
+                            }}
+                            className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+                          />
+                          <IdentitySameSourceInputs row={{ locale, name: editSINames[locale] ?? "", nameSameSource: editSINameSources[locale] }}
+                            source={si} onChange={(_, value) => setEditSINameSources((sources) => ({ ...sources, [locale]: value }))} />
+                        </div>
                       ))}
                       <input
                         type="number"
@@ -901,7 +938,9 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                               type: editSIType,
                               color: editSIColor || null,
                               sortOrder: nextSortOrder,
-                              translations: Object.entries(editSINames).filter(([, name]) => name.trim()).map(([locale, name]) => ({ locale, name })),
+                              translations: Object.entries(editSINames).filter(([, name]) => name.trim()).map(([locale, name]) => ({
+                                locale, name, nameSameSource: editSINameSources[locale],
+                              })),
                             }),
                           });
                           if (res.ok) {
@@ -978,6 +1017,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                           setEditingSI(si.id);
                           setEditSIType(si.type);
                           setEditSIColor(si.color ?? "");
+                          setEditSINameSources({});
                           setEditSINames(Object.fromEntries((si.translations ?? [{ locale: "ko", name: si.name }]).map(({ locale, name }) => [locale, name])));
                           setEditSISortOrder(si.sortOrder?.toString() ?? "");
                         }}
@@ -1075,6 +1115,9 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                               createdAt: linked.createdAt,
                               name: linked.name,
                               vaName: null,
+                              originalName: linked.originalName,
+                              originalLanguage: linked.originalLanguage,
+                              translations: linked.translations,
                             },
                           ])
                         );
@@ -1205,6 +1248,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         value={member?.[field] ?? ""} onChange={(e) => updateSITranslation(i, locale, field, e.target.value)}
                         className="rounded border border-zinc-300 px-2 py-1 text-sm" />
                     ))}
+                    {member && <IdentitySameSourceInputs row={member} source={si} scope="캐릭터/페르소나"
+                      onChange={(field, value) => updateSITranslation(i, locale, field, value)} />}
                     {person && ([
                       ["name", "성우/본명"], ["shortName", "성우 짧은 이름"], ["stageName", "예명"],
                     ] as const).map(([field, label]) => (
@@ -1212,6 +1257,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         value={person[field]} onChange={(e) => updateRPTranslation(i, locale, field, e.target.value)}
                         className="rounded border border-zinc-300 px-2 py-1 text-sm" />
                     ))}
+                    {person && si.realPerson && <IdentitySameSourceInputs row={person} source={si.realPerson} scope="성우/본명"
+                      onChange={(field, value) => updateRPTranslation(i, locale, field, value)} />}
                   </fieldset>
                 );
               })}

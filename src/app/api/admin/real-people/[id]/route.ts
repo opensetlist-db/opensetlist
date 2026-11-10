@@ -36,6 +36,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         originalShortName: shortName ? shortName.value : stored.originalShortName,
         originalStageName: stageName ? stageName.value : stored.originalStageName,
         translations: translations.value,
+        sameNameConfirmations: translations.sameNameConfirmations,
       }, stored);
       if (message) return badRequest(message);
       return tx.realPerson.update({

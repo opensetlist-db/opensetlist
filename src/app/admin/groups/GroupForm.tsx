@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import IdentitySameSourceInputs, { clearIdentitySameSources } from "@/components/admin/IdentitySameSourceInputs";
+import type { IdentitySameSources } from "@/lib/adminIdentityNames";
 import { GROUP_CATEGORY_VALUES } from "@/lib/admin-constants";
 
-type Translation = {
+type Translation = IdentitySameSources & {
   locale: string;
   name: string;
   shortName: string;
@@ -62,7 +64,12 @@ export default function GroupForm({ initialData }: GroupFormProps) {
     value: string
   ) {
     setTranslations((prev) =>
-      prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
+      prev.map((t, i) => i === index ? {
+        ...t,
+        ...(field === "locale" || field === "name" ? { nameSameSource: undefined } : {}),
+        ...(field === "locale" || field === "shortName" ? { shortNameSameSource: undefined } : {}),
+        [field]: value,
+      } : t)
     );
   }
 
@@ -212,7 +219,10 @@ export default function GroupForm({ initialData }: GroupFormProps) {
           </label>
           <select
             value={originalLanguage}
-            onChange={(e) => setOriginalLanguage(e.target.value)}
+            onChange={(e) => {
+              setOriginalLanguage(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
             className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
           >
             {ORIGINAL_LANGUAGES.map((l) => (
@@ -225,14 +235,20 @@ export default function GroupForm({ initialData }: GroupFormProps) {
         <input
           placeholder="원본 이름 (필수)"
           value={originalName}
-          onChange={(e) => setOriginalName(e.target.value)}
+          onChange={(e) => {
+              setOriginalName(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
           className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
           required
         />
         <input
           placeholder="원본 짧은 이름 (선택)"
           value={originalShortName}
-          onChange={(e) => setOriginalShortName(e.target.value)}
+          onChange={(e) => {
+              setOriginalShortName(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
           className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
         />
         <textarea
@@ -299,6 +315,8 @@ export default function GroupForm({ initialData }: GroupFormProps) {
                 }
                 className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
+              <IdentitySameSourceInputs row={tr} source={{ originalName, originalShortName, originalLanguage }}
+                onChange={(field, value) => updateTranslation(i, field, value)} />
               <textarea
                 placeholder="설명 (선택)"
                 value={tr.description}

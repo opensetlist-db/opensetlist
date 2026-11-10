@@ -123,6 +123,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
         originalShortName: shortName ? shortName.value : stored.originalShortName,
         originalLanguage: language?.value ?? stored.originalLanguage,
         translations: rows,
+        sameNameConfirmations: translations.sameNameConfirmations,
       }, stored, stored.slug);
       if (message) return badRequest(message);
       const storedGroups = new Set(stored.groupLinks.map((link) => link.groupId));

@@ -40,6 +40,8 @@ const memberA = {
   sortOrder: 1,
   createdAt: "2024-01-02T00:00:00.000Z",
   name: "멤버A",
+  originalName: "Member A",
+  originalLanguage: "ja",
   vaName: null,
 };
 const memberB = {
@@ -49,6 +51,8 @@ const memberB = {
   sortOrder: null,
   createdAt: "2024-01-01T00:00:00.000Z",
   name: "멤버B",
+  originalName: "Member B",
+  originalLanguage: "ja",
   vaName: null,
 };
 
@@ -59,6 +63,8 @@ const linkable = {
   color: "#112233",
   sortOrder: 2,
   createdAt: "2024-03-01T00:00:00.000Z",
+  originalName: "X",
+  originalLanguage: "ja",
   translations: [{ locale: "ko", name: "엑스" }],
   artistLinks: [],
 };
@@ -136,6 +142,25 @@ describe("ArtistForm member list", () => {
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.url).toBe("/api/admin/stage-identities/si-x");
     expect(put.body).toMatchObject({ sortOrder: 2, type: "persona", color: "#112233" });
+  });
+
+  it("sends only the matching member locale’s confirmation and clears it when the name changes", async () => {
+    render(<ArtistForm initialData={{ ...baseInitial, existingStageIdentities: [memberA] }} />);
+    const { editor } = await openEditor("멤버A");
+    const ui = within(editor);
+    const english = ui.getByLabelText("멤버 이름 (en)");
+    fireEvent.change(english, { target: { value: "Member A" } });
+    const source = "https://example.com/cast";
+    fireEvent.change(ui.getByLabelText("이름 동일 표기 출처 URL (en)"), { target: { value: source } });
+    fireEvent.change(english, { target: { value: "New spelling" } });
+    fireEvent.change(english, { target: { value: "Member A" } });
+    const input = ui.getByLabelText<HTMLInputElement>("이름 동일 표기 출처 URL (en)");
+    expect(input.value).toBe("");
+    fireEvent.change(input, { target: { value: source } });
+    fireEvent.click(ui.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(calls.find((call) => call.method === "PUT")?.body).toMatchObject({
+      translations: [{ locale: "ko", name: "멤버A" }, { locale: "en", name: "Member A", nameSameSource: source }],
+    }));
   });
 
   it("clearing a number re-sorts by creation order, like the server", async () => {

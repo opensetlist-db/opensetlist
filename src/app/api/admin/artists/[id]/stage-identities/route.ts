@@ -105,6 +105,7 @@ export async function POST(request: NextRequest, { params }: Props) {
     originalShortName: shortName.value,
     originalLanguage: language.value,
     translations: translations.value,
+    sameNameConfirmations: translations.sameNameConfirmations,
   });
   if (nameError) return badRequest(nameError);
 
