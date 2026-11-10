@@ -393,8 +393,9 @@
   "EventList": {
     "eyebrow": "EVENTS & SETLISTS",
     "title": "이벤트 목록",
-    "subtitle": "공연을 찾고, 라이브의 기록을 만나보세요.",
     "filterLabel": "이벤트 필터",
+    "artistFilterLabel": "그룹 필터",
+    "allArtists": "전체 그룹",
     "activeHeading": "진행 중·예정 이벤트",
     "pastHeading": "지난 이벤트",
     "seriesType": {
