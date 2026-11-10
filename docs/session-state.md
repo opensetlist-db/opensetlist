@@ -18,9 +18,13 @@ same revision → managed handoff + managed board summary
 
 Create a task config using `scripts/session-state/fixtures/task.json` as a shape
 example. It is a synthetic fixture, independent of any historical approval or
-completed task. List **every required context document**, including repository
-instructions, applicable local instructions, the task/spec and relevant source
-references; the tool cannot discover your workflow's mandatory reading list.
+completed task. List every required document whose contents govern the task
+in `task.documents`, including repository and local instructions, the
+ticket/spec, and any approvals or release instructions relied on. Read wiki
+indexes and progress boards for navigation at startup. Track the governing
+documents they point to so a status update on another ticket does not
+invalidate this task's receipts. If an index or board itself contains an
+applicable instruction or approval, track that document too.
 Document paths may be absolute, or relative to `--root` (default: state file
 directory). Keep operator paths and state files outside tracked content, for
 example in `.claude/tmp/session/`. Parent directories must already exist.
@@ -133,6 +137,25 @@ After a review fix, observe the new head and record its checks separately.
 Link the prior review and the fix commit as evidence. Keep the review
 attached to the SHA it covered, even if an operator authorizes merge
 based on that review and the fix. The `complete` rules below still apply.
+
+### Verify the merge candidate
+
+1. Before an authorized merge, read the live target branch SHA with
+   `git ls-remote --exit-code origin refs/heads/<base>` and confirm the PR's
+   current head and required checks. Use the actual PR target branch. A
+   cached PR base or an earlier green check can describe an older candidate.
+2. Fetch the base and head. Fetch GitHub's candidate from
+   `refs/pull/<pr>/merge` and verify its first parent is the live base
+   and its second is the PR head. If it is stale or unavailable, compute
+   the candidate locally with `git merge-tree --write-tree <base-sha> <head-sha>`
+   and require exit status zero. Resolve conflicts through the normal
+   review process. If the base moved, compare the candidate diff against
+   the reviewed patch and rerun the relevant checks on the combined tree.
+3. Record the reviewed head, current base, candidate tree and check results
+   in the handoff, and link it with `record-evidence`. Recheck head and base
+   immediately before merging. Before recording completion, verify the target
+   branch contains the PR's reported merge result and its tree matches the
+   candidate. For a merge commit, also verify the base and head parents.
 
 ## Observation and transition events
 

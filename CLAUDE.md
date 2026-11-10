@@ -323,6 +323,7 @@ Hard rules:
 - NEVER commit directly to main — always PR from dev or hotfix/*
 - NEVER use production DB locally — .env must point to dev DB
 - NEVER merge a PR yourself — always open the PR, then ask the owner to merge. This applies to every PR including dev → main release PRs and feature → dev PRs
+- Before an authorized PR merge, [verify the current merge candidate](./docs/session-state.md#verify-the-merge-candidate).
 - Run `git add ...` and `git commit -m "..."` as **two separate Bash tool calls**, not chained with `&&`. The owner runs a `PreToolUse` hook (`~/.claude/hooks/review-staged.js`) that calls `git diff --cached` to review the staged change against this CLAUDE.md before each commit. Chained `add && commit` leaves the index empty at hook time, the hook logs `exit:empty-diff`, and the review never runs. Splitting the calls puts staging done before the commit Bash invocation so the hook actually reviews. Committing without a manual approval pause is fine — the hook is the safety net; if it finds issues it blocks the commit, otherwise the commit proceeds and the owner sees the result.
 - Run `git push` as **its own Bash tool call** when any HEAD-mutating git command precedes it in the same chain (`commit`, `rebase`, `merge`, `reset`, `cherry-pick`, `revert`, `pull`, `am`). The push-review hook (`~/.claude/hooks/review-prepush.js`) computes the branch-vs-base diff from HEAD before the chain runs, so a chained `commit && push` would review pre-commit HEAD and miss the new commits — the hook auto-blocks these chains. Non-mutating chains like `git fetch && git push` or `git push && echo done` are fine.
 - Always create a version tag for production releases
@@ -332,8 +333,10 @@ Hard rules:
   queries the old schema until the migration lands (v0.19.0, 2026-10-12:
   four minutes of 500s on song pages). Order: `gh workflow run backup.yml`
   → `gh workflow run migrate-prod.yml --ref dev` (additive changes are
-  harmless to the app still serving) → verify the column in the `db pull`
-  step → merge the release PR → tag. Non-additive changes need a different
+  harmless to the app still serving) → confirm the public-role exposure check
+  passes and verify the schema in the `db pull` step → merge the release PR →
+  tag. If the exposure check fails, repair the grants and verify the workflow
+  succeeds before merging. Non-additive changes need a different
   plan (expand/contract) and must not be merged this way at all.
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
 

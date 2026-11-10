@@ -1160,6 +1160,7 @@ model Album {
   bdEvents        Event[]               @relation("EventBdAlbum")
   bonusImportJobs AlbumBonusImportJob[]
   storeLinkAttempts AlbumStoreLinkAttempt[]
+  storeLinkReviewOperations AlbumStoreLinkReviewOperation[]
 }
 
 model AlbumArtist {
@@ -1387,6 +1388,33 @@ model AlbumStoreLinkAttempt {
 
   @@id([albumId, storeKey, phase])
   @@unique([albumId, storeKey, operationId])
+}
+
+enum AlbumStoreLinkReviewPhase {
+  exclude
+  reinclude
+}
+
+enum AlbumStoreLinkReviewEvidence {
+  expired
+  ended
+  active
+}
+
+model AlbumStoreLinkReviewOperation {
+  albumId     BigInt
+  storeKey    String
+  operationId String
+  phase       AlbumStoreLinkReviewPhase
+  evidenceType AlbumStoreLinkReviewEvidence
+  requestHash String
+  evidenceUrl String
+  summary     String
+  observedAt  DateTime
+
+  album Album @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  @@id([albumId, storeKey, operationId])
 }
 
 // Per-locale overrides for the bonus's display strings. Both fields are

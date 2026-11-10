@@ -1,43 +1,6 @@
-// EventBdSection state machine + bonus selector.
-//
-// The component renders one of five visual variants on the Event
-// detail page (between Setlist and Impressions). Which variant fires
-// depends on (a) whether `Event.bdAlbumId` resolves to an Album row,
-// (b) the time delta from `event.startTime` (D+N bucketing), and
-// (c) the lifecycle of the linked Album's listings/bonuses.
-//
-// Six states total — 3 are pre-link buckets keyed purely on time,
-// 3 are post-link buckets keyed on the album's release/bonus state:
-//
-//   pre              event hasn't happened / ongoing  → render nothing
-//   immediate_post   event done, < D+60               → render nothing
-//   long_mid         event done, >= D+60, no album    → light teaser
-//   bd_announced     album linked, no active bonus,   → album card +
-//                    not yet released                    "details" CTA
-//   bd_preorder      album linked, has active bonus,  → album card +
-//                    not yet released                    bonus preview +
-//                                                        "compare" CTA
-//   bd_released      album.releaseDate ≤ now           → album card +
-//                                                        bonus preview
-//                                                        (may be empty) +
-//                                                        "purchase" CTA
-//
-// `bd_released` also absorbs the spec's old `bd_postrelease` case
-// (released + all bonuses ended): the variant collapses its bonus
-// block when `selectTopBonuses` returns empty, so the same enum
-// covers both lifecycles without forcing a 7th state.
-//
-// State machine references:
-//   - wiki/output/task-b07-event-bd-section.md
-//   - wiki/output/task-event-bd-section.md
-//   - F:/work/vaults/opensetlist/raw/mockups/event-page-v2-mockup.jsx
-//     (mockup is the authoritative visual reference)
-import type {
-  AlbumStoreListingStatus,
-  EventStatus,
-} from "@/generated/prisma/enums";
-import { STORE_REGEXES } from "@/lib/storeKeys";
-import { projectPurchaseOptions, type PurchaseBonus, type PurchaseListing } from "@/lib/purchaseAvailability";
+// Release status and analytics labels for a linked event BD.
+import type { EventStatus } from "@/generated/prisma/enums";
+import { projectPurchaseOptions, type PurchaseListing } from "@/lib/purchaseAvailability";
 
 export type EventBdState =
   | "pre"
@@ -65,52 +28,11 @@ export const BD_STATE_GA_VALUE: Record<
   bd_released: "bd-released",
 };
 
-// D+60 = the boundary between "the event just happened, don't push
-// commerce" (immediate_post → hide entirely) and "enough time has
-// passed that BD release info is plausibly imminent" (long_mid →
-// show light teaser banner). Picked by the visual designer in the
-// v2 mockup; no firm research backing — operator override later if
-// real data shows BD announcements clustering at a different lag.
+// The old time buckets distinguish unlinked events; neither renders a summary.
 const IMMEDIATE_POST_DAYS = 60;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const IMMEDIATE_POST_MS = IMMEDIATE_POST_DAYS * MS_PER_DAY;
 
-// Regex-based store priority. Derived from the shared `STORE_REGEXES`
-// list (src/lib/storeKeys.ts) — the same source `resolveStoreKey` uses
-// for the analytics store key — so the preview sort rank and the GA key
-// can't drift apart. Order matters: first regex to match wins; the list
-// is ordered affiliate-revenue-first (Amazon, Rakuten lead the 3-row
-// preview). Stores matching nothing sort to the end (MAX_SAFE_INTEGER).
-const STORE_PRIORITY: ReadonlyArray<RegExp> = STORE_REGEXES.map(
-  ([pattern]) => pattern,
-);
-
-// 4-state listing enum (active / sold_out / unknown / ended). The
-// inline preview never shows `ended`; `sold_out` / `unknown` stay
-// visible since both still inform the viewer (sold_out warns of
-// supply tightness, unknown carries no stock confirmation but
-// doesn't read as gone). Sort order makes `active` lead within the
-// same store-priority bucket.
-const STATUS_PRIORITY: Record<AlbumStoreListingStatus, number> = {
-  active: 0,
-  sold_out: 1,
-  unknown: 2,
-  ended: 3,
-};
-
-function storeRank(storeName: string): number {
-  for (let i = 0; i < STORE_PRIORITY.length; i++) {
-    if (STORE_PRIORITY[i].test(storeName)) return i;
-  }
-  return Number.MAX_SAFE_INTEGER;
-}
-
-// Minimal structural types — concrete Prisma types (with translations,
-// BigInt id, etc.) are wider than what the resolver / selector need.
-// Defining them in this module rather than importing Prisma's
-// generated shapes (a) keeps the unit tests free of Prisma fixtures
-// (plain object literals work), (b) survives the serializeBigInt JSON
-// boundary the page passes the event through.
 export type EventBdInput = {
   startTime: Date | string;
   status: EventStatus;
@@ -119,12 +41,8 @@ export type EventBdInput = {
 
 export type AlbumBdInput = {
   releaseDate: Date | string | null;
-  listings: ReadonlyArray<AlbumStoreListingBdInput>;
+  listings: readonly PurchaseListing[];
 };
-
-export type AlbumStoreListingBdInput = PurchaseListing & { status: AlbumStoreListingStatus; bonuses: readonly AlbumStoreBonusBdInput[] };
-
-export type AlbumStoreBonusBdInput = PurchaseBonus & { bonusImageUrl: string | null };
 
 function toDate(value: Date | string | null): Date | null {
   if (value === null) return null;
@@ -188,52 +106,4 @@ export function resolveEventBdState(
   const elapsedMs = referenceNow.getTime() - startTime.getTime();
   if (elapsedMs < IMMEDIATE_POST_MS) return "immediate_post";
   return "long_mid";
-}
-
-/**
- * Pick the top-N bonuses for the inline preview shown in
- * `bd_preorder` / `bd_released` variants.
- *
- * Selection rules, in priority order:
- *   1. Drop any bonus whose parent listing is `ended`, or whose
- *      effective active window has closed / not yet opened.
- *   2. Sort by parent listing's `storeRank(originalStoreName)`
- *      (Amazon → 楽天 → アニメイト → ...).
- *   3. Within the same store rank, sort by parent listing status
- *      (active → sold_out → unknown).
- *   4. Within the same status, prefer bonuses with an image (the
- *      preview is more compelling with art; image-less bonuses
- *      still surface, just later).
- *
- * Returns up to `limit` (default 3) bonuses, each paired with its
- * parent listing — the rendering side needs both (listing for
- * `resolveStoreName`, `productUrl`, status badge; bonus for
- * `resolveBonusType`, description, image).
- */
-export function selectTopBonuses<L extends AlbumStoreListingBdInput>(
-  listings: readonly L[],
-  referenceNow = new Date(),
-  limit = 3,
-) {
-  const candidates = projectPurchaseOptions(listings, referenceNow, { performanceOnly: true })
-    .bonusStores.flatMap(({ options }) => options.flatMap(({ listing, bonuses }) =>
-      bonuses.map((bonus) => ({ listing, bonus })),
-    ));
-
-  candidates.sort((a, b) => {
-    const sa = storeRank(a.listing.originalStoreName);
-    const sb = storeRank(b.listing.originalStoreName);
-    if (sa !== sb) return sa - sb;
-    const pa = STATUS_PRIORITY[a.listing.status] ?? 9;
-    const pb = STATUS_PRIORITY[b.listing.status] ?? 9;
-    if (pa !== pb) return pa - pb;
-    // Image-richness tiebreaker — prefer rows with bonusImageUrl,
-    // but only as a tertiary signal. A bonus with no image still
-    // belongs in the preview when there are no richer alternatives.
-    const ia = a.bonus.bonusImageUrl ? 0 : 1;
-    const ib = b.bonus.bonusImageUrl ? 0 : 1;
-    return ia - ib;
-  });
-
-  return candidates.slice(0, limit);
 }

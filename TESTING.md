@@ -80,9 +80,9 @@ files=$(git diff --name-only --diff-filter=d origin/dev...HEAD -- '*.ts' '*.tsx'
 
 ### Unit — no database
 
-In Windows Codex worktrees, use a writable worktree-local temp directory
-for Vitest if workers fail to start or temp-file renames fail with
-`EPERM`. Run this in a task PowerShell from the worktree root, replacing
+In Windows Codex worktrees, set a writable worktree-local temp directory
+before starting Vitest to avoid worker startup and temp-file rename
+failures. Run this in a task PowerShell from the worktree root, replacing
 the example path with the relevant unit test:
 
 ```powershell
@@ -145,7 +145,7 @@ know what each suite leaves behind:
 |---|---|---|
 | `board-picks.test.ts` | **writes** | artist, song, series, event, setlist item, `BoardPick` rows; `afterAll` deletes them |
 | `board-wishes.test.ts` | **writes** | artists, songs, series, event, `SongWish` rows; `afterAll` deletes them |
-| `bonus-checks.test.ts` | **writes** | one album, listing, bonus, observations, lifecycle history and link attempts; `afterAll` deletes its own rows |
+| `bonus-checks.test.ts` | **writes** | one album, listing, bonus, observations, lifecycle history, link attempts and link review decisions; `afterAll` deletes its own rows |
 | `bonus-lifecycle.test.ts` | **writes** | one album, listing, bonus and lifecycle history; `afterAll` deletes only its own rows |
 | `member-order.test.ts` | **writes** | artist, event, stage identity, performers; `afterAll` deletes them |
 | `official-order.test.ts` | **writes** | `officialorder-itest-` artists, identities, relations, event, explicit voice, song and historical item in a rolled-back transaction; fixed-prefix purge before/after handles interrupted fixtures |
@@ -225,6 +225,7 @@ the skip count.
 | `bonus-scrape.spec.ts` | GET only | `E2E_BONUS_ALBUM_ID` |
 | `bonus-lifecycle.spec.ts` | **writes** | local app, dev DB URLs and `ADMIN_PASSWORD`; creates and deletes its own album, listings, bonuses and history |
 | `event-bd-section.spec.ts` | GET only | `E2E_BD_EVENT_ID`, `E2E_PLAIN_EVENT_ID` |
+| `home-event-bd.spec.ts` | **writes** | local app, guarded dev DB, `ADMIN_PASSWORD`; creates and removes its own album, event, song, options and lifecycle history |
 | `home.spec.ts` | GET only | none — asserts roles, landmarks and URLs, so any dev catalog state passes |
 | `search.spec.ts` | GET only | a catalog where `a` matches >20 songs (any seeded dev DB) |
 | `event-og-publication.spec.ts` | **writes**, explicitly skipped unless `EVENT_CARD_R2_E2E=1` | dev DB + `opensetlist-images-dev` bucket + `R2_KEY_PREFIX=test`; writes nine retained PNGs, logs exact keys, purges/cleans only `og02e2e-` fixtures; actual nine normal/Twitterbot HTML+PNG responses, CLI retry, canonical auto-navigation and JS-free mobile/keyboard fallback; requires matching production `TEST_BASE_URL` / `NEXT_PUBLIC_BASE_URL` |
@@ -353,6 +354,10 @@ is started from.
 ---
 
 ## Windows task tools
+
+Run the local production build and full unit suite sequentially from the task
+worktree. For Vitest worker or temp-file failures, use the
+[worktree-local TEMP/TMP setup](#unit--no-database).
 
 For local admin QA, serve a production build with
 `powershell -NoProfile -File scripts/task-runtime.ps1 serve-build
