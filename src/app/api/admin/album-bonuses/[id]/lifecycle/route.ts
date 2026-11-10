@@ -55,6 +55,10 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
     return lifecycleError(error);
   }
 
+  if (result.operation.action !== "end" && result.operation.action !== "restore") {
+    return NextResponse.json(result);
+  }
+
   // Expiry can be attempted again for a replay without changing the DB.
   let cache = "warning";
   try {

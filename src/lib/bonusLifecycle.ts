@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Prisma } from "@/generated/prisma/client";
 import { optionalString, optionalUrl, parseInstant, parsePeriod, parseRevision, PurchaseInputError } from "@/lib/adminPurchaseFields";
 import { prisma } from "@/lib/prisma";
 import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
@@ -17,6 +18,18 @@ export function validOperationId(value: unknown): value is string {
     /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/.test(value);
 }
 
+const lifecycleActions = ["end", "restore"] as const;
+
+export function pruneBonusCheckReceipts(tx: Prisma.TransactionClient, bonus: Prisma.AlbumStoreBonusWhereInput) {
+  return tx.albumStoreBonusLifecycleOperation.deleteMany({
+    where: { bonus, action: { notIn: [...lifecycleActions] } },
+  });
+}
+
+function verifiesBonus(action: string) {
+  return action === "end" || action === "restore" || action === "maintained";
+}
+
 export function parseBonusOperation(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new PurchaseInputError("잘못된 JSON입니다.");
@@ -27,7 +40,9 @@ export function parseBonusOperation(value: unknown) {
   const evidenceUrl = optionalUrl(body, "evidenceUrl");
   const summary = optionalString(body, "summary");
   const observedAt = parseInstant(body.observedAt, "관찰 시각");
-  if (!listingId || !validOperationId(operationId) || (action !== "end" && action !== "restore")) {
+  if (!listingId || !validOperationId(operationId) ||
+      (action !== "end" && action !== "restore" && action !== "maintained" &&
+       action !== "review_needed" && action !== "access_failed")) {
     throw new PurchaseInputError("구매 옵션, 작업 ID와 처리 유형을 확인해 주세요.");
   }
   if (!evidenceUrl || !summary || !observedAt || observedAt > new Date()) {
@@ -37,14 +52,14 @@ export function parseBonusOperation(value: unknown) {
   if (action === "restore" && (period.startsAt === undefined || period.endsAt === undefined)) {
     throw new PurchaseInputError("복구할 특전의 기간을 확인해 주세요.");
   }
-  if (action === "end" && (body.startsAt !== undefined || body.endsAt !== undefined)) {
-    throw new PurchaseInputError("종료 시에는 특전 기간을 변경할 수 없습니다.");
+  if (action !== "restore" && (body.startsAt !== undefined || body.endsAt !== undefined)) {
+    throw new PurchaseInputError("복구 시에만 특전 기간을 변경할 수 있습니다.");
   }
   return {
-    listingId, action: action as "end" | "restore", operationId, evidenceUrl, summary, observedAt, ...period,
+    listingId, action, operationId, evidenceUrl, summary, observedAt, ...period,
     expectedRevision: parseRevision(body.expectedRevision),
     expectedListingRevision: parseRevision(body.expectedListingRevision),
-  };
+  } as const;
 }
 
 function snapshot(bonus: { endedAt: Date | null; startsAt: Date | null; endsAt: Date | null; revision: number }) {
@@ -59,23 +74,43 @@ function snapshot(bonus: { endedAt: Date | null; startsAt: Date | null; endsAt: 
 const notFound = () => new BonusLifecycleError("not_found", "이 구매 옵션에서 특전을 찾을 수 없습니다.");
 
 export async function getBonusLifecycle(id: string, listingId: string, operationId?: string) {
-  const bonus = await prisma.albumStoreBonus.findUnique({
-    where: { id, listingId },
-    relationLoadStrategy: "join",
-    include: {
-      listing: { select: {
-        revision: true, originalStoreName: true, originalEditionLabel: true, productUrl: true, selectionGuide: true,
-        album: { select: { originalTitle: true } },
-      } },
-      lifecycle: { orderBy: [{ appliedAt: "desc" }, { operationId: "asc" }], omit: { requestHash: true } },
-    },
-  });
+  const [bonus, latestObservation, operation] = await prisma.$transaction([
+    prisma.albumStoreBonus.findUnique({
+      where: { id, listingId },
+      relationLoadStrategy: "join",
+      include: {
+        listing: { select: {
+          revision: true, originalStoreName: true, originalEditionLabel: true, productUrl: true, selectionGuide: true,
+          status: true, endsAt: true,
+          album: { select: { originalTitle: true } },
+        } },
+        lifecycle: {
+          where: { action: { in: [...lifecycleActions] } },
+          orderBy: [{ appliedAt: "desc" }, { operationId: "asc" }],
+          omit: { requestHash: true },
+        },
+      },
+    }),
+    prisma.albumStoreBonusLifecycleOperation.findFirst({
+      where: { bonusId: id },
+      orderBy: [{ observedAt: "desc" }, { appliedAt: "desc" }, { operationId: "asc" }],
+      omit: { requestHash: true },
+    }),
+    prisma.albumStoreBonusLifecycleOperation.findUnique({
+      where: { bonusId_operationId: { bonusId: id, operationId: operationId ?? "" } },
+      omit: { requestHash: true },
+    }),
+  ], { isolationLevel: "RepeatableRead" });
   if (!bonus) throw notFound();
   const history = bonus.lifecycle.map((entry) => ({
     ...entry, observedAt: entry.observedAt.toISOString(), appliedAt: entry.appliedAt.toISOString(),
   }));
   return {
-    state: { id, listingId, listingRevision: bonus.listing.revision, ...snapshot(bonus) },
+    state: {
+      id, listingId, listingRevision: bonus.listing.revision, ...snapshot(bonus),
+      listingClosed: bonus.listing.status === "ended" ||
+        (bonus.listing.endsAt !== null && bonus.listing.endsAt <= new Date()),
+    },
     target: {
       bonusType: bonus.originalBonusType,
       description: bonus.originalBonusDescription,
@@ -86,7 +121,9 @@ export async function getBonusLifecycle(id: string, listingId: string, operation
       selectionGuide: bonus.listing.selectionGuide,
     },
     history,
-    operation: history.find((entry) => entry.operationId === operationId) ?? null,
+    latestObservation,
+    lastVerifiedAt: bonus.lastVerifiedAt ?? bonus.lifecycle[0]?.observedAt ?? null,
+    operation,
   };
 }
 
@@ -129,7 +166,7 @@ export async function applyBonusOperation(id: string, input: ReturnType<typeof p
     const latest = await tx.albumStoreBonusLifecycleOperation.findFirst({
       where: { bonusId: id },
       orderBy: { observedAt: "desc" },
-      select: { observedAt: true },
+      select: { action: true, observedAt: true },
     });
     if (latest && observedAt < latest.observedAt) {
       throw new BonusLifecycleError("conflict", "더 최근의 관찰이 이미 반영되었습니다.");
@@ -137,19 +174,24 @@ export async function applyBonusOperation(id: string, input: ReturnType<typeof p
 
     const now = new Date();
     const expiredDeadline = bonus.endsAt && bonus.endsAt <= now ? bonus.endsAt : null;
+    const transition = action === "end" || action === "restore";
+    if (!transition && (bonus.endedAt || expiredDeadline || bonus.listing.status === "ended" ||
+        (bonus.listing.endsAt && bonus.listing.endsAt <= now))) {
+      throw new BonusLifecycleError("conflict", "종료된 특전은 점검할 수 없습니다.");
+    }
     if (action === "end" && bonus.endedAt !== null) {
       throw new BonusLifecycleError("conflict", "이미 종료된 특전입니다.");
     }
     if (action === "restore" && bonus.endedAt === null && !expiredDeadline) {
       throw new BonusLifecycleError("conflict", "종료된 특전만 복구할 수 있습니다.");
     }
-    const next = action === "end" ? { endedAt: now } : {
+    const next = action === "end" ? { endedAt: now } : action === "restore" ? {
       endedAt: null,
       startsAt: input.startsAt ?? null,
       endsAt: input.endsAt ?? null,
-    };
+    } : {};
     if (action === "restore" && (
-      (expiredDeadline && !next.endsAt && (!next.startsAt || next.startsAt < expiredDeadline)) ||
+      (expiredDeadline && !input.endsAt && (!input.startsAt || input.startsAt < expiredDeadline)) ||
       projectPurchaseOptions([{ ...bonus.listing, bonuses: [{ ...bonus, ...next }] }], now, {
         performanceOnly: bonus.listing.album._count.bdEvents > 0,
       }).bonusCount === 0
@@ -159,12 +201,18 @@ export async function applyBonusOperation(id: string, input: ReturnType<typeof p
 
     const updated = await tx.albumStoreBonus.update({
       where: { id },
-      data: { ...next, revision: { increment: 1 } },
+      data: {
+        ...next,
+        revision: { increment: 1 },
+        lastVerifiedAt: verifiesBonus(action) ? observedAt :
+          bonus.lastVerifiedAt ?? (latest && verifiesBonus(latest.action) ? latest.observedAt : null),
+      },
     });
     const operation = await tx.albumStoreBonusLifecycleOperation.create({
       data: {
         bonusId: id, operationId, requestHash: hash, action, evidenceUrl, summary, observedAt, appliedAt: now,
-        before: snapshot(bonus), after: snapshot(updated),
+        before: transition ? snapshot(bonus) : { revision: bonus.revision },
+        after: transition ? snapshot(updated) : { revision: updated.revision },
       },
       omit: { requestHash: true },
     });

@@ -4,34 +4,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { getBonusLifecycle } from "@/lib/bonusLifecycle";
 import { formatDate, isSafeExternalUrl } from "@/lib/utils";
+import { forgetOperation, storedOperation, storeOperation, type PendingOperation } from "@/app/admin/album-bonuses/pendingOperation";
 
 type Lifecycle = Awaited<ReturnType<typeof getBonusLifecycle>>;
-type Pending = { operationId: string; body: string };
-
-function storedOperation(key: string): Pending | null {
-  try {
-    const value = JSON.parse(sessionStorage.getItem(key) ?? "null");
-    return typeof value?.operationId === "string" && typeof value?.body === "string" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function storeOperation(key: string, value: Pending) {
-  try {
-    sessionStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // The current panel still keeps the operation when browser storage is unavailable.
-  }
-}
-
-function forgetOperation(key: string, operationId: string) {
-  try {
-    if (storedOperation(key)?.operationId === operationId) sessionStorage.removeItem(key);
-  } catch {
-    // A later open can still verify the stored operation again.
-  }
-}
 
 function displayInstant(instant: string) {
   return formatDate(instant, "ko", {
@@ -64,16 +39,17 @@ async function readLifecycle(url: string, listingId: string, operationId: string
   return response.json();
 }
 
-export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
+export default function BonusLifecyclePanel({ id, listingId, purchaseHref, checking = false }: {
   id: string;
   listingId: string;
   purchaseHref: string;
+  checking?: boolean;
 }) {
   const router = useRouter();
   const url = `/api/admin/album-bonuses/${encodeURIComponent(id)}/lifecycle`;
   const storageKey = `bonus-lifecycle:${listingId}:${id}`;
   const [result, setResult] = useState<Lifecycle | null>(null);
-  const [pending, setPending] = useState<Pending | null>(null);
+  const [pending, setPending] = useState<PendingOperation | null>(null);
   const [retryReady, setRetryReady] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(true);
@@ -137,7 +113,7 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
   const state = result?.state;
   const restoring = Boolean(state && (state.endedAt || (state.endsAt && new Date(state.endsAt) <= new Date())));
 
-  async function send(operation: Pending) {
+  async function send(operation: PendingOperation) {
     const { operationId, body } = operation;
     setBusy(true);
     setMessage("");
@@ -185,7 +161,7 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
       operationId,
       body: JSON.stringify({
         listingId, operationId, expectedRevision: state.revision, expectedListingRevision: state.listingRevision,
-        action: restoring ? "restore" : "end",
+        action: restoring ? "restore" : checking ? value("action") : "end",
         evidenceUrl: value("evidenceUrl"), summary: value("summary"), observedAt: value("observedAt"),
         ...(restoring && { startsAt: value("startsAt") || null, endsAt: value("endsAt") || null }),
       }),
@@ -233,12 +209,26 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
             )}
           </div>
           <p>{restoring ? "종료" : "수동 종료 없음"} · <span className="break-all">{period(state.startsAt, state.endsAt)}</span></p>
+          {checking && state.listingClosed ? <p>구매 옵션이 종료되어 점검에서 제외되었습니다.</p> : (
           <form key={formVersion} onSubmit={submit} className="space-y-2">
             <fieldset disabled={busy || pending !== null} className="space-y-2">
-              <legend className="font-medium">특전 {restoring ? "복구" : "종료"}</legend>
+              <legend className="font-medium">특전 {restoring ? "복구" : checking ? "점검" : "종료"}</legend>
               <p className="text-zinc-600">{restoring
                 ? "재개 근거와 판매점이 안내한 기간을 입력해 주세요."
-                : "판매점이 종료나 소진을 명시한 경우에만 종료하세요. 일시품절이나 접속 실패는 종료 근거가 아닙니다."}</p>
+                : checking
+                  ? "판매점이 특전 종료나 소진을 명시하면 종료 확인을 선택하세요. 일시품절, 배송 지역 제한, 문구 누락, 기한 불명확 또는 근거 불일치는 확인 필요로 기록하세요."
+                  : "판매점이 종료나 소진을 명시한 경우에만 종료하세요. 일시품절이나 접속 실패는 종료 근거가 아닙니다."}</p>
+              {checking && !restoring && (
+                <label className="block">관찰 결과
+                  <select name="action" defaultValue="" required className={inputClass}>
+                    <option value="" disabled>결과 선택</option>
+                    <option value="maintained">유지</option>
+                    <option value="end">종료 확인 (명시적 종료·소진)</option>
+                    <option value="review_needed">확인 필요</option>
+                    <option value="access_failed">접근 실패</option>
+                  </select>
+                </label>
+              )}
               <label className="block">근거 URL
                 <input name="evidenceUrl" data-testid="bonus-lifecycle-evidence" type="url" required maxLength={2048} className={inputClass} />
               </label>
@@ -260,10 +250,11 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
               )}
               <button type="submit" data-testid="bonus-lifecycle-submit"
                 className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50">
-                {restoring ? "특전 복구" : "특전 종료"}
+                {restoring ? "특전 복구" : checking ? "점검 기록 저장" : "특전 종료"}
               </button>
             </fieldset>
           </form>
+          )}
         </>
       )}
       <section data-testid="bonus-lifecycle-history" aria-label="종료·복구 이력">

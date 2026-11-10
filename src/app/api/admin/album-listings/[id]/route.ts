@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { pruneBonusCheckReceipts } from "@/lib/bonusLifecycle";
 import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
 import {
   ADMIN_WRITABLE_LISTING_STATUSES,
@@ -152,7 +153,13 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
   }
 
   try {
-    await prisma.albumStoreListing.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "AlbumStoreListing" WHERE id = ${id} FOR UPDATE`;
+      // Match the lifecycle lock order before removing observation receipts.
+      await tx.$queryRaw`SELECT id FROM "AlbumStoreBonus" WHERE "listingId" = ${id} ORDER BY id FOR UPDATE`;
+      await pruneBonusCheckReceipts(tx, { listingId: id });
+      await tx.albumStoreListing.delete({ where: { id } });
+    });
     revalidatePublicData();
     return NextResponse.json({ ok: true });
   } catch (e) {
