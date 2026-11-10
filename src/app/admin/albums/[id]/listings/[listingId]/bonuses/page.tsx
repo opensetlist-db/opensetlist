@@ -28,7 +28,6 @@ export default async function AlbumBonusesPage({ params }: Props) {
         id: true,
         originalStoreName: true,
         originalEditionLabel: true,
-        productUrl: true,
         album: { select: { slug: true, originalTitle: true } },
       },
     }),
@@ -61,7 +60,7 @@ export default async function AlbumBonusesPage({ params }: Props) {
           ← {listing.album.originalTitle} · {label}
         </Link>
       </div>
-      <BonusesClient listingId={listing.id} bonuses={rows} productUrl={listing.productUrl}
+      <BonusesClient listingId={listing.id} bonuses={rows}
         purchaseHref={`${entityPath("albums", "ko", albumId, listing.album.slug)}?tab=bonus`} />
     </div>
   );

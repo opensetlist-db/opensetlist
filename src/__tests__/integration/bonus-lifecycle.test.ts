@@ -6,6 +6,7 @@ vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }))
 vi.mock("@/lib/dataCache", () => ({ revalidatePublicData: vi.fn() }));
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import { GET, POST } from "@/app/api/admin/album-bonuses/[id]/lifecycle/route";
 import { PATCH as patchBonus } from "@/app/api/admin/album-bonuses/[id]/route";
 import { PATCH as patchListing } from "@/app/api/admin/album-listings/[id]/route";
@@ -86,9 +87,15 @@ describe("bonus lifecycle against PostgreSQL", () => {
 
   it("rolls back the bonus and history when the transaction fails before commit", async () => {
     const transaction = prisma.$transaction.bind(prisma);
-    const spy = vi.spyOn(prisma, "$transaction").mockImplementationOnce(((callback: (tx: unknown) => Promise<unknown>, options: unknown) =>
+    let reached = false;
+    const spy = vi.spyOn(prisma, "$transaction").mockImplementationOnce(((callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: unknown) =>
       transaction(async (tx) => {
         await callback(tx);
+        const inside = await tx.albumStoreBonus.findUniqueOrThrow({ where: { id: bonusId } });
+        expect(inside.endedAt).not.toBeNull();
+        expect(inside.revision).toBe(1);
+        expect(await tx.albumStoreBonusLifecycleOperation.count({ where: { bonusId } })).toBe(1);
+        reached = true;
         throw new Error("injected failure before commit");
       }, options as never)) as never);
     try {
@@ -97,6 +104,7 @@ describe("bonus lifecycle against PostgreSQL", () => {
     } finally {
       spy.mockRestore();
     }
+    expect(reached).toBe(true);
     const bonus = await prisma.albumStoreBonus.findUniqueOrThrow({ where: { id: bonusId } });
     expect(bonus.endedAt).toBeNull();
     expect(bonus.revision).toBe(0);

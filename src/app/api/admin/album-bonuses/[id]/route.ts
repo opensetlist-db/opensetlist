@@ -66,35 +66,40 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     const originalLanguage = typeof body.originalLanguage === "string"
       ? body.originalLanguage.trim() || "ja"
       : "ja";
-    const updated = await prisma.albumStoreBonus.update({
-      where: {
-        id,
-        revision: parseRevision(body.expectedRevision),
-        // Once a period expires, publishing it again requires a restoration
-        // with evidence. Metadata-only edits can still preserve that period.
-        OR: purchase.startsAt !== undefined && purchase.endsAt !== undefined ? [
-          { endedAt: null, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
-          { startsAt: purchase.startsAt, endsAt: purchase.endsAt },
-        ] : undefined,
-      },
-      data: {
-        ...purchase,
-        revision: { increment: 1 },
-        originalBonusType: (body.originalBonusType as string).trim(),
-        originalLanguage,
-        translations: translationsProvided || removed !== undefined ? {
-          deleteMany: removed !== undefined
+    const revision = parseRevision(body.expectedRevision);
+    const updated = await prisma.$transaction(async (tx) => {
+      // Evaluate the cutoff after waiting for any concurrent lifecycle write.
+      await tx.$queryRaw`SELECT id FROM "AlbumStoreBonus" WHERE id = ${id} FOR NO KEY UPDATE`;
+      return tx.albumStoreBonus.update({
+        where: {
+          id,
+          revision,
+          // Once a period expires, publishing it again requires a restoration
+          // with evidence. Metadata-only edits can still preserve that period.
+          OR: purchase.startsAt !== undefined && purchase.endsAt !== undefined ? [
+            { endedAt: null, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+            { startsAt: purchase.startsAt, endsAt: purchase.endsAt },
+          ] : undefined,
+        },
+        data: {
+          ...purchase,
+          revision: { increment: 1 },
+          originalBonusType: (body.originalBonusType as string).trim(),
+          originalLanguage,
+          translations: translationsProvided || removed !== undefined ? {
+            deleteMany: removed !== undefined
               ? { locale: { in: removed.filter((locale) => !translations.some((row) => row.locale === locale)) } }
               : translationsProvided && translations.length === 0 ? {} : undefined,
-          upsert: translations.map((row) => ({
-            where: { bonusId_locale: { bonusId: id, locale: row.locale } },
-            create: row,
-            update: row,
-          })),
-        } : undefined,
-      },
-      include: { translations: true },
-    });
+            upsert: translations.map((row) => ({
+              where: { bonusId_locale: { bonusId: id, locale: row.locale } },
+              create: row,
+              update: row,
+            })),
+          } : undefined,
+        },
+        include: { translations: true },
+      });
+    }, { timeout: 15000 });
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {

@@ -63,8 +63,11 @@ export async function getBonusLifecycle(id: string, listingId: string, operation
     where: { id, listingId },
     relationLoadStrategy: "join",
     include: {
-      listing: { select: { revision: true } },
-      lifecycle: { orderBy: { appliedAt: "desc" }, omit: { requestHash: true } },
+      listing: { select: {
+        revision: true, originalStoreName: true, originalEditionLabel: true, productUrl: true, selectionGuide: true,
+        album: { select: { originalTitle: true } },
+      } },
+      lifecycle: { orderBy: [{ appliedAt: "desc" }, { operationId: "asc" }], omit: { requestHash: true } },
     },
   });
   if (!bonus) throw notFound();
@@ -73,6 +76,15 @@ export async function getBonusLifecycle(id: string, listingId: string, operation
   }));
   return {
     state: { id, listingId, listingRevision: bonus.listing.revision, ...snapshot(bonus) },
+    target: {
+      bonusType: bonus.originalBonusType,
+      description: bonus.originalBonusDescription,
+      store: bonus.listing.originalStoreName,
+      edition: bonus.listing.originalEditionLabel,
+      album: bonus.listing.album.originalTitle,
+      productUrl: bonus.listing.productUrl,
+      selectionGuide: bonus.listing.selectionGuide,
+    },
     history,
     operation: history.find((entry) => entry.operationId === operationId) ?? null,
   };
@@ -106,7 +118,8 @@ export async function applyBonusOperation(id: string, input: ReturnType<typeof p
 
     const bonus = await tx.albumStoreBonus.findUniqueOrThrow({
       where: { id },
-      include: { listing: true },
+      relationLoadStrategy: "join",
+      include: { listing: { include: { album: { select: { _count: { select: { bdEvents: true } } } } } } },
     });
     if (bonus.revision !== input.expectedRevision || bonus.listing.revision !== input.expectedListingRevision) {
       throw new BonusLifecycleError("conflict", "구매 옵션 또는 특전이 변경되었습니다. 최신 내용을 다시 확인해 주세요.");
@@ -121,11 +134,11 @@ export async function applyBonusOperation(id: string, input: ReturnType<typeof p
     }
 
     const now = new Date();
-    const expired = bonus.endsAt !== null && bonus.endsAt <= now;
+    const expiredDeadline = bonus.endsAt && bonus.endsAt <= now ? bonus.endsAt : null;
     if (action === "end" && bonus.endedAt !== null) {
       throw new BonusLifecycleError("conflict", "이미 종료된 특전입니다.");
     }
-    if (action === "restore" && bonus.endedAt === null && !expired) {
+    if (action === "restore" && bonus.endedAt === null && !expiredDeadline) {
       throw new BonusLifecycleError("conflict", "종료된 특전만 복구할 수 있습니다.");
     }
     const next = action === "end" ? { endedAt: now } : {
@@ -134,8 +147,10 @@ export async function applyBonusOperation(id: string, input: ReturnType<typeof p
       endsAt: input.endsAt ?? null,
     };
     if (action === "restore" && (
-      (expired && !next.endsAt) ||
-      projectPurchaseOptions([{ ...bonus.listing, bonuses: [{ ...bonus, ...next }] }], now).bonusCount === 0
+      (expiredDeadline && !next.endsAt && (!next.startsAt || next.startsAt < expiredDeadline)) ||
+      projectPurchaseOptions([{ ...bonus.listing, bonuses: [{ ...bonus, ...next }] }], now, {
+        performanceOnly: bonus.listing.album._count.bdEvents > 0,
+      }).bonusCount === 0
     )) {
       throw new PurchaseInputError("현재 유효한 구매 옵션과 갱신된 특전 기간이 필요합니다.");
     }

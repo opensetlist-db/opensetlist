@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import AlbumBonusFormModal, {
   type BonusInitial,
 } from "@/components/admin/AlbumBonusFormModal";
-import { isSafeExternalUrl } from "@/lib/utils";
 import BonusLifecyclePanel from "./BonusLifecyclePanel";
 
 export type BonusRow = Omit<BonusInitial, "listingId"> & { endedAt: string | null };
@@ -13,11 +12,10 @@ export type BonusRow = Omit<BonusInitial, "listingId"> & { endedAt: string | nul
 type Props = {
   listingId: string;
   bonuses: BonusRow[];
-  productUrl: string | null;
   purchaseHref: string;
 };
 
-export default function BonusesClient({ listingId, bonuses, productUrl, purchaseHref }: Props) {
+export default function BonusesClient({ listingId, bonuses, purchaseHref }: Props) {
   const router = useRouter();
   const [modal, setModal] = useState<BonusInitial | "new" | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -38,14 +36,7 @@ export default function BonusesClient({ listingId, bonuses, productUrl, purchase
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">특전 관리</h1>
-          {isSafeExternalUrl(productUrl) && (
-            <a href={productUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline">
-              이 옵션의 판매점 상품
-            </a>
-          )}
-        </div>
+        <h1 className="text-2xl font-bold">특전 관리</h1>
         <button
           type="button"
           onClick={() => setModal("new")}
@@ -75,7 +66,10 @@ export default function BonusesClient({ listingId, bonuses, productUrl, purchase
             return (
               <Fragment key={b.id}>
               <tr className="border-b border-zinc-100 align-top">
-                <td className="py-2 font-medium">{b.originalBonusType}{b.endedAt && <span className="ml-2 text-zinc-500">종료</span>}</td>
+                <td className="py-2 font-medium">
+                  {b.originalBonusType}{b.endedAt && <span className="ml-2 text-zinc-500">종료</span>}
+                  {b.originalBonusDescription && <p className="break-words font-normal text-zinc-600">{b.originalBonusDescription}</p>}
+                </td>
                 <td className="py-2 text-zinc-500">{tlSummary || "—"}</td>
                 <td className="space-x-2 py-2 whitespace-nowrap">
                   <button type="button" aria-expanded={selected === b.id}

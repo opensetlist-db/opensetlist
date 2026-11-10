@@ -3,12 +3,45 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { getBonusLifecycle } from "@/lib/bonusLifecycle";
-import { isSafeExternalUrl } from "@/lib/utils";
+import { formatDate, isSafeExternalUrl } from "@/lib/utils";
 
 type Lifecycle = Awaited<ReturnType<typeof getBonusLifecycle>>;
+type Pending = { operationId: string; body: string };
+
+function storedOperation(key: string): Pending | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(key) ?? "null");
+    return typeof value?.operationId === "string" && typeof value?.body === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeOperation(key: string, value: Pending) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // The current panel still keeps the operation when browser storage is unavailable.
+  }
+}
+
+function forgetOperation(key: string, operationId: string) {
+  try {
+    if (storedOperation(key)?.operationId === operationId) sessionStorage.removeItem(key);
+  } catch {
+    // A later open can still verify the stored operation again.
+  }
+}
+
+function displayInstant(instant: string) {
+  return formatDate(instant, "ko", {
+    year: "numeric", month: "numeric", day: "numeric",
+    hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short",
+  });
+}
 
 function period(start: string | null, end: string | null) {
-  return `${start ?? "시작 미정"} ~ ${end ?? "종료 미정"}`;
+  return `${start ? displayInstant(start) : "시작 미정"} ~ ${end ? displayInstant(end) : "종료 미정"}`;
 }
 
 function historyState(value: Lifecycle["history"][number]["before"]) {
@@ -40,7 +73,8 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
   const url = `/api/admin/album-bonuses/${encodeURIComponent(id)}/lifecycle`;
   const storageKey = `bonus-lifecycle:${listingId}:${id}`;
   const [result, setResult] = useState<Lifecycle | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [retryReady, setRetryReady] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(true);
   const [formVersion, setFormVersion] = useState(0);
@@ -48,19 +82,26 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
   useEffect(() => {
     let current = true;
     async function load() {
+      const operation = storedOperation(storageKey);
       try {
-        const operationId = sessionStorage.getItem(storageKey);
-        const data = await readLifecycle(url, listingId, operationId);
+        const data = await readLifecycle(url, listingId, operation?.operationId ?? null);
         if (!current) return;
         setResult(data);
-        if (operationId) {
-          sessionStorage.removeItem(storageKey);
+        if (operation) {
+          if (data.operation) forgetOperation(storageKey, operation.operationId);
+          else {
+            setPending(operation);
+            setRetryReady(true);
+          }
           setMessage(data.operation
             ? "이미 반영된 요청입니다. 새 구매 탭에서 확인해 주세요."
-            : "이 작업의 저장 이력이 없습니다. 최신 상태를 확인한 뒤 다시 제출할 수 있습니다.");
+            : "이 작업의 저장 이력을 아직 확인하지 못했습니다. 같은 요청을 다시 보낼 수 있습니다.");
         }
       } catch (error) {
-        if (current) setMessage(error instanceof Error ? error.message : "특전 상태를 조회하지 못했습니다.");
+        if (current) {
+          setPending(operation);
+          setMessage(error instanceof Error ? error.message : "특전 상태를 조회하지 못했습니다.");
+        }
       } finally {
         if (current) setBusy(false);
       }
@@ -69,20 +110,23 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
     return () => { current = false; };
   }, [listingId, storageKey, url]);
 
-  function clearPending() {
-    sessionStorage.removeItem(storageKey);
-    setPending(null);
+  function clearPending(operationId: string) {
+    forgetOperation(storageKey, operationId);
+    setPending((current) => current?.operationId === operationId ? null : current);
   }
 
   async function reconcile(operationId: string | null, appliedMessage: string, missingMessage: string, saved = false) {
+    setRetryReady(false);
     try {
       const data = await readLifecycle(url, listingId, operationId);
       setResult(data);
-      clearPending();
       setMessage(operationId ? (data.operation ? appliedMessage : missingMessage) : missingMessage);
       if (data.operation) {
+        clearPending(data.operation.operationId);
         setFormVersion((version) => version + 1);
         router.refresh();
+      } else if (operationId && !saved) {
+        setRetryReady(true);
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "잠시 후 다시 확인해 주세요.";
@@ -93,66 +137,76 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
   const state = result?.state;
   const restoring = Boolean(state && (state.endedAt || (state.endsAt && new Date(state.endsAt) <= new Date())));
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!state || pending || busy) return;
-    const values = new FormData(event.currentTarget);
-    const value = (name: string) => String(values.get(name) ?? "").trim();
-    const operationId = crypto.randomUUID();
+  async function send(operation: Pending) {
+    const { operationId, body } = operation;
     setBusy(true);
     setMessage("");
+    setRetryReady(false);
+    storeOperation(storageKey, operation);
+    setPending(operation);
     try {
-      sessionStorage.setItem(storageKey, operationId);
-      setPending(operationId);
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: AbortSignal.timeout(20000),
-        body: JSON.stringify({
-          listingId, operationId, expectedRevision: state.revision, expectedListingRevision: state.listingRevision,
-          action: restoring ? "restore" : "end",
-          evidenceUrl: value("evidenceUrl"), summary: value("summary"), observedAt: value("observedAt"),
-          ...(restoring && { startsAt: value("startsAt") || null, endsAt: value("endsAt") || null }),
-        }),
+        body,
       });
       if (response.status === 401) {
-        clearPending();
-        setMessage("관리자 로그인이 만료되었습니다. 로그인 후 다시 열어 주세요.");
+        setMessage("관리자 로그인이 만료되었습니다. 로그인 후 반영 여부를 확인해 주세요.");
         return;
       }
-      const body = await response.json();
+      const reply = await response.json();
       if (response.ok) {
-        const saved = body.status === "already_applied" ? "이미 반영된 요청입니다." : "저장했습니다.";
-        const cache = body.cache === "warning" ? " 공개 캐시 갱신에 실패했습니다." : "";
+        const saved = reply.status === "already_applied" ? "이미 반영된 요청입니다." : "저장했습니다.";
+        const cache = reply.cache === "warning" ? " 공개 캐시 갱신에 실패했습니다." : "";
         await reconcile(operationId, `${saved}${cache} 새 구매 탭에서 확인해 주세요.`, `${saved}${cache}`, true);
       } else if (response.status >= 500) {
-        await reconcile(operationId, "이미 반영된 요청입니다. 새 구매 탭에서 확인해 주세요.", body.error ?? "저장에 실패했습니다.");
+        await reconcile(operationId, "이미 반영된 요청입니다. 새 구매 탭에서 확인해 주세요.", reply.error ?? "저장에 실패했습니다.");
       } else {
-        clearPending();
-        setMessage(body.error ?? "입력을 확인해 주세요.");
-        if (response.status === 409) setResult(null);
+        clearPending(operationId);
+        setMessage(reply.error ?? "입력을 확인해 주세요.");
+        if (response.status === 409 || response.status === 404) setResult(null);
       }
     } catch {
       await reconcile(operationId, "응답이 유실되었지만 요청은 반영되었습니다. 새 구매 탭에서 확인해 주세요.",
-        "이 작업의 저장 이력이 없습니다. 최신 상태를 확인한 뒤 다시 제출할 수 있습니다.");
+        "이 작업의 저장 이력을 아직 확인하지 못했습니다. 같은 요청을 다시 보낼 수 있습니다.");
     } finally {
       setBusy(false);
     }
   }
 
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!state || pending || busy) return;
+    const values = new FormData(event.currentTarget);
+    const value = (name: string) => String(values.get(name) ?? "").trim();
+    const operationId = crypto.randomUUID();
+    void send({
+      operationId,
+      body: JSON.stringify({
+        listingId, operationId, expectedRevision: state.revision, expectedListingRevision: state.listingRevision,
+        action: restoring ? "restore" : "end",
+        evidenceUrl: value("evidenceUrl"), summary: value("summary"), observedAt: value("observedAt"),
+        ...(restoring && { startsAt: value("startsAt") || null, endsAt: value("endsAt") || null }),
+      }),
+    });
+  }
+
   const inputClass = "mt-1 w-full rounded border border-zinc-300 bg-white px-3 py-2";
   return (
     <div className="space-y-3 rounded border border-zinc-200 bg-zinc-50 p-4">
-      <a href={purchaseHref} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+      <a href={purchaseHref} target="_blank" rel="noopener noreferrer" data-testid="bonus-lifecycle-purchase-link" className="text-blue-600 underline">
         공개 구매 탭 새로 열기
       </a>
-      <p role="status">{message || (busy ? "확인 중…" : "")}</p>
+      <p role="status" data-testid="bonus-lifecycle-status">{message || (busy ? "확인 중…" : "")}</p>
       {(!state || pending) && !busy && (
-        <button type="button" className="rounded border px-3 py-2" onClick={async () => {
+        <button type="button" className="rounded border px-3 py-2" data-testid="bonus-lifecycle-recheck" onClick={async () => {
           setBusy(true);
+          setMessage("");
           try {
-            await reconcile(pending ?? sessionStorage.getItem(storageKey),
-              "이미 반영된 요청입니다. 새 구매 탭에서 확인해 주세요.", "최신 상태를 확인했습니다.");
+            await reconcile(pending?.operationId ?? null,
+              "이미 반영된 요청입니다. 새 구매 탭에서 확인해 주세요.",
+              pending ? "이 작업의 저장 이력을 아직 확인하지 못했습니다." : "최신 상태를 확인했습니다.");
           } finally {
             setBusy(false);
           }
@@ -160,20 +214,39 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
           반영 여부 다시 조회
         </button>
       )}
-      {state && (
+      {pending && retryReady && !busy && (
+        <button type="button" className="rounded border px-3 py-2" data-testid="bonus-lifecycle-retry" onClick={() => void send(pending)}>
+          같은 요청 다시 보내기
+        </button>
+      )}
+      {result && state && (
         <>
+          <div className="space-y-1 break-words">
+            <p className="font-medium">{result.target.bonusType}</p>
+            {result.target.description && <p>{result.target.description}</p>}
+            <p>{[result.target.album, result.target.store, result.target.edition].filter(Boolean).join(" · ")}</p>
+            {result.target.selectionGuide && <p>{result.target.selectionGuide}</p>}
+            {isSafeExternalUrl(result.target.productUrl) && (
+              <a href={result.target.productUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                이 옵션의 판매점 상품
+              </a>
+            )}
+          </div>
           <p>{restoring ? "종료" : "수동 종료 없음"} · <span className="break-all">{period(state.startsAt, state.endsAt)}</span></p>
           <form key={formVersion} onSubmit={submit} className="space-y-2">
             <fieldset disabled={busy || pending !== null} className="space-y-2">
               <legend className="font-medium">특전 {restoring ? "복구" : "종료"}</legend>
+              <p className="text-zinc-600">{restoring
+                ? "재개 근거와 판매점이 안내한 기간을 입력해 주세요."
+                : "판매점이 종료나 소진을 명시한 경우에만 종료하세요. 일시품절이나 접속 실패는 종료 근거가 아닙니다."}</p>
               <label className="block">근거 URL
-                <input name="evidenceUrl" type="url" required maxLength={2048} className={inputClass} />
+                <input name="evidenceUrl" data-testid="bonus-lifecycle-evidence" type="url" required maxLength={2048} className={inputClass} />
               </label>
               <label className="block">관찰 요약
-                <textarea name="summary" required maxLength={2048} className={inputClass} />
+                <textarea name="summary" data-testid="bonus-lifecycle-summary" required maxLength={2048} className={inputClass} />
               </label>
               <label className="block">관찰 시각 (ISO 8601)
-                <input name="observedAt" required defaultValue={new Date().toISOString()} className={inputClass} />
+                <input name="observedAt" data-testid="bonus-lifecycle-observed-at" required defaultValue={new Date().toISOString()} className={inputClass} />
               </label>
               {restoring && (
                 <>
@@ -199,7 +272,7 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref }: {
           <ol className="divide-y divide-zinc-200">
             {result.history.map((entry) => (
               <li key={entry.operationId} className="space-y-1 break-words py-2">
-                <p>{entry.action === "end" ? "종료" : "복구"} · 관찰 <time dateTime={entry.observedAt}>{entry.observedAt}</time></p>
+                <p>{entry.action === "end" ? "종료" : "복구"} · 관찰 <time dateTime={entry.observedAt} title={entry.observedAt}>{displayInstant(entry.observedAt)}</time></p>
                 <p>{entry.summary}</p>
                 {isSafeExternalUrl(entry.evidenceUrl) && (
                   <a href={entry.evidenceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
