@@ -13,8 +13,11 @@ imports. Use the separate bonus review for album bonuses.
    the stored value, the proposed value, and the exact source for each locale.
    Classify a standalone drama/BGM title and an event or series name as a title.
    Keep variant labels, names, venue, organizer, city and approved abbreviations
-   separate. Verify that unchanged translations still describe the same thing
-   if the original changed. Record how you resolved conflicts. Hold unresolved
+   separate. If the original spelling or language changes, recheck each
+   required non-original language against its source and include it in the CSV
+   even when its spelling is unchanged. Keep the original script and write
+   Korean localized names and titles without Han characters. Record how you
+   resolved conflicts. Hold unresolved
    names and new abbreviations for operator review with reasons and source
    candidates. A blank needed translation remains missing.
 3. Run the language review against the merged record and split held entries
@@ -42,7 +45,9 @@ values after the candidate patch. `csv` carries the corresponding rows from
 the prepared delta, with filenames beginning with the import type.
 The exporter checks the reviewed values against the real CSV cells.
 Add `stored` with `original`, `originalLanguage` and `translations` from the
-latest snapshot when the effective value includes an omitted CSV cell.
+latest snapshot for existing fields, including fields affected by an original
+language change. Include the full name in the same reviewed row when checking
+an event or series short name or an approved unit's short name.
 Use `csvIndex` for a field on a subsequent row and `prefix` for fields such as
 `series_` and `va_`. A held entry may have empty fields and no CSV rows.
 
@@ -105,7 +110,8 @@ node scripts/catalog-display-review.mjs stored.json --audit > audit.json
 - Inspect the import result and re-export the affected rows from the target DB.
   Run the same review on the stored names with `--audit`, keeping explicit holds
   and their dependencies in the report. Record excluded, held, missing,
-  title-review, and unconfirmed-same separately.
+  title-review, unconfirmed-same, and ko-han separately. A source-review hold
+  means a required translation was carried forward without re-submitting it.
 - Compare old, planned, and stored values. Check IDs, slugs, original text,
   relationships, dates and existing user records. For an import error, inspect
   earlier rows before retrying. Setlist replacement is atomic per event. Follow
