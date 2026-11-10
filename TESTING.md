@@ -130,6 +130,14 @@ throws unless both `DATABASE_URL` and `DATABASE_URL_UNPOOLED` point at
 the dev Supabase project, so a prod URL in the shell cannot slip
 through. Files run one at a time (`fileParallelism: false`).
 
+Before applying an unmerged additive schema to shared dev, record the owning
+PR or branch, added objects, and planned application time in the task's
+execution board. Coordinate with sessions using dev so their standard
+migration runs avoid the pre-merge window. If a concurrent migration hits
+the DROP guard, compare the refused objects with that record. Keep the guard
+enabled, report any unrelated drift separately, and rerun the standard dev
+migration after the owning PR merges to confirm the schema and role checks pass.
+
 The dev DB also backs the Vercel Preview and other sessions' work, so
 know what each suite leaves behind:
 
@@ -346,9 +354,11 @@ is started from.
 
 ## Windows task tools
 
-Use `powershell -NoProfile -File scripts/task-runtime.ps1 serve-build
+For local admin QA, serve a production build with
+`powershell -NoProfile -File scripts/task-runtime.ps1 serve-build
 -Runtime GitBash -Port 3191` to select Git Bash explicitly, or select
-`-Runtime WSL -Distro <name>` with Linux Node installed. Windows removal
+`-Runtime WSL -Distro <name>` with Linux Node installed. Stop it with the same
+command plus `-Stop` before archiving the task's evidence. Windows removal
 uses the same entry point with `worktree-rm -Path <absolute-path>
 -ReleasedHead <full-handoff-head> -MergeRef origin/dev` (first add `-DryRun`).
 It always runs natively and refuses dirty, active, unmerged, or unsafe paths.

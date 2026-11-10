@@ -32,9 +32,14 @@ tester.run("date-format-timezone", rule, {
     // formatDate without options uses its UTC default.
     "formatDate(event.date, locale);",
     "formatDate(album.releaseDate, locale, HISTORY_ROW_DATE_FORMAT);",
+    'formatDate(d, locale, { dateStyle: "medium", timeZone: "Asia/Tokyo" });',
+    'd.toLocaleDateString(locale, { dateStyle: "medium", timeZone: "Asia/Tokyo" });',
+    'd.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tokyo" });',
+    'new Intl.DateTimeFormat(locale, { timeStyle: "short" }).format(d);',
     // Time-only options render in the viewer's zone on purpose.
     'const T: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" };',
     'formatTime(ev.startTime, locale, { hour: "2-digit", minute: "2-digit" });',
+    'formatTime(d, locale, { timeStyle: "short", timeZone: "UTC" });',
     // Output that names its zone is labelled, not silently shifted.
     'new Intl.DateTimeFormat(locale, { year: "numeric", day: "2-digit", hour: "2-digit", timeZoneName: "short" }).format(new Date());',
     // A spread may carry the zone.
@@ -50,6 +55,14 @@ tester.run("date-format-timezone", rule, {
     'n.toLocaleString("en-US", { maximumFractionDigits: 1 });',
   ],
   invalid: [
+    {
+      code: 'formatDate(d, locale, { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tokyo" });',
+      errors: [{ messageId: "unsupportedTimeStyle" }],
+    },
+    {
+      code: 'd.toLocaleDateString(locale, { ...BASE, "timeStyle": "short" } as const);',
+      errors: [{ messageId: "unsupportedTimeStyle" }],
+    },
     {
       code: 'const F: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" };',
       errors: [{ messageId: "missingTimeZone" }],

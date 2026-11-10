@@ -37,8 +37,15 @@ ancestor capture pipes into the server, including from PowerShell 5.1 callers.
 
 ## Remove a released worktree
 
-Close its session/server first and obtain the full HEAD from its handoff. Run
-from outside the target. `-ReleasedHead` confirms that session has relinquished
+1. Stop the task server with `serve-build -Stop` using the original checkout,
+   runtime and port. For a server started another way, use its original tool.
+2. Close the task session, obtain its full HEAD from the handoff, and
+   [archive and hash-check the evidence](#preserve-raw-evidence-before-removal).
+3. From outside the target, run the cleanup dry run with the release SHA
+   and archive manifest when required. Remove the worktree after it reports
+   `would-remove`.
+
+`-ReleasedHead` confirms that session has relinquished
 the exact checkout; it does not override any safety check. Git locks and
 processes whose command lines reference the path also block removal. A shell
 holding a directory without naming it in its command line cannot be discovered
