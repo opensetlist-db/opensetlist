@@ -174,6 +174,24 @@ stale event. Events accept only the fields below and `type`.
 | `consume-retry` | `sessionId`, `reviewId` |
 | `complete` | `sessionId` |
 
+Example open PR observation. Replace the synthetic PR number, URLs, head and
+timestamp with the values you observed.
+
+```json
+{
+  "type": "observe-pr",
+  "pr": {
+    "number": 123,
+    "url": "https://github.com/example/project/pull/123",
+    "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "state": "open",
+    "mergeCommit": null,
+    "observedAt": "2026-10-23T05:00:00.000Z",
+    "ref": "https://github.com/example/project/pull/123"
+  }
+}
+```
+
 Example check: `{"type":"record-check","entry":{"id":"unit","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"pass","ref":"unit.log","observedAt":"2026-10-23T05:00:00.000Z"}}`.
 An attestation distinguishes actual device execution time from when a message
 arrived. If the owner says “just tested” without a measured device timestamp,
@@ -197,6 +215,11 @@ If that request fails or the process crashes, the budget stays used; there is
 no automatic refund or duplicate dispatch. A returned action is advisory and
 does not send a message. Concurrent GitHub merge after an observation remains
 possible: recheck remotely immediately before any external request.
+
+Before applying `complete`, run `heartbeat --dry-run` with the current revision
+and session ID. Read and acknowledge the documents listed as unread or changed,
+resolve any unavailable documents, and confirm `contextReady` at the latest
+revision.
 
 `complete` requires merged PR/merge SHA, current document receipts and explicit
 pass evidence for every configured current-head gate. Required review passes
