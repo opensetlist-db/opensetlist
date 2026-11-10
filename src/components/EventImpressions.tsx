@@ -584,7 +584,7 @@ export function EventImpressions({
       className={`${styles.panel} ${styles.impressionsPanel}`}
     >
       <div className={styles.panelHead}>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h2 id="event-impressions-title" className={styles.panelTitle}>
             {copy("title")}
           </h2>
