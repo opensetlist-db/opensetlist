@@ -28,9 +28,9 @@ export function identityNameText({ main, sub }: IdentityNamePair) {
 
 export function IdentityName({ name }: { name: IdentityNamePair }) {
   return (
-    <span className="min-w-0 [overflow-wrap:anywhere]">
+    <span className="min-w-0 text-[max(12px,1em)] [overflow-wrap:anywhere]">
       <span lang={name.lang}>{name.main}</span>
-      {name.sub && <small className="block text-[0.85em]" lang={name.locale}>{name.sub}</small>}
+      {name.sub && <small className="block text-[max(11px,0.85em)]" lang={name.locale}>{name.sub}</small>}
     </span>
   );
 }
