@@ -44,7 +44,8 @@ const scenario = {
   name: 'event-detail-headings',
   async run(h) {
     await h.layoutMatrix({
-      path: (locale) => `/${locale}/events/107/lovelive-15th-fes-day1`,
+      // The same Fes date is event 107 in production and 109 in the dev catalog.
+      path: (locale) => `/${locale}/events/109/lovelive-15th-fes-day1`,
       widths,
       cell: (cell) => checkHeadings(cell, headings),
     });
