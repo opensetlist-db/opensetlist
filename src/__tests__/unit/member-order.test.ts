@@ -367,7 +367,7 @@ describe("members.csv import — sortOrder", () => {
     ((await res.json()).log as string[]).filter((l) => l.startsWith("WARN"));
 
   beforeEach(() => {
-    si.findUnique.mockResolvedValue({ id: "si-1" });
+    si.findUnique.mockResolvedValue({ id: "si-1", translations: [{ locale: "ko", name: "멤버" }, { locale: "en", name: "Member" }] });
     si.update.mockResolvedValue({ id: "si-1" });
     si.create.mockResolvedValue({ id: "si-new" });
   });
@@ -397,9 +397,9 @@ describe("members.csv import — sortOrder", () => {
 
   it("create: integer stored; absent → null; invalid → WARN and unnumbered", async () => {
     si.findUnique.mockResolvedValue(null);
-    await importCsv(["character_slug,ja_name,sortOrder", "m1,メンバー,2"].join("\n"));
-    await importCsv(["character_slug,ja_name", "m2,メンバー2"].join("\n"));
-    const res = await importCsv(["character_slug,ja_name,sortOrder", "m3,メンバー3,x"].join("\n"));
+    await importCsv(["character_slug,ja_name,sortOrder,ko_name,en_name", "m1,メンバー,2,멤버,Member"].join("\n"));
+    await importCsv(["character_slug,ja_name,ko_name,en_name", "m2,メンバー2,멤버2,Member2"].join("\n"));
+    const res = await importCsv(["character_slug,ja_name,sortOrder,ko_name,en_name", "m3,メンバー3,x,멤버3,Member3"].join("\n"));
     expect(si.create.mock.calls.map((c) => c[0].data.sortOrder)).toEqual([2, null, null]);
     expect(await warnsOf(res)).toEqual([
       'WARN: members.csv sortOrder "x" is not an integer (member m3) — new member left unnumbered',
