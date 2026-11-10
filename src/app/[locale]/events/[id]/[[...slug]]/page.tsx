@@ -815,6 +815,7 @@ export default async function EventPage({ params }: Props) {
   // computation and the header-badge computation). Pass `referenceNow`
   // through to the second call below so the page is internally
   // consistent.
+  // Render BD events per request so expired options cannot remain in cached HTML.
   if (event.bdAlbum) await connection();
   const referenceNow = new Date();
   const resolvedStatus = getEventStatus(event, referenceNow);

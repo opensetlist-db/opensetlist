@@ -545,6 +545,7 @@ WHERE e.id = sub."eventId"
 CREATE UNIQUE INDEX IF NOT EXISTS "AlbumStoreListing_null_edition_option_key"
   ON "AlbumStoreListing" ("albumId", "originalStoreName", "optionKey")
   WHERE "originalEditionLabel" IS NULL;
+DROP INDEX IF EXISTS public."AlbumStoreListing_album_store_null_edition_key";
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Redesign managed images — ImageAsset and the logo mode/asset pairing.
