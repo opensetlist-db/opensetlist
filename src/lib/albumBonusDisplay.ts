@@ -55,17 +55,6 @@ export function resolveStoreName(
   return trans?.storeName ?? listing.originalStoreName;
 }
 
-// originalEditionLabel IS nullable (a single-edition album has no
-// label to set), so this helper can legitimately return null and
-// callers render the listing without an edition row when that happens.
-export function resolveEditionLabel(
-  listing: EnrichedListing,
-  locale: string,
-): string | null {
-  const trans = listing.translations?.find((t) => t.locale === locale);
-  return trans?.editionLabel ?? listing.originalEditionLabel;
-}
-
 // originalBonusType is NOT NULL. The Translation row's bonusType
 // column IS nullable (translators override only the columns they
 // localize — the bonus-description column lives next to it and either
