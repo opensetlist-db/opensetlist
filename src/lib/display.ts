@@ -4,6 +4,63 @@ interface NameDisplay {
   shortName: string | null;
 }
 
+function localeRow<T extends { locale: string }>(rows: readonly T[], locale: string) {
+  return rows.find((row) => row.locale === locale);
+}
+
+// Match the title audit's script rules without changing the stored spelling.
+function titleScript(original: string) {
+  let readable = false;
+  let afterLatin = false;
+  for (const char of original.normalize("NFKC")) {
+    if (/\p{Script=Latin}/u.test(char)) {
+      readable = afterLatin = true;
+    } else if (/[0-9]/u.test(char)) {
+      readable = true;
+      afterLatin = false;
+    } else if (!afterLatin || !/\p{Mark}/u.test(char)) {
+      afterLatin = false;
+      if (/[\p{Letter}\p{Number}]/u.test(char)) return "other";
+      if (!/[\p{Punctuation}\p{Symbol}\p{Separator}\s]/u.test(char)) return "review";
+    }
+  }
+  return readable ? "exempt" : "review";
+}
+
+/**
+ * Original-first display and completeness for a populated source field.
+ * Use kind "title" for titles, including event names; other fields never get
+ * the title exemption. Resolve the original separately from the locale row.
+ * A matching stored value renders once, but only counts as confirmed when
+ * the caller has evidence for that exact field and locale. "present" means
+ * a distinct value exists; it makes no claim about translation quality.
+ */
+export function resolveDisplayPair<T extends { locale: string }>(
+  source: { original: string; originalLanguage: string },
+  translations: readonly T[],
+  displayLocale: string,
+  field: keyof T,
+  options: { kind?: "title"; sameValueConfirmed?: boolean } = {},
+) {
+  const main = source.original;
+  const script = options.kind === "title" ? titleScript(main) : null;
+  if (script === "exempt") return { main, sub: null, status: "exempt" } as const;
+
+  const value = localeRow(translations, displayLocale)?.[field];
+  if (typeof value === "string" && value.trim() && value !== main) {
+    return { main, sub: value, status: "present" } as const;
+  }
+  if (source.originalLanguage === displayLocale) {
+    return { main, sub: null, status: "original-language" } as const;
+  }
+  if (value === main && main.trim()) {
+    const status = options.sameValueConfirmed ? "confirmed-same" : "unconfirmed-same";
+    return { main, sub: null, status } as const;
+  }
+  const status = script === "review" ? "title-review" : "missing";
+  return { main, sub: null, status } as const;
+}
+
 /**
  * Identity-name analogue of displayOriginalTitle, for entities with
  * parent-level originalName/originalShortName/originalLanguage
@@ -38,10 +95,8 @@ export function displayOriginalName<
   translations: readonly T[],
   displayLocale: string
 ): NameDisplay {
-  const translation =
-    translations.find((t) => t.locale === displayLocale) ?? null;
-  const originalTranslation =
-    translations.find((t) => t.locale === item.originalLanguage) ?? null;
+  const translation = localeRow(translations, displayLocale);
+  const originalTranslation = localeRow(translations, item.originalLanguage);
   // Resolve the original-language string. During PR A's nullable
   // transition `originalName` may be missing — fall through to the
   // row in the entity's declared `originalLanguage` (strict — never
@@ -93,7 +148,7 @@ export function resolveLocalizedField<
   translationField: keyof TTranslation,
   parentOriginalField: keyof TParent
 ): string | null {
-  const translation = translations.find((t) => t.locale === displayLocale);
+  const translation = localeRow(translations, displayLocale);
   const localeValue = translation?.[translationField];
   if (typeof localeValue === "string" && localeValue.length > 0) {
     return localeValue;
@@ -122,7 +177,7 @@ export function displayNameWithFallback(
   displayLocale: string,
   mode: "short" | "full" = "full"
 ): string {
-  const translation = translations.find((t) => t.locale === displayLocale);
+  const translation = localeRow(translations, displayLocale);
   if (mode === "short") {
     return (
       translation?.shortName ||
@@ -198,6 +253,7 @@ interface TitleDisplay {
  * there is NO fallback to ko/en — a missing locale row falls through to the
  * parent's original fields, so a Japanese viewer never sees a Korean variant
  * label bleed through for a Japanese song with only a ko translation.
+ * Opt into "paired" as each surface adopts the shared title policy.
  */
 export function displayOriginalTitle<
   T extends { locale: string; title: string; variantLabel?: string | null },
@@ -208,12 +264,20 @@ export function displayOriginalTitle<
     variantLabel?: string | null;
   },
   translations: readonly T[],
-  displayLocale: string = "ko"
+  displayLocale: string = "ko",
+  policy: "legacy" | "paired" = "legacy",
 ): TitleDisplay {
-  const translation =
-    translations.find((t) => t.locale === displayLocale) ?? null;
+  const translation = localeRow(translations, displayLocale);
   const main = item.originalTitle;
   const variant = translation?.variantLabel || item.variantLabel || null;
+
+  if (policy === "paired") {
+    const { sub } = resolveDisplayPair(
+      { original: main, originalLanguage: item.originalLanguage },
+      translations, displayLocale, "title", { kind: "title" },
+    );
+    return { main, sub, variant };
+  }
 
   if (item.originalLanguage === displayLocale) {
     return { main, sub: null, variant };

@@ -81,9 +81,9 @@ function album(over: Record<string, unknown> = {}): Any {
     type: "single",
     releaseDate: "2024-03-13",
     imageUrl: null,
-    originalTitle: "Bloom the smile, Bloom the dream!",
+    originalTitle: "Say Good-Bye 涙",
     originalLanguage: "ja",
-    translations: [{ locale: "ko", title: "블룸 더 스마일" }],
+    translations: [{ locale: "ko", title: "Say Good-Bye 눈물" }],
     artists: [],
     listings: [],
     _count: { bdEvents: 0 },
@@ -121,12 +121,24 @@ describe("AlbumListRow", () => {
 
   it("shows the original title with the viewer-locale title and year below", async () => {
     const { container } = await renderRow();
-    expect(screen.getByText("Bloom the smile, Bloom the dream!")).toBeTruthy();
+    expect(screen.getByText("Say Good-Bye 涙")).toHaveAttribute("lang", "ja");
+    expect(screen.getByText("Say Good-Bye 눈물")).toHaveAttribute("lang", "ko");
     // Secondary line: translation + mobile year; the desktop year span
     // is a sibling (CSS shows one per band).
     const sub = container.querySelector('[class*="rowSub"]');
-    expect(sub?.textContent).toBe("블룸 더 스마일 · 2024");
+    expect(sub?.textContent).toBe("Say Good-Bye 눈물 · 2024");
     expect(container.querySelector('[class*="year"]:not([class*="mobileYear"])')?.textContent).toBe("2024");
+  });
+
+  it.each([
+    ["恋のチュートリアル", "恋のチュートリアル"],
+    ["Ｄａｙ．１", "첫째 날"],
+  ])("renders only the original title for %s", async (originalTitle, title) => {
+    const { container } = await renderRow({
+      album: album({ originalTitle, translations: [{ locale: "ko", title }] }),
+    });
+    expect(screen.getAllByText(originalTitle)).toHaveLength(1);
+    expect(container.querySelector('[class*="rowSub"]')?.textContent).toBe("2024");
   });
 
   it("omits the secondary title without a translation and the year when undated", async () => {
