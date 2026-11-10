@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
-import { byStageIdentityOrderBy } from "@/lib/memberOrder";
+import { getAdminEventWithOrderedSetlist } from "@/lib/adminEventSetlist";
 import {
   liveWriterTransaction,
   withAdminLiveWriterBusy,
@@ -46,49 +46,7 @@ export async function GET(_request: NextRequest, { params }: Props) {
   if (unauthorized) return unauthorized;
 
   const { id } = await params;
-  const event = await prisma.event.findFirst({
-    where: { id: BigInt(id), isDeleted: false },
-    include: {
-      translations: true,
-      eventSeries: { include: { translations: true } },
-      // Official member order (`src/lib/memberOrder.ts`) for the
-      // event roster and every setlist row's performers below.
-      performers: {
-        orderBy: byStageIdentityOrderBy(),
-        include: {
-          stageIdentity: {
-            include: {
-              translations: true,
-              artistLinks: {
-                include: { artist: { include: { translations: true } } },
-              },
-            },
-          },
-        },
-      },
-      setlistItems: {
-        where: { isDeleted: false },
-        include: {
-          songs: {
-            include: { song: { include: { translations: true } } },
-            orderBy: { order: "asc" },
-          },
-          performers: {
-            orderBy: byStageIdentityOrderBy(),
-            include: {
-              stageIdentity: { include: { translations: true } },
-            },
-          },
-          artists: {
-            include: {
-              artist: { include: { translations: true } },
-            },
-          },
-        },
-        orderBy: { position: "asc" },
-      },
-    },
-  });
+  const event = await getAdminEventWithOrderedSetlist(BigInt(id));
   if (!event) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

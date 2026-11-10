@@ -1,5 +1,7 @@
 "use client";
 
+import { createEventDisplayOrdering, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
+
 import { useMemo, type ReactNode } from "react";
 // `useSetlistPolling` is only a type source here. The hook itself has
 // no runtime caller any more: `useRealtimeEventChannel` owns the single
@@ -109,6 +111,7 @@ interface Props {
   // (upcoming/completed events) — avoids a redundant client recompute
   // that would produce the same output the server already shipped.
   initialItems: LiveSetlistItem[];
+  initialDisplayOrder?: EventDisplayOrder;
   initialReactionCounts: ReactionCountsMap;
   initialSidebarUnits: UnitsCardItem[];
   initialSidebarPerformers: PerformersCardItem[];
@@ -121,6 +124,7 @@ interface Props {
    * item-derived cards take over unchanged.
    */
   lineup: { units: UnitsCardItem[]; performers: PerformersCardItem[] } | null;
+  rosterGroupIds?: Readonly<Record<string, string>>;
   /** Venue-local start, for the pre-show empty-setlist copy. */
   setlistStartLabel: VenueStartLabel | null;
   /**
@@ -220,10 +224,12 @@ export function LiveEventLayout({
   initialImpressionsNextCursor,
   initialImpressionsTotalCount,
   initialItems,
+  initialDisplayOrder,
   initialReactionCounts,
   initialSidebarUnits,
   initialSidebarPerformers,
   lineup,
+  rosterGroupIds,
   setlistStartLabel,
   predictOpensLabel,
   initialSongsCount,
@@ -267,6 +273,7 @@ export function LiveEventLayout({
   // fallback per the original R3 design.
   const {
     items,
+    displayOrder,
     reactionCounts,
     top3Wishes,
     status: polledStatus,
@@ -277,6 +284,7 @@ export function LiveEventLayout({
   } = useRealtimeEventChannel<LiveSetlistItem>({
     eventId,
     initialItems,
+    initialDisplayOrder,
     initialReactionCounts,
     initialTop3Wishes: initialFanTop3,
     locale,
@@ -309,6 +317,7 @@ export function LiveEventLayout({
   //     same boundary) with the stale polled value.
   //   - R3 fallback: same as polling.
   const effectiveStatus: ResolvedEventStatus = polledStatus ?? status;
+  const ordering = useMemo(() => displayOrder ? createEventDisplayOrdering(displayOrder) : undefined, [displayOrder]);
 
   // Use the SSR-rendered sidebar values until polling delivers fresh
   // data (`lastUpdated !== null`). This single gate covers two cases:
@@ -347,6 +356,8 @@ export function LiveEventLayout({
         locale,
         unknownArtistLabel,
         unknownPerformerLabel,
+        ordering,
+        rosterGroupIds,
       );
       return {
         sidebarUnits: units,
@@ -366,12 +377,14 @@ export function LiveEventLayout({
       initialSidebarPerformers,
       initialSongsCount,
       initialReactionsValue,
+      ordering,
+      rosterGroupIds,
     ]);
 
   // Lineup swap: same `items` the setlist column renders, so the
   // sidebar and the setlist agree on "has the show produced data yet".
   // Pre-first-poll `items` is the SSR seed, so first paint matches SSR.
-  const showLineup = lineup !== null && items.length === 0;
+  const showLineup = lineup !== null && effectiveStatus !== "completed" && sidebarUnits.length === 0 && sidebarPerformers.length === 0;
   const unitsForCard = showLineup ? lineup.units : sidebarUnits;
   const performersForCard = showLineup ? lineup.performers : sidebarPerformers;
 

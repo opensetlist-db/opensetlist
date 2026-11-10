@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { byStageIdentityOrderBy } from "@/lib/memberOrder";
+import { getAdminEventWithOrderedSetlist } from "@/lib/adminEventSetlist";
 import { serializeBigInt } from "@/lib/utils";
 import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import EventForm from "../../EventForm";
@@ -15,48 +15,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function EditEventPage({ params }: Props) {
   const { id } = await params;
-  const event = await prisma.event.findFirst({
-    where: { id: BigInt(id), isDeleted: false },
-    include: {
-      translations: true,
-      // Official member order (`src/lib/memberOrder.ts`) for the
-      // event roster and every setlist row's performers below.
-      performers: {
-        orderBy: byStageIdentityOrderBy(),
-        include: {
-          stageIdentity: {
-            include: {
-              translations: true,
-              artistLinks: {
-                include: { artist: { include: { translations: true } } },
-              },
-            },
-          },
-        },
-      },
-      setlistItems: {
-        where: { isDeleted: false },
-        include: {
-          songs: {
-            include: { song: { include: { translations: true } } },
-            orderBy: { order: "asc" },
-          },
-          performers: {
-            orderBy: byStageIdentityOrderBy(),
-            include: {
-              stageIdentity: { include: { translations: true } },
-            },
-          },
-          artists: {
-            include: {
-              artist: { include: { translations: true } },
-            },
-          },
-        },
-        orderBy: { position: "asc" },
-      },
-    },
-  });
+  const event = await getAdminEventWithOrderedSetlist(BigInt(id));
   if (!event) notFound();
 
   const data = serializeBigInt(event);

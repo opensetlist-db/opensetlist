@@ -1,5 +1,7 @@
 "use client";
 
+import type { EventDisplayOrder } from "@/lib/eventDisplayOrder";
+
 import { useEffect } from "react";
 // Type lives in `src/lib/types/setlist.ts` so pure helpers under
 // `src/lib/` can use it without crossing the lib→hooks layer
@@ -20,6 +22,7 @@ export type { ReactionCountsMap };
 interface UseSetlistPollingOptions<T> {
   eventId: string;
   initialItems: T[];
+  initialDisplayOrder?: EventDisplayOrder;
   initialReactionCounts: ReactionCountsMap;
   initialTop3Wishes: FanTop3Entry[];
   // Display locale, threaded into the polling URL so the route can
@@ -43,6 +46,7 @@ interface UseSetlistPollingOptions<T> {
 
 interface UseSetlistPollingResult<T> {
   items: T[];
+  displayOrder?: EventDisplayOrder;
   reactionCounts: ReactionCountsMap;
   top3Wishes: FanTop3Entry[];
   /**
@@ -113,6 +117,7 @@ interface UseSetlistPollingResult<T> {
 export function useSetlistPolling<T>({
   eventId,
   initialItems,
+  initialDisplayOrder,
   initialReactionCounts,
   initialTop3Wishes,
   locale,
@@ -126,6 +131,7 @@ export function useSetlistPolling<T>({
     eventId,
     locale,
     initialItems,
+    initialDisplayOrder,
     initialReactionCounts,
     initialTop3Wishes,
     initialRev,

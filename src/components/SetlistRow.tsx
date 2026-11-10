@@ -223,7 +223,7 @@ export function SetlistRow({
   // artist — see `pickRowArtistBadges` for the full rule table.
   //
   // Multi-credit rows (a genuine multi-group collab) get up to
-  // MAX_ROW_BADGES chips in credit order, then a `+N` chip whose
+  // MAX_ROW_BADGES chips in official display order, then a `+N` chip whose
   // title lists the rest.
   const badgeArtists = pickRowArtistBadges(item, eventArtistId);
   // Full unit name on setlist rows — operator preference. UnitBadge

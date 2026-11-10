@@ -1,50 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
+import { eventRosterSelect, serializeEventRoster } from "@/lib/eventRoster";
+import { deriveLineupFromRoster } from "@/lib/sidebarDerivations";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
-/**
- * GET /api/events/[id]/performers
- *
- *   → {
- *       performers: Array<{
- *         stageIdentityId: string,
- *         originalName: string | null,
- *         originalShortName: string | null,
- *         originalLanguage: string,
- *         translations: { locale: string, name: string, shortName: string | null }[],
- *         isGuest: boolean,
- *         artistLinks: { artistId: number }[],
- *       }>
- *     }
- *
- * Read-only endpoint backing the `<AddItemBottomSheet>` performer
- * checklist (Phase 1C). Returns every `EventPerformer` for the event —
- * host AND guest — with enough display metadata to render the
- * checklist locally (no follow-up name-resolution fetches).
- *
- * `artistLinks` carries each StageIdentity's unit memberships so the
- * client can intersect "unit's current members" (from
- * `/api/artists/[artistId]/current-members`) with "this event's
- * performers" without a second walk through the StageIdentity table.
- *
- * `artistId` in `artistLinks` is coerced to `number` by the manual
- * cast below — the underlying Prisma column is `BigInt` but the
- * client convention (matching `serializeBigInt` + the rest of the
- * fan-facing payload contracts) is JSON-number. Per-item cast keeps
- * this route from depending on `serializeBigInt`'s walk-everywhere
- * recursion when the payload is otherwise shallow scalars.
- *
- * Order: the official member order (`src/lib/memberOrder.ts`) —
- * `<PerformerChecklist>` renders the list as given, so the checklist
- * reads like the event lineup.
- *
- * Cached: event performer rosters change only on operator edits
- * (rare during a live show). 60s edge cache + 5min SWR is plenty;
- * the bottom sheet is opened post-show-start by ground-truth users
- * who need fresh enough data that the just-added guest is visible.
- */
+/** The input checklist shares the lineup order and retains all event performers. */
 export async function GET(_req: NextRequest, { params }: RouteProps) {
   const { id: rawId } = await params;
   let eventId: bigint;
@@ -60,27 +22,7 @@ export async function GET(_req: NextRequest, { params }: RouteProps) {
       select: {
         performers: {
           orderBy: byStageIdentityOrderBy(),
-          select: {
-            stageIdentityId: true,
-            isGuest: true,
-            stageIdentity: {
-              select: {
-                originalName: true,
-                originalShortName: true,
-                originalLanguage: true,
-                translations: {
-                  select: {
-                    locale: true,
-                    name: true,
-                    shortName: true,
-                  },
-                },
-                artistLinks: {
-                  select: { artistId: true },
-                },
-              },
-            },
-          },
+          select: eventRosterSelect(),
         },
       },
     });
@@ -89,23 +31,33 @@ export async function GET(_req: NextRequest, { params }: RouteProps) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
-    const performers = event.performers.map((ep) => ({
-      stageIdentityId: ep.stageIdentityId,
-      isGuest: ep.isGuest,
-      originalName: ep.stageIdentity.originalName,
-      originalShortName: ep.stageIdentity.originalShortName,
-      originalLanguage: ep.stageIdentity.originalLanguage,
-      translations: ep.stageIdentity.translations,
-      artistLinks: ep.stageIdentity.artistLinks.map((l) => ({
-        artistId: Number(l.artistId),
-      })),
-    }));
+    const roster = serializeEventRoster(event.performers);
+    const byId = new Map(roster.map((row) => [row.stageIdentity.id, row]));
+    const lineup = deriveLineupFromRoster(roster, "ja", "", "");
+    const performers = lineup.performers.map(({ id }) => {
+      const { isGuest, stageIdentity } = byId.get(id)!;
+      return {
+        stageIdentityId: id,
+        isGuest,
+        originalName: stageIdentity.originalName,
+        originalShortName: stageIdentity.originalShortName,
+        originalLanguage: stageIdentity.originalLanguage,
+        translations: stageIdentity.translations,
+        sortOrder: stageIdentity.sortOrder,
+        createdAt: stageIdentity.createdAt,
+        artistLinks: stageIdentity.artistLinks.map(({ artist, sortOrder }) => ({
+          artistId: artist.id,
+          orderArtistId: artist.orderId,
+          sortOrder,
+        })),
+      };
+    });
 
     return NextResponse.json(
       { performers },
       {
         headers: {
-          "Cache-Control": "s-maxage=60, stale-while-revalidate=300",
+          "Cache-Control": "private, no-store",
         },
       },
     );

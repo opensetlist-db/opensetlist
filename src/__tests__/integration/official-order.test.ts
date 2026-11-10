@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { StageIdentity } from "@/generated/prisma/client";
+import { createEventDisplayOrdering } from "@/lib/eventDisplayOrder";
+import { orderSetlistWriteResponse, readEventDisplayOrder } from "@/lib/readEventDisplayOrder";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { createOfficialOrdering, membershipOrderBy } from "@/lib/officialOrder";
@@ -91,6 +93,20 @@ describe("official ordering on isolated dev fixtures", () => {
         }
       };
       await assertPureMatchesSql();
+      const actual = await tx.setlistItem.findUniqueOrThrow({ where: { id: item.id }, include: {
+        artists: { include: { artist: true } },
+        performers: { include: { stageIdentity: { include: { artistLinks: true } } } },
+        songs: true,
+      } });
+      const [a, b] = identities;
+      const readOrder = createEventDisplayOrdering(await readEventDisplayOrder(tx, [actual], [identities[2].id]));
+      for (const projection of [readOrder.sortItem(actual), await orderSetlistWriteResponse(tx, event.id, actual)]) {
+        expect(projection.performers.map((row) => [row.stageIdentityId, row.realPersonId]))
+          .toEqual([[b.id, voice.id], [a.id, voice.id]]);
+        expect(projection.songs).toEqual(actual.songs);
+        expect(projection.position).toBe(7);
+        expect(projection.isEncore).toBe(true);
+      }
       expect(await queryNames(unitB.id, true)).toEqual(["a", "b", "c"]);
       expect(await queryNames(unitA.id, true)).toEqual(["b", "a", "c"]);
       expect(await queryNames(root.id, true)).toEqual(["a", "b", "c"]);

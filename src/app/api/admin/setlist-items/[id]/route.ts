@@ -1,3 +1,4 @@
+import { orderSetlistWriteResponse } from "@/lib/readEventDisplayOrder";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -5,7 +6,6 @@ import {
   withAdminLiveWriterBusy,
 } from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
-import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { validateEncoreOrder } from "@/lib/validation";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
@@ -149,7 +149,6 @@ async function updateItem(
         // Official member order, matching the builder's initial
         // render of the same row (admin event edit page).
         performers: {
-          orderBy: byStageIdentityOrderBy(),
           include: {
             stageIdentity: { include: { translations: true } },
           },
@@ -161,8 +160,9 @@ async function updateItem(
         },
       },
     });
+    const ordered = await orderSetlistWriteResponse(tx, eventId, item);
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eventId);
-    return { kind: "ok" as const, item, rev };
+    return { kind: "ok" as const, item: ordered, rev };
   }, (r) => (r.kind === "ok" ? r.rev : null), { warmFault });
 
   if (result.kind === "invalid") {

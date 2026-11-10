@@ -1,3 +1,4 @@
+import { orderSetlistWriteResponse } from "@/lib/readEventDisplayOrder";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -522,28 +523,31 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       }
       let merged;
       try {
-        merged = await prisma.setlistItem.findUnique({
-          where: { id: dupRow.id },
-          include: {
-            // `confirmCount` is part of the LiveSetlistItem contract
-            // (src/lib/types/setlist.ts), flattened from
-            // `_count.confirms` before serialisation. Mirrors the
-            // pattern in /api/setlist's polling endpoint.
-            _count: { select: { confirms: true } },
-            songs: {
-              include: { song: { include: { translations: true } } },
-              orderBy: { order: "asc" },
-            },
-            performers: {
-              include: {
-                stageIdentity: { include: { translations: true } },
+        merged = await prisma.$transaction(async (tx) => {
+          const row = await tx.setlistItem.findUnique({
+            where: { id: dupRow.id },
+            include: {
+              // `confirmCount` is part of the LiveSetlistItem contract
+              // (src/lib/types/setlist.ts), flattened from
+              // `_count.confirms` before serialisation. Mirrors the
+              // pattern in /api/setlist's polling endpoint.
+              _count: { select: { confirms: true } },
+              songs: {
+                include: { song: { include: { translations: true } } },
+                orderBy: { order: "asc" },
+              },
+              performers: {
+                include: {
+                  stageIdentity: { include: { translations: true } },
+                },
+              },
+              artists: {
+                include: { artist: { include: { translations: true } } },
               },
             },
-            artists: {
-              include: { artist: { include: { translations: true } } },
-            },
-          },
-        });
+          });
+          return row && !row.isDeleted ? orderSetlistWriteResponse(tx, eventId, row) : row;
+        }, { isolationLevel: "RepeatableRead" });
       } catch (err) {
         console.error(
           "[POST /api/events/[id]/setlist-items] auto-merge re-fetch failed",
@@ -669,8 +673,9 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
             },
           },
         });
+        const ordered = await orderSetlistWriteResponse(tx, eventId, row);
         const rev = await bumpSetlistRevisionAndBroadcast(tx, eventId);
-        return { row, rev };
+        return { row: ordered, rev };
       }, (r) => r.rev);
 
       const { _count, ...createdRest } = created;

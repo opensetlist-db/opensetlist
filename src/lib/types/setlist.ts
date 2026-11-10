@@ -30,6 +30,7 @@ export type ArtistRef = {
   id: number;
   slug: string;
   parentArtistId?: number | null;
+  orderId?: string;
   // Required by `deriveSidebarUnitsAndPerformers` to filter the
   // setlist-item artist credits down to units only (Pass-1 of the
   // sidebar derivation). Carried on every polled `/api/setlist`
@@ -55,7 +56,9 @@ export type StageIdentityRef = {
   // (`UnitsCard`) can re-derive when a new performer joins the
   // polled setlist mid-show. Empty array when the StageIdentity
   // has no unit affiliations recorded yet.
-  artistLinks: Array<{ artistId: number }>;
+  sortOrder?: number | null;
+  createdAt?: string;
+  artistLinks: Array<{ artistId: number; sortOrder?: number | null; orderArtistId?: string }>;
 };
 
 export type RealPersonRef = {
@@ -259,6 +262,9 @@ export interface RosterArtist {
   color: string | null;
   parentArtistId: number | null;
   isMainUnit: boolean;
+  sortOrder?: number | null;
+  orderId?: string;
+  orderParentId?: string | null;
   isDeleted: boolean;
   originalName: string;
   originalShortName: string | null;
@@ -281,6 +287,8 @@ export interface EventRosterEntry {
     originalShortName: string | null;
     originalLanguage: string;
     translations: RosterTranslation[];
-    artistLinks: Array<{ artist: RosterArtist }>;
+    sortOrder?: number | null;
+    createdAt?: string;
+    artistLinks: Array<{ artist: RosterArtist; sortOrder?: number | null }>;
   };
 }

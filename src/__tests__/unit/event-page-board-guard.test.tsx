@@ -28,15 +28,16 @@ vi.mock("@/lib/prisma", () => {
         },
       },
     );
-  return {
-    prisma: new Proxy(
-      {},
-      {
-        get: (_t, key: string) =>
-          key.startsWith("$") ? vi.fn(async () => []) : model(key),
+  const prisma = new Proxy(
+    {},
+    {
+      get: (_t, key: string) => {
+        if (key === "$transaction") return vi.fn(async (run: (tx: object) => unknown) => run(prisma));
+        return key.startsWith("$") ? vi.fn(async () => []) : model(key);
       },
-    ),
-  };
+    },
+  );
+  return { prisma };
 });
 vi.mock("@/lib/dataCache", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/dataCache")>();

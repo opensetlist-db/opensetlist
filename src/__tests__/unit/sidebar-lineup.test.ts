@@ -38,10 +38,11 @@ const hasu = artist(1, "hasunosora", "group", { originalName: "蓮ノ空" });
 const niji = artist(24, "nijigasaki", "group", { originalName: "虹ヶ咲" });
 const ikizurai = artist(44, "ikizurai-bu", "group");
 const collab = artist(200, "aiscream", "group");
+const ceriseColor = "#e91e8c";
 const cerise = artist(2, "cerise-bouquet", "unit", {
   parentArtistId: 1,
   isMainUnit: true,
-  color: "#e91e8c",
+  color: ceriseColor,
 });
 const gelato = artist(3, "kaho-megu-gelato", "unit", { parentArtistId: 1 });
 const azuna = artist(25, "azuna", "unit", { parentArtistId: 24, isMainUnit: true });
@@ -79,7 +80,7 @@ const roster: EventRosterEntry[] = [
   member("shizuku", [niji, azuna]),
   member("yuu", [niji, solo(104, 24)], true),
   member("polka", [ikizurai, chaki, callMe]),
-];
+].map((row, index) => ({ ...row, stageIdentity: { ...row.stageIdentity, sortOrder: index } }));
 
 describe("deriveLineupFromRoster", () => {
   const lineup = deriveLineupFromRoster(roster, "ko", "?", "??");
@@ -134,7 +135,7 @@ describe("deriveLineupFromRoster", () => {
 
   it("tints a pill by its shown unit, else its group", () => {
     const kaho = lineup.performers.find((p) => p.id === "kaho")!;
-    expect(kaho.color).toBe("#e91e8c");
+    expect(kaho.color).toBe(ceriseColor);
     // ceras has no shown unit → falls back to the group's resolved color
     // (deterministic palette pick, never empty).
     const ceras = lineup.performers.find((p) => p.id === "ceras")!;
@@ -166,6 +167,7 @@ describe("deriveLineupFromRoster", () => {
       units: [],
       performers: [],
       groups: [],
+      groupByPerformerId: {},
     });
   });
 });

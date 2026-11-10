@@ -49,8 +49,8 @@ vi.mock("@/lib/prisma", () => {
     setlistItem: {
       findMany: rec("findMany", []),
       findUnique: rec("findUnique", { eventId: BigInt(5) }),
-      create: rec("create", { id: BigInt(900), eventId: BigInt(5) }),
-      update: rec("update", { id: BigInt(900), eventId: BigInt(5) }),
+      create: rec("create", { id: BigInt(900), eventId: BigInt(5), artists: [], performers: [] }),
+      update: rec("update", { id: BigInt(900), eventId: BigInt(5), artists: [], performers: [] }),
     },
     setlistItemSong: { deleteMany: rec("deleteSongs") },
     setlistItemMember: { deleteMany: rec("deleteMembers") },

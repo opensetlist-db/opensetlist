@@ -237,6 +237,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     {
       items: snapshot.items,
+      displayOrder: snapshot.displayOrder,
       reactionCounts: snapshot.reactionCounts,
       top3Wishes: snapshot.top3Wishes,
       status: resolved.status,

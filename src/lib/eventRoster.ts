@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { serializeBigInt } from "@/lib/utils";
@@ -14,64 +15,71 @@ import type { EventRosterEntry } from "@/lib/types/setlist";
 // including the uncached live path. A separate narrow, cached read
 // costs one extra round-trip per TTL instead.
 //
-// Order: the official member order (`byStageIdentityOrderBy` —
-// operator `sortOrder`, nulls last, then creation order = seed order,
-// then id). `deriveLineupFromRoster` keeps this input order inside each
-// group, so the pre-show lineup lists members the way the official site
-// does. `artistLinks` by artist id so a member's home group (created
-// before later collab groups) is listed first — only a tiebreak; the
-// lineup picks the home group by roster headcount.
-export async function fetchEventRoster(
-  id: bigint,
-  locale: string,
-): Promise<EventRosterEntry[]> {
-  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
+// Preserve the source order for prediction/board consumers and home-group ties.
+export function eventRosterSelect(locale?: string) {
   const translationSelect = {
-    where: localeFilter,
+    ...(locale ? { where: { locale: { in: [locale, FALLBACK_LOCALE] } } } : {}),
     select: { locale: true, name: true, shortName: true },
   } as const;
-  const rows = await prisma.eventPerformer.findMany({
-    where: { eventId: id },
-    orderBy: byStageIdentityOrderBy(),
-    select: {
-      isGuest: true,
-      stageIdentity: {
-        select: {
-          id: true,
-          slug: true,
-          originalName: true,
-          originalShortName: true,
-          originalLanguage: true,
-          translations: translationSelect,
-          artistLinks: {
-            orderBy: { artistId: "asc" },
-            select: {
-              artist: {
-                select: {
-                  id: true,
-                  slug: true,
-                  type: true,
-                  color: true,
-                  parentArtistId: true,
-                  isMainUnit: true,
-                  isDeleted: true,
-                  originalName: true,
-                  originalShortName: true,
-                  originalLanguage: true,
-                  translations: translationSelect,
-                },
+  return {
+    isGuest: true,
+    stageIdentity: {
+      select: {
+        id: true,
+        slug: true,
+        sortOrder: true,
+        createdAt: true,
+        originalName: true,
+        originalShortName: true,
+        originalLanguage: true,
+        translations: translationSelect,
+        artistLinks: {
+          orderBy: { artistId: "asc" },
+          select: {
+            sortOrder: true,
+            artist: {
+              select: {
+                id: true,
+                slug: true,
+                type: true,
+                sortOrder: true,
+                color: true,
+                parentArtistId: true,
+                isMainUnit: true,
+                isDeleted: true,
+                originalName: true,
+                originalShortName: true,
+                originalLanguage: true,
+                translations: translationSelect,
               },
             },
           },
         },
       },
     },
-  });
+  } as const;
+}
+
+export function serializeEventRoster(rows: Prisma.EventPerformerGetPayload<{ select: ReturnType<typeof eventRosterSelect> }>[]): EventRosterEntry[] {
   // serializeBigInt keeps the input's TS types while turning BigInt ids
   // into numbers at runtime; `EventRosterEntry` describes the runtime
   // (number) shape — the same boundary cast the event page applies to
   // `LiveSetlistItem`.
-  return serializeBigInt(rows) as unknown as EventRosterEntry[];
+  return serializeBigInt(rows.map((row) => ({ ...row, stageIdentity: {
+    ...row.stageIdentity,
+    artistLinks: row.stageIdentity.artistLinks.map((link) => ({ ...link, artist: {
+      ...link.artist, orderId: String(link.artist.id), orderParentId: link.artist.parentArtistId?.toString() ?? null,
+    } })),
+  } }))) as unknown as EventRosterEntry[];
+}
+
+export async function fetchEventRoster(id: bigint, locale: string): Promise<EventRosterEntry[]> {
+  const rows = await prisma.eventPerformer.findMany({
+    where: { eventId: id },
+    orderBy: byStageIdentityOrderBy(),
+    select: eventRosterSelect(locale),
+  });
+  return serializeEventRoster(rows);
 }
 
 // Operators fill the roster well before a show and don't touch it
