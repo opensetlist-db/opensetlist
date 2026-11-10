@@ -10,6 +10,11 @@ import LinkCheckForm from "./LinkCheckForm";
 const actionLabels = {
   end: "종료 확인", restore: "복구", maintained: "유지", review_needed: "확인 필요", access_failed: "접근 실패",
 };
+const linkActionLabels = {
+  initial: "최초 시도", retry: "다음 점검 재시도", resolve: "운영자 확인",
+  exclude: "점검 제외", reinclude: "점검 재포함",
+};
+const linkEvidenceLabels = { expired: "기한 만료", ended: "종료·소진 확인", active: "다시 제공 중" };
 
 function instant(date: Date | null) {
   return date ? formatDate(date, "ko", {
@@ -58,25 +63,36 @@ function BonusRows({ entries }: { entries: Awaited<ReturnType<typeof getBonusChe
 }
 
 async function getLinkChecks(albumId?: bigint) {
-  const rows = await prisma.albumStoreLinkAttempt.findMany({
-    where: { albumId },
-    orderBy: [{ albumId: "asc" }, { storeKey: "asc" }, { phase: "asc" }],
-    include: { album: { select: { originalTitle: true } } },
-  });
-  const groups = new Map<string, typeof rows>();
+  const [rows, reviews] = await prisma.$transaction([
+    prisma.albumStoreLinkAttempt.findMany({
+      where: { albumId },
+      orderBy: [{ albumId: "asc" }, { storeKey: "asc" }, { phase: "asc" }],
+      include: { album: { select: { originalTitle: true } } },
+      omit: { requestHash: true },
+    }),
+    prisma.albumStoreLinkReviewOperation.findMany({
+      where: { albumId },
+      orderBy: { observedAt: "asc" },
+      omit: { requestHash: true },
+    }),
+  ], { isolationLevel: "RepeatableRead" });
+  const groups = new Map<string, { attempts: typeof rows; reviewHistory: typeof reviews }>();
   for (const row of rows) {
     const key = JSON.stringify([String(row.albumId), row.storeKey]);
-    const group = groups.get(key) ?? [];
-    group.push(row);
+    const group = groups.get(key) ?? { attempts: [], reviewHistory: [] };
+    group.attempts.push(row);
     groups.set(key, group);
   }
-  return [...groups.values()].map((rows) => linkCheckState(rows));
+  for (const review of reviews) {
+    groups.get(JSON.stringify([String(review.albumId), review.storeKey]))?.reviewHistory.push(review);
+  }
+  return [...groups.values()].map(({ attempts, reviewHistory }) => linkCheckState(attempts, reviewHistory));
 }
 
 function LinkRows({ entries }: { entries: Awaited<ReturnType<typeof getLinkChecks>> }) {
   return (
     <ul className="space-y-2">
-      {entries.map(({ attempts, status, revision }) => {
+      {entries.map(({ attempts, reviewHistory, status, revision }) => {
         const target = attempts[0];
         const key = `${target.albumId}:${target.storeKey}`;
         return (
@@ -85,7 +101,7 @@ function LinkRows({ entries }: { entries: Awaited<ReturnType<typeof getLinkCheck
             <ul className="space-y-1">
               {attempts.map((attempt) => (
                 <li key={attempt.phase}>
-                  {attempt.phase === "initial" ? "최초 시도" : attempt.phase === "retry" ? "다음 점검 재시도" : "운영자 확인"}
+                  {linkActionLabels[attempt.phase]}
                   {" · "}{attempt.productUrl ? "상품 주소 확인" : "상품 주소 미확보"}
                   {" · "}{instant(attempt.observedAt)} · {attempt.summary}
                   <div className="flex flex-wrap gap-3">
@@ -94,13 +110,20 @@ function LinkRows({ entries }: { entries: Awaited<ReturnType<typeof getLinkCheck
                   </div>
                 </li>
               ))}
+              {reviewHistory.map((review) => (
+                <li key={review.operationId}>
+                  {linkActionLabels[review.phase]} · {linkEvidenceLabels[review.evidenceType]} · {instant(review.observedAt)} · {review.summary}
+                  <div><ExternalLink url={review.evidenceUrl}>점검 결정 근거</ExternalLink></div>
+                </li>
+              ))}
             </ul>
             {status === "found" && (
               <Link href={`/admin/albums/${target.albumId}/listings`} className="text-blue-600 underline">구매 옵션 관리</Link>
             )}
             <LinkCheckForm key={`${key}:${revision}`} albumId={String(target.albumId)}
               storeKey={target.storeKey} storeName={target.storeName} revision={revision}
-              phase={status === "retry_due" ? "retry" : status === "review_needed" ? "resolve" : undefined} />
+              phase={status === "retry_due" ? "retry" : status === "review_needed" ? "resolve" :
+                status === "excluded" ? "reinclude" : undefined} />
           </li>
         );
       })}
@@ -125,6 +148,7 @@ export default async function BonusChecksPage({ searchParams }: {
   const retry = links.filter((link) => link.status === "retry_due");
   const review = links.filter((link) => link.status === "review_needed");
   const found = links.filter((link) => link.status === "found");
+  const excluded = links.filter((link) => link.status === "excluded");
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold">BD 특전 점검{album && ` · ${album.originalTitle}`}</h1>
@@ -155,6 +179,11 @@ export default async function BonusChecksPage({ searchParams }: {
         <h2 id="ended-checks" className="text-lg font-semibold">종료 이력</h2>
         {!queue.ended.length && <p>현재 종료된 특전이 없습니다.</p>}
         <BonusRows entries={queue.ended} />
+      </section>
+      <section className="space-y-2" aria-labelledby="excluded-links">
+        <h2 id="excluded-links" className="text-lg font-semibold">상품 링크 점검 제외 이력</h2>
+        {!excluded.length && <p>현재 점검에서 제외된 판매점이 없습니다.</p>}
+        <LinkRows entries={excluded} />
       </section>
       <section className="space-y-2" aria-labelledby="link-checks">
         <h2 id="link-checks" className="text-lg font-semibold">공식 온라인 판매점 상품 링크</h2>
