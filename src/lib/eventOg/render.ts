@@ -10,11 +10,11 @@ import type { CardContent, CardMode } from "./content";
 export const TEMPLATE = {
   id: "event-setlist-paper-v2",
   width: 1200, height: 630,
-  textWidth: 865,
+  textWidth: 905,
   title: { min: 40, max: 60, lines: 4, height: 224, lineHeight: 1.18 },
   performance: { min: 28, max: 34, lines: 2, height: 82, lineHeight: 1.18 },
-  context: { min: 22, max: 24, lines: 1, height: 52, lineHeight: 1.18 },
-  venue: { min: 28, max: 28, lines: 2, height: 96, lineHeight: 1.18 },
+  context: { min: 28, max: 28, lines: 1, height: 60, lineHeight: 1.18 },
+  venue: { min: 30, max: 32, lines: 2, height: 108, lineHeight: 1.18 },
 } as const;
 export const sha256 = (bytes: string | Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const ACCENTS = { prediction: "#bc2869", live: "#176bb1", setlist: "#7042b4" };
@@ -66,7 +66,7 @@ async function fit(
     throw new Error("제어 문자가 포함된 표시 내용입니다.");
   }
   for (let size = area.max; size >= area.min; size -= 2) {
-    const subSize = Math.round(size * 0.76);
+    const subSize = Math.round(size * 0.84);
     let height = 0;
     let subHeight = 0;
     const measure = (value: string, fontSize: number, part: string) => h("div", {
@@ -117,11 +117,11 @@ export async function renderCard(content: CardContent, mode: CardMode, label: st
     top += totalHeight(measured) + gap;
     return group;
   };
-  const sheet = box({ position: "absolute", left: 949, top: 154, width: 193, height: 412, borderRadius: 24, background: "#ffffff", border: "2px solid #d5e0f3", transform: "rotate(7deg)", flexDirection: "column", padding: "34px 24px", boxShadow: "0 14px 28px #c9d7ee" },
+  const sheet = box({ position: "absolute", left: 992, top: 154, width: 150, height: 412, borderRadius: 24, background: "#ffffff", border: "2px solid #d5e0f3", transform: "rotate(7deg)", flexDirection: "column", padding: "34px 14px", boxShadow: "0 14px 28px #c9d7ee" },
     box({ width: 80, height: 7, borderRadius: 4, background: accent, marginBottom: 34 }),
     ...Array.from({ length: 6 }, (_, i) => box({ alignItems: "center", marginBottom: 24, gap: 14 },
       box({ fontSize: 23, color: "#7d8dab" }, String(i + 1).padStart(2, "0")),
-      box({ width: [103, 88, 94, 70, 96, 80][i], height: 14, borderRadius: 7, background: i % 2 ? "#dce9f8" : "#e7dcf5", borderLeft: `5px solid ${accent}` }),
+      box({ width: [76, 67, 68, 53, 72, 60][i], height: 14, borderRadius: 7, background: i % 2 ? "#dce9f8" : "#e7dcf5", borderLeft: `5px solid ${accent}` }),
     )),
   );
   const tree = box({ width: 1200, height: 630, position: "relative", fontFamily: OG_FONT_STACK, fontWeight: 700, background: "linear-gradient(115deg, #f5faff 0%, #edf4ff 58%, #eeeafa 100%)", color: "#172542" },

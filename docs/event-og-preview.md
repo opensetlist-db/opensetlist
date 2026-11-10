@@ -48,8 +48,8 @@ identical values. Venue and date are omitted when absent.
 The shared light template uses the existing ImageResponse/Satori stack and OG
 WOFF list, plus the site's Josefin wordmark. Satori measures actual font paths
 with no line clamp or ellipsis. Title limits are 40–60px / four lines, with
-30px date and purpose, 28–34px performance and 28px venue. Current-language
-lines use 76% of the original text size. At 360px the original title is at
+30px date and purpose, 28–34px performance and 30–32px venue. Current-language
+lines use 84% of the original text size. At 360px the original title is at
 least 12px. The purpose labels and image descriptions live in the message
 catalogs.
 Missing font files, unsupported glyphs, overflow or excess shrinking fail the
