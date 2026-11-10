@@ -16,7 +16,7 @@ export type BonusFormPayload = {
   translations: { locale: string; bonusType: string | null }[];
 };
 
-export type BonusInitial = BonusFormPayload & { id?: string };
+export type BonusInitial = BonusFormPayload & { id: string; revision: number };
 
 type Props = {
   listingId: string;
@@ -81,6 +81,7 @@ export default function AlbumBonusFormModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...payload,
+          expectedRevision: initialData?.revision,
           bonusImageUrl: initialData?.bonusImageUrl === payload.bonusImageUrl ? undefined : payload.bonusImageUrl,
           removedTranslationLocales: initialData?.translations
             .filter((row) => !payload.translations.some((entry) => entry.locale === row.locale))
