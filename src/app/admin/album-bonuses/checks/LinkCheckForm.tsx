@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { officialStoreKey } from "@/lib/storeKeys";
 import { forgetOperation, storedOperation, storeOperation, type PendingOperation } from "../pendingOperation";
 
@@ -30,6 +30,7 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
   phase?: keyof typeof labels;
 }) {
   const router = useRouter();
+  const details = useRef<HTMLDetailsElement>(null);
   const storageKey = `bonus-link-check:${JSON.stringify([albumId, storeKey])}`;
   const [busy, setBusy] = useState(true);
   const [pending, setPending] = useState<PendingOperation | null>(null);
@@ -39,6 +40,10 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
   const canExclude = phase === "retry" || phase === "resolve";
   const action = exclude ? "exclude" : phase;
   const isReviewDecision = action === "exclude" || action === "reinclude";
+
+  useEffect(() => {
+    if ((pending || message) && details.current) details.current.open = true;
+  }, [pending, message]);
 
   useEffect(() => {
     let current = true;
@@ -144,7 +149,7 @@ export default function LinkCheckForm({ albumId, storeKey, storeName, revision, 
   if (!phase && !pending) return message ? <p role="status">{message}</p> : null;
 
   return (
-    <details open={pending || message ? true : undefined} className="rounded border border-zinc-200 p-3">
+    <details ref={details} className="rounded border border-zinc-200 p-3">
       <summary className="cursor-pointer font-medium">{phase ? labels[phase] : "저장 기록 확인"}</summary>
       {action && <form key={formVersion} onSubmit={submit} className="mt-3">
         <fieldset disabled={busy || pending !== null} className="space-y-2">
