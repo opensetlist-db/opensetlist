@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { optionalString, optionalUrl, parseInstant, parseRevision, PurchaseInputError } from "@/lib/adminPurchaseFields";
 import { BonusLifecycleError, validOperationId } from "@/lib/bonusLifecycle";
 import { prisma } from "@/lib/prisma";
-import { resolveStoreKey } from "@/lib/storeKeys";
+import { officialStoreKey } from "@/lib/storeKeys";
 
 export function parseLinkCheckTarget(albumId: unknown, storeKey: unknown) {
   const key = optionalString({ storeKey }, "storeKey", 100)?.normalize("NFKC").toLowerCase();
@@ -20,7 +20,7 @@ export function parseLinkCheck(value: unknown) {
   const body = value as Record<string, unknown>;
   const target = parseLinkCheckTarget(body.albumId, body.storeKey);
   const { operationId, phase } = body;
-  const storeName = optionalString(body, "storeName", 128);
+  const storeName = optionalString(body, "storeName", 100);
   const evidenceUrl = optionalUrl(body, "evidenceUrl");
   const summary = optionalString(body, "summary");
   const observedAt = parseInstant(body.observedAt, "관찰 시각");
@@ -30,14 +30,14 @@ export function parseLinkCheck(value: unknown) {
       !evidenceUrl || !summary || !observedAt || observedAt > new Date()) {
     throw new PurchaseInputError("판매점, 시도 유형, 근거 URL, 요약 및 관찰 시각을 확인해 주세요.");
   }
-  const known = resolveStoreKey(storeName);
-  if (known !== "other" && known !== target.storeKey) {
+  if (officialStoreKey(storeName) !== target.storeKey) {
     throw new PurchaseInputError("공식 판매점 이름과 식별자가 일치해야 합니다.");
   }
   if (productUrl) {
-    const { hostname, pathname } = new URL(productUrl);
+    const { hostname, pathname, searchParams } = new URL(productUrl);
     if (/^(?:\/+|\/(?:index\.[a-z]+|home|top)\/?)$/i.test(pathname) ||
         /\/(?:s|search|searchresults|search-results|catalogsearch)(?:[/.]|$)/i.test(pathname) ||
+        searchParams.get("mode")?.toLowerCase() === "search" ||
         hostname === "amzn.to") {
       throw new PurchaseInputError("홈페이지나 검색·단축 주소 대신 확인한 판매점 상품 주소를 입력해 주세요.");
     }
@@ -103,6 +103,9 @@ export async function applyLinkCheck(input: ReturnType<typeof parseLinkCheck>) {
     if (expectedRevision !== state.revision || state.status !== requiredStatus[phase] ||
         (rows.length > 0 && observedAt <= rows[rows.length - 1].observedAt)) {
       throw new BonusLifecycleError("conflict", "이미 처리되었거나 더 최근의 시도가 있습니다. 목록을 다시 확인해 주세요.");
+    }
+    if (rows[0] && data.storeName !== rows[0].storeName) {
+      throw new BonusLifecycleError("conflict", "최초 시도에 기록된 판매점과 일치해야 합니다.");
     }
     const operation = await tx.albumStoreLinkAttempt.create({
       data: { ...data, requestHash },

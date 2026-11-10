@@ -12,7 +12,10 @@ const actionLabels = {
 };
 
 function instant(date: Date | null) {
-  return date ? formatDate(date, "ko", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tokyo" }) : "—";
+  return date ? formatDate(date, "ko", {
+    year: "numeric", month: "numeric", day: "numeric",
+    hour: "numeric", minute: "2-digit", timeZone: "Asia/Tokyo",
+  }) : "—";
 }
 
 function ExternalLink({ url, children }: { url: string | null; children: React.ReactNode }) {

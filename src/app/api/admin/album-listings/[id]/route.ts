@@ -152,7 +152,15 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
   }
 
   try {
-    await prisma.albumStoreListing.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "AlbumStoreListing" WHERE id = ${id} FOR UPDATE`;
+      // Match the lifecycle lock order before removing observation receipts.
+      await tx.$queryRaw`SELECT id FROM "AlbumStoreBonus" WHERE "listingId" = ${id} ORDER BY id FOR UPDATE`;
+      await tx.albumStoreBonusLifecycleOperation.deleteMany({
+        where: { bonus: { listingId: id }, action: { notIn: ["end", "restore"] } },
+      });
+      await tx.albumStoreListing.delete({ where: { id } });
+    });
     revalidatePublicData();
     return NextResponse.json({ ok: true });
   } catch (e) {
@@ -166,7 +174,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
       );
     }
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
-      return NextResponse.json({ error: "종료·복구 또는 점검 기록이 있는 구매 옵션은 삭제할 수 없습니다." }, { status: 409 });
+      return NextResponse.json({ error: "종료·복구 이력이 있는 구매 옵션은 삭제할 수 없습니다." }, { status: 409 });
     }
     throw e;
   }

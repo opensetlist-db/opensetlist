@@ -7,7 +7,9 @@ vi.mock("@/lib/dataCache", () => ({ revalidatePublicData: vi.fn(() => true) }));
 
 import { prisma } from "@/lib/prisma";
 import { GET, POST } from "@/app/api/admin/album-bonuses/[id]/lifecycle/route";
+import { DELETE as deleteBonus } from "@/app/api/admin/album-bonuses/[id]/route";
 import { GET as getLinks, POST as postLink } from "@/app/api/admin/album-bonuses/link-checks/route";
+import { DELETE as deleteListing } from "@/app/api/admin/album-listings/[id]/route";
 import { getBonusCheckQueue } from "@/lib/bonusChecks";
 import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
 
@@ -68,6 +70,7 @@ describe("bonus checks against PostgreSQL", () => {
     expect(contains((await queue()).review)).toBe(true);
     expect((await observe("access_failed")).response.status).toBe(200);
     const failed = await read();
+    expect(failed.latestObservation.action).toBe("access_failed");
     expect(failed.lastVerifiedAt).toBe(verified.lastVerifiedAt);
     expect(failed.history).toHaveLength(0);
     expect((await publicOptions()).bonusCount).toBe(1);
@@ -76,6 +79,9 @@ describe("bonus checks against PostgreSQL", () => {
   });
 
   it("moves ended benefits out of checks, restores them, and respects an exact deadline", async () => {
+    expect((await observe("maintained")).response.status).toBe(200);
+    expect(contains((await queue()).current)).toBe(true);
+    expect((await publicOptions()).bonusCount).toBe(1);
     expect((await observe("end")).response.status).toBe(200);
     expect(contains((await queue()).ended)).toBe(true);
     expect(contains((await queue()).current)).toBe(false);
@@ -83,6 +89,9 @@ describe("bonus checks against PostgreSQL", () => {
     expect((await observe("restore", { startsAt: null, endsAt: null })).response.status).toBe(200);
     expect(contains((await queue()).current)).toBe(true);
     expect((await publicOptions()).bonusCount).toBe(1);
+    expect((await read()).history).toHaveLength(2);
+    expect((await deleteBonus(request(lifecycleUrl()), params())).status).toBe(409);
+    expect((await deleteListing(request(lifecycleUrl()), { params: Promise.resolve({ id: listingId }) })).status).toBe(409);
     expect((await read()).history).toHaveLength(2);
     const deadline = new Date("2099-01-01T00:00:00.000Z");
     await prisma.albumStoreBonus.update({ where: { id: bonusId }, data: { endsAt: deadline } });
@@ -95,7 +104,7 @@ describe("bonus checks against PostgreSQL", () => {
 
   it("permits one failed retry and never publishes a placeholder link", async () => {
     const url = "http://localhost/api/admin/album-bonuses/link-checks";
-    const storeKey = `store-${randomUUID()}`;
+    const storeKey = tag;
     const linkRead = async () => (await getLinks(request(`${url}?albumId=${albumId}&storeKey=${storeKey}`))).json();
     const base = { albumId: albumId.toString(), storeKey, storeName: tag,
       evidenceUrl: "https://example.com/evidence", summary: tag, productUrl: null };
@@ -110,6 +119,7 @@ describe("bonus checks against PostgreSQL", () => {
     expect(state.status).toBe("retry_due");
     const retry = { ...base, phase: "retry", expectedRevision: state.revision, operationId: randomUUID(),
       observedAt: new Date(Date.now() - 20000).toISOString() };
+    expect((await postLink(request(url, { ...retry, storeName: "다른 판매점" }))).status).toBe(400);
     expect((await postLink(request(url, retry))).status).toBe(200);
     state = await linkRead();
     expect(state.status).toBe("review_needed");
@@ -119,10 +129,34 @@ describe("bonus checks against PostgreSQL", () => {
     const resolve = { ...base, phase: "resolve", expectedRevision: state.revision, operationId: randomUUID(),
       observedAt: new Date(Date.now() - 10000).toISOString(), productUrl: "https://example.com/" };
     expect((await postLink(request(url, resolve))).status).toBe(400);
+    expect((await postLink(request(url, { ...resolve, productUrl: "https://example.com/products/list.php?mode=search" }))).status).toBe(400);
     expect((await postLink(request(url, { ...resolve, productUrl: "https://example.com/product" }))).status).toBe(200);
     expect((await linkRead()).status).toBe("found");
     const listings = await prisma.albumStoreListing.findMany({ where: { albumId } });
     expect(listings).toHaveLength(1);
     expect(listings[0].productUrl).toBe("https://example.com/product");
+  });
+
+  it("keeps the existing delete path for bonuses with observation receipts only", async () => {
+    const isolatedListing = await prisma.albumStoreListing.create({ data: {
+      albumId, originalStoreName: tag + "-deletable", status: "active", productUrl: "https://example.com/product",
+      includesPerformanceVideo: true, isBonusOption: true,
+    } });
+    const isolatedBonus = await prisma.albumStoreBonus.create({
+      data: { listingId: isolatedListing.id, originalBonusType: tag },
+    });
+    try {
+      const isolatedParams = { params: Promise.resolve({ id: isolatedBonus.id }) };
+      const observation = {
+        listingId: isolatedListing.id, expectedRevision: 0, expectedListingRevision: 0, operationId: randomUUID(),
+        action: "maintained", evidenceUrl: "https://example.com/evidence", summary: tag, observedAt: new Date().toISOString(),
+      };
+      expect((await POST(request(lifecycleUrl(), observation), isolatedParams)).status).toBe(200);
+      expect((await deleteBonus(request(lifecycleUrl()), isolatedParams)).status).toBe(200);
+      expect(await prisma.albumStoreBonus.findUnique({ where: { id: isolatedBonus.id } })).toBeNull();
+    } finally {
+      await prisma.albumStoreBonusLifecycleOperation.deleteMany({ where: { bonusId: isolatedBonus.id } });
+      await prisma.albumStoreListing.delete({ where: { id: isolatedListing.id } });
+    }
   });
 });

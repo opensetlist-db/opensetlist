@@ -4,34 +4,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { getBonusLifecycle } from "@/lib/bonusLifecycle";
 import { formatDate, isSafeExternalUrl } from "@/lib/utils";
+import { forgetOperation, storedOperation, storeOperation, type PendingOperation } from "@/app/admin/album-bonuses/pendingOperation";
 
 type Lifecycle = Awaited<ReturnType<typeof getBonusLifecycle>>;
-type Pending = { operationId: string; body: string };
-
-function storedOperation(key: string): Pending | null {
-  try {
-    const value = JSON.parse(sessionStorage.getItem(key) ?? "null");
-    return typeof value?.operationId === "string" && typeof value?.body === "string" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function storeOperation(key: string, value: Pending) {
-  try {
-    sessionStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // The current panel still keeps the operation when browser storage is unavailable.
-  }
-}
-
-function forgetOperation(key: string, operationId: string) {
-  try {
-    if (storedOperation(key)?.operationId === operationId) sessionStorage.removeItem(key);
-  } catch {
-    // A later open can still verify the stored operation again.
-  }
-}
 
 function displayInstant(instant: string) {
   return formatDate(instant, "ko", {
@@ -74,7 +49,7 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref, check
   const url = `/api/admin/album-bonuses/${encodeURIComponent(id)}/lifecycle`;
   const storageKey = `bonus-lifecycle:${listingId}:${id}`;
   const [result, setResult] = useState<Lifecycle | null>(null);
-  const [pending, setPending] = useState<Pending | null>(null);
+  const [pending, setPending] = useState<PendingOperation | null>(null);
   const [retryReady, setRetryReady] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(true);
@@ -138,7 +113,7 @@ export default function BonusLifecyclePanel({ id, listingId, purchaseHref, check
   const state = result?.state;
   const restoring = Boolean(state && (state.endedAt || (state.endsAt && new Date(state.endsAt) <= new Date())));
 
-  async function send(operation: Pending) {
+  async function send(operation: PendingOperation) {
     const { operationId, body } = operation;
     setBusy(true);
     setMessage("");
