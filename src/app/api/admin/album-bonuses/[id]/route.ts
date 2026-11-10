@@ -143,7 +143,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
-      return NextResponse.json({ error: "종료·복구 이력이 있는 특전은 삭제할 수 없습니다." }, { status: 409 });
+      return NextResponse.json({ error: "종료·복구 또는 점검 기록이 있는 특전은 삭제할 수 없습니다." }, { status: 409 });
     }
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&

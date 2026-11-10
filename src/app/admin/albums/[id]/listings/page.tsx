@@ -64,6 +64,9 @@ export default async function AlbumListingsPage({ params }: Props) {
         >
           ← {albumTitle}
         </Link>
+        <Link href={`/admin/album-bonuses/checks?albumId=${album.id}`} className="ml-4 text-blue-600 hover:underline">
+          이 앨범의 BD 특전 점검
+        </Link>
       </div>
       <ListingsClient
         albumId={String(album.id)}
