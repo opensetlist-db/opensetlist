@@ -37,6 +37,7 @@ export default async function EditSongPage({ params }: Props) {
           translations: data.translations.map((t) => ({
             locale: t.locale,
             title: t.title,
+            variantLabel: t.variantLabel,
           })),
           artistCredits: data.artists.map(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,6 +1,7 @@
 import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
+import { pairText } from "@/lib/songDisplay";
 import { entityPath } from "@/lib/seo/entityUrl";
 import type { SongAlbumRow } from "@/lib/songAlbums";
 import { SongAlbumCover } from "./SongAlbumCover";
@@ -40,6 +41,7 @@ export async function SongAlbumPanel({
           row.album,
           row.album.translations,
           locale,
+          "paired",
         );
         const year = utcYear(row.album.releaseDate);
         const typeLabel = albumTypeLabel(albumTypeLabels, row.album.type);
@@ -52,7 +54,7 @@ export async function SongAlbumPanel({
             surface="song_albums"
             className={styles.albumMini}
           >
-            <SongAlbumCover src={row.album.imageUrl} alt={title.main} />
+            <SongAlbumCover src={row.album.imageUrl} alt={pairText(title)} />
             <div className={styles.albumCopy}>
               {row.isCanonical ? (
                 // The attribute marks the original-recording chip apart
@@ -61,8 +63,8 @@ export async function SongAlbumPanel({
                   {t("albumOriginalRecording")}
                 </span>
               ) : null}
-              <h3>{title.main}</h3>
-              {title.sub ? <p>{title.sub}</p> : null}
+              <h3 lang={row.album.originalLanguage}>{title.main}</h3>
+              {title.sub ? <p lang={locale}>{title.sub}</p> : null}
               <p>
                 {typeLabel}
                 {year !== null ? ` · ${year}` : ""}

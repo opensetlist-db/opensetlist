@@ -67,7 +67,7 @@ export async function SongHistoryPanel({
           <summary>
             {group.key === "other"
               ? et("ungrouped")
-              : (group.label ?? et("unknownEvent"))}{" "}
+              : (group.label ? <span lang={group.lang}>{group.label}</span> : et("unknownEvent"))}{" "}
             <span className={styles.count}>
               <span aria-hidden="true">{group.rows.length}</span>
               <span className="sr-only">
@@ -82,6 +82,7 @@ export async function SongHistoryPanel({
                 </span>
               </>
             ) : null}
+            {group.sub && <small lang={locale} className={styles.pairSub}>{group.sub}</small>}
           </summary>
           {group.rows.map((row) => (
             <Link key={row.id} href={row.href} className={styles.performance}>
@@ -89,7 +90,10 @@ export async function SongHistoryPanel({
                 {statusLabels[row.status]}
               </span>
               <time dateTime={row.dateTime ?? undefined}>{row.formattedDate}</time>
-              <strong>{row.name}</strong>
+              <strong>
+                <span lang={row.lang}>{row.name}</span>
+                {row.sub && <small lang={locale} className={styles.pairSub}>{row.sub}</small>}
+              </strong>
               <span className={styles.trailing}>
                 {row.isEncore ? (
                   <span className={styles.encore}>{t("encoreBadge")}</span>
