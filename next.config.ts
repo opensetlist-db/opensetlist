@@ -18,6 +18,15 @@ const uploadToSentry = Boolean(process.env.CI || process.env.VERCEL);
 
 export default withSentryConfig(withNextIntl({
   serverExternalPackages: ["kuromoji"],
+  async headers() {
+    return [{
+      source: "/api/bd-dot/consent",
+      headers: [
+        { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        { key: "X-Frame-Options", value: "DENY" },
+      ],
+    }];
+  },
   // Two tracing gaps break /api/og/* on Vercel, and both surface as the same
   // Next static /500 page at cold start because @vercel/og throws at module
   // load before the route handler's try/catch can run:
