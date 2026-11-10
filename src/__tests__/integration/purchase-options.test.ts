@@ -61,7 +61,7 @@ describe("admin purchase options to public purchase tab", () => {
           { bonusId: id, locale: "ja", bonusType: "Existing title" },
         ] });
         const updated = await updateBonus(request("/api/admin/album-bonuses/" + id, {
-          originalBonusType: guide, translations: [{ locale: "ko", bonusType: "Choice B localized" }],
+          originalBonusType: guide, expectedRevision: 0, translations: [{ locale: "ko", bonusType: "Choice B localized" }],
         }, "PATCH"), { params: Promise.resolve({ id }) });
         expect(updated.status).toBe(200);
         expect((await updated.json()).translations).toEqual(expect.arrayContaining([

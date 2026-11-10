@@ -1279,6 +1279,7 @@ model AlbumStoreListing {
   endsAt                   DateTime? // pre-order close / sale end
   lastVerifiedAt           DateTime? // operator's last 'I checked' timestamp — UI shows stale warning after 30d
   sourceUrl                String? // 公式 news URL where the offer was announced
+  revision                 Int                     @default(0)
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
@@ -1323,14 +1324,40 @@ model AlbumStoreBonus {
   endedAt                  DateTime?
   startsAt                 DateTime?
   endsAt                   DateTime?
+  revision                 Int       @default(0)
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
   listing      AlbumStoreListing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
   translations AlbumStoreBonusTranslation[]
+  lifecycle    AlbumStoreBonusLifecycleOperation[]
   // No unique — character/design variants on the same listing are intentional
 
   @@index([listingId])
+}
+
+enum AlbumStoreBonusLifecycleAction {
+  end
+  restore
+}
+
+// The operation is both a retry receipt and the operator's preserved evidence.
+model AlbumStoreBonusLifecycleOperation {
+  bonusId      String
+  operationId  String
+  action       AlbumStoreBonusLifecycleAction
+  requestHash  String
+  evidenceUrl  String
+  summary      String
+  observedAt   DateTime
+  appliedAt    DateTime @default(now())
+  before       Json
+  after        Json
+
+  bonus AlbumStoreBonus @relation(fields: [bonusId], references: [id], onDelete: Restrict)
+
+  @@id([bonusId, operationId])
+  @@index([bonusId, appliedAt])
 }
 
 // Per-locale overrides for the bonus's display strings. Both fields are
