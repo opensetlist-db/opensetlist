@@ -341,7 +341,7 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
 
       <div className="rounded border border-zinc-300 bg-zinc-50 p-4">
         <div className="mb-3 text-sm font-medium">
-          원본 (다른 언어 번역이 없을 때 표시)
+          원문 (공개 화면에 먼저 표시)
         </div>
         <div className="mb-3">
           <label className="mb-1 block text-xs text-zinc-600">원본 언어</label>

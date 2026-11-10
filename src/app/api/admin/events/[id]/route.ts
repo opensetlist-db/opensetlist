@@ -238,8 +238,8 @@ async function updateEvent(request: NextRequest, { params }: Props) {
         : null;
 
       return { updated, rev };
-    }, (r) => r.rev);
-    if (result.response) return result.response;
+    }, (r) => "updated" in r ? r.rev : null);
+    if ("response" in result && result.response) return result.response;
     const { updated: event, rev } = result;
 
     // `revalidatePublicData` already expires every cached public read
