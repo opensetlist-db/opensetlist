@@ -1,3 +1,4 @@
+import { checkIdentityNames, identityTranslations } from "@/lib/adminIdentityNames";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
@@ -96,8 +97,16 @@ export async function POST(request: NextRequest, { params }: Props) {
   const language = parseOriginalLanguage(body.originalLanguage);
   if (!language.ok) return badRequest(language.message);
 
-  const translations = parseStageIdentityTranslations(body.translations, "translations");
+  const translations = identityTranslations(body.translations, (raw) => parseStageIdentityTranslations(raw, "translations"));
   if (!translations.ok) return badRequest(translations.message);
+
+  const nameError = checkIdentityNames("멤버", {
+    originalName: name.value,
+    originalShortName: shortName.value,
+    originalLanguage: language.value,
+    translations: translations.value,
+  });
+  if (nameError) return badRequest(nameError);
 
   // Match the bulk-create path: presence of `realPerson` (any non-nullish value)
   // means "create a voicedBy". The nested parser then validates required fields.

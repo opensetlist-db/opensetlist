@@ -42,6 +42,9 @@ beforeEach(() => {
   txMock.mockImplementation(async (arg: unknown) =>
     typeof arg === "function" ? (arg as (tx: unknown) => unknown)(prisma) : arg,
   );
+  artist.findUnique.mockResolvedValue({ id: BigInt(20), type: "group", originalName: "サイド", originalLanguage: "ja", groupLinks: [], translations: [
+    { locale: "ja", name: "サイド" }, { locale: "ko", name: "사이드", shortName: "사이드", bio: "소개" }, { locale: "en", name: "Side" },
+  ] });
   artist.update.mockResolvedValue({ id: BigInt(20), translations: [] });
   artist.create.mockResolvedValue({ id: BigInt(21), translations: [] });
   artist.findMany.mockResolvedValue([]);
@@ -127,7 +130,7 @@ const put = (body: unknown) =>
   );
 
 describe("PUT /api/admin/artists/[id] — festival fields", () => {
-  it("rejects self/descendant and existing ancestor cycles before deleting translations or groups", async () => {
+  it("rejects self/descendant and existing ancestor cycles before writing translations or groups", async () => {
     const rows = [
       { id: BigInt(21), parentArtistId: BigInt(20) },
       { id: BigInt(22), parentArtistId: BigInt(21) },
@@ -136,15 +139,11 @@ describe("PUT /api/admin/artists/[id] — festival fields", () => {
     ];
     artist.findMany.mockResolvedValue(rows);
     expect((await put({ ...BASE_BODY, parentArtistId: "99" })).status).toBe(200);
-    expect(prisma.artistTranslation.deleteMany).toHaveBeenCalledTimes(1);
-    expect(prisma.artistGroup.deleteMany).toHaveBeenCalledTimes(1);
     expect(artist.update).toHaveBeenCalledTimes(1);
     for (const parentArtistId of ["20", "21", "22", "30"]) {
       const res = await put({ ...BASE_BODY, parentArtistId });
       expect(res.status).toBe(400);
     }
-    expect(prisma.artistTranslation.deleteMany).toHaveBeenCalledTimes(1);
-    expect(prisma.artistGroup.deleteMany).toHaveBeenCalledTimes(1);
     expect(artist.update).toHaveBeenCalledTimes(1);
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(5);
   });
@@ -173,6 +172,17 @@ describe("PUT /api/admin/artists/[id] — festival fields", () => {
     expect(data).not.toHaveProperty("isSideProject");
   });
 
+  it("keeps other locale rows and untouched fields in a partial edit", async () => {
+    expect((await put({ translations: [{ locale: "ko", name: "사이드 팀" }] })).status).toBe(200);
+    const data = artist.update.mock.calls[0][0].data;
+    expect(data.translations).toEqual({ upsert: [{
+      where: { artistId_locale: { artistId: BigInt(20), locale: "ko" } },
+      create: { locale: "ko", name: "사이드 팀" },
+      update: { name: "사이드 팀" },
+    }] });
+    expect(data.groupLinks).toBeUndefined();
+  });
+
   it("400 on an invalid colour, before any write", async () => {
     const res = await put({ ...BASE_BODY, color: "#zzzzzz" });
     expect(res.status).toBe(400);
@@ -186,6 +196,7 @@ describe("POST /api/admin/artists — festival fields", () => {
       jsonRequest("http://localhost/api/admin/artists", {
         ...BASE_BODY,
         slug: "side",
+        translations: [{ locale: "ko", name: "사이드" }, { locale: "en", name: "Side" }],
         color: "#abc",
         sortOrder: "3",
         isSideProject: true,

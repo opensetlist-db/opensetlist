@@ -33,6 +33,7 @@ const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 export default function GroupForm({ initialData }: GroupFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [slug, setSlug] = useState(initialData?.slug ?? "");
   const [type, setType] = useState(initialData?.type ?? "");
   const [category, setCategory] = useState(initialData?.category ?? "");
@@ -84,6 +85,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSaveError("");
 
     if (!slug.trim()) {
       alert("슬러그(slug)는 필수입니다.");
@@ -95,6 +97,14 @@ export default function GroupForm({ initialData }: GroupFormProps) {
       return;
     }
 
+    const missing = translations.find((row) => !row.name.trim() && (
+      row.shortName?.trim() || row.description?.trim() ||
+      initialData?.translations.some((stored) => stored.locale === row.locale && stored.name.trim())
+    ));
+    if (missing) {
+      setSaveError(originalName + " name (" + missing.locale + ", 표기 필요)");
+      return;
+    }
     setLoading(true);
 
     const payload = {
@@ -114,21 +124,22 @@ export default function GroupForm({ initialData }: GroupFormProps) {
       : "/api/admin/groups";
     const method = initialData ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (res.ok) {
-      router.push("/admin/groups");
-      router.refresh();
-    } else if (res.status === 409) {
-      const body = await res.json().catch(() => ({}));
-      alert(body?.error ?? "이미 사용 중인 슬러그입니다.");
-      setLoading(false);
-    } else {
-      alert("저장에 실패했습니다.");
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        router.push("/admin/groups");
+        router.refresh();
+        return;
+      }
+      const body = await res.json().catch(() => null);
+      setSaveError(body?.error ?? "저장에 실패했습니다.");
+    } catch {
+      setSaveError("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+    } finally {
       setLoading(false);
     }
   }
@@ -264,7 +275,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
                     </option>
                   ))}
                 </select>
-                {translations.length > 1 && (
+                {!initialData && translations.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeTranslation(i)}
@@ -302,6 +313,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
         </div>
       </div>
 
+      {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
       <button
         type="submit"
         disabled={loading}

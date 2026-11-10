@@ -53,6 +53,8 @@ export default async function EditArtistPage({ params }: Props) {
       membershipSortOrder: sl.sortOrder as number | null,
       createdAt: sl.stageIdentity.createdAt as string,
       name: siTr?.name ?? ADMIN_UNKNOWN_NAME,
+      translations: siTranslations,
+      realPerson: va?.realPerson,
       vaName: vaTr ? (vaTr.stageName ?? vaTr.name) : null,
     };
   });

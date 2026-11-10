@@ -208,9 +208,9 @@ describe("GET /api/admin/stage-identities (admin pickers)", () => {
 describe("parseStageIdentity — sortOrder", () => {
   const base = {
     type: "character",
-    originalName: "M",
+    originalName: "メンバー",
     originalLanguage: "ja",
-    translations: [{ locale: "ko", name: "M" }],
+    translations: [{ locale: "ko", name: "멤버" }, { locale: "en", name: "M" }],
   };
 
   it("integer (number or digit string) → the number", () => {
@@ -251,7 +251,7 @@ describe("PUT /api/admin/stage-identities/[id] — sortOrder", () => {
 
   beforeEach(() => {
     si.update.mockResolvedValue({ id: "si-1", translations: [] });
-    si.findUniqueOrThrow.mockReturnValue({ id: "si-1", translations: [] });
+    si.findUnique.mockResolvedValue({ id: "si-1", originalName: "メンバー", originalLanguage: "ja", translations: [{ locale: "ko", name: "M" }] });
     (prisma.stageIdentityTranslation.upsert as unknown as Mock).mockReturnValue({});
   });
 
@@ -286,16 +286,13 @@ describe("PUT /api/admin/stage-identities/[id] — body validation", () => {
 
   beforeEach(() => {
     si.update.mockResolvedValue({ id: "si-1", translations: [] });
-    si.findUniqueOrThrow.mockReturnValue({ id: "si-1", translations: [] });
+    si.findUnique.mockResolvedValue({ id: "si-1", originalName: "メンバー", originalLanguage: "ja", translations: [{ locale: "ko", name: "M" }] });
     (prisma.stageIdentityTranslation.upsert as unknown as Mock).mockReturnValue({});
   });
 
-  it("missing / malformed translations or an unknown type → 400 with a message, nothing written", async () => {
+  it("malformed translations or an unknown type → 400 with a message, nothing written", async () => {
     for (const body of [
-      {},
-      { type: "character" },
       { translations: "M" },
-      { translations: [] },
       { translations: [{ locale: "ko" }] },
       { translations: [{ name: "M" }] },
       { translations: [{ locale: "ko", name: 3 }] },
@@ -320,10 +317,7 @@ describe("PUT /api/admin/stage-identities/[id] — body validation", () => {
       undefined,
       "persona",
     ]);
-    // Translations go through per-locale upserts, not the scalar update
-    // (see admin-stage-identity-put.test.ts for the full contract).
-    expect(si.update.mock.calls[2][0].data.translations).toBeUndefined();
-    expect(prisma.stageIdentityTranslation.upsert).toHaveBeenCalledTimes(3);
+    expect(si.update.mock.calls[2][0].data.translations.upsert[0].update.name).toBe("M");
   });
 });
 
@@ -335,9 +329,9 @@ describe("POST /api/admin/artists/[id]/stage-identities — sortOrder", () => {
     );
   const base = {
     type: "character",
-    originalName: "M",
+    originalName: "メンバー",
     originalLanguage: "ja",
-    translations: [{ locale: "ko", name: "M" }],
+    translations: [{ locale: "ko", name: "멤버" }, { locale: "en", name: "M" }],
   };
 
   beforeEach(() => {

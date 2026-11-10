@@ -1,3 +1,4 @@
+import { IdentityName, identityName, identityNameText } from "@/components/artists/IdentityName";
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -17,7 +18,6 @@ import {
 } from "@/lib/utils";
 import {
   displayNameWithFallback,
-  displayOriginalName,
   displayOriginalTitle,
   resolveOriginalShortLabel,
 } from "@/lib/display";
@@ -189,9 +189,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const mt = await getTranslations({ locale, namespace: "Meta" });
   if (!member) return { title: mt("notFound") };
   const memberT = await getTranslations({ locale, namespace: "Member" });
-  const fullName =
-    displayNameWithFallback(member, member.translations, locale, "full") ||
-    memberT("unknown");
+  const fullName = identityNameText(identityName(member, locale, memberT("unknown")));
 
   // Group for the title: the parent of the first unit link that has
   // one (unit → group), else a direct group affiliation. Cheaper
@@ -204,7 +202,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     member.artistLinks.find((l) => l.artist.type === "group")?.artist ??
     null;
   const groupName = group
-    ? displayNameWithFallback(group, group.translations, locale)
+    ? identityNameText(identityName(group, locale))
     : null;
   const title = groupName
     ? mt("memberTitle", { name: fullName, group: groupName })
@@ -254,19 +252,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // UTC-only rule + matches the artist-page pattern).
   const referenceNow = new Date();
 
-  // `displayOriginalName` is now translation-primary at the helper
-  // level (since the refactor on `src/lib/display.ts`) — `main`
-  // holds the viewer's locale translation, `sub` holds the original-
-  // language name (or null when locale matches origin / no
-  // translation row exists). So the page renders `main` as the h1
-  // and `sub` as the secondary line, no call-site swap needed.
-  // The avatar still wants the original-language first character to
-  // match the mockup (canonical script regardless of viewer locale)
-  // — `sub` is that string when present, otherwise `main` (which
-  // already IS the original when there's no translation to flip).
-  const { main: characterPrimary, sub: characterSecondary } =
-    displayOriginalName(member, member.translations, locale);
-  const characterOriginal = characterSecondary ?? characterPrimary;
+  const characterName = identityName(member, locale, t("unknown"));
   // Avatar initial sources the *original-language short name* first
   // (e.g. 瑠 for 瑠璃乃 rather than 大 for 大沢瑠璃乃) so the round
   // chip reads as the character's curated handle, not the surname-
@@ -278,18 +264,8 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const characterAvatarLabel = resolveOriginalShortLabel(
     member,
     member.translations,
-    characterOriginal,
+    characterName.main,
   );
-
-  // `lang` for the two name lines: the h1 is the viewer-locale
-  // translation when one exists (inherits <html lang>) and the
-  // original otherwise; the subtitle is always the original.
-  const characterPrimaryLang = fallbackNameLang(
-    member,
-    member.translations,
-    locale,
-  );
-  const characterOriginalLang = originalLang(member.originalLanguage, locale);
 
   // Pick the active unit for chrome (unit link, song-tag fallback).
   // Active = `endDate: null`; ties broken by most recent `startDate`.
@@ -319,20 +295,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
     }
     return null;
   })();
-  const primaryUnitName = primaryUnit
-    ? displayNameWithFallback(
-        primaryUnit.artist,
-        primaryUnit.artist.translations,
-        locale,
-      )
-    : null;
-  const primaryUnitLang = primaryUnit
-    ? fallbackNameLang(
-        primaryUnit.artist,
-        primaryUnit.artist.translations,
-        locale,
-      )
-    : undefined;
+  const primaryUnitName = primaryUnit ? identityName(primaryUnit.artist, locale) : null;
 
   // Parent artist (group) for the breadcrumb. Pick from primaryUnit's
   // parent first (most relevant), else any artistLink with a
@@ -348,46 +311,14 @@ export default async function MemberPage({ params, searchParams }: Props) {
     }
     return null;
   })();
-  // Breadcrumb crumbs always render the short variant — the page
-  // header already shows the full member name, so the crumb staying
-  // compact keeps the ribbon tidy.
-  const parentName = parentArtist
-    ? displayNameWithFallback(
-        parentArtist,
-        parentArtist.translations,
-        locale,
-        "short",
-      )
-    : null;
-  const breadcrumbLeafName =
-    displayNameWithFallback(member, member.translations, locale, "short") ||
-    t("unknown");
+  const parentName = parentArtist ? identityName(parentArtist, locale) : null;
 
   // Voice actor (active first, else most recent ended). `voicedBy`
   // is already sorted desc by startDate in the query.
   const currentVa =
     member.voicedBy.find((v) => v.endDate === null) ?? member.voicedBy[0];
-  // VA name follows the same translation-primary rule as the
-  // character name: `main` = locale translation, `sub` = original.
-  const vaDisplay = currentVa
-    ? displayOriginalName(
-        currentVa.realPerson,
-        currentVa.realPerson.translations,
-        locale,
-      )
-    : null;
-  const vaPrimary = vaDisplay?.main ?? null;
-  const vaSecondary = vaDisplay?.sub ?? null;
-  // Original-language string for the VA avatar initial; same
-  // `sub ?? main` rule the character avatar above uses. Note: the VA
-  // intentionally keeps the *full* original-language first character
-  // even though the character avatar (above) prefers the short-name
-  // first character — operator preference. A real-person VA name is
-  // typically rendered in full anyway (e.g. 楡井希実 → 楡), and the
-  // surname's first character is the canonical reading; switching to
-  // a short-name initial would yield the given-name's first character,
-  // which is too informal a handle for a credited performer's chip.
-  const vaOriginal = vaDisplay ? (vaDisplay.sub ?? vaDisplay.main) : null;
+  const voiceName = currentVa ? identityName(currentVa.realPerson, locale) : null;
+
   // Activity period: full range when ended, just the start date when
   // still active (per user feedback — no `~ 현재` / `~ Present` suffix
   // when the VA is currently active, since the trailing label adds
@@ -558,13 +489,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
           song.artists.find((sa) => sa.role === "primary")?.artist ??
           song.artists[0]?.artist ??
           null;
-        const artistName = primaryArtist
-          ? displayNameWithFallback(
-              primaryArtist,
-              primaryArtist.translations,
-              locale,
-            )
-          : "";
+        const artistName = primaryArtist ? identityName(primaryArtist, locale) : null;
         entry = {
           id: sid,
           // `song.slug` is the canonical DB slug — never slugify the
@@ -584,15 +509,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
             ? locale
             : undefined,
           titleSub: sub,
-          unitName: artistName || primaryUnitName,
-          unitLang:
-            primaryArtist && artistName
-              ? fallbackNameLang(
-                  primaryArtist,
-                  primaryArtist.translations,
-                  locale,
-                )
-              : primaryUnitLang,
+          unitName: artistName?.main ? artistName : primaryUnitName,
           timesPerformed: 0,
         };
         songMap.set(sid, entry);
@@ -615,10 +532,6 @@ export default async function MemberPage({ params, searchParams }: Props) {
     { key: "songs", label: t("tabSongs", { count: totalSongs }) },
     { key: "history", label: t("tabHistory", { count: totalEvents }) },
   ];
-  const title = characterPrimary || t("unknown");
-  const showSubtitle =
-    Boolean(characterSecondary) && characterSecondary !== title;
-
   const songList = (songs: MemberSongView[]) =>
     songs.length === 0 ? (
       <p className={styles.empty}>{t("noSongs")}</p>
@@ -645,10 +558,10 @@ export default async function MemberPage({ params, searchParams }: Props) {
             ariaLabel={ct("breadcrumb")}
             items={[
               { label: ct("home"), href: `/${locale}` },
-              ...(parentArtist && parentName
+              ...(parentArtist && parentName?.main
                 ? [
                     {
-                      label: parentName,
+                      label: <IdentityName name={parentName} />,
                       href: entityPath(
                         "artists",
                         locale,
@@ -658,7 +571,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                     } satisfies BreadcrumbItem,
                   ]
                 : []),
-              { label: breadcrumbLeafName },
+              { label: <IdentityName name={characterName} /> },
             ]}
           />
         </div>
@@ -683,16 +596,16 @@ export default async function MemberPage({ params, searchParams }: Props) {
               <h1
                 id="member-title"
                 className={styles.title}
-                lang={characterPrimary ? characterPrimaryLang : undefined}
+                lang={characterName.lang}
               >
-                {title}
+                {characterName.main}
               </h1>
-              {showSubtitle && (
-                <p className={styles.subtitle} lang={characterOriginalLang}>
-                  {characterSecondary}
+              {characterName.sub && (
+                <p className={styles.subtitle} lang={locale}>
+                  {characterName.sub}
                 </p>
               )}
-              {primaryUnit && primaryUnitName && (
+              {primaryUnit && primaryUnitName?.main && (
                 <Link
                   href={entityPath(
                     "artists",
@@ -701,9 +614,8 @@ export default async function MemberPage({ params, searchParams }: Props) {
                     primaryUnit.artist.slug,
                   )}
                   className={styles.unitLink}
-                  lang={primaryUnitLang}
                 >
-                  {primaryUnitName}
+                  <IdentityName name={primaryUnitName} />
                   <span aria-hidden="true">›</span>
                 </Link>
               )}
@@ -711,40 +623,21 @@ export default async function MemberPage({ params, searchParams }: Props) {
           </div>
 
           {/* VA: a non-link supporting credit (RealPerson has no page). */}
-          {currentVa && vaPrimary && (
+          {voiceName?.main && (
             <div className={styles.voice}>
               <h2 className={styles.voiceLabel}>{t("voiceActor")}</h2>
               <div className={styles.voicePerson}>
-                {/* Full original name's first character — see
-                    `vaOriginal` for why it differs from the character
-                    initial. */}
+                {/* The voice actor uses the first grapheme of the full original name. */}
                 <span
                   className={`${styles.avatar} ${styles.avatarSmall}`}
                   aria-hidden="true"
                 >
-                  {firstGrapheme(vaOriginal || "?")}
+                  {firstGrapheme(voiceName.main)}
                 </span>
                 <div>
-                  <span
-                    className={styles.voiceName}
-                    lang={fallbackNameLang(
-                      currentVa.realPerson,
-                      currentVa.realPerson.translations,
-                      locale,
-                    )}
-                  >
-                    {vaPrimary}
-                  </span>
-                  {vaSecondary && (
-                    <span
-                      className={styles.voiceOriginal}
-                      lang={originalLang(
-                        currentVa.realPerson.originalLanguage,
-                        locale,
-                      )}
-                    >
-                      {vaSecondary}
-                    </span>
+                  <span className={styles.voiceName} lang={voiceName.lang}>{voiceName.main}</span>
+                  {voiceName.sub && (
+                    <span className={styles.voiceOriginal} lang={locale}>{voiceName.sub}</span>
                   )}
                   {vaPeriod && <p className={styles.period}>{vaPeriod}</p>}
                 </div>

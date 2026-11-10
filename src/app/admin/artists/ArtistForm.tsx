@@ -14,6 +14,8 @@ import {
 } from "@/components/admin/artistPicker";
 import { createOfficialOrdering, isOfficialRank } from "@/lib/officialOrder";
 import MembershipOrderInput from "./MembershipOrderInput";
+import { locales } from "@/i18n/routing";
+import RealPersonNamesEditor, { type RealPersonNames } from "./RealPersonNamesEditor";
 
 type Translation = { locale: string; name: string; shortName: string; bio: string };
 type StageIdentityInput = {
@@ -25,13 +27,13 @@ type StageIdentityInput = {
   originalName: string;
   originalShortName: string;
   originalLanguage: string;
-  translations: { locale: string; name: string }[];
+  translations: { locale: string; name: string; shortName: string }[];
   realPerson?: {
     originalName: string;
     originalShortName: string;
     originalStageName: string;
     originalLanguage: string;
-    translations: { locale: string; name: string; stageName: string }[];
+    translations: { locale: string; name: string; shortName: string; stageName: string }[];
   };
 };
 
@@ -46,6 +48,8 @@ type ExistingStageIdentity = {
   createdAt: string;
   name: string;
   vaName: string | null;
+  translations?: { locale: string; name: string }[];
+  realPerson?: RealPersonNames;
 };
 
 // One row of `GET /api/admin/stage-identities` (the "기존 멤버 연결"
@@ -83,6 +87,15 @@ type ArtistFormProps = {
   };
 };
 
+function memberPayload(member: StageIdentityInput) {
+  const { realPerson } = member;
+  return {
+    ...member,
+    translations: member.translations.filter((row) => row.name.trim()),
+    realPerson: realPerson && { ...realPerson, translations: realPerson.translations.filter((row) => row.name.trim()) },
+  };
+}
+
 const ARTIST_TYPES = ["solo", "group", "unit"];
 
 const INT_RE = /^-?\d+$/;
@@ -105,6 +118,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     return initialData ? sortMembersForArtist(list, initialData.id) : [...list];
   }
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [type, setType] = useState(initialData?.type ?? "group");
   const [parentArtistId, setParentArtistId] = useState(
     initialData?.parentArtistId?.toString() ?? ""
@@ -144,7 +158,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   const [editingSI, setEditingSI] = useState<string | null>(null);
   const [editSIType, setEditSIType] = useState("character");
   const [editSIColor, setEditSIColor] = useState("");
-  const [editSIName, setEditSIName] = useState("");
+  const [editSINames, setEditSINames] = useState<Record<string, string>>({});
   const [editSISortOrder, setEditSISortOrder] = useState("");
   const [showLinkSI, setShowLinkSI] = useState(false);
   const [existingSIs, setExistingSIs] = useState(
@@ -234,13 +248,13 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         originalName: "",
         originalShortName: "",
         originalLanguage: "ja",
-        translations: [{ locale: "ko", name: "" }],
+        translations: locales.map((locale) => ({ locale, name: "", shortName: "" })),
         realPerson: {
           originalName: "",
           originalShortName: "",
           originalStageName: "",
           originalLanguage: "ja",
-          translations: [{ locale: "ko", name: "", stageName: "" }],
+          translations: locales.map((locale) => ({ locale, name: "", shortName: "", stageName: "" })),
         },
       },
     ]);
@@ -289,7 +303,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
 
   function updateSITranslation(
     siIndex: number,
-    field: "name",
+    locale: string,
+    field: "name" | "shortName",
     value: string
   ) {
     setStageIdentities((prev) =>
@@ -297,8 +312,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         i === siIndex
           ? {
               ...si,
-              translations: si.translations.map((t, j) =>
-                j === 0 ? { ...t, [field]: value } : t
+              translations: si.translations.map((t) =>
+                t.locale === locale ? { ...t, [field]: value } : t
               ),
             }
           : si
@@ -308,7 +323,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
 
   function updateRPTranslation(
     siIndex: number,
-    field: "name" | "stageName",
+    locale: string,
+    field: "name" | "shortName" | "stageName",
     value: string
   ) {
     setStageIdentities((prev) =>
@@ -318,8 +334,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
               ...si,
               realPerson: {
                 ...si.realPerson,
-                translations: si.realPerson.translations.map((t, j) =>
-                  j === 0 ? { ...t, [field]: value } : t
+                translations: si.realPerson.translations.map((t) =>
+                  t.locale === locale ? { ...t, [field]: value } : t
                 ),
               },
             }
@@ -351,7 +367,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       }
     };
     for (let i = 0; i < stageIdentities.length; i++) {
-      const si = stageIdentities[i];
+      const si = memberPayload(stageIdentities[i]);
       // Skip rule must match the pre-submit validator's required-field
       // check (`handleSubmit` rejects any row with an empty
       // `originalName`). Looking at `translations[0]?.name` instead —
@@ -378,6 +394,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           // Prune the items that did persist so the next attempt only
           // sends the remaining unsaved entries.
           pruneCompleted();
+          const body = await res.json().catch(() => null);
+          setSaveError(body?.error ?? "멤버 추가에 실패했습니다.");
           return false;
         }
       } catch {
@@ -388,6 +406,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         // the !res.ok prune was added to prevent, just on a
         // different failure mode.
         pruneCompleted();
+        setSaveError("멤버 추가에 실패했습니다. 네트워크를 확인해 주세요.");
         return false;
       }
       completedIndices.add(i);
@@ -398,6 +417,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSaveError("");
 
     if (!originalName.trim()) {
       alert("원본 이름(originalName)은 필수입니다.");
@@ -431,6 +451,14 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       return;
     }
 
+    const missing = translations.find((row) => !row.name.trim() && (
+      row.shortName?.trim() || row.bio?.trim() ||
+      initialData?.translations.some((stored) => stored.locale === row.locale && stored.name.trim())
+    ));
+    if (missing) {
+      setSaveError(originalName + " name (" + missing.locale + ", 표기 필요)");
+      return;
+    }
     setLoading(true);
 
     const payload = {
@@ -454,7 +482,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       originalLanguage,
       translations: translations.filter((t) => t.name.trim()),
       groupIds: selectedGroupIds,
-      stageIdentities: stageIdentities.length ? stageIdentities : undefined,
+      stageIdentities: stageIdentities.map(memberPayload),
     };
 
     const url = initialData
@@ -473,10 +501,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         // Save new stage identities for existing artist
         if (initialData && stageIdentities.length > 0) {
           const siOk = await saveNewStageIdentities();
-          if (!siOk) {
-            alert("멤버 추가에 실패했습니다.");
-            return;
-          }
+          if (!siOk) return;
         }
         router.push("/admin/artists");
         router.refresh();
@@ -484,9 +509,9 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       }
 
       const body = await res.json().catch(() => null);
-      alert(body?.error ?? "저장에 실패했습니다.");
+      setSaveError(body?.error ?? "저장에 실패했습니다.");
     } catch {
-      alert("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+      setSaveError("저장에 실패했습니다. 네트워크를 확인해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -756,7 +781,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                     </option>
                   ))}
                 </select>
-                {translations.length > 1 && (
+                {!initialData && translations.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeTranslation(i)}
@@ -832,12 +857,16 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         onChange={(e) => setEditSIColor(e.target.value)}
                         className="rounded border border-zinc-300 px-2 py-1 text-sm"
                       />
-                      <input
-                        placeholder="이름"
-                        value={editSIName}
-                        onChange={(e) => setEditSIName(e.target.value)}
-                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
-                      />
+                      {locales.map((locale) => (
+                        <input
+                          key={locale}
+                          aria-label={`멤버 이름 (${locale})`}
+                          placeholder={`이름 (${locale})`}
+                          value={editSINames[locale] ?? ""}
+                          onChange={(e) => setEditSINames((names) => ({ ...names, [locale]: e.target.value }))}
+                          className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                        />
+                      ))}
                       <input
                         type="number"
                         step={1}
@@ -852,6 +881,13 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                       <button
                         type="button"
                         onClick={async () => {
+                          const clearedName = (si.translations ?? []).find((row) =>
+                            row.name.trim() && editSINames[row.locale] !== undefined && !editSINames[row.locale].trim(),
+                          );
+                          if (clearedName) {
+                            alert(si.name + " name (" + clearedName.locale + ", 표기 필요)");
+                            return;
+                          }
                           const trimmedSIOrder = editSISortOrder.trim();
                           if (trimmedSIOrder && (!INT_RE.test(trimmedSIOrder) || !isOfficialRank(Number(trimmedSIOrder)))) {
                             alert("멤버 정렬 순서는 정수여야 합니다 (비우면 미지정).");
@@ -865,7 +901,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                               type: editSIType,
                               color: editSIColor || null,
                               sortOrder: nextSortOrder,
-                              translations: [{ locale: "ko", name: editSIName }],
+                              translations: Object.entries(editSINames).filter(([, name]) => name.trim()).map(([locale, name]) => ({ locale, name })),
                             }),
                           });
                           if (res.ok) {
@@ -880,7 +916,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                                         type: editSIType,
                                         color: editSIColor || null,
                                         sortOrder: nextSortOrder,
-                                        name: editSIName,
+                                        name: editSINames.ko || s.name,
+                                        translations: Object.entries(editSINames).filter(([, name]) => name.trim()).map(([locale, name]) => ({ locale, name })),
                                       }
                                     : s
                                 )
@@ -904,6 +941,15 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         취소
                       </button>
                     </div>
+                    {si.realPerson && (
+                      <RealPersonNamesEditor person={si.realPerson} onSaved={(realPerson) => setExistingSIs((members) =>
+                        members.map((member) => member.realPerson?.id === realPerson.id ? {
+                          ...member,
+                          realPerson,
+                          vaName: realPerson.translations.find((row) => row.locale === "ko")?.name ?? realPerson.originalName,
+                        } : member),
+                      )} />
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50 p-3">
@@ -932,7 +978,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                           setEditingSI(si.id);
                           setEditSIType(si.type);
                           setEditSIColor(si.color ?? "");
-                          setEditSIName(si.name);
+                          setEditSINames(Object.fromEntries((si.translations ?? [{ locale: "ko", name: si.name }]).map(({ locale, name }) => [locale, name])));
                           setEditSISortOrder(si.sortOrder?.toString() ?? "");
                         }}
                         className="text-sm text-blue-600 hover:underline"
@@ -1146,26 +1192,29 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                   />
                 </div>
               </div>
-              <input
-                placeholder="캐릭터/페르소나 이름 (ko 번역)"
-                value={si.translations[0]?.name ?? ""}
-                onChange={(e) => updateSITranslation(i, "name", e.target.value)}
-                className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="성우/본명 (ko 번역)"
-                value={si.realPerson?.translations[0]?.name ?? ""}
-                onChange={(e) => updateRPTranslation(i, "name", e.target.value)}
-                className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="예명 (선택)"
-                value={si.realPerson?.translations[0]?.stageName ?? ""}
-                onChange={(e) =>
-                  updateRPTranslation(i, "stageName", e.target.value)
-                }
-                className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-              />
+              {locales.map((locale) => {
+                const member = si.translations.find((row) => row.locale === locale);
+                const person = si.realPerson?.translations.find((row) => row.locale === locale);
+                return (
+                  <fieldset key={locale} className="mb-2 flex flex-wrap gap-2">
+                    <legend className="text-xs font-medium">{locale}</legend>
+                    {([
+                      ["name", "캐릭터/페르소나 이름"], ["shortName", "캐릭터 짧은 이름"],
+                    ] as const).map(([field, label]) => (
+                      <input key={field} aria-label={`${label} (${locale})`} placeholder={label}
+                        value={member?.[field] ?? ""} onChange={(e) => updateSITranslation(i, locale, field, e.target.value)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-sm" />
+                    ))}
+                    {person && ([
+                      ["name", "성우/본명"], ["shortName", "성우 짧은 이름"], ["stageName", "예명"],
+                    ] as const).map(([field, label]) => (
+                      <input key={field} aria-label={`${label} (${locale})`} placeholder={label}
+                        value={person[field]} onChange={(e) => updateRPTranslation(i, locale, field, e.target.value)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-sm" />
+                    ))}
+                  </fieldset>
+                );
+              })}
               {si.realPerson && (
                 <div className="rounded border border-zinc-200 bg-zinc-50 p-2">
                   <div className="mb-1 text-xs font-medium text-zinc-600">
@@ -1217,6 +1266,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         </div>
       </div>
 
+      {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
       <button
         type="submit"
         disabled={loading}

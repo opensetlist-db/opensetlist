@@ -1,4 +1,6 @@
+import { checkIdentityNames, identityTranslations } from "@/lib/adminIdentityNames";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { ArtistType, GroupCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
@@ -68,7 +70,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
-  const typeCheck = enumValue(body.type, "type", Object.values(ArtistType));
+  const typeCheck = body.type === undefined ? { ok: true as const, value: undefined } : enumValue(body.type, "type", Object.values(ArtistType));
   if (!typeCheck.ok) return badRequest(typeCheck.message);
 
   const parentArtistIdCheck = nullableBigIntId(body.parentArtistId, "parentArtistId");
@@ -95,58 +97,71 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const display = parseArtistDisplayFields(body);
   if (!display.ok) return badRequest(display.message);
 
-  const name = requireString(body.originalName, "originalName");
-  if (!name.ok) return badRequest(name.message);
-
-  const shortName = nullableString(body.originalShortName, "originalShortName");
-  if (!shortName.ok) return badRequest(shortName.message);
-
-  const bio = nullableString(body.originalBio, "originalBio");
-  if (!bio.ok) return badRequest(bio.message);
-
-  const language = parseOriginalLanguage(body.originalLanguage);
-  if (!language.ok) return badRequest(language.message);
-
-  const translations = parseArtistTranslations(body.translations);
+  const translations = identityTranslations(body.translations, parseArtistTranslations);
   if (!translations.ok) return badRequest(translations.message);
 
-  // Atomic delete-then-update: a failure on the update would otherwise leave the artist with no translations/group links.
+  const name = body.originalName === undefined ? undefined : requireString(body.originalName, "originalName");
+  if (name && !name.ok) return badRequest(name.message);
+  const shortName = body.originalShortName === undefined ? undefined : nullableString(body.originalShortName, "originalShortName");
+  if (shortName && !shortName.ok) return badRequest(shortName.message);
+  const language = body.originalLanguage === undefined ? undefined : parseOriginalLanguage(body.originalLanguage);
+  if (language && !language.ok) return badRequest(language.message);
+  const bio = body.originalBio === undefined ? undefined : nullableString(body.originalBio, "originalBio");
+  if (bio && !bio.ok) return badRequest(bio.message);
+  const rows = translations.value;
+
   try {
     const artist = await prisma.$transaction(async (tx) => {
-      await validateArtistParent(tx, artistId, parentArtistIdCheck.value);
-      // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
-      await tx.artistTranslation.deleteMany({ where: { artistId } });
-      await tx.artistGroup.deleteMany({ where: { artistId } });
+      if ("parentArtistId" in body) await validateArtistParent(tx, artistId, parentArtistIdCheck.value);
+      const stored = await tx.artist.findUnique({
+        where: { id: artistId },
+        include: { translations: true, groupLinks: true },
+      });
+      if (!stored || stored.isDeleted) return NextResponse.json({ error: "대상을 찾을 수 없습니다." }, { status: 404 });
+      const message = checkIdentityNames("아티스트", {
+        originalName: name?.value ?? stored.originalName,
+        originalShortName: shortName ? shortName.value : stored.originalShortName,
+        originalLanguage: language?.value ?? stored.originalLanguage,
+        translations: rows,
+      }, stored, stored.slug);
+      if (message) return badRequest(message);
+      const storedGroups = new Set(stored.groupLinks.map((link) => link.groupId));
+      const nextGroups = new Set(groupIdsCheck.value);
       return tx.artist.update({
         where: { id: artistId },
         data: {
           type: typeCheck.value,
-          parentArtistId: parentArtistIdCheck.value,
-          hasBoard: hasBoardCheck.value ?? true,
-          category: categoryCheck.value,
-          // See POST handler — only persist isMainUnit=true when the
-          // artist is actually a unit. Force false on every other type
-          // so a stale form value can't survive a type flip.
-          isMainUnit:
-            typeCheck.value === "unit"
-              ? (isMainUnitCheck.value ?? false)
-              : false,
+          parentArtistId: "parentArtistId" in body ? parentArtistIdCheck.value : undefined,
+          hasBoard: "hasBoard" in body ? (hasBoardCheck.value ?? true) : undefined,
+          category: "category" in body ? categoryCheck.value : undefined,
+          isMainUnit: (typeCheck.value ?? stored.type) === "unit"
+            ? ("isMainUnit" in body ? (isMainUnitCheck.value ?? false) : undefined)
+            : false,
           ...display.value,
-          originalName: name.value,
-          originalShortName: shortName.value,
-          originalBio: bio.value,
-          originalLanguage: language.value,
-          translations: { create: translations.value },
-          groupLinks: groupIdsCheck.value.length
-            ? { create: groupIdsCheck.value.map((gid) => ({ groupId: gid })) }
-            : undefined,
+          originalName: name?.value,
+          originalShortName: shortName?.value,
+          originalBio: bio?.value,
+          originalLanguage: language?.value,
+          translations: { upsert: rows.map(({ locale, ...data }) => ({
+            where: { artistId_locale: { artistId: artistId, locale } },
+            create: { locale, ...data },
+            update: data,
+          })) },
+          groupLinks: "groupIds" in body ? {
+            deleteMany: { groupId: { notIn: [...nextGroups] } },
+            create: [...nextGroups].filter((groupId) => !storedGroups.has(groupId)).map((groupId) => ({ groupId })),
+          } : undefined,
         },
         include: { translations: true },
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (artist instanceof NextResponse) return artist;
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(artist));
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      return NextResponse.json({ error: "동시에 수정되었습니다. 다시 불러온 뒤 저장하세요." }, { status: 409 });
+    }
     if (error instanceof ArtistParentCycleError) return badRequest(error.message);
     throw error;
   }
