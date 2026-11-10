@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { locales } from "@/i18n/routing";
+import { songNameError, songNameSnapshot, type SongTranslationEdit } from "@/lib/admin/songNames";
 import {
   fetchAdminArtists,
   UnlistedArtistOption,
 } from "@/components/admin/artistPicker";
 
-type Translation = { locale: string; title: string };
+type Translation = { locale: string; title: string; variantLabel?: string | null };
 type ArtistCredit = { artistId: number; role: string; artistName?: string };
 
 type SongFormProps = {
@@ -24,7 +26,7 @@ type SongFormProps = {
   };
 };
 
-const LOCALES = ["ko", "ja", "en", "zh-CN"];
+const LOCALES = [...locales, "zh-CN"];
 const LANGUAGES = [
   { value: "ja", label: "일본어 (ja)" },
   { value: "en", label: "영어 (en)" },
@@ -36,6 +38,8 @@ const ROLES = ["primary", "featured", "cover"];
 export default function SongForm({ initialData }: SongFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [reviewedNames, setReviewedNames] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [originalTitle, setOriginalTitle] = useState(
     initialData?.originalTitle ?? ""
   );
@@ -54,10 +58,9 @@ export default function SongForm({ initialData }: SongFormProps) {
   const [baseVersionId, setBaseVersionId] = useState(
     initialData?.baseVersionId?.toString() ?? ""
   );
-  const [translations, setTranslations] = useState<Translation[]>(
-    initialData?.translations.length
-      ? initialData.translations
-      : [{ locale: "ko", title: "" }]
+  const [translations, setTranslations] = useState<Translation[]>(() =>
+    [...new Set([...LOCALES, ...(initialData?.translations.map((row) => row.locale) ?? [])])]
+      .map((locale) => initialData?.translations.find((row) => row.locale === locale) ?? { locale, title: "" }),
   );
   const [artistCredits, setArtistCredits] = useState<ArtistCredit[]>(
     initialData?.artistCredits ?? []
@@ -73,20 +76,12 @@ export default function SongForm({ initialData }: SongFormProps) {
 
   function updateTranslation(
     index: number,
-    field: keyof Translation,
+    field: "title" | "variantLabel",
     value: string
   ) {
     setTranslations((prev) =>
       prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
     );
-  }
-
-  function addTranslation() {
-    const usedLocales = translations.map((t) => t.locale);
-    const next = LOCALES.find((l) => !usedLocales.includes(l));
-    if (next) {
-      setTranslations((prev) => [...prev, { locale: next, title: "" }]);
-    }
   }
 
   function addArtistCredit() {
@@ -100,17 +95,53 @@ export default function SongForm({ initialData }: SongFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    setSaveError(null);
+    const originalVariant = variantLabel === (initialData?.variantLabel ?? "")
+      ? initialData?.variantLabel ?? null
+      : variantLabel.trim() ? variantLabel : null;
+    const languageChanged = originalLanguage !== initialData?.originalLanguage;
+    const titleChanged = languageChanged || originalTitle !== initialData?.originalTitle;
+    const variantChanged = languageChanged || originalVariant !== initialData?.variantLabel;
+    const translationRows = translations.map((row) => {
+      const saved = initialData?.translations.find((item) => item.locale === row.locale);
+      return {
+        ...row,
+        title: row.title === saved?.title || row.title.trim() ? row.title : "",
+        variantLabel: row.variantLabel === saved?.variantLabel || row.variantLabel?.trim()
+          ? row.variantLabel ?? null : null,
+      };
+    });
+    const edits = translationRows.flatMap((row): SongTranslationEdit[] => {
+      const saved = initialData?.translations.find((item) => item.locale === row.locale);
+      const title = row.title !== (saved?.title ?? "") ||
+        (row.title.trim() && (titleChanged || (reviewedNames && row.title === originalTitle)))
+        ? row.title : undefined;
+      const variantLabel = row.variantLabel !== (saved?.variantLabel ?? null) ||
+        (row.variantLabel?.trim() && (variantChanged || (reviewedNames && row.variantLabel === originalVariant)))
+        ? row.variantLabel : undefined;
+      return title !== undefined || variantLabel !== undefined ? [{ locale: row.locale, title, variantLabel }] : [];
+    });
+    const error = songNameError(
+      { originalTitle, originalLanguage, variantLabel: originalVariant, translations: translationRows },
+      edits, reviewedNames, initialData,
+    );
+    if (error) {
+      setSaveError(error);
+      return;
+    }
 
     const payload = {
-      originalTitle,
-      originalLanguage,
-      variantLabel: variantLabel || null,
-      sourceNote: sourceNote || null,
-      releaseDate: releaseDate || null,
-      baseVersionId: baseVersionId || null,
-      translations: translations.filter((t) => t.title.trim()),
-      artistCredits,
+      originalTitle: originalTitle !== initialData?.originalTitle ? originalTitle : undefined,
+      originalLanguage: languageChanged ? originalLanguage : undefined,
+      variantLabel: originalVariant !== initialData?.variantLabel ? originalVariant : undefined,
+      sourceNote: sourceNote !== (initialData?.sourceNote ?? "") ? sourceNote || null : undefined,
+      releaseDate: releaseDate !== (initialData?.releaseDate ?? "") ? releaseDate || null : undefined,
+      baseVersionId: baseVersionId !== (initialData?.baseVersionId?.toString() ?? "") ? baseVersionId || null : undefined,
+      translations: edits,
+      artistCredits: artistCredits !== initialData?.artistCredits ? artistCredits : undefined,
+      reviewedNames,
+      expectedNames: initialData && (titleChanged || variantChanged || edits.length > 0)
+        ? songNameSnapshot(initialData) : undefined,
     };
 
     const url = initialData
@@ -118,6 +149,7 @@ export default function SongForm({ initialData }: SongFormProps) {
       : "/api/admin/songs";
     const method = initialData ? "PUT" : "POST";
 
+    setLoading(true);
     try {
       const res = await fetch(url, {
         method,
@@ -133,25 +165,35 @@ export default function SongForm({ initialData }: SongFormProps) {
 
       // Surface the API's `error` field (e.g. slug collision message)
       // instead of bouncing every failure through the same generic
-      // alert and forcing the operator to dig in Sentry.
+      // message and forcing the operator to dig in Sentry.
       const body = await res.json().catch(() => null);
-      alert(body?.error ?? "저장에 실패했습니다.");
+      setSaveError(body?.error ?? "저장에 실패했습니다.");
     } catch {
       // Network error / fetch reject — without this the submit button
       // stays locked until refresh because setLoading(false) lived on
       // the !res.ok branch only.
-      alert("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+      setSaveError("저장에 실패했습니다. 네트워크를 확인해 주세요.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+    <form
+      onSubmit={handleSubmit}
+      onChange={(event) => {
+        setSaveError(null);
+        if (!(event.target instanceof HTMLInputElement) || event.target.name !== "reviewedNames") {
+          setReviewedNames(false);
+        }
+      }}
+      className="max-w-2xl space-y-6"
+    >
       <div className="grid grid-cols-[1fr_auto] gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium">원제</label>
+          <label htmlFor="song-original-title" className="mb-1 block text-sm font-medium">원제</label>
           <input
+            id="song-original-title"
             value={originalTitle}
             onChange={(e) => setOriginalTitle(e.target.value)}
             className="w-full rounded border border-zinc-300 px-3 py-2"
@@ -159,8 +201,9 @@ export default function SongForm({ initialData }: SongFormProps) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">원어</label>
+          <label htmlFor="song-original-language" className="mb-1 block text-sm font-medium">원어</label>
           <select
+            id="song-original-language"
             value={originalLanguage}
             onChange={(e) => setOriginalLanguage(e.target.value)}
             className="rounded border border-zinc-300 px-3 py-2"
@@ -174,10 +217,11 @@ export default function SongForm({ initialData }: SongFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium">
+          <label htmlFor="song-variant-label" className="mb-1 block text-sm font-medium">
             버전 라벨 (선택)
           </label>
           <input
+            id="song-variant-label"
             placeholder="SAKURA Ver."
             value={variantLabel}
             onChange={(e) => setVariantLabel(e.target.value)}
@@ -222,58 +266,46 @@ export default function SongForm({ initialData }: SongFormProps) {
         </div>
       </div>
 
-      {/* Translations */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-sm font-medium">번역</label>
-          {translations.length < LOCALES.length && (
-            <button
-              type="button"
-              onClick={addTranslation}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              + 언어 추가
-            </button>
-          )}
-        </div>
+      <fieldset className="space-y-3">
+        <legend className="text-sm font-medium">언어별 표기</legend>
+        <p className="text-sm text-zinc-600">
+          공개 언어의 통용 표기를 입력해 주세요. 로마자·숫자 제목은 제외됩니다.
+          버전 라벨에 인물명이 있으면 검수된 인물 표기를 재사용해 주세요.
+        </p>
         <div className="space-y-3">
           {translations.map((tr, i) => (
             <div
-              key={i}
-              className="flex items-center gap-2 rounded border border-zinc-200 bg-white p-3"
+              key={tr.locale}
+              className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded border border-zinc-200 bg-white p-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)]"
             >
-              <select
-                value={tr.locale}
-                onChange={(e) => updateTranslation(i, "locale", e.target.value)}
-                className="rounded border border-zinc-300 px-2 py-1 text-sm"
-              >
-                {LOCALES.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
+              <span className="row-span-2 text-sm sm:row-span-1">{tr.locale}</span>
               <input
                 placeholder="제목"
+                aria-label={`${tr.locale} 제목`}
                 value={tr.title}
                 onChange={(e) => updateTranslation(i, "title", e.target.value)}
-                className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+                className="min-w-0 rounded border border-zinc-300 px-3 py-2 text-sm"
               />
-              {translations.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setTranslations((prev) => prev.filter((_, j) => j !== i))
-                  }
-                  className="text-sm text-red-500"
-                >
-                  삭제
-                </button>
-              )}
+              <input
+                placeholder="버전 라벨"
+                aria-label={`${tr.locale} 버전 라벨`}
+                value={tr.variantLabel ?? ""}
+                onChange={(e) => updateTranslation(i, "variantLabel", e.target.value)}
+                className="min-w-0 rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
             </div>
           ))}
         </div>
-      </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="reviewedNames"
+            checked={reviewedNames}
+            onChange={(event) => setReviewedNames(event.target.checked)}
+          />
+          원문과 같은 표기 및 원문 변경 후의 언어별 표기를 출처와 대조했습니다.
+        </label>
+      </fieldset>
 
       {/* Artist Credits */}
       <div>
@@ -351,6 +383,7 @@ export default function SongForm({ initialData }: SongFormProps) {
         </div>
       </div>
 
+      {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
       <button
         type="submit"
         disabled={loading}

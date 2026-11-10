@@ -9,6 +9,7 @@ import {
 } from "@/lib/slug";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { parseSongTranslations, songNameError, songTranslationTitle } from "@/lib/admin/songNames";
 
 export async function GET(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
@@ -43,17 +44,31 @@ export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
 
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "곡 입력값을 확인해 주세요." }, { status: 400 });
+  }
   const {
     originalTitle,
-    originalLanguage,
+    originalLanguage = "ja",
     variantLabel,
     sourceNote,
     releaseDate,
     baseVersionId,
-    translations,
     artistCredits,
   } = body;
+  const translations = parseSongTranslations(body.translations === undefined ? [] : body.translations);
+  if (!translations || typeof originalTitle !== "string" || typeof originalLanguage !== "string" ||
+      (variantLabel != null && typeof variantLabel !== "string") ||
+      (artistCredits !== undefined && !Array.isArray(artistCredits))) {
+    return NextResponse.json({ error: "곡의 원제, 원어 또는 언어별 표기를 확인해 주세요." }, { status: 400 });
+  }
+  const originalVariant = variantLabel?.trim() ? variantLabel : null;
+  const nameError = songNameError(
+    { originalTitle, originalLanguage, variantLabel: originalVariant, translations },
+    translations, body.reviewedNames === true,
+  );
+  if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
   // Slug resolution. Two paths:
   //
@@ -125,18 +140,16 @@ export async function POST(request: NextRequest) {
         data: {
           slug,
           originalTitle,
-          originalLanguage: originalLanguage || "ja",
-          variantLabel: variantLabel || null,
+          originalLanguage,
+          variantLabel: originalVariant,
           sourceNote: sourceNote || null,
           releaseDate: releaseDate ? new Date(releaseDate) : null,
           baseVersionId: baseVersionId ? BigInt(baseVersionId) : null,
           translations: {
-            create: translations.map(
-              (t: { locale: string; title: string }) => ({
-                locale: t.locale,
-                title: t.title,
-              })
-            ),
+            create: translations.map((row) => ({
+              ...row,
+              title: songTranslationTitle(row.title, originalTitle, originalLanguage, row.locale),
+            })),
           },
           artists: artistCredits?.length
             ? {
