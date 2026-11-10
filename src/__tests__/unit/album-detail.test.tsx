@@ -122,6 +122,7 @@ function track(over: Record<string, unknown>): Any {
     trackNumber: 1,
     songId: null,
     song: null,
+    parentSongId: null,
     parentSong: null,
     variant: null,
     title: null,
@@ -131,6 +132,29 @@ function track(over: Record<string, unknown>): Any {
 }
 
 describe("AlbumTracksPanel", () => {
+  it("pairs titles from the linked song and from independent tracks in the requested language", async () => {
+    const el = await AlbumTracksPanel({
+      locale: "ko",
+      tracks: [
+        track({ id: "song", songId: "7", song: {
+          id: "7", slug: "dream", originalTitle: "夢", originalLanguage: "ja",
+          translations: [{ locale: "ko", title: "꿈" }],
+        }, translations: [{ locale: "ko", title: "독립 번역" }] }),
+        track({
+          id: "drama", trackNumber: 2, variant: "drama", title: "夜", titleLanguage: "ja",
+          translations: [{ locale: "ko", title: "밤" }],
+        }),
+      ],
+    });
+    render(el as ReactElement);
+    expect(screen.getByText("夢")).toHaveAttribute("lang", "ja");
+    expect(screen.getByText("꿈")).toHaveAttribute("lang", "ko");
+    expect(screen.getByText("꿈").closest("a")).toHaveAttribute("href", "/ko/songs/7/dream");
+    expect(screen.getByText("夜")).toHaveAttribute("lang", "ja");
+    expect(screen.getByText("밤")).toHaveAttribute("lang", "ko");
+    expect(screen.getByText("밤").closest("a")).toBeNull();
+  });
+
   it("links only song-backed rows and omits disc headings for one disc", async () => {
     const el = await AlbumTracksPanel({
       locale: "ko",
@@ -326,7 +350,9 @@ describe("AlbumIdentity", () => {
     expect(screen.getByText("러브라이브! 5th BD")).toBeTruthy();
     const links = screen.getAllByRole("link").map((l) => l.getAttribute("href"));
     expect(links).toEqual(["/ko/artists/1/a1", "/ko/artists/2/a2"]);
-    expect(screen.getByText("蓮ノ空")).toBeTruthy(); // original name as sub line
+    expect(screen.getByText("蓮ノ空")).toHaveAttribute("lang", "ja");
+    expect(screen.getByText("하스노소라")).toHaveAttribute("lang", "ko");
+    expect(screen.getAllByRole("link")[0].textContent).toBe("蓮ノ空하스노소라");
     expect(container.querySelector("time")?.getAttribute("datetime")).toBe("2026-07-29");
     // Stored as a UTC midnight: the rendered day must not slide back on a
     // host west of UTC.

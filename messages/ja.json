@@ -189,6 +189,7 @@
     "albumActiveBonuses": "店舗特典 {count}件",
     "albumActiveBonusesBadge": "特典 {count}",
     "unknown": "名称未定のアルバム",
+    "coverAlt": "{title}のジャケット",
     "type": {
       "single": "シングル",
       "album": "アルバム",

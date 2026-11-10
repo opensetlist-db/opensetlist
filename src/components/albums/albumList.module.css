@@ -84,6 +84,12 @@
     background 0.15s,
     color 0.15s;
 }
+.filter small,
+.artist small {
+  display: block;
+  font-size: 0.875em;
+  font-weight: 400;
+}
 .filter:hover {
   color: var(--primary);
 }

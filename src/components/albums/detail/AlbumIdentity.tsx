@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
-import { displayOriginalTitle, displayOriginalName } from "@/lib/display";
+import { displayOriginalTitle, resolveDisplayPair } from "@/lib/display";
 import { entityPath } from "@/lib/seo/entityUrl";
 import { formatDate, type BigIntStringified } from "@/lib/utils";
 import { ALBUM_DATE_FORMAT } from "./albumDate";
@@ -16,10 +16,8 @@ import styles from "./albumDetail.module.css";
  *
  * Title rule (artwork): original title leads, the locale translation is
  * the subtitle only when it exists and differs (`displayOriginalTitle`).
- * Artist rule (identity): locale name leads, the original name is the
- * small second line (`displayOriginalName`). Every AlbumArtist row is a
- * link — the old card showed only the first as a link plus chips; 22-v1
- * lists them all in one row.
+ * Every credited artist links to its page and shows the original name
+ * above the locale-specific name.
  *
  * The store-bonus stat chips that sat in the sidebar moved to the
  * purchase tab's summary box (22-v1 contract), where the counts sit next
@@ -51,21 +49,24 @@ export async function AlbumIdentity({
   locale: string;
 }) {
   const t = await getTranslations({ locale, namespace: "Album" });
-  const title = displayOriginalTitle(album, album.translations, locale);
-  const longTitle = title.main.length > LONG_TITLE_CHARS;
+  const title = displayOriginalTitle(album, album.translations, locale, "paired");
+  const longTitle = Math.max(title.main.length, title.sub?.length ?? 0) > LONG_TITLE_CHARS;
 
   return (
     <section
       className={`${styles.identity} ${longTitle ? styles.longTitle : ""}`}
       aria-labelledby="album-title"
     >
-      <AlbumCover src={album.imageUrl} alt={title.main} />
+      <AlbumCover
+        src={album.imageUrl}
+        alt={t("coverAlt", { title: title.sub ? `${title.main} / ${title.sub}` : title.main })}
+      />
       <div className={styles.title}>
         <span className={styles.badge}>{t(`type.${album.type}`)}</span>
-        <h1 id="album-title" className={styles.h1}>
+        <h1 id="album-title" className={styles.h1} lang={album.originalLanguage}>
           {title.main}
         </h1>
-        {title.sub ? <p className={styles.subtitle}>{title.sub}</p> : null}
+        {title.sub ? <p className={styles.subtitle} lang={locale}>{title.sub}</p> : null}
       </div>
       <dl className={styles.meta}>
         {album.artists.length > 0 ? (
@@ -73,10 +74,10 @@ export async function AlbumIdentity({
             <dt className={styles.metaLabel}>{t("meta.label.artist")}</dt>
             <dd className={`${styles.metaValue} ${styles.artistLinks}`}>
               {album.artists.map(({ artist }) => {
-                const name = displayOriginalName(
-                  artist,
+                const name = resolveDisplayPair(
+                  { original: artist.originalName, originalLanguage: artist.originalLanguage },
                   artist.translations,
-                  locale,
+                  locale, "name",
                 );
                 return (
                   <Link
@@ -84,8 +85,8 @@ export async function AlbumIdentity({
                     href={entityPath("artists", locale, artist.id, artist.slug)}
                     className={styles.artistLink}
                   >
-                    <span>{name.main}</span>
-                    {name.sub ? <small>{name.sub}</small> : null}
+                    <span lang={artist.originalLanguage}>{name.main}</span>
+                    {name.sub ? <small lang={locale}>{name.sub}</small> : null}
                   </Link>
                 );
               })}

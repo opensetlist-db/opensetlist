@@ -18,7 +18,6 @@ import {
   AlbumPagination,
   ALBUM_RESULTS_ID,
 } from "@/components/albums/AlbumPagination";
-import { displayOriginalName } from "@/lib/display";
 import styles from "@/components/albums/albumList.module.css";
 
 /*
@@ -131,7 +130,7 @@ export default async function AlbumsPage({
           <h1 className={styles.title}>{t("title")}</h1>
         </header>
 
-        <AlbumArtistFilter active={activeArtist} options={artistFilters} />
+        <AlbumArtistFilter active={activeArtist} options={artistFilters} locale={locale} />
 
         {albums.length === 0 ? (
           <div className={styles.empty}>
@@ -177,20 +176,11 @@ export default async function AlbumsPage({
 
                   <ul className={styles.rows}>
                     {group.albums.map((album) => {
-                      const primaryArtist = album.artists[0]?.artist ?? null;
-                      const artistName = primaryArtist
-                        ? displayOriginalName(
-                            primaryArtist,
-                            primaryArtist.translations,
-                            locale,
-                          ).main
-                        : undefined;
                       return (
                         <li key={`${album.id}`}>
                           <AlbumListRow
                             album={album}
                             locale={locale}
-                            artistName={artistName}
                             activeBonusCount={countActiveBonuses(album.listings, album._count.bdEvents > 0)}
                           />
                         </li>

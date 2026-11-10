@@ -88,6 +88,9 @@ export default async function AlbumsListPage({ searchParams }: Props) {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">앨범 관리</h1>
+        <Link href="/admin/albums/new" className="text-sm text-blue-600 hover:underline">
+          앨범 등록
+        </Link>
         <SortLinks current={sort} />
       </div>
       <table className="w-full text-left text-sm">

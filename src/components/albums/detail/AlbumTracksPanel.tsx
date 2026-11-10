@@ -4,7 +4,8 @@ import {
   getAlbumTrackTitle,
   type EnrichedAlbumTrack,
 } from "@/lib/albumTrackTitle";
-import { displayOriginalTitle } from "@/lib/display";
+import { isPattern3AlbumTrackVariant } from "@/lib/albumTrackVariants";
+import { displayOriginalTitle, resolveDisplayPair } from "@/lib/display";
 import { entityPath } from "@/lib/seo/entityUrl";
 import styles from "./albumDetail.module.css";
 
@@ -20,8 +21,8 @@ import styles from "./albumDetail.module.css";
  *   Pattern 2 (off-vocal with `parentSong`) / Pattern 3 (drama, BGM,
  *     direct title) — informational, no link: there is no Song page for
  *     an off-vocal or a drama track, and inventing one would 404 or point
- *     at the wrong song. `getAlbumTrackTitle` composes their one-line
- *     title (variant suffix, translation, "Track N" fallback).
+ *     at the wrong song. Drama and BGM have their own title pair.
+ *     The existing variant and fallback text serves other rows.
  *
  * The fetch already orders tracks by [discNumber, trackNumber], so
  * bucketing per disc keeps the order without another sort.
@@ -69,24 +70,33 @@ export async function AlbumTracksPanel({
           ) : null}
           <ol className={styles.trackList}>
             {discTracks.map((track) => {
+              const directTitle = track.songId === null && track.parentSongId === null &&
+                track.variant && isPattern3AlbumTrackVariant(track.variant) && track.title
+                ? track.title
+                : null;
+              const originalLanguage = track.song?.originalLanguage ??
+                (directTitle ? track.titleLanguage ?? "ja" : undefined);
               const title = track.song
                 ? displayOriginalTitle(
                     track.song,
                     track.song.translations ?? [],
                     locale,
+                    "paired",
                   )
-                : {
-                    main: getAlbumTrackTitle(track, locale, tRoot),
-                    sub: null,
-                  };
+                : directTitle
+                  ? resolveDisplayPair(
+                      { original: directTitle, originalLanguage: track.titleLanguage ?? "ja" },
+                      track.translations ?? [], locale, "title", { kind: "title" },
+                    )
+                  : { main: getAlbumTrackTitle(track, locale, tRoot), sub: null };
               const body = (
                 <>
                   <span className={styles.trackNumber}>
                     {t("tracks.trackPrefix", { track: track.trackNumber })}
                   </span>
                   <span className={styles.trackTitle}>
-                    {title.main}
-                    {title.sub ? <small>{title.sub}</small> : null}
+                    <span lang={originalLanguage}>{title.main}</span>
+                    {title.sub ? <small lang={locale}>{title.sub}</small> : null}
                   </span>
                 </>
               );
