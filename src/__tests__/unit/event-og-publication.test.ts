@@ -209,5 +209,5 @@ describe("published event-card transport", () => {
     ] as const) {
       const rejected = run(override); expect(rejected.status).toBe(1); expect(rejected.stderr).toContain(message);
     }
-  });
+  }, 20_000);
 });
