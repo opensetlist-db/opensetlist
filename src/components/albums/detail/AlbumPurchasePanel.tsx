@@ -40,10 +40,6 @@ export async function AlbumPurchasePanel({
   const hasOptions = bonusStores.length > 0 || basicOptions.length > 0;
 
   const tag = process.env.AMAZON_JP_ASSOCIATE_TAG;
-  const hasAffiliateLink = ({ productUrl }: { productUrl: string }) =>
-    resolvePurchaseLink(productUrl, tag)?.isAffiliate === true;
-  const showDisclosure = basicOptions.some(hasAffiliateLink) ||
-    bonusStores.some(({ options }) => options.some(({ listing }) => hasAffiliateLink(listing)));
 
   type Listing = AlbumForPurchase["listings"][number];
   const option = (listing: Listing & { productUrl: string }, bonuses: Listing["bonuses"] = []) => {
@@ -97,6 +93,9 @@ export async function AlbumPurchasePanel({
           {t("bonus.buyAt", { store })}
           <span aria-hidden="true">↗</span>
         </TrackedStoreLink>
+        {link.isAffiliate && (
+          <p className={styles.affiliateDisclosure}>{t("bonus.affiliateDisclosure")}</p>
+        )}
       </div>
     );
   };
@@ -104,9 +103,6 @@ export async function AlbumPurchasePanel({
   return (
     <>
       <h2 className={styles.purchaseHeading}>{t("tab.bonus")}</h2>
-      {showDisclosure && (
-        <p className={styles.affiliateDisclosure}>{t("bonus.affiliateDisclosure")}</p>
-      )}
       {bonusStores.length > 0 && (
         <section className={styles.purchaseSection} aria-label={t("bonus.options")}>
           <div className={styles.bonusSummary}>

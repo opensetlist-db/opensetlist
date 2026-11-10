@@ -22,9 +22,9 @@ const amazonBonus = "https://www.amazon.co.jp/dp/B012345678?th=1";
 const amazonPlain = "https://www.amazon.co.jp/dp/B012345679?psc=1";
 const other = "https://example.com/product?tag=other";
 const disclosures = {
-  en: "We earn from qualifying Amazon purchases.",
-  ja: "Amazonの対象購入で紹介料を得ます。",
-  ko: "Amazon 적격 구매 시 수수료를 받습니다.",
+  en: "Amazon Associate · We earn commission.",
+  ja: "Amazonアソシエイトとして紹介料を得ます。",
+  ko: "Amazon 어소시에이트로 수수료를 받습니다.",
 };
 const officialUrl = "https://example.com/official";
 const bonusImageUrl = "https://example.com/poster.png";
@@ -76,7 +76,6 @@ it.each(locales)("simplifies %s options while preserving benefits, links and tra
     }));
     expect(getByText("Store exclusive poster")).toBeTruthy();
     expect(container.querySelector("img")?.getAttribute("src")).toBe(bonusImageUrl);
-    expect(queryAllByText(disclosure)).toHaveLength(tag ? 1 : 0);
     expect(queryByText("Includes live shows A and B")).toBeNull();
     expect(queryByText("Blu-ray Memorial BOX")).toBeNull();
     expect(queryByText("CD bonus")).toBeNull();
@@ -89,12 +88,18 @@ it.each(locales)("simplifies %s options while preserving benefits, links and tra
       { href: tag ? amazonPlain + "&tag=test-22" : amazonPlain, affiliated: Boolean(tag) },
     ];
     expect(options).toHaveLength(expected.length);
+    expect(queryAllByText(disclosure)).toHaveLength(expected.filter(({ affiliated }) => affiliated).length);
     options.forEach((option, index) => {
-      const link = within(option as HTMLElement).getByRole<HTMLAnchorElement>("link");
+      const card = within(option as HTMLElement);
+      const link = card.getByRole<HTMLAnchorElement>("link");
       const { href, affiliated } = expected[index];
       expect(link.getAttribute("href")).toBe(href);
       expect(link.relList.contains("sponsored")).toBe(affiliated);
-      expect(within(option as HTMLElement).queryByText(disclosure)).toBeNull();
+      if (affiliated) {
+        expect(link.nextElementSibling).toBe(card.getByText(disclosure));
+      } else {
+        expect(card.queryByText(disclosure)).toBeNull();
+      }
       fireEvent.click(link);
       expect(gtag).toHaveBeenCalledTimes(index + 1);
       expect(gtag).toHaveBeenLastCalledWith("event", "store_click", expect.objectContaining({
