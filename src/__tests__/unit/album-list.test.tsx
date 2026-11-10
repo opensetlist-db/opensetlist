@@ -134,6 +134,9 @@ describe("AlbumListRow", () => {
     ["恋のチュートリアル", "恋のチュートリアル"],
     ["Ｄａｙ．１", "첫째 날"],
   ])("renders only the original title for %s", async (originalTitle, title) => {
+    const control = await renderRow();
+    expect(screen.getByText("Say Good-Bye 눈물")).toBeVisible();
+    control.unmount();
     const { container } = await renderRow({
       album: album({ originalTitle, translations: [{ locale: "ko", title }] }),
     });

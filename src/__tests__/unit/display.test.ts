@@ -27,7 +27,9 @@ describe("resolveDisplayPair", () => {
   it.each(["Ｄａｙ．１", "2026", "Café ♡", "①", "A・ZU・NA"])(
     "exempts the title %s without rewriting it",
     (original) => {
-      expect(resolveDisplayPair(japanese(original), [{ locale: "ko", title: "다른 제목" }], "ko", "title", { kind: "title" }))
+      const translations = [{ locale: "ko", title: "다른 제목" }];
+      expect(resolveDisplayPair(japanese(original), translations, "ko", "title").sub).toBe("다른 제목");
+      expect(resolveDisplayPair(japanese(original), translations, "ko", "title", { kind: "title" }))
         .toEqual({ main: original, sub: null, status: "exempt" });
     },
   );
@@ -39,6 +41,8 @@ describe("resolveDisplayPair", () => {
     ["Say Good-Bye 涙", "missing"],
   ])("keeps %s out of the title exemption", (original, status) => {
     const translations = [{ locale: "ko", title: "　 " }, { locale: "en", title: "Other locale" }];
+    expect(resolveDisplayPair(japanese(original), translations, "en", "title", { kind: "title" }).sub)
+      .toBe("Other locale");
     expect(resolveDisplayPair(japanese(original), translations, "ko", "title", { kind: "title" }))
       .toEqual({ main: original, sub: null, status });
   });
