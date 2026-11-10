@@ -12,7 +12,8 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigIntAsString } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
 import { FireAlbumView } from "@/components/FireAlbumView";
-import { resolveStoreKey, countActiveBonuses } from "@/lib/albumBonusDisplay";
+import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
+import { resolveStoreKey } from "@/lib/albumBonusDisplay";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { AlbumIdentity } from "@/components/albums/detail/AlbumIdentity";
 import { AlbumTabs } from "@/components/albums/detail/AlbumTabs";
@@ -100,14 +101,16 @@ async function fetchAlbum(id: bigint, locale: string) {
       // consume from the same fetch. b02 reads `length` (listingCount)
       // and `status === "ended"` (endedBonusCount derived) for sidebar
       // stats only.
+      _count: { select: { bdEvents: { where: { isDeleted: false } } } },
       listings: {
         include: {
           bonuses: {
             include: { translations: { where: localeFilter } },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           },
           translations: { where: localeFilter },
         },
-        orderBy: [{ originalStoreName: "asc" }],
+        orderBy: [{ originalStoreName: "asc" }, { createdAt: "asc" }, { id: "asc" }],
       },
     },
   });
@@ -258,24 +261,19 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
     pattern1SongIds,
   );
 
-  // Purchase badge = every bonus including ended ones (the summary box
-  // repeats the split); the dot marks that at least one bonus is still
-  // current — distinct from the count, visible from any tab.
-  const bonusTotal = album.listings.reduce(
-    (sum, l) => sum + l.bonuses.length,
-    0,
-  );
+  const now = new Date();
+  const performanceOnly = album._count.bdEvents > 0;
+  const { bonusCount } = projectPurchaseOptions(album.listings, now, { performanceOnly });
   const tabCounts: Record<AlbumTabKey, number> = {
-    bonus: bonusTotal,
+    bonus: bonusCount,
     tracks: album.tracks.length,
     events: eventsCount,
   };
-  const activeBonusCount = countActiveBonuses(album.listings);
   const tabs = visibleTabs.map((key) => ({
     key,
     label: t(`tab.${key}`),
     count: tabCounts[key],
-    indicator: key === "bonus" && activeBonusCount > 0,
+    indicator: key === "bonus" && bonusCount > 0,
   }));
 
   let relatedEvents: RelatedEvent[] = [];
@@ -328,7 +326,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
           locale={locale}
         />
       ) : (
-        <AlbumPurchasePanel album={album} locale={locale} />
+        <AlbumPurchasePanel album={album} locale={locale} now={now} performanceOnly={performanceOnly} />
       )}
       {/* `album_view` on client mount; renders nothing.
           `has_amazon_listing` = any listing resolves to Amazon JP (no

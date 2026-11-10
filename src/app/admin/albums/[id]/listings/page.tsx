@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickLocaleTranslation } from "@/lib/utils";
+import { pickLocaleTranslation } from "@/lib/utils";
 import ListingsClient, { type ListingRow } from "./ListingsClient";
 
 type Props = { params: Promise<{ id: string }> };
@@ -44,31 +44,12 @@ export default async function AlbumListingsPage({ params }: Props) {
   ]);
   const storeNameSuggestions = distinctStores.map((d) => d.originalStoreName);
 
-  // After serializeBigInt the runtime shape mirrors `listings` but
-  // bigint fields are coerced to number. Spell the post-coercion
-  // shape inline so the .map() below stays type-narrowed.
-  type SerializedListing = {
-    id: string;
-    originalStoreName: string;
-    originalEditionLabel: string | null;
-    originalLanguage: string;
-    productUrl: string | null;
-    status: ListingRow["status"];
-    translations: ListingRow["translations"];
-    _count: { bonuses: number };
-  };
-
-  const rows: ListingRow[] = (
-    serializeBigInt(listings) as SerializedListing[]
-  ).map((l) => ({
-    id: l.id,
-    originalStoreName: l.originalStoreName,
-    originalEditionLabel: l.originalEditionLabel,
-    originalLanguage: l.originalLanguage,
-    productUrl: l.productUrl,
-    status: l.status,
-    translations: l.translations,
-    bonusCount: l._count.bonuses,
+  const rows: ListingRow[] = listings.map(({ _count, albumId, ...listing }) => ({
+    ...listing,
+    albumId: String(albumId),
+    startsAt: listing.startsAt?.toISOString() ?? null,
+    endsAt: listing.endsAt?.toISOString() ?? null,
+    bonusCount: _count.bonuses,
   }));
 
   const tr = pickLocaleTranslation(album.translations, "ko");

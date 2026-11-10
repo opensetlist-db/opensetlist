@@ -79,18 +79,19 @@ export const ADMIN_WRITABLE_LISTING_STATUSES: ReadonlySet<AlbumStoreListingStatu
  * `bonusDescription` column stays nullable but never receives a write
  * from this surface.
  */
+function optionalTranslationText(value: unknown) {
+  return value === undefined ? undefined : typeof value === "string" ? value.trim() || null : null;
+}
+
 export function parseBonusTranslations(
   input: unknown,
-): { locale: string; bonusType: string | null }[] {
+): { locale: string; bonusType?: string | null }[] {
   return Array.isArray(input)
     ? (input as Array<{ locale: unknown; bonusType?: unknown }>)
         .filter((t) => typeof t.locale === "string")
         .map((t) => ({
           locale: t.locale as string,
-          bonusType:
-            typeof t.bonusType === "string" && t.bonusType.trim()
-              ? t.bonusType.trim()
-              : null,
+          bonusType: optionalTranslationText(t.bonusType),
         }))
     : [];
 }
@@ -105,8 +106,8 @@ export function parseListingTranslations(
   input: unknown,
 ): {
   locale: string;
-  storeName: string | null;
-  editionLabel: string | null;
+  storeName?: string | null;
+  editionLabel?: string | null;
 }[] {
   return Array.isArray(input)
     ? (
@@ -119,14 +120,8 @@ export function parseListingTranslations(
         .filter((t) => typeof t.locale === "string")
         .map((t) => ({
           locale: t.locale as string,
-          storeName:
-            typeof t.storeName === "string" && t.storeName.trim()
-              ? t.storeName.trim()
-              : null,
-          editionLabel:
-            typeof t.editionLabel === "string" && t.editionLabel.trim()
-              ? t.editionLabel.trim()
-              : null,
+          storeName: optionalTranslationText(t.storeName),
+          editionLabel: optionalTranslationText(t.editionLabel),
         }))
     : [];
 }

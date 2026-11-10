@@ -90,7 +90,7 @@ export async function ArtistAlbumsSection({
   const renderRow = (album: AlbumRow) => {
     const title = displayOriginalTitle(album, album.translations, locale);
     const year = parseReleaseYear(album.releaseDate);
-    const bonusCount = countActiveBonuses(album.listings);
+    const bonusCount = countActiveBonuses(album.listings, album._count.bdEvents > 0);
     return (
       <li key={`${album.id}`}>
         <Link

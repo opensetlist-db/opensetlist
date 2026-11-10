@@ -6,6 +6,14 @@ import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
 import { isSafeExternalUrl } from "@/lib/utils";
 
 export type ListingFormPayload = {
+  startsAt: string | null;
+  endsAt: string | null;
+  sourceUrl: string | null;
+  storeKey: string | null;
+  selectionGuide: string | null;
+  includesPerformanceVideo: boolean | null;
+  isBonusOption: boolean | null;
+  officialOrder: number | null;
   albumId: string;
   originalStoreName: string;
   originalEditionLabel: string | null;
@@ -90,10 +98,21 @@ export default function AlbumListingFormModal({
       ]);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
+    const form = new FormData(e.currentTarget);
+    const value = (name: string) => String(form.get(name) ?? "").trim() || null;
+    const boolean = (name: string) => value(name) === null ? null : value(name) === "true";
     const payload: ListingFormPayload = {
+      startsAt: value("startsAt"),
+      endsAt: value("endsAt"),
+      sourceUrl: value("sourceUrl"),
+      storeKey: value("storeKey"),
+      selectionGuide: value("selectionGuide"),
+      includesPerformanceVideo: boolean("includesPerformanceVideo"),
+      isBonusOption: boolean("isBonusOption"),
+      officialOrder: value("officialOrder") === null ? null : Number(value("officialOrder")),
       albumId,
       originalStoreName: originalStoreName.trim(),
       originalEditionLabel: originalEditionLabel.trim() || null,
@@ -116,7 +135,12 @@ export default function AlbumListingFormModal({
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          removedTranslationLocales: initialData?.translations
+            .filter((row) => !payload.translations.some((entry) => entry.locale === row.locale))
+            .map((row) => row.locale),
+        }),
       });
       if (res.ok) {
         router.refresh();
@@ -142,6 +166,58 @@ export default function AlbumListingFormModal({
           {initialData?.id ? "구매처 편집" : "새 구매처"}
         </h2>
 
+        <fieldset className="my-4 space-y-3">
+          <legend className="font-medium">구매 안내 정보</legend>
+          <p className="text-xs text-zinc-600">시간대가 포함된 확정 시각만 입력하세요. 날짜만 확인된 경우 근거 URL을 남기고 시각은 비워 두세요.</p>
+            <label className="block text-sm">
+              연결 공연 영상 포함 여부
+              <select name="includesPerformanceVideo" defaultValue={initialData?.includesPerformanceVideo == null ? "" : String(initialData.includesPerformanceVideo)}
+                className="mt-1 w-full rounded border border-zinc-300 px-3 py-2">
+                <option value="">미확인</option>
+                <option value="true">포함</option>
+                <option value="false">미포함</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              구매 옵션 유형
+              <select name="isBonusOption" defaultValue={initialData?.isBonusOption == null ? "" : String(initialData.isBonusOption)}
+                className="mt-1 w-full rounded border border-zinc-300 px-3 py-2">
+                <option value="">미확인</option>
+                <option value="true">특전 구매 옵션</option>
+                <option value="false">특전 없는 구매 옵션</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              공식 판매점 순서
+              <input name="officialOrder" type="number" defaultValue={initialData?.officialOrder ?? ""}
+                min={1} step={1} placeholder="1" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              시작 시각
+              <input name="startsAt" type="text" defaultValue={initialData?.startsAt ?? ""}
+                placeholder="2026-11-09T10:00:00+09:00" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              종료 시각
+              <input name="endsAt" type="text" defaultValue={initialData?.endsAt ?? ""}
+                placeholder="2026-11-30T23:59:00+09:00" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              공식 상품 안내 URL
+              <input name="sourceUrl" type="text" defaultValue={initialData?.sourceUrl ?? ""}
+                placeholder="https://" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              판매점 식별 키
+              <input name="storeKey" type="text" defaultValue={initialData?.storeKey ?? ""}
+                placeholder="같은 판매점의 옵션에는 같은 키 사용" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              선택 안내
+              <input name="selectionGuide" type="text" defaultValue={initialData?.selectionGuide ?? ""}
+                placeholder="예: 상품 페이지에서 특전 B 선택" className="mt-1 w-full rounded border border-zinc-300 px-3 py-2" />
+            </label>
+        </fieldset>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1 block text-sm font-medium">

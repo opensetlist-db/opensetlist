@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
 import BonusesClient, { type BonusRow } from "./BonusesClient";
 
 type Props = { params: Promise<{ id: string; listingId: string }> };
@@ -38,30 +37,10 @@ export default async function AlbumBonusesPage({ params }: Props) {
   ]);
   if (!listing) notFound();
 
-  type SerializedBonus = {
-    id: string;
-    originalBonusType: string;
-    originalLanguage: string;
-    // Schema also has bonusDescription per locale; admin form drops
-    // it per the simplification handoff, so we narrow at the type
-    // boundary and ignore the extra column on the way through.
-    translations: {
-      locale: string;
-      bonusType: string | null;
-      bonusDescription: string | null;
-    }[];
-  };
-
-  const rows: BonusRow[] = (
-    serializeBigInt(bonuses) as SerializedBonus[]
-  ).map((b) => ({
-    id: b.id,
-    originalBonusType: b.originalBonusType,
-    originalLanguage: b.originalLanguage,
-    translations: b.translations.map((tr) => ({
-      locale: tr.locale,
-      bonusType: tr.bonusType,
-    })),
+  const rows: BonusRow[] = bonuses.map((bonus) => ({
+    ...bonus,
+    startsAt: bonus.startsAt?.toISOString() ?? null,
+    endsAt: bonus.endsAt?.toISOString() ?? null,
   }));
 
   const label = listing.originalEditionLabel

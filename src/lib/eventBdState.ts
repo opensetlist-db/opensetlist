@@ -37,6 +37,7 @@ import type {
   EventStatus,
 } from "@/generated/prisma/enums";
 import { STORE_REGEXES } from "@/lib/storeKeys";
+import { projectPurchaseOptions, type PurchaseBonus, type PurchaseListing } from "@/lib/purchaseAvailability";
 
 export type EventBdState =
   | "pre"
@@ -121,70 +122,15 @@ export type AlbumBdInput = {
   listings: ReadonlyArray<AlbumStoreListingBdInput>;
 };
 
-export type AlbumStoreListingBdInput = {
-  status: AlbumStoreListingStatus;
-  startsAt: Date | string | null;
-  endsAt: Date | string | null;
-  bonuses: ReadonlyArray<AlbumStoreBonusBdInput>;
-};
+export type AlbumStoreListingBdInput = PurchaseListing & { status: AlbumStoreListingStatus; bonuses: readonly AlbumStoreBonusBdInput[] };
 
-export type AlbumStoreBonusBdInput = {
-  startsAt: Date | string | null;
-  endsAt: Date | string | null;
-  bonusImageUrl: string | null;
-};
+export type AlbumStoreBonusBdInput = PurchaseBonus & { bonusImageUrl: string | null };
 
 function toDate(value: Date | string | null): Date | null {
   if (value === null) return null;
   if (value instanceof Date) return value;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-/**
- * Compute the bonus's effective active window by composing its own
- * startsAt/endsAt overrides with the parent listing's lifecycle.
- * `null` on either side reads as "no boundary" (always active in
- * that direction).
- *
- * Schema rationale (see prisma/schema.prisma:1030–1033): bonus
- * lifecycle is opt-in; the common case is one listing-level window
- * shared by all its bonuses, so most bonus rows have both fields
- * NULL and inherit from listing.
- */
-function bonusActiveWindow(
-  bonus: AlbumStoreBonusBdInput,
-  listing: AlbumStoreListingBdInput,
-): { start: Date | null; end: Date | null } {
-  const start = toDate(bonus.startsAt) ?? toDate(listing.startsAt);
-  const end = toDate(bonus.endsAt) ?? toDate(listing.endsAt);
-  return { start, end };
-}
-
-function isBonusActiveAt(
-  bonus: AlbumStoreBonusBdInput,
-  listing: AlbumStoreListingBdInput,
-  now: Date,
-): boolean {
-  // Parent listing's status is the source of truth for whether the
-  // bonus offer is still live (see schema comment on AlbumStoreBonus
-  // — "Bonus has no status of its own"). `ended` listings hide all
-  // their bonuses; sold_out / unknown / active all stay visible.
-  if (listing.status === "ended") return false;
-  const { start, end } = bonusActiveWindow(bonus, listing);
-  if (start !== null && start > now) return false;
-  if (end !== null && end <= now) return false;
-  return true;
-}
-
-function albumHasActiveBonus(album: AlbumBdInput, now: Date): boolean {
-  for (const listing of album.listings) {
-    if (listing.status === "ended") continue;
-    for (const bonus of listing.bonuses) {
-      if (isBonusActiveAt(bonus, listing, now)) return true;
-    }
-  }
-  return false;
 }
 
 /**
@@ -229,7 +175,7 @@ export function resolveEventBdState(
     const releaseDate = toDate(album.releaseDate);
     const released = releaseDate !== null && releaseDate <= referenceNow;
     if (released) return "bd_released";
-    return albumHasActiveBonus(album, referenceNow)
+    return projectPurchaseOptions(album.listings, referenceNow, { performanceOnly: true }).bonusCount > 0
       ? "bd_preorder"
       : "bd_announced";
   }
@@ -264,22 +210,15 @@ export function resolveEventBdState(
  * `resolveStoreName`, `productUrl`, status badge; bonus for
  * `resolveBonusType`, description, image).
  */
-export function selectTopBonuses<
-  L extends AlbumStoreListingBdInput & { originalStoreName: string },
-  B extends AlbumStoreBonusBdInput,
->(
-  listings: ReadonlyArray<L & { bonuses: ReadonlyArray<B> }>,
-  referenceNow: Date = new Date(),
-  limit: number = 3,
-): Array<{ bonus: B; listing: L }> {
-  const candidates: Array<{ bonus: B; listing: L }> = [];
-  for (const listing of listings) {
-    if (listing.status === "ended") continue;
-    for (const bonus of listing.bonuses) {
-      if (!isBonusActiveAt(bonus, listing, referenceNow)) continue;
-      candidates.push({ bonus, listing });
-    }
-  }
+export function selectTopBonuses<L extends AlbumStoreListingBdInput>(
+  listings: readonly L[],
+  referenceNow = new Date(),
+  limit = 3,
+) {
+  const candidates = projectPurchaseOptions(listings, referenceNow, { performanceOnly: true })
+    .bonusStores.flatMap(({ options }) => options.flatMap(({ listing, bonuses }) =>
+      bonuses.map((bonus) => ({ listing, bonus })),
+    ));
 
   candidates.sort((a, b) => {
     const sa = storeRank(a.listing.originalStoreName);

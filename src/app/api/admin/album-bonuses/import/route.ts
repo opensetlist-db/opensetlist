@@ -135,7 +135,7 @@ async function classifyJob(
     return reconcile(candidates, []);
   }
   const listings = await prisma.albumStoreListing.findMany({
-    where: { albumId },
+    where: { albumId, optionKey: "" },
     select: {
       id: true,
       originalStoreName: true,

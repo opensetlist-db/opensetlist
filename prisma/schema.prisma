@@ -1243,48 +1243,33 @@ model AlbumTrackTranslation {
 }
 
 // ── ALBUM STORE LISTING ───────────────────────────────
-// One row = one (album × store × edition) purchase entry. Holds the
-// product URL and lifecycle (status + start/end + lastVerifiedAt) for
-// that specific store offering. A 通常盤 album with no bonus is just
-// a listing whose `bonuses` array is empty.
-//
-// storeName is intentionally a free-text String — the operator may
-// type "amazon_jp", "Amazon Japan", "アニメイト", or anything else.
-// No DB-level validation and no catalog table; the admin form's
-// datalist autocomplete (b05) suggests previously-used names to
-// keep typos rare without enforcing a closed set. Same goes for
-// editionLabel — free-form "通常盤" / "初回限定盤A" / "Memorial BOX".
-//
-// productUrl is the complete purchase URL including any affiliate
-// parameters the operator already embedded (Amazon JP tag etc.).
-// No render-time tag injection happens — what's stored is what's
-// rendered as the anchor href.
-//
-// @@unique enforces one row per (album, originalStoreName,
-// originalEditionLabel) when originalEditionLabel is non-NULL. The
-// NULL-edition slice (operator's "通常盤" entries) is handled by a
-// partial unique index in prisma/post-deploy.sql, which Prisma's
-// schema language can't express directly.
+// One row per purchase choice, even if its store, edition and URL match another.
 model AlbumStoreListing {
-  id                   String                  @id @default(uuid())
-  albumId              BigInt
-  originalStoreName    String // free-text, no validation
-  originalEditionLabel String? // null = single edition (通常盤 fallthrough)
-  originalLanguage     String                  @default("ja")
-  productUrl           String? // complete URL incl. affiliate params; rendered verbatim
-  status               AlbumStoreListingStatus @default(unknown)
-  startsAt             DateTime? // pre-order open / sale start
-  endsAt               DateTime? // pre-order close / sale end
-  lastVerifiedAt       DateTime? // operator's last 'I checked' timestamp — UI shows stale warning after 30d
-  sourceUrl            String? // 公式 news URL where the offer was announced
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
+  id                       String                  @id @default(uuid())
+  albumId                  BigInt
+  originalStoreName        String // free-text, no validation
+  originalEditionLabel     String? // null = single edition (通常盤 fallthrough)
+  originalLanguage         String                  @default("ja")
+  productUrl               String?
+  optionKey                String                  @default("") // empty for legacy importer identity
+  storeKey                 String?
+  officialOrder            Int?
+  selectionGuide           String?
+  includesPerformanceVideo Boolean?
+  isBonusOption            Boolean?
+  status                   AlbumStoreListingStatus @default(unknown)
+  startsAt                 DateTime? // pre-order open / sale start
+  endsAt                   DateTime? // pre-order close / sale end
+  lastVerifiedAt           DateTime? // operator's last 'I checked' timestamp — UI shows stale warning after 30d
+  sourceUrl                String? // 公式 news URL where the offer was announced
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
 
   album        Album                          @relation(fields: [albumId], references: [id], onDelete: Cascade)
   bonuses      AlbumStoreBonus[]
   translations AlbumStoreListingTranslation[]
 
-  @@unique([albumId, originalStoreName, originalEditionLabel])
+  @@unique([albumId, originalStoreName, originalEditionLabel, optionKey], map: "AlbumStoreListing_option_key")
   @@index([albumId, status])
   @@index([albumId, originalStoreName])
 }
@@ -1309,20 +1294,7 @@ model AlbumStoreListingTranslation {
 }
 
 // ── ALBUM STORE BONUS ─────────────────────────────────
-// One row = one bonus variant tied to a listing. Multiple rows on the
-// same listing express character/design variants of the "same" bonus
-// (e.g. the three 蓮ノ空 unit-themed タペストリー sold under one
-// Amazon JP edition). No category enum — the free-text bonusType
-// label captures both the form ("B2 タペストリー") and the variant
-// ("(Mira)" / "(Cerise)" / "(DOLLCHESTRA)").
-//
-// startsAt/endsAt are nullable overrides; when null the bonus inherits
-// the parent listing's lifecycle. Set them only when a bonus has a
-// shorter window than the listing itself (e.g. an 早期予約特典 that
-// closes before general sale ends).
-//
-// Bonus has no status of its own — listing.status is the source of
-// truth. When the listing ends, all its bonus variants end with it.
+// A benefit supplied with this purchase choice. Its own window intersects the sale window.
 model AlbumStoreBonus {
   id                       String    @id @default(uuid())
   listingId                String
@@ -1330,8 +1302,10 @@ model AlbumStoreBonus {
   originalBonusDescription String?
   originalLanguage         String    @default("ja")
   bonusImageUrl            String? // R2 or Amazon CDN URL — see album-image-source-policy
-  startsAt                 DateTime? // null → inherit listing.startsAt
-  endsAt                   DateTime? // null → inherit listing.endsAt
+  sourceUrl                String?
+  endedAt                  DateTime?
+  startsAt                 DateTime?
+  endsAt                   DateTime?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 

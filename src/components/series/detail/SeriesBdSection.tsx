@@ -96,7 +96,7 @@ export async function SeriesBdSection({
           const release = album.releaseDate
             ? formatDate(album.releaseDate, locale, SERIES_DATE_FORMAT)
             : "";
-          const bonusCount = countActiveBonuses(album.listings);
+          const bonusCount = countActiveBonuses(album.listings, true);
           return (
             <li key={String(album.id)}>
               <Link

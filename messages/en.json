@@ -227,6 +227,12 @@
       "events": "Related event listing is coming soon."
     },
     "bonus": {
+      "options": "Purchase options with bonuses",
+      "basicOptions": "Purchase options without bonuses",
+      "storeCount": "{count, plural, one {# store} other {# stores}}",
+      "deadline": "Bonus deadline: {time}",
+      "buyAt": "View product at {store}",
+      "officialInfo": "Official product information",
       "status": {
         "active": "Available",
         "ended": "Ended"
@@ -239,7 +245,7 @@
         "current": "Current {count}",
         "ended": "Ended {count}"
       },
-      "empty": "No store info registered yet."
+      "empty": "No purchase links are listed."
     },
     "tracks": {
       "discN": "Disc {disc}",
