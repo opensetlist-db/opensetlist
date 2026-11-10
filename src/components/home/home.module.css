@@ -508,6 +508,7 @@
 }
 .bonusBadge {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 6px;
   min-height: 44px;
@@ -518,6 +519,11 @@
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
+}
+.bonusBadge > svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 .bonusBadge:hover {
   text-decoration: underline;
