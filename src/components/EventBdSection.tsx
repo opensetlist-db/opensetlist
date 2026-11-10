@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { getTranslations } from "next-intl/server";
 import { CoverImage } from "@/components/shared/CoverImage";
 import { FireBdSectionView } from "@/components/FireBdSectionView";
@@ -63,7 +63,17 @@ export async function EventBdSection({ eventId, startTime, album, locale, refere
       <div className={styles.bdBody}>
         <CoverImage src={album.imageUrl} size={88} />
         <div className={styles.bdProduct}>
-          <h3><Link href={albumHref}>{title.main}</Link></h3>
+          <h3>
+            <TrackedAlbumLink
+              href={albumHref}
+              albumId={String(album.id)}
+              albumSlug={album.slug}
+              surface="event_bd_title"
+              eventId={eventId}
+            >
+              {title.main}
+            </TrackedAlbumLink>
+          </h3>
           {title.sub && <p>{title.sub}</p>}
           {album.releaseDate && (
             <p>{t("releaseDateLabel")} · {formatDate(album.releaseDate, locale)}</p>
@@ -77,14 +87,18 @@ export async function EventBdSection({ eventId, startTime, album, locale, refere
                 : albumT("bonus.basicOptions")}</p>
             )}
             {hasOptions ? (
-              <Link
+              <TrackedAlbumLink
                 href={`${albumHref}?tab=bonus`}
+                albumId={String(album.id)}
+                albumSlug={album.slug}
+                surface="event_bd_purchase"
+                eventId={eventId}
                 prefetch={false}
                 className={styles.bdPurchase}
                 data-testid="event-bd-purchase"
               >
                 {t(hasBonus ? "compareCta" : "purchaseCta")}
-              </Link>
+              </TrackedAlbumLink>
             ) : officialUrl && (
               <a
                 href={officialUrl}

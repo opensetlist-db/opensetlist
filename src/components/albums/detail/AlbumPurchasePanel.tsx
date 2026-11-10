@@ -46,6 +46,10 @@ export async function AlbumPurchasePanel({
   const option = (listing: Listing & { productUrl: string }, bonuses: Listing["bonuses"] = []) => {
     const edition = resolveEditionLabel(listing, locale);
     const store = resolveStoreName(listing, locale);
+    // Report catalog seller keys, with the legacy buckets as a fallback for missing or malformed keys.
+    const storeKey = listing.storeKey && /^[\p{L}\p{N}][\p{L}\p{N} _!&.-]{0,99}$/u.test(listing.storeKey)
+      ? listing.storeKey
+      : resolveStoreKey(listing.originalStoreName);
     return (
       <div key={listing.id} className={styles.purchaseOption} data-testid="purchase-option">
         {edition && <p className={styles.edition}>{edition}</p>}
@@ -81,7 +85,9 @@ export async function AlbumPurchasePanel({
         <PurchaseStoreLink
           href={listing.productUrl}
           albumId={String(album.id)}
-          storeKey={resolveStoreKey(listing.originalStoreName)}
+          albumSlug={album.slug}
+          purchaseOption={bonuses.length > 0 ? "with_bonus" : "without_bonus"}
+          storeKey={storeKey}
           storeStatus={listing.status}
           surface="album_page"
           disclosure={t("bonus.affiliateDisclosure")}

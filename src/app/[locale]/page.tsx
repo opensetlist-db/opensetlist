@@ -72,7 +72,11 @@ export default async function HomePage({
       projectPurchaseOptions(bdAlbum.listings, purchaseNow, { performanceOnly: true }).bonusCount > 0;
     return {
       view: projectHomeCard(event, locale, unknown),
-      bonusHref: hasBonus ? `${entityPath("albums", locale, bdAlbum.id, bdAlbum.slug)}?tab=bonus` : null,
+      bonus: hasBonus ? {
+        href: `${entityPath("albums", locale, bdAlbum.id, bdAlbum.slug)}?tab=bonus`,
+        albumId: String(bdAlbum.id),
+        albumSlug: bdAlbum.slug,
+      } : null,
     };
   });
 
@@ -173,8 +177,8 @@ export default async function HomePage({
           )}
           {past.length > 0 ? (
             <div className={styles.compactGrid}>
-              {past.map(({ view, bonusHref }) => (
-                <CompactEventCard key={view.id} view={view} bonusHref={bonusHref} />
+              {past.map(({ view, bonus }) => (
+                <CompactEventCard key={view.id} view={view} bonus={bonus} />
               ))}
             </div>
           ) : (

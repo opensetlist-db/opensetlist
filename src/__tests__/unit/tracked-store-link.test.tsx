@@ -18,6 +18,8 @@ function renderLink() {
     <TrackedStoreLink
       href="https://example.com/buy"
       albumId="42"
+      albumSlug="dream"
+      purchaseOption="with_bonus"
       storeKey="amazon_jp"
       storeStatus="active"
       surface="album_page"
@@ -31,6 +33,8 @@ function renderLink() {
 
 const expectedParams = {
   albumId: "42",
+  albumSlug: "dream",
+  purchaseOption: "with_bonus",
   storeKey: "amazon_jp",
   storeStatus: "active",
   surface: "album_page",
@@ -45,7 +49,7 @@ describe("TrackedStoreLink", () => {
     expect(mockTrack).toHaveBeenCalledWith(expectedParams);
   });
 
-  it("fires store_click on a middle-click (auxclick button 1) — new-tab opens", () => {
+  it("tracks middle-click navigation and ignores right-click context menus", () => {
     const link = renderLink();
     fireEvent(
       link,
@@ -53,14 +57,10 @@ describe("TrackedStoreLink", () => {
     );
     expect(mockTrack).toHaveBeenCalledOnce();
     expect(mockTrack).toHaveBeenCalledWith(expectedParams);
-  });
-
-  it("ignores a right-click auxclick (button 2 — context menu, not navigation)", () => {
-    const link = renderLink();
     fireEvent(
       link,
       new MouseEvent("auxclick", { button: 2, bubbles: true, cancelable: true }),
     );
-    expect(mockTrack).not.toHaveBeenCalled();
+    expect(mockTrack).toHaveBeenCalledOnce();
   });
 });

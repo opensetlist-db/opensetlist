@@ -21,9 +21,8 @@ export function trackEvent(eventName: string, params?: GtagParams): void {
 // ── Album / BD funnel events (b10c) ───────────────────────────────
 //
 // Typed wrappers over the generic `trackEvent` primitive — they
-// centralize the GA4 event names + param keys so the Album-surface
-// funnel (album_view → store_click → revenue) can't drift across the
-// several fire sites. Callers pass already-stringified ids: GA4 params
+// centralize the GA4 event names + param keys across album click and
+// view surfaces. Callers pass already-stringified ids: GA4 params
 // are string/number/boolean only (`GtagParams`), and a raw BigInt would
 // throw in `gtag()` / `JSON`, so ids are `String(...)`-ed at the fire
 // site before they reach here.
@@ -35,6 +34,38 @@ export function trackEvent(eventName: string, params?: GtagParams): void {
 // song-page cards link internally today, but the discriminator is here
 // so adding either later doesn't reshape the event.
 export type StoreClickSurface = "album_page" | "event_bd_section" | "song_page";
+export type StorePurchaseOption = "with_bonus" | "without_bonus";
+
+export type AlbumClickSurface =
+  | "album_list"
+  | "artist_albums"
+  | "song_albums"
+  | "series_bd"
+  | "event_bd_title"
+  | "event_bd_purchase"
+  | "home_bd_purchase"
+  | "album_purchase_tab"
+  | "search_results";
+
+export function trackAlbumClick(params: {
+  albumId: string;
+  albumSlug: string;
+  surface: AlbumClickSurface;
+  eventId?: string;
+}): void {
+  if (typeof window === "undefined") return;
+  trackEvent("album_click", {
+    album_id: params.albumId,
+    // GA4's standard event parameter value limit is 100 characters.
+    ...(params.albumSlug && { album_slug: params.albumSlug.slice(0, 100) }),
+    surface: params.surface,
+    ...(params.eventId && { event_id: params.eventId }),
+    // GA defaults to the document URL and title, both of which can contain the search query.
+    page_location: window.location.origin + window.location.pathname,
+    page_referrer: document.referrer.split(/[?#]/, 1)[0],
+    ...(params.surface === "search_results" && { page_title: "Search" }),
+  });
+}
 
 export function trackAlbumView(params: {
   albumId: string;
@@ -54,6 +85,8 @@ export function trackAlbumView(params: {
 
 export function trackStoreClick(params: {
   albumId: string;
+  albumSlug?: string;
+  purchaseOption?: StorePurchaseOption;
   storeKey: string;
   storeStatus: string;
   surface: StoreClickSurface;
@@ -64,6 +97,8 @@ export function trackStoreClick(params: {
   // added only when present rather than passed as `undefined`.
   const gaParams: GtagParams = {
     album_id: params.albumId,
+    ...(params.albumSlug && { album_slug: params.albumSlug.slice(0, 100) }),
+    ...(params.purchaseOption && { purchase_option: params.purchaseOption }),
     store_key: params.storeKey,
     store_status: params.storeStatus,
     surface: params.surface,

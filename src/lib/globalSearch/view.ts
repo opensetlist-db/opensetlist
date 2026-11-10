@@ -44,6 +44,7 @@ export type ResultRowView = {
   initial: string | null;
   /** Albums: cover URL (may be null → fallback in CoverImage). */
   cover: string | null | undefined;
+  album?: { albumId: string; albumSlug: string };
 };
 
 export type RowLabels = {
@@ -163,6 +164,7 @@ export function buildRowView(
         version: null,
         initial: null,
         cover: al.imageUrl,
+        album: { albumId: String(al.id), albumSlug: al.slug },
       };
       break;
     }

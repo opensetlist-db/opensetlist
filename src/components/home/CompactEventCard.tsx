@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import EventStatusTicker from "@/components/EventStatusTicker";
+import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { EventArt } from "@/components/shared/EventArt";
 import type { HomeCardView } from "@/lib/homeView";
 import { motion } from "@/styles/tokens";
@@ -22,11 +23,11 @@ import styles from "./home.module.css";
 export async function CompactEventCard({
   view,
   live = false,
-  bonusHref,
+  bonus,
 }: {
   view: HomeCardView;
   live?: boolean;
-  bonusHref?: string | null;
+  bonus?: { href: string; albumId: string; albumSlug: string } | null;
 }) {
   const t = await getTranslations("Home");
   const songs = view.songCount ?? 0;
@@ -36,7 +37,7 @@ export async function CompactEventCard({
   const eventLink = (
     <Link
       href={view.href}
-      className={bonusHref ? styles.compactBody : `${styles.compact} ${live ? styles.live : ""}`}
+      className={bonus ? styles.compactBody : `${styles.compact} ${live ? styles.live : ""}`}
     >
       <EventArt
         logoUrl={view.logoUrl}
@@ -83,12 +84,14 @@ export async function CompactEventCard({
     </Link>
   );
 
-  if (!bonusHref) return eventLink;
+  if (!bonus) return eventLink;
   return (
     <article className={`${styles.compact} ${styles.compactWithBonus}`}>
       {eventLink}
-      <Link
-        href={bonusHref}
+      <TrackedAlbumLink
+        {...bonus}
+        eventId={String(view.id)}
+        surface="home_bd_purchase"
         prefetch={false}
         className={styles.bonusBadge}
         data-testid="home-bd-bonus"
@@ -96,7 +99,7 @@ export async function CompactEventCard({
       >
         <HomeGiftIcon />
         {t("bdBonus")}
-      </Link>
+      </TrackedAlbumLink>
     </article>
   );
 }

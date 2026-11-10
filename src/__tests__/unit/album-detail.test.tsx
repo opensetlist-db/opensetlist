@@ -17,7 +17,7 @@ vi.mock("next-intl/server", () => ({
 vi.mock("next-intl", () => ({
   useTranslations: (ns?: string) => echo(ns),
 }));
-vi.mock("@/lib/analytics", () => ({ trackStoreClick: vi.fn() }));
+vi.mock("@/lib/analytics", () => ({ trackStoreClick: vi.fn(), trackAlbumClick: vi.fn() }));
 
 import { AlbumEventsPanel } from "@/components/albums/detail/AlbumEventsPanel";
 import { AlbumTracksPanel } from "@/components/albums/detail/AlbumTracksPanel";
@@ -25,7 +25,7 @@ import { AlbumPurchasePanel } from "@/components/albums/detail/AlbumPurchasePane
 import { AlbumTabs } from "@/components/albums/detail/AlbumTabs";
 import { AlbumCover } from "@/components/albums/detail/AlbumCover";
 import { AlbumIdentity } from "@/components/albums/detail/AlbumIdentity";
-import { trackStoreClick } from "@/lib/analytics";
+import { trackStoreClick, trackAlbumClick } from "@/lib/analytics";
 
 type Any = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -198,10 +198,12 @@ describe("AlbumPurchasePanel", () => {
       locale: "ko",
       album: {
         id: "135",
+        slug: "dream",
         listings: [
           listing({ id: "a", originalStoreName: "Amazon", bonuses: [bonus("1", "Sleeve")] }),
           listing({ id: "b", originalStoreName: "Bad URL", productUrl: "javascript:alert(1)", bonuses: [bonus("2", "Card")] }),
-          listing({ id: "c", originalStoreName: "Sold out", status: "sold_out", bonuses: [bonus("5", "Sticker")] }),
+          listing({ id: "c", originalStoreName: "A-on STORE Powered by A!SMART", storeKey: "a-on store powered by a!smart", status: "sold_out", bonuses: [bonus("5", "Sticker")] }),
+          listing({ id: "e", originalStoreName: "Basic", storeKey: "https://example.com/private?q=1", isBonusOption: false }),
           listing({ id: "d", originalStoreName: "Gone", status: "ended", bonuses: [bonus("3", "Poster"), bonus("4", "Badge")] }),
         ],
       } as Any,
@@ -213,8 +215,8 @@ describe("AlbumPurchasePanel", () => {
     expect(screen.queryByText("Card")).toBeNull();
 
     const buyLinks = container.querySelectorAll('a[target="_blank"]');
-    // Amazon + sold_out (still "current"); never the javascript: URL or the ended store.
-    expect(buyLinks).toHaveLength(2);
+    // Two current bonus options and one basic option; unsafe and ended links are omitted.
+    expect(buyLinks).toHaveLength(3);
     buyLinks.forEach((a) => {
       expect(a.getAttribute("rel")).toBe("noopener noreferrer");
       expect(a.getAttribute("href")).toBe("https://example.com/p");
@@ -224,7 +226,15 @@ describe("AlbumPurchasePanel", () => {
 
     fireEvent.click(buyLinks[0]);
     expect(trackStoreClick).toHaveBeenCalledWith(
-      expect.objectContaining({ albumId: "135", surface: "album_page", isAffiliate: false }),
+      expect.objectContaining({ albumId: "135", albumSlug: "dream", surface: "album_page", isAffiliate: false, purchaseOption: "with_bonus", storeKey: "amazon_jp" }),
+    );
+    fireEvent.click(screen.getByRole("link", { name: /A!SMART/ }));
+    expect(trackStoreClick).toHaveBeenLastCalledWith(
+      expect.objectContaining({ storeKey: "a-on store powered by a!smart" }),
+    );
+    fireEvent.click(screen.getByRole("link", { name: /Basic/ }));
+    expect(trackStoreClick).toHaveBeenLastCalledWith(
+      expect.objectContaining({ albumId: "135", purchaseOption: "without_bonus", storeKey: "other" }),
     );
   });
 
@@ -239,6 +249,8 @@ describe("AlbumTabs", () => {
   it("marks the active tab and keeps every tab a canonical ?tab= link", () => {
     render(
       <AlbumTabs
+        albumId="1"
+        albumSlug="dream-believers"
         basePath="/ko/albums/1/dream-believers"
         active="events"
         ariaLabel="tabs"
@@ -259,6 +271,8 @@ describe("AlbumTabs", () => {
     expect(links[1].getAttribute("aria-current")).toBe("page");
     expect(links[0].getAttribute("aria-current")).toBeNull();
     expect(screen.getByRole("img", { name: "bonus-dot" })).toBeTruthy();
+    fireEvent.click(links[2]);
+    expect(trackAlbumClick).toHaveBeenCalledWith(expect.objectContaining({ albumId: "1", albumSlug: "dream-believers", surface: "album_purchase_tab" }));
   });
 });
 
