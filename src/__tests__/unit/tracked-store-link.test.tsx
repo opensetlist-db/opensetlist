@@ -18,6 +18,8 @@ function renderLink() {
     <TrackedStoreLink
       href="https://example.com/buy"
       albumId="42"
+      albumSlug="dream"
+      purchaseOption="with_bonus"
       storeKey="amazon_jp"
       storeStatus="active"
       surface="album_page"
@@ -31,6 +33,8 @@ function renderLink() {
 
 const expectedParams = {
   albumId: "42",
+  albumSlug: "dream",
+  purchaseOption: "with_bonus",
   storeKey: "amazon_jp",
   storeStatus: "active",
   surface: "album_page",

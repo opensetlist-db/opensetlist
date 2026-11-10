@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
 import { entityPath } from "@/lib/seo/entityUrl";
@@ -44,9 +44,12 @@ export async function SongAlbumPanel({
         const year = utcYear(row.album.releaseDate);
         const typeLabel = albumTypeLabel(albumTypeLabels, row.album.type);
         return (
-          <Link
+          <TrackedAlbumLink
             key={String(row.album.id)}
             href={entityPath("albums", locale, row.album.id, row.album.slug)}
+            albumId={String(row.album.id)}
+            albumSlug={row.album.slug}
+            surface="song_albums"
             className={styles.albumMini}
           >
             <SongAlbumCover src={row.album.imageUrl} alt={title.main} />
@@ -77,7 +80,7 @@ export async function SongAlbumPanel({
             <span className={styles.albumArrow} aria-hidden="true">
               ›
             </span>
-          </Link>
+          </TrackedAlbumLink>
         );
       })}
       {rows.length > 1 ? (

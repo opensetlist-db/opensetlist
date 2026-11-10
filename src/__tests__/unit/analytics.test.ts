@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   trackAlbumView,
+  trackAlbumClick,
   trackStoreClick,
   trackBdSectionView,
 } from "@/lib/analytics";
@@ -18,6 +19,33 @@ beforeEach(() => {
 afterEach(() => {
   delete (window as unknown as { gtag?: unknown }).gtag;
   vi.restoreAllMocks();
+});
+
+describe("trackAlbumClick", () => {
+  it("emits the canonical slug and optional event ID, limiting the slug to 100 characters", () => {
+    trackAlbumClick({ albumId: "42", albumSlug: "a".repeat(101), surface: "event_bd_title", eventId: "7" });
+    expect(gtag).toHaveBeenCalledWith("event", "album_click", {
+      album_id: "42", album_slug: "a".repeat(100), surface: "event_bd_title", event_id: "7",
+      page_location: window.location.origin + window.location.pathname, page_referrer: "",
+    });
+    trackAlbumClick({ albumId: "42", albumSlug: "", surface: "album_list" });
+    expect(gtag).toHaveBeenLastCalledWith("event", "album_click", { album_id: "42", surface: "album_list", page_location: window.location.origin + window.location.pathname, page_referrer: "" });
+  });
+});
+
+describe("search album clicks", () => {
+  it("removes search terms from automatic page fields", () => {
+    window.history.replaceState(null, "", "/ko/search?q=private#term");
+    document.title = "private search";
+    vi.spyOn(document, "referrer", "get").mockReturnValue("https://example.com/search?q=private#term");
+    trackAlbumClick({ albumId: "42", albumSlug: "dream", surface: "search_results" });
+    expect(gtag).toHaveBeenCalledWith("event", "album_click", {
+      album_id: "42", album_slug: "dream", surface: "search_results",
+      page_location: window.location.origin + "/ko/search", page_referrer: "https://example.com/search", page_title: "Search",
+    });
+    window.history.replaceState(null, "", "/");
+    document.title = "";
+  });
 });
 
 describe("trackAlbumView", () => {
@@ -69,8 +97,10 @@ describe("trackStoreClick", () => {
       surface: "album_page",
       isAffiliate: false,
       bonusId: "bns-1",
+      purchaseOption: "with_bonus",
+      albumSlug: "a".repeat(101),
     });
-    expect(gtag.mock.calls[0][2]).toMatchObject({ bonus_id: "bns-1" });
+    expect(gtag.mock.calls[0][2]).toMatchObject({ bonus_id: "bns-1", album_slug: "a".repeat(100), purchase_option: "with_bonus" });
   });
 });
 

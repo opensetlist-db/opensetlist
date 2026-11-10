@@ -81,6 +81,8 @@ export async function AlbumPurchasePanel({
         <PurchaseStoreLink
           href={listing.productUrl}
           albumId={String(album.id)}
+          albumSlug={album.slug}
+          purchaseOption={bonuses.length > 0 ? "with_bonus" : "without_bonus"}
           storeKey={resolveStoreKey(listing.originalStoreName)}
           storeStatus={listing.status}
           surface="album_page"
