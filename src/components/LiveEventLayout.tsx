@@ -1,6 +1,5 @@
 "use client";
 
-import type { ShareNames } from "@/lib/shareNames";
 import { useMemo } from "react";
 import { createEventDisplayOrdering, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
 // `useSetlistPolling` is only a type source here. The hook itself has
@@ -36,7 +35,7 @@ import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import type { VenueStartLabel } from "@/components/LiveSetlist";
 import type { BoardBlockSeed } from "@/lib/board/types";
 
-interface Props {
+interface Props extends Pick<Parameters<typeof LiveSetlist>[0], "shareNames"> {
   // ───── Event-level static (forwarded to children unchanged) ─────
   eventId: string;
   isOngoing: boolean;
@@ -95,7 +94,6 @@ interface Props {
    */
   seriesShortName: string | null;
   eventShortName: string | null;
-  shareNames?: ShareNames;
 
   // EventImpressions independent polling state (its own hook owns it).
   // The cursor + total are computed by the SSR fetch and threaded

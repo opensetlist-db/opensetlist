@@ -223,6 +223,7 @@ export function PredictedSetlist({
   // (avoids react-hooks/set-state-in-effect; the canonical project
   // pattern, see useMounted.ts:9-18).
   const [predictions, setPredictions] = useState<PredictionEntry[]>([]);
+  const catalogById = useMemo(() => new Map(availableSongs.map((song) => [song.songId, song])), [availableSongs]);
   // Songs bulk-added from the board's expected songs arrive grouped by
   // board group, not ranked; the builder says so until the fan
   // reorders. Stored with the list, so the label survives a reload.
@@ -523,6 +524,12 @@ export function PredictedSetlist({
     isPreShow && availableSongs.length > 0 && unitFilters.length > 0;
   const isDesktopPicker = mounted && isDesktop && showPicker;
 
+  // A saved prediction can predate this locale's catalog translation.
+  const sharePredictions = useMemo(() => predictions.map((entry) => {
+    const song = catalogById.get(entry.songId);
+    return song ? { ...entry, song } : entry;
+  }), [predictions, catalogById]);
+
   const showProvisional = provisional && predictions.length > 0;
   return (
     // 18-v3 `.predict-layout`: the editor beside an always-visible
@@ -705,7 +712,7 @@ export function PredictedSetlist({
         locale={locale}
         status={status}
         actualSongs={actualSongs}
-        predictions={predictions}
+        predictions={sharePredictions}
       />
       </div>
       {isDesktopPicker && (
