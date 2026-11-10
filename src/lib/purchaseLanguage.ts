@@ -19,6 +19,7 @@ type BonusText = {
   }[];
 };
 
+/** Keep the source name while resolving only the viewer's store translation. */
 export function resolveStorePair(store: StoreText, locale: string, sameValueConfirmed = false) {
   return resolveDisplayPair(
     { original: store.originalStoreName, originalLanguage: store.originalLanguage },
@@ -26,6 +27,7 @@ export function resolveStorePair(store: StoreText, locale: string, sameValueConf
   );
 }
 
+/** Use the source in its own locale and suppress cross-language fallback for bonus copy. */
 export function resolveBonusText(bonus: BonusText, locale: string) {
   if (bonus.originalLanguage === locale) {
     return {
@@ -40,6 +42,7 @@ export function resolveBonusText(bonus: BonusText, locale: string) {
   };
 }
 
+/** Report the first missing public name or unreviewed identical spelling. */
 export function storeLanguageIssue(store: StoreText, confirmedSame = false) {
   if (!store.originalStoreName.trim()) return "매장 이름은 필수입니다.";
   for (const locale of locales) {
@@ -49,6 +52,7 @@ export function storeLanguageIssue(store: StoreText, confirmedSame = false) {
   }
 }
 
+/** Require every public locale's bonus type and any description that has source text. */
 export function bonusLanguageIssue(bonus: BonusText, confirmedSame = false) {
   if (!bonus.originalBonusType.trim()) return "특전 종류는 필수입니다.";
   for (const locale of locales) {
@@ -64,8 +68,7 @@ export function bonusLanguageIssue(bonus: BonusText, confirmedSame = false) {
   }
 }
 
-// Compare stored values rather than PATCH payload presence. Admin forms
-// also send existing text on saves that only change dates, links or images.
+/** Compare stored fields because unrelated form saves also resubmit existing translations. */
 export function translationChanged<T extends { locale: string }>(
   before: readonly T[], after: readonly T[], fields: readonly (keyof T)[],
 ) {
@@ -76,6 +79,7 @@ export function translationChanged<T extends { locale: string }>(
   });
 }
 
+/** Reject incomplete text or a source edit that the operator has not rechecked. */
 export function requireReviewedText(sourceChanged: boolean, reviewed: unknown, issue?: string) {
   if (issue) throw new PurchaseInputError(issue);
   if (sourceChanged && reviewed !== true) {

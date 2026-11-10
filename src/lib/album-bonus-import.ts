@@ -388,6 +388,7 @@ export function normalizeBonusTranslations(
     }));
 }
 
+/** Check a new scraped listing using the same normalized values that apply will write. */
 export function listingCandidateLanguageIssue(candidate: ParsedListing) {
   return storeLanguageIssue({
     ...candidate, originalLanguage: "ja",
@@ -395,6 +396,7 @@ export function listingCandidateLanguageIssue(candidate: ParsedListing) {
   }, candidate.reviewedTranslations === true);
 }
 
+/** Check regular and early-booking bonus inserts before they enter the write batch. */
 export function bonusCandidateLanguageIssue(candidate: ParsedBonus) {
   return bonusLanguageIssue({
     ...candidate, originalLanguage: "ja",

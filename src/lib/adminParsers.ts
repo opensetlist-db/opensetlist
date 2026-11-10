@@ -76,6 +76,7 @@ function optionalTranslationText(value: unknown) {
   return value === undefined ? undefined : typeof value === "string" ? value.trim() || null : null;
 }
 
+/** Normalize submitted bonus copy without replacing omitted type or description overrides. */
 export function parseBonusTranslations(
   input: unknown,
 ): { locale: string; bonusType?: string | null; bonusDescription?: string | null }[] {
