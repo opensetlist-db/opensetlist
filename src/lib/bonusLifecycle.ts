@@ -119,7 +119,9 @@ export async function applyBonusOperation(id: string, input: ReturnType<typeof p
     const bonus = await tx.albumStoreBonus.findUniqueOrThrow({
       where: { id },
       relationLoadStrategy: "join",
-      include: { listing: { include: { album: { select: { _count: { select: { bdEvents: true } } } } } } },
+      include: { listing: { include: {
+        album: { select: { _count: { select: { bdEvents: { where: { isDeleted: false } } } } } },
+      } } },
     });
     if (bonus.revision !== input.expectedRevision || bonus.listing.revision !== input.expectedListingRevision) {
       throw new BonusLifecycleError("conflict", "구매 옵션 또는 특전이 변경되었습니다. 최신 내용을 다시 확인해 주세요.");

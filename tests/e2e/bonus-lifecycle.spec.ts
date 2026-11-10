@@ -37,8 +37,9 @@ test("admin ends and restores one bonus on the public purchase tab", async ({ pa
     }
     const target = { id: randomUUID() };
     const sibling = { id: randomUUID() };
+    const otherBonus = randomUUID();
     for (const [id, listingId, name] of [
-      [target.id, listing.id, `${tag}-target`], [sibling.id, listing.id, `${tag}-sibling`], [randomUUID(), other, `${tag}-other`], [randomUUID(), audio, `${tag}-audio`],
+      [target.id, listing.id, `${tag}-target`], [sibling.id, listing.id, `${tag}-sibling`], [otherBonus, other, `${tag}-other`], [randomUUID(), audio, `${tag}-audio`],
     ]) {
       await db.query('INSERT INTO "AlbumStoreBonus" (id, "listingId", "originalBonusType", "updatedAt") VALUES ($1, $2, $3, NOW())', [id, listingId, name]);
     }
@@ -46,6 +47,8 @@ test("admin ends and restores one bonus on the public purchase tab", async ({ pa
     expect((await page.request.post("/api/admin/login", { data: { password: process.env.ADMIN_PASSWORD } })).ok()).toBeTruthy();
     const adminUrl = `/admin/albums/${albumId}/listings/${listing.id}/bonuses`;
     const publicUrl = `/ko/albums/${albumId}/${tag}?tab=bonus`;
+    await page.goto(`/admin/albums/${albumId}/listings/${audio}/bonuses`);
+    await expect(page.getByText(`${tag}-audio`, { exact: true })).toBeVisible();
     await page.goto(publicUrl);
     await expect(page.getByText(`${tag}-target`, { exact: true })).toBeVisible();
     await expect(page.getByText(`${tag}-sibling`, { exact: true })).toBeVisible();
@@ -64,17 +67,37 @@ test("admin ends and restores one bonus on the public purchase tab", async ({ pa
     await page.getByTestId("bonus-lifecycle-summary").fill(`${tag}-ended`);
     await page.getByTestId("bonus-lifecycle-observed-at").fill(new Date().toISOString());
     let originalRequest = "";
-    await page.route(`**/api/admin/album-bonuses/${target.id}/lifecycle`, async (route) => {
-      if (route.request().method() !== "POST") return route.continue();
-      originalRequest = route.request().postData() ?? "";
-      await route.abort();
-    }, { times: 1 });
+    let recheckStarted!: () => void;
+    let releaseRecheck!: () => void;
+    const recheckRequest = new Promise<void>((resolve) => { recheckStarted = resolve; });
+    const recheckGate = new Promise<void>((resolve) => { releaseRecheck = resolve; });
+    let reads = 0;
+    await page.route(`**/api/admin/album-bonuses/${target.id}/lifecycle**`, async (route) => {
+      if (route.request().method() === "POST" && !originalRequest) {
+        originalRequest = route.request().postData() ?? "";
+        return route.abort();
+      }
+      if (route.request().method() === "GET" && originalRequest && ++reads === 1) {
+        return route.fulfill({ status: 503, body: "unavailable" });
+      }
+      if (route.request().method() === "GET" && reads === 2) {
+        recheckStarted();
+        await recheckGate;
+      }
+      await route.continue();
+    });
     await page.getByTestId("bonus-lifecycle-submit").click();
+    await expect(page.getByTestId("bonus-lifecycle-status")).toContainText("반영 여부를 다시 조회해 주세요");
+    await page.getByTestId("bonus-lifecycle-recheck").click();
+    await recheckRequest;
+    await expect(page.getByTestId("bonus-lifecycle-status")).not.toContainText("반영 여부를 다시 조회해 주세요");
+    releaseRecheck();
     await expect(page.getByTestId("bonus-lifecycle-retry")).toBeVisible();
     const endResponse = page.waitForResponse((r) => r.url().endsWith(`/${target.id}/lifecycle`) && r.request().method() === "POST");
     await page.getByTestId("bonus-lifecycle-retry").click();
     expect((await endResponse).request().postData()).toBe(originalRequest);
     expect((await endResponse).status()).toBe(200);
+    await page.unrouteAll();
     await page.goto(publicUrl);
     await expect(page.getByText(`${tag}-target`, { exact: true })).toHaveCount(0);
     await expect(page.getByText(`${tag}-sibling`, { exact: true })).toBeVisible();
@@ -97,8 +120,21 @@ test("admin ends and restores one bonus on the public purchase tab", async ({ pa
     await page.unrouteAll();
     await page.goto(publicUrl);
     await expect(page.getByText(`${tag}-sibling`, { exact: true })).toHaveCount(0);
+    await expect(page.locator('a[href^="https://www.amazon.co.jp/dp/B000000001"]')).toHaveCount(0);
     await expect(page.locator('a[href^="https://www.amazon.co.jp/dp/B000000002"]')).toBeVisible();
     await expect(page.getByText(`${tag}-other`, { exact: true })).toBeVisible();
+
+    await page.goto(`/admin/albums/${albumId}/listings/${other}/bonuses`);
+    await page.getByTestId(`bonus-lifecycle-open-${otherBonus}`).click();
+    await page.getByTestId("bonus-lifecycle-evidence").fill("https://example.com/end-other");
+    await page.getByTestId("bonus-lifecycle-summary").fill(`${tag}-other-ended`);
+    await page.getByTestId("bonus-lifecycle-observed-at").fill(new Date().toISOString());
+    const otherResponse = page.waitForResponse((r) => r.url().endsWith(`/${otherBonus}/lifecycle`) && r.request().method() === "POST");
+    await page.getByTestId("bonus-lifecycle-submit").click();
+    expect((await otherResponse).status()).toBe(200);
+    await page.goto(publicUrl);
+    await expect(page.getByText(`${tag}-other`, { exact: true })).toHaveCount(0);
+    await expect(page.locator('a[href^="https://www.amazon.co.jp/dp/B000000002"]')).toBeVisible();
 
     await page.goto(adminUrl);
     await page.getByTestId(`bonus-lifecycle-open-${target.id}`).click();
@@ -113,7 +149,7 @@ test("admin ends and restores one bonus on the public purchase tab", async ({ pa
     await page.goto(publicUrl);
     await expect(page.getByText(`${tag}-target`, { exact: true })).toBeVisible();
     await expect(page.getByText(`${tag}-sibling`, { exact: true })).toHaveCount(0);
-    await expect(page.getByText(`${tag}-other`, { exact: true })).toBeVisible();
+    await expect(page.getByText(`${tag}-other`, { exact: true })).toHaveCount(0);
   } finally {
     if (eventId) await db.query('DELETE FROM "Event" WHERE id = $1 AND slug = $2', [eventId, `${tag}-event`]);
     if (albumId) {

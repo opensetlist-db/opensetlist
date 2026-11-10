@@ -3,9 +3,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }));
-vi.mock("@/lib/dataCache", () => ({ revalidatePublicData: vi.fn() }));
+vi.mock("@/lib/dataCache", () => ({ revalidatePublicData: vi.fn(() => true) }));
 
 import { prisma } from "@/lib/prisma";
+import { revalidatePublicData } from "@/lib/dataCache";
 import type { Prisma } from "@/generated/prisma/client";
 import { GET, POST } from "@/app/api/admin/album-bonuses/[id]/lifecycle/route";
 import { PATCH as patchBonus } from "@/app/api/admin/album-bonuses/[id]/route";
@@ -41,9 +42,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  const ownedBonuses = [bonusId, ...extraBonuses].filter(Boolean);
+  if (ownedBonuses.length) {
+    await prisma.albumStoreBonusLifecycleOperation.deleteMany({ where: { bonusId: { in: ownedBonuses } } });
+  }
   if (extraBonuses.length) await prisma.albumStoreBonus.deleteMany({ where: { id: { in: extraBonuses } } });
   if (extraListings.length) await prisma.albumStoreListing.deleteMany({ where: { id: { in: extraListings } } });
-  if (bonusId) await prisma.albumStoreBonusLifecycleOperation.deleteMany({ where: { bonusId } });
   if (bonusId) await prisma.albumStoreBonus.delete({ where: { id: bonusId } });
   if (listingId) await prisma.albumStoreListing.delete({ where: { id: listingId } });
   if (albumId) await prisma.album.delete({ where: { id: albumId } });
@@ -75,7 +79,8 @@ describe("bonus lifecycle against PostgreSQL", () => {
     expect((await listingEdit.json()).revision).toBe(1);
     expect((await POST(request({ ...stale, operationId: randomUUID(), expectedRevision: 1 }), context)).status).toBe(409);
 
-    await prisma.albumStoreBonus.update({ where: { id: bonus.id }, data: { endsAt: new Date("2020-01-01T00:00:00Z") } });
+    const expired = "2020-01-01T00:00:00Z";
+    await prisma.albumStoreBonus.update({ where: { id: bonus.id }, data: { endsAt: new Date(expired) } });
     const bypass = await patchBonus(make("/bonus", { originalBonusType: tag, expectedRevision: 1,
       startsAt: null, endsAt: "2099-01-01T00:00:00Z" }), context);
     expect(bypass.status).toBe(409);
@@ -83,6 +88,21 @@ describe("bonus lifecycle against PostgreSQL", () => {
     await prisma.albumStoreBonus.update({ where: { id: bonus.id }, data: { endedAt: new Date(), endsAt: null } });
     expect((await patchBonus(make("/bonus", { originalBonusType: tag, expectedRevision: 1,
       startsAt: null, endsAt: "2099-01-01T00:00:00Z" }), context)).status).toBe(409);
+
+    await prisma.albumStoreBonus.update({ where: { id: bonus.id }, data: { endsAt: new Date(expired) } });
+    const restore = { ...payload(randomUUID()), listingId: listing.id, action: "restore",
+      expectedRevision: 1, expectedListingRevision: 1, startsAt: null, endsAt: expired };
+    expect((await POST(request(restore), context)).status).toBe(400);
+    expect((await prisma.albumStoreBonus.findUniqueOrThrow({ where: { id: bonus.id } })).revision).toBe(1);
+
+    vi.mocked(revalidatePublicData).mockReturnValueOnce(false);
+    const renewed = await POST(request({ ...restore, endsAt: "2099-01-01T00:00:00Z" }), context);
+    expect(renewed.status).toBe(200);
+    expect(await renewed.json()).toMatchObject({
+      status: "applied", cache: "warning",
+      operation: { before: { endsAt: new Date(expired).toISOString() }, after: { endedAt: null, revision: 2 } },
+    });
+    expect((await prisma.albumStoreBonus.findUniqueOrThrow({ where: { id: bonus.id } })).endedAt).toBeNull();
   });
 
   it("rolls back the bonus and history when the transaction fails before commit", async () => {
