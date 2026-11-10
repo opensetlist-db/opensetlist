@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { resolveUnitColor } from "@/lib/artistColor";
 import { entityPath } from "@/lib/seo/entityUrl";
 import type { PerformersCardItem, UnitsCardItem } from "@/lib/types/setlist";
+import { EventNameText } from "@/components/events/EventNameText";
 import styles from "./eventDetail.module.css";
 
 /*
@@ -62,9 +63,9 @@ export function EventPerformersPanel({
     const body = (
       <>
         <span aria-hidden="true" className={styles.initial}>
-          {Array.from(p.name)[0] ?? ""}
+          {Array.from(p.displayName?.main ?? p.name)[0] ?? ""}
         </span>
-        <strong>{p.name}</strong>
+        <strong>{p.displayName ? <EventNameText pair={p.displayName} /> : p.name}</strong>
         {p.isGuest && <span className={styles.memberNote}>{guestLabel}</span>}
       </>
     );
@@ -108,7 +109,7 @@ export function EventPerformersPanel({
                 // listed them under each row; kept as the chip's hint.
                 title={unit.members.length > 0 ? unit.members.join(" · ") : undefined}
               >
-                {unit.name}
+                {unit.displayName ? <EventNameText pair={unit.displayName} /> : unit.name}
                 {unit.isGuest && (
                   <span className={styles.groupChipMuted}>· {guestLabel}</span>
                 )}

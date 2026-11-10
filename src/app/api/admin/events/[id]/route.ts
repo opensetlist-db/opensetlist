@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
-import { prisma } from "@/lib/prisma";
 import { getAdminEventWithOrderedSetlist } from "@/lib/adminEventSetlist";
 import {
   liveWriterTransaction,
   withAdminLiveWriterBusy,
 } from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
+import { eventLanguageFields, prepareEventLanguageWrite } from "@/lib/adminEventLanguage";
 import {
   badRequest,
-  enumValue,
   nullableEnumValue,
   nullableString,
   nullableStringArray,
@@ -28,7 +27,6 @@ import {
   checkOpensAtBeforeStart,
   validateEventOriginals,
   validateEventSeriesId,
-  validateEventTranslations,
   validatePerformerGuestIds,
 } from "../_validate";
 import { revalidateEventData, revalidatePublicData } from "@/lib/dataCache";
@@ -89,8 +87,9 @@ async function updateEvent(request: NextRequest, { params }: Props) {
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
 
-  const typeCheck = enumValue(body.type, "type", Object.values(EventType));
+  const typeCheck = nullableEnumValue(body.type, "type", Object.values(EventType));
   if (!typeCheck.ok) return badRequest(typeCheck.message);
+  if ("type" in body && typeCheck.value === null) return badRequest("type 값이 필요합니다.");
 
   const statusCheck = nullableEnumValue(body.status, "status", Object.values(EventStatus));
   if (!statusCheck.ok) return badRequest(statusCheck.message);
@@ -101,29 +100,8 @@ async function updateEvent(request: NextRequest, { params }: Props) {
   const posterUrl = nullableString(body.posterUrl, "posterUrl");
   if (!posterUrl.ok) return badRequest(posterUrl.message);
 
-  const startTimeCheck = validateDateInput(body.startTime, "startTime", true);
+  const startTimeCheck = validateDateInput(body.startTime, "startTime", "startTime" in body);
   if (!startTimeCheck.ok) return startTimeCheck.response;
-  const startTime = startTimeCheck.value!;
-
-  const opensAtCheck = validateEngagementOpensAt(body.engagementOpensAt, startTime);
-  if (!opensAtCheck.ok) return opensAtCheck.response;
-  const engagementOpensAt = opensAtCheck.value;
-  // A payload without the key keeps the stored opens-at (see the
-  // conditional write below) — but it may carry a moved startTime, so
-  // re-check the stored value against it. Otherwise moving the show
-  // earlier than an existing opens-at would persist a window that
-  // never opens.
-  if (!("engagementOpensAt" in body)) {
-    const stored = await prisma.event.findUnique({
-      where: { id: eventId },
-      select: { engagementOpensAt: true },
-    });
-    const storedCheck = checkOpensAtBeforeStart(
-      stored?.engagementOpensAt ?? null,
-      startTime
-    );
-    if (!storedCheck.ok) return storedCheck.response;
-  }
 
   const dateCheck = validateDateInput(body.date, "date", false);
   if (!dateCheck.ok) return dateCheck.response;
@@ -144,14 +122,6 @@ async function updateEvent(request: NextRequest, { params }: Props) {
   const organizerName = nullableString(body.organizerName, "organizerName");
   if (!organizerName.ok) return badRequest(organizerName.message);
 
-  const translationsCheck = validateEventTranslations(body.translations);
-  if (!translationsCheck.ok) return translationsCheck.response;
-  const translations = translationsCheck.value;
-
-  const originalsCheck = validateEventOriginals(body);
-  if (!originalsCheck.ok) return originalsCheck.response;
-  const originals = originalsCheck.value;
-
   const performerCheck = validateOptionalIdArray(body.performerIds, "performerIds");
   if (!performerCheck.ok) return performerCheck.response;
   const guestCheck = validateOptionalIdArray(body.guestIds, "guestIds");
@@ -163,7 +133,7 @@ async function updateEvent(request: NextRequest, { params }: Props) {
   if (dupErr) return dupErr;
 
   try {
-    const { updated: event, rev } = await liveWriterTransaction("admin-event-update", eventId, async (tx) => {
+    const result = await liveWriterTransaction("admin-event-update", eventId, async (tx) => {
       // n14: lock the event row and read the fields the live snapshot
       // carries BEFORE writing, so we can tell whether this edit
       // changes what `/api/setlist` serves. Most event edits (title,
@@ -171,44 +141,70 @@ async function updateEvent(request: NextRequest, { params }: Props) {
       // viewer; a status / startTime / opens-at change does (it flips
       // the live page's mode and the wish/predict lock), so it bumps
       // the setlist revision and broadcasts inside this transaction.
-      // A missing event falls through to the update below, which
-      // throws P2025 as before.
       await lockEvent(tx, eventId);
       const before = await tx.event.findUnique({
         where: { id: eventId },
-        select: { status: true, startTime: true, engagementOpensAt: true },
+        select: {
+          status: true, startTime: true, engagementOpensAt: true,
+          originalName: true, originalShortName: true, originalLanguage: true,
+          originalCity: true, originalVenue: true, organizerName: true, translations: true,
+        },
       });
+      if (!before) return { response: NextResponse.json({ error: "Not found" }, { status: 404 }) };
+      const startTime = startTimeCheck.value ?? before.startTime;
+      const opensAtCheck = "engagementOpensAt" in body
+        ? validateEngagementOpensAt(body.engagementOpensAt, startTime)
+        : checkOpensAtBeforeStart(before.engagementOpensAt, startTime);
+      if (!opensAtCheck.ok) return { response: opensAtCheck.response };
+      const originalsCheck = validateEventOriginals({ ...before, ...body });
+      if (!originalsCheck.ok) return { response: originalsCheck.response };
+      const parsedOriginals = originalsCheck.value;
+      const originals = {
+        originalName: "originalName" in body ? parsedOriginals.originalName : before.originalName,
+        originalShortName: "originalShortName" in body ? parsedOriginals.originalShortName : before.originalShortName,
+        originalLanguage: "originalLanguage" in body ? parsedOriginals.originalLanguage : before.originalLanguage,
+        originalCity: "originalCity" in body ? parsedOriginals.originalCity : before.originalCity,
+        originalVenue: "originalVenue" in body ? parsedOriginals.originalVenue : before.originalVenue,
+      };
+      const language = prepareEventLanguageWrite(body, eventLanguageFields, {
+        ...originals, organizerName: "organizerName" in body ? organizerName.value : before.organizerName,
+      }, before);
+      if (!language.ok) return { response: badRequest(language.message) };
 
       await ensureStageIdentitiesExist(tx, [
         ...(performerIds ?? []),
         ...(guestIds ?? []),
       ]);
 
-      // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
-      await tx.eventTranslation.deleteMany({ where: { eventId } });
-
       const updated = await tx.event.update({
         where: { id: eventId },
         data: {
-          type: typeCheck.value,
+          type: typeCheck.value ?? undefined,
           // Only overwrite status when the payload explicitly carries one —
           // otherwise existing admin overrides (cancelled/ongoing/completed)
           // would be silently reset to "scheduled" on any unrelated edit.
           ...(statusCheck.value !== null ? { status: statusCheck.value } : {}),
-          eventSeriesId,
-          artistId,
-          bdAlbumId,
-          organizerName: organizerName.value,
-          date,
+          eventSeriesId: "eventSeriesId" in body ? eventSeriesId : undefined,
+          artistId: "artistId" in body ? artistId : undefined,
+          bdAlbumId: "bdAlbumId" in body ? bdAlbumId : undefined,
+          organizerName: "organizerName" in body ? organizerName.value : undefined,
+          date: "date" in body ? date : undefined,
           startTime,
           // Only touch the override when the payload carries the key, so
           // a caller that doesn't know about it can't wipe an operator's
           // opens-at. The admin form always sends it (null = clear).
-          ...("engagementOpensAt" in body ? { engagementOpensAt } : {}),
-          country: country.value,
-          posterUrl: posterUrl.value,
+          ...("engagementOpensAt" in body ? { engagementOpensAt: opensAtCheck.value } : {}),
+          country: "country" in body ? country.value : undefined,
+          posterUrl: "posterUrl" in body ? posterUrl.value : undefined,
           ...originals,
-          translations: { create: translations },
+          translations: {
+            deleteMany: language.value.removed.length ? { locale: { in: language.value.removed } } : undefined,
+            upsert: language.value.changed.map((row) => ({
+              where: { eventId_locale: { eventId, locale: row.locale } },
+              create: row,
+              update: row,
+            })),
+          },
         },
         include: { translations: true },
       });
@@ -233,17 +229,18 @@ async function updateEvent(request: NextRequest, { params }: Props) {
       }
 
       const liveFieldsChanged =
-        before !== null &&
-        (before.status !== updated.status ||
+        before.status !== updated.status ||
           before.startTime.getTime() !== updated.startTime.getTime() ||
           (before.engagementOpensAt?.getTime() ?? null) !==
-            (updated.engagementOpensAt?.getTime() ?? null));
+            (updated.engagementOpensAt?.getTime() ?? null);
       const rev = liveFieldsChanged
         ? await bumpSetlistRevisionAndBroadcast(tx, eventId)
         : null;
 
       return { updated, rev };
     }, (r) => r.rev);
+    if (result.response) return result.response;
+    const { updated: event, rev } = result;
 
     // `revalidatePublicData` already expires every cached public read
     // (the event tag included, since every entry also carries the

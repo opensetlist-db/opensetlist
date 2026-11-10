@@ -4,8 +4,8 @@ import { staticAlternates } from "@/lib/seo/entityUrl";
 import { getEventsListGrouped, type EventsListGroup } from "@/lib/events";
 import { getEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
-import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
-import { formatDate, nonBlank } from "@/lib/utils";
+import { eventDisplayField, eventDisplayName, eventDisplayPlain, localizedEventText, type EventDisplayText } from "@/lib/eventDisplay";
+import { formatDate } from "@/lib/utils";
 import {
   eventListQuery,
   FILTER_VALUES,
@@ -15,6 +15,7 @@ import EventStatusTicker from "@/components/EventStatusTicker";
 import { ConcertFilterNav } from "@/components/events/ConcertFilterNav";
 import { ConcertGroup } from "@/components/events/ConcertGroup";
 import { ConcertRow } from "@/components/events/ConcertRow";
+import { EventNameText } from "@/components/events/EventNameText";
 import { Pagination } from "@/components/Pagination";
 import { colors, radius } from "@/styles/tokens";
 
@@ -47,8 +48,9 @@ interface PreparedEvent {
   status: ReturnType<typeof getEventStatus>;
   statusLabel: string;
   dateLabel: string;
-  eventName: string;
-  venueCity: string | null;
+  eventName: EventDisplayText;
+  city: string | null;
+  venue: EventDisplayText | null;
   songCountLabel: string | null;
   artTitle: string;
   logoUrl: string | null;
@@ -64,7 +66,8 @@ interface PreparedGroup {
   //   - ungrouped → locale "기타 이벤트"
   // Always non-empty (falls back to unknownArtist / ungrouped labels).
   groupTitle: string;
-  artistShortName: string | null;
+  titlePair: EventDisplayText | null;
+  artistShortName: EventDisplayText | null;
   typeLabel: string | null;
   hasOngoing: boolean;
   eventCountLabel: string;
@@ -122,25 +125,22 @@ export default async function EventsPage({
     // Full localized event name, wrapped in full by the row (no
     // truncation — Day.1/Day.2 and long translations must stay
     // distinguishable).
-    const eventName =
-      nonBlank(displayNameWithFallback(ev, ev.translations, locale)) ??
-      unknownEventName;
-    const venue = resolveLocalizedField(
-      ev,
+    const eventName = eventDisplayName(ev, locale, "title") ??
+      { main: unknownEventName, sub: null, mainLang: locale, subLang: locale };
+    const venue = eventDisplayField(
+      ev.originalVenue,
+      ev.originalLanguage,
       ev.translations,
       locale,
       "venue",
-      "originalVenue",
     );
-    const city = resolveLocalizedField(
-      ev,
+    const city = localizedEventText(
+      ev.originalCity,
+      ev.originalLanguage,
       ev.translations,
       locale,
       "city",
-      "originalCity",
     );
-    const venueCity =
-      venue && city ? `${venue} · ${city}` : (venue ?? city);
     return {
       href: eventHref(locale, ev.id, ev.slug),
       startTimeIso: ev.startTime,
@@ -149,7 +149,8 @@ export default async function EventsPage({
         status === "ongoing" ? liveLabel : tl(`status.${status}`),
       dateLabel: formatDate(ev.startTime, locale, ROW_DATE_FORMAT),
       eventName,
-      venueCity,
+      city,
+      venue,
       // Song count for completed (final tally) and ongoing (running
       // tally, same count as the home ongoing card). Upcoming and
       // cancelled rows have no meaningful count yet.
@@ -157,7 +158,7 @@ export default async function EventsPage({
         status === "completed" || status === "ongoing"
           ? tl("songCount", { count: ev._count.setlistItems })
           : null,
-      artTitle: ev.artTitle ?? eventName,
+      artTitle: ev.artTitle ?? eventName.main,
       logoUrl: ev.logo.image?.url ?? null,
       tint: ev.logo.color,
     };
@@ -166,20 +167,20 @@ export default async function EventsPage({
   function resolveGroupTitle(g: EventsListGroup): string {
     switch (g.kind) {
       case "series":
-        return g.title ?? ungroupedName;
+        return eventDisplayPlain(g.title) || ungroupedName;
       case "artist":
         // Wrap the locale-resolved artist name in the "단독 공연"
         // template so each artist's series-less shows read as their
         // own bucket (e.g. "하스노소라 — 단독 공연"). Falls back to
         // the unknown-artist label if displayNameWithFallback
         // returned empty for the locale + original chain.
-        return t("standaloneTitle", { artist: g.title ?? unknownArtistName });
+        return t("standaloneTitle", { artist: eventDisplayPlain(g.title) || unknownArtistName });
       case "organizer":
         // Locale-resolved at the lib layer (EventTranslation.
         // organizerName → original). Empty-string organizerName is
         // filtered out there (falls through to ungrouped), so a
         // non-null title here is always a meaningful display value.
-        return g.title ?? ungroupedName;
+        return eventDisplayPlain(g.title) || ungroupedName;
       case "ungrouped":
         return ungroupedName;
     }
@@ -198,6 +199,9 @@ export default async function EventsPage({
     return {
       key: `${keyPrefix}-${g.id}`,
       groupTitle: resolveGroupTitle(g),
+      titlePair: g.kind === "artist" && g.title
+        ? { ...g.title, main: t("standaloneTitle", { artist: g.title.main }), mainLang: locale }
+        : g.title,
       artistShortName: g.artistShortName,
       // Only tour and festival carry a tag (approved design); the other
       // series types get no invented label.
@@ -239,8 +243,8 @@ export default async function EventsPage({
   const renderGroup = (g: PreparedGroup) => (
     <ConcertGroup
       key={g.key}
-      title={g.groupTitle}
-      artistTag={g.artistShortName}
+      title={g.titlePair ? <EventNameText pair={g.titlePair} /> : g.groupTitle}
+      artistTag={g.artistShortName && <EventNameText pair={g.artistShortName} />}
       typeLabel={g.typeLabel}
       countLabel={g.eventCountLabel}
       live={g.hasOngoing}
@@ -253,7 +257,8 @@ export default async function EventsPage({
           key={e.href}
           href={e.href}
           title={e.eventName}
-          venueCity={e.venueCity}
+          city={e.city}
+          venue={e.venue}
           startTimeIso={e.startTimeIso}
           dateLabel={e.dateLabel}
           status={e.status}

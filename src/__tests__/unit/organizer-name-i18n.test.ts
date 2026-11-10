@@ -134,7 +134,7 @@ describe("getEventsListGrouped — organizer groups", () => {
     expect(activeGroups).toHaveLength(1);
     expect(activeGroups[0].kind).toBe("organizer");
     expect(activeGroups[0].id).toBe("org:バンダイナムコ / ランティス");
-    expect(activeGroups[0].title).toBe("반다이남코 / 란티스");
+    expect(activeGroups[0].title).toMatchObject({ main: "バンダイナムコ / ランティス", sub: "반다이남코 / 란티스" });
     expect(activeGroups[0].events).toHaveLength(2);
   });
 
@@ -145,7 +145,7 @@ describe("getEventsListGrouped — organizer groups", () => {
     mocked.eventSeries.findMany.mockResolvedValue([]);
 
     const { activeGroups } = await getEventsListGrouped("en", new Date(Date.UTC(2026, 9, 8)));
-    expect(activeGroups[0].title).toBe("Bandai Namco / Lantis");
+    expect(activeGroups[0].title).toMatchObject({ main: "Bandai Namco / Lantis", sub: null });
   });
 });
 

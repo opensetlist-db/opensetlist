@@ -1,4 +1,7 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
+import type { EventDisplayText } from "@/lib/eventDisplay";
+import { EventNameText } from "./EventNameText";
 import { eventListQuery, FILTER_VALUES, type EventListFilter } from "@/lib/eventFilters";
 import { colors } from "@/styles/tokens";
 
@@ -9,7 +12,7 @@ interface Props {
   /** Accessible name of the chip group. */
   label: string;
   artist: string | null;
-  artistOptions: { id: string; name: string }[];
+  artistOptions: { id: string; name: EventDisplayText | null }[];
   artistLabel: string;
   allArtistsLabel: string;
 }
@@ -21,7 +24,7 @@ interface Props {
 export function ConcertFilterNav({
   locale, active, labels, label, artist, artistOptions, artistLabel, allArtistsLabel,
 }: Props) {
-  function pill(key: string, filter: EventListFilter, group: string | null, current: boolean, name: string) {
+  function pill(key: string, filter: EventListFilter, group: string | null, current: boolean, name: ReactNode) {
     const query = new URLSearchParams(eventListQuery(filter, group)).toString();
     return (
       <Link
@@ -49,7 +52,8 @@ export function ConcertFilterNav({
       {artistOptions.length > 0 && (
         <nav aria-label={artistLabel} data-testid="event-artist-filter" className={navClass}>
           {pill("all", active, null, artist === null, allArtistsLabel)}
-          {artistOptions.map(({ id, name }) => pill(id, active, id, id === artist, name))}
+          {artistOptions.map(({ id, name }) => pill(id, active, id, id === artist,
+            name ? <EventNameText pair={name} /> : id))}
         </nav>
       )}
     </div>

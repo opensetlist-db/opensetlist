@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ComponentProps } from "react";
 import { createEventDisplayOrdering, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
 // `useSetlistPolling` is only a type source here. The hook itself has
 // no runtime caller any more: `useRealtimeEventChannel` owns the single
@@ -83,6 +83,12 @@ interface Props {
   title: string;
   venue: string | null;
   city: string | null;
+  infoNames?: ComponentProps<typeof EventInfoCard>["names"];
+  shareNames?: {
+    event: { main: string; sub: string | null; lang: string };
+    series: { main: string; sub: string | null; lang: string } | null;
+    venue: { main: string; sub: string | null; lang: string } | null;
+  };
   /**
    * Localized short variants of `series.name` and `title`. The page
    * already resolves both via `displayNameWithFallback(..., "short")`
@@ -208,6 +214,7 @@ export function LiveEventLayout({
   title,
   venue,
   city,
+  infoNames,
   seriesShortName,
   eventShortName,
   initialImpressions,
@@ -469,6 +476,7 @@ export function LiveEventLayout({
           startTime={startTime}
           venue={venue}
           city={city}
+          names={infoNames}
           artist={artist}
           organizerName={organizerName}
           series={series}
@@ -481,7 +489,7 @@ export function LiveEventLayout({
           performers={performersForCard}
           isLineup={showLineup}
         />
-        <EventSeriesCard locale={locale} series={series} />
+        <EventSeriesCard locale={locale} series={series} name={infoNames?.series} />
       </aside>
     </div>
   );

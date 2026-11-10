@@ -1,4 +1,5 @@
-import type { LangText } from "./SeriesIdentity";
+import type { EventDisplayText } from "@/lib/eventDisplay";
+import { EventNameText } from "@/components/events/EventNameText";
 import { SeriesStatusPill } from "./SeriesStatusPill";
 import styles from "./seriesDetail.module.css";
 
@@ -28,7 +29,7 @@ export function SeriesAside({
     /** Present while an event of the series is LIVE. */
     ongoing: { pill: string; label: string } | null;
   } | null;
-  units: { title: string; names: ReadonlyArray<LangText & { key: string }> } | null;
+  units: { title: string; names: ReadonlyArray<EventDisplayText & { key: string }> } | null;
 }) {
   if (!progress && !units) return null;
   return (
@@ -68,8 +69,8 @@ export function SeriesAside({
           <h2 id="series-units-title">{units.title}</h2>
           <ul className={styles.unitTags}>
             {units.names.map((u) => (
-              <li key={u.key} lang={u.lang}>
-                {u.text}
+              <li key={u.key}>
+                <EventNameText pair={u} />
               </li>
             ))}
           </ul>

@@ -155,7 +155,7 @@ describe("getEventsListGrouped — display fields", () => {
 
   it("tags the group with the ROOT series type and the art with the event's own series", async () => {
     // Root festival (1) → child leg (2). The group is the root; the art
-    // text is the leg's own short name, localized.
+    // text is the leg's own original short name.
     mocked.eventSeries.findMany.mockResolvedValue([
       series(1, { type: "festival" }),
       series(2, {
@@ -171,7 +171,7 @@ describe("getEventsListGrouped — display fields", () => {
     const { activeGroups } = await getEventsListGrouped("ko", NOW);
     expect(activeGroups[0].id).toBe("series:1");
     expect(activeGroups[0].seriesType).toBe("festival");
-    expect(activeGroups[0].events[0].artTitle).toBe("레그 약칭");
+    expect(activeGroups[0].events[0].artTitle).toBe("S2");
   });
 
   it("falls back to the standalone artist's short name, then the event's own", async () => {
@@ -290,8 +290,10 @@ describe("getEventsListGrouped — artist families", () => {
     const all = await getEventsListGrouped("ko", NOW);
     const ids = (groups: typeof all.pastGroups) => groups.flatMap((group) => group.events.map((event) => event.id));
     expect(ids([...all.activeGroups, ...all.pastGroups]).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(all.artistOptions).toEqual([
-      { id: "7", name: "그룹" }, { id: "9", name: "Other" }, { id: "10", name: "Collaboration" },
+    expect(all.artistOptions).toMatchObject([
+      { id: "7", name: { main: "Parent", sub: "그룹" } },
+      { id: "9", name: { main: "Other", sub: null } },
+      { id: "10", name: { main: "Collaboration", sub: null } },
     ]);
     const parent = await getEventsListGrouped("ko", NOW, "7");
     expect(parent.artist).toBe("7");
@@ -316,7 +318,7 @@ describe("<ConcertFilterNav />", () => {
     render(
       <ConcertFilterNav
         locale="en" active="upcoming" labels={labels} label="Filter events"
-        artist={null} artistOptions={[{ id: "7", name: "Group A" }]}
+        artist={null} artistOptions={[{ id: "7", name: { main: "グループ A", sub: "Group A", mainLang: "ja", subLang: "en" } }]}
         artistLabel="Filter by group" allArtistsLabel="All groups"
       />,
     );
@@ -333,7 +335,7 @@ describe("<ConcertFilterNav />", () => {
       "page",
     );
     expect(screen.getByRole("link", { name: "All" })).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("link", { name: "Group A" })).toHaveAttribute("href", "/en/events?filter=upcoming&artist=7");
+    expect(screen.getByRole("link", { name: /グループ A.*Group A/ })).toHaveAttribute("href", "/en/events?filter=upcoming&artist=7");
   });
 });
 
