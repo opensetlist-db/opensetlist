@@ -186,6 +186,7 @@ function listing(over: Record<string, unknown>): Any {
 const bonus = (id: string, type: string): Any => ({
   id,
   originalBonusType: type,
+  originalLanguage: "ko",
   startsAt: null,
   endsAt: null,
   endedAt: null,
