@@ -517,6 +517,7 @@
   color: var(--status-upcoming-text);
   font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
 }
 .bonusBadge:hover {
   text-decoration: underline;

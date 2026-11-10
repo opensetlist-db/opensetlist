@@ -263,6 +263,9 @@
   color: var(--primary);
 }
 @media (max-width: 699px) {
+  .bdBody {
+    align-items: flex-start;
+  }
   .bdActions {
     flex-basis: 100%;
   }
