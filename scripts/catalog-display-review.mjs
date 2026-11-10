@@ -63,6 +63,7 @@ function csvTargets(file, cells) {
   }
 }
 
+/** @param {{ key: string, csv?: { file: string, header: string[], row: string[] }[], fields: object[] }} entry */
 export function verifyReviewedCsv({ key, csv = [], fields }) {
   if (!csv.length) throw new Error(`${key}: ready entry has no CSV rows`);
   for (const [csvIndex, record] of csv.entries()) {
