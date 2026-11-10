@@ -190,7 +190,9 @@
 }
 .panelTitle::before {
   content: "";
-  flex: 0 0 7px;
+  /* WebKit needs an explicit width to include the bar in the title's intrinsic width. */
+  flex: none;
+  width: 7px;
   height: 20px;
   border-radius: 5px;
   background: var(--bar, var(--accent-info-panel));
