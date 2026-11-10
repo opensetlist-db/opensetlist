@@ -54,7 +54,10 @@ export async function POST(request: Request) {
       if (typeof args !== "object" || Array.isArray(args) || Object.keys(args).length !== 0) {
         return error(-32602, "This tool takes no arguments");
       }
-      const queue = await getBonusCheckQueue();
+      const queue = await getBonusCheckQueue().catch(() => null);
+      if (!queue) {
+        return result({ isError: true, content: [{ type: "text", text: "Unable to load BD check targets." }] });
+      }
       const target = ({ listing, originalBonusType }: typeof queue.current[number]) => ({
         album: listing.album.originalTitle,
         store: listing.originalStoreName,

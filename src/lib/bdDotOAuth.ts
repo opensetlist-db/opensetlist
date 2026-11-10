@@ -32,10 +32,10 @@ export async function readBdDotClaims(config: NonNullable<ReturnType<typeof bdDo
   const supabase = createClient(config.supabaseUrl, config.anonKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  const { data, error } = await supabase.auth.getClaims(token);
-  const claims = data?.claims;
+  const verified = await supabase.auth.getClaims(token).catch(() => null);
+  const claims = verified?.data?.claims;
   const now = Math.floor(Date.now() / 1000);
-  if (error || !claims || claims.iss !== config.issuer || claims.aud !== "authenticated" ||
+  if (verified?.error || !claims || claims.iss !== config.issuer || claims.aud !== "authenticated" ||
       claims.role !== "authenticated" || claims.sub !== config.subject ||
       claims.client_id !== config.clientId || typeof claims.session_id !== "string" ||
       !Number.isSafeInteger(claims.iat) || claims.iat > now ||

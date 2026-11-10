@@ -36,6 +36,7 @@ export function pointsAtSupabaseProject(raw, projectRef) {
   try {
     const url = new URL(raw);
     if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") return false;
+    if (["host", "user", "port"].some((key) => url.searchParams.has(key))) return false;
     return url.hostname === `db.${projectRef}.supabase.co` ||
       (url.hostname.endsWith(".pooler.supabase.com") &&
         decodeURIComponent(url.username) === `postgres.${projectRef}`);
