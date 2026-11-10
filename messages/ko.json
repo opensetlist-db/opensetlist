@@ -26,6 +26,8 @@
     "emptyPast": "아직 곡이 등록된 세트리스트가 없습니다.",
     "browse": "이벤트 찾아보기",
     "liveBadge": "공연 중",
+    "bdBonus": "BD 특전",
+    "bdBonusFor": "{event} BD 특전",
     "scheduled": "공연 예정 · {label}",
     "setlistSongs": "{count, plural, other {#곡의 세트리스트}}",
     "setlistWaiting": "세트리스트 업데이트를 기다리고 있어요",
@@ -368,10 +370,9 @@
       "preorderBadge": "예약 수락 중",
       "releasedBadge": "발매 중",
       "releaseDateLabel": "발매",
-      "bonusPreviewHeading": "매장특전 미리보기",
-      "compareCta": "매장특전 비교하기 →",
-      "purchaseCta": "BD 구매하기 →",
-      "detailsCta": "앨범 상세 보기 →"
+      "bonusStoreCount": "특전 제공 판매점 {count}곳",
+      "compareCta": "구매처·특전 보기 →",
+      "purchaseCta": "구매처 보기 →"
     }
   },
   "EventDetail": {

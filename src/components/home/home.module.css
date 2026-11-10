@@ -417,7 +417,8 @@
   padding-top: 4px;
 }
 .cardBottom > svg,
-.compact > svg {
+.compact > svg,
+.compactBody > svg {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
@@ -454,11 +455,14 @@
   gap: 16px;
 }
 
-.compact {
+.compact,
+.compactBody {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 16px;
+}
+.compact {
   padding: 18px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -489,7 +493,32 @@
   color: var(--primary);
   font-weight: 700;
 }
-.compact:hover .metaLink {
+.compact:not(.compactWithBonus):hover .metaLink,
+.compactBody:hover .metaLink {
+  text-decoration: underline;
+}
+
+.compactWithBonus {
+  display: flex;
+  flex-wrap: wrap;
+}
+.compactBody {
+  flex: 1 1 min(100%, 300px);
+  min-width: 0;
+}
+.bonusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--status-upcoming-surface);
+  color: var(--status-upcoming-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.bonusBadge:hover {
   text-decoration: underline;
 }
 
@@ -754,12 +783,19 @@
   .compactGrid {
     grid-template-columns: 1fr;
   }
-  .compact {
+  .compact,
+  .compactBody {
     grid-template-columns: 76px minmax(0, 1fr);
     gap: 12px;
+  }
+  .compact {
     padding: 14px;
   }
-  .compact > svg {
+  .compactBody {
+    flex-basis: 100%;
+  }
+  .compact > svg,
+  .compactBody > svg {
     display: none;
   }
   .compact .dateLine {

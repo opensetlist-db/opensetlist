@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 // `useSetlistPolling` is only a type source here. The hook itself has
 // no runtime caller any more: `useRealtimeEventChannel` owns the single
 // snapshot scheduler and runs the "polling while disconnected" cadence
@@ -155,15 +155,6 @@ interface Props {
   availableSongs: AvailableSong[];
   unitFilters: UnitFilter[];
 
-  /**
-   * Server-component slot rendered between `<LiveSetlist>` and
-   * `<EventImpressions>`. Carries `EventBdSection`'s server-rendered
-   * output (state machine + bonus selection happen on the server, the
-   * page passes the JSX through as a node). May be falsy when the
-   * resolver returns `pre`/`immediate_post` and the component returns
-   * null — that's fine, React renders nothing for it.
-   */
-  bdSection?: ReactNode;
 }
 
 /**
@@ -234,7 +225,6 @@ export function LiveEventLayout({
   initialCapturedAt,
   availableSongs,
   unitFilters,
-  bdSection,
 }: Props) {
   // Pre/post-show participation uses on-demand reads. EventStatusTicker
   // refreshes the server props at the start boundary, which enables this
@@ -447,14 +437,6 @@ export function LiveEventLayout({
           // polling payload.
           eventArtistId={artist?.id ?? null}
         />
-
-        {/* BD section slot — rendered server-side in `page.tsx` and
-            passed through as a ReactNode. Position invariant per the v2
-            mockup: between Setlist (above) and Impressions (below). The
-            component itself returns null when the resolver picks
-            `pre`/`immediate_post`, so this slot is conditionally
-            visible without an enclosing branch. */}
-        {bdSection}
 
         <EventImpressions
           eventId={eventId}

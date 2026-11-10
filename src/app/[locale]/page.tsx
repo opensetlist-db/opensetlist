@@ -3,11 +3,13 @@ import Link from "next/link";
 import { hasLocale } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { CACHE_TTL, timeBucket } from "@/lib/dataCache";
 import { getCachedHomeData } from "@/lib/homeEvents";
 import { projectHomeCard, projectUpcomingCard } from "@/lib/homeView";
 import { routing } from "@/i18n/routing";
-import { staticAlternates } from "@/lib/seo/entityUrl";
+import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
+import { entityPath, staticAlternates } from "@/lib/seo/entityUrl";
 import { HomeHero } from "@/components/home/HomeHero";
 import { UpcomingCard } from "@/components/home/UpcomingCard";
 import { CompactEventCard } from "@/components/home/CompactEventCard";
@@ -61,7 +63,18 @@ export default async function HomePage({
   const upcoming = home.upcoming.map((e) =>
     projectUpcomingCard(e, locale, unknown, now),
   );
-  const past = home.past.map((e) => projectHomeCard(e, locale, unknown));
+  // Cache the rows, then evaluate their deadlines against the request clock.
+  if (home.past.some((event) => event.bdAlbum)) await connection();
+  const purchaseNow = new Date();
+  const past = home.past.map((event) => {
+    const { bdAlbum } = event;
+    const hasBonus = bdAlbum &&
+      projectPurchaseOptions(bdAlbum.listings, purchaseNow, { performanceOnly: true }).bonusCount > 0;
+    return {
+      view: projectHomeCard(event, locale, unknown),
+      bonusHref: hasBonus ? `${entityPath("albums", locale, bdAlbum.id, bdAlbum.slug)}?tab=bonus` : null,
+    };
+  });
 
   const eventsHref = `/${locale}/events`;
   const pastHref = `/${locale}/events?filter=completed`;
@@ -160,8 +173,8 @@ export default async function HomePage({
           )}
           {past.length > 0 ? (
             <div className={styles.compactGrid}>
-              {past.map((v) => (
-                <CompactEventCard key={v.id} view={v} />
+              {past.map(({ view, bonusHref }) => (
+                <CompactEventCard key={view.id} view={view} bonusHref={bonusHref} />
               ))}
             </div>
           ) : (

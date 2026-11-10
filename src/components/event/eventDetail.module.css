@@ -198,6 +198,76 @@
 .sideColumn .panelTitle {
   font-size: 16px;
 }
+.bdSummary {
+  margin-bottom: 24px;
+}
+.bdStatus {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--status-upcoming-surface);
+  color: var(--status-upcoming-text);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+.bdBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.bdProduct {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.bdProduct h3 {
+  font-size: 16px;
+  font-weight: 700;
+}
+.bdProduct a:hover,
+.bdOfficial:hover {
+  text-decoration: underline;
+}
+.bdProduct p,
+.bdActions p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.bdActions {
+  display: grid;
+  gap: 6px;
+}
+.bdPurchase,
+.bdOfficial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+.bdPurchase {
+  background: var(--primary);
+  color: var(--bg-card);
+}
+.bdPurchase:hover {
+  text-decoration: underline;
+}
+.bdOfficial {
+  gap: 4px;
+  color: var(--primary);
+}
+@media (max-width: 699px) {
+  .bdActions {
+    flex-basis: 100%;
+  }
+}
+
 .panelCount {
   font-size: 12px;
   color: var(--text-secondary);
