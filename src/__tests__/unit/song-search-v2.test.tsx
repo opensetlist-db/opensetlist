@@ -195,6 +195,7 @@ describe("SongSearch v2 — variant picker", () => {
     expect(screen.getByText("원곡")).toBeInTheDocument();
     expect(screen.getByText("105th Ver.")).toBeInTheDocument();
     expect(screen.getByText("SAKURA Ver.")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Dream Believers.*SAKURA Ver\./ })).toBeInTheDocument();
   });
 
   it("variantPicker=true + song has NO variants → onSelect(song, undefined) fires immediately (no stage 2)", async () => {

@@ -20,6 +20,7 @@ import type {
   BoardMinePick,
   BoardPickCreated,
   BoardPickErrorCode,
+  BoardSongRef,
 } from "@/lib/board/types";
 
 /**
@@ -73,10 +74,8 @@ const MINE_RETRY_DELAY_MS = 2000;
 
 // ── wish storage adapter ───────────────────────────────────────────
 // Board wishes live in `wish-{eventId}` as `WishEntry` rows tagged with
-// a group. The title stored at add time becomes the entry's
-// `originalTitle` (`displayOriginalTitle` always renders
-// `originalTitle` as the main line), so the event-wide wishlist shows
-// the same title the board did.
+// a group. Keep their original and translations for the event-wide
+// wishlist, which becomes visible during the show.
 
 function wishToEntry(w: WishEntry): BallotEntry | null {
   if (!w.groupId) return null;
@@ -85,6 +84,7 @@ function wishToEntry(w: WishEntry): BallotEntry | null {
     groupId: w.groupId,
     songId: String(w.songId),
     title: w.song.originalTitle,
+    song: w.song,
     available: w.available ?? true,
   };
 }
@@ -93,7 +93,7 @@ function entryToWish(e: BallotEntry, locale: string): WishEntry {
   return {
     songId: Number(e.songId),
     dbId: e.id,
-    song: {
+    song: e.song ?? {
       originalTitle: e.title,
       originalLanguage: locale,
       variantLabel: null,
@@ -147,15 +147,28 @@ function mineToEntry(p: BoardMinePick): BallotEntry {
     groupId: p.groupId,
     songId: p.songId,
     title: p.title,
+    ...(p.song ? { song: p.song } : {}),
     available: p.available,
   };
 }
 
-/** Merge a restore into the local list by row id — an entry made in
- *  this tab while the restore was in flight wins over nothing. */
-function mergeById(cur: BallotEntry[], incoming: BallotEntry[]): BallotEntry[] {
-  const ids = new Set(cur.map((p) => p.id));
-  return [...cur, ...incoming.filter((p) => !ids.has(p.id))];
+/** Refresh display data on rows already stored and restore missing
+ * rows, except ones removed in this tab while the read was in flight. */
+function mergeById(
+  cur: BallotEntry[],
+  incoming: BallotEntry[],
+  atStart: ReadonlySet<string>,
+  restoreMissing: boolean,
+): BallotEntry[] {
+  const server = new Map(incoming.map((p) => [p.id, p]));
+  const updated = cur.map((p) => {
+    const fresh = server.get(p.id);
+    server.delete(p.id);
+    return fresh?.song ? fresh : p;
+  });
+  return restoreMissing
+    ? [...updated, ...[...server.values()].filter((p) => !atStart.has(p.id))]
+    : updated;
 }
 
 export function useBoardBallot({
@@ -221,7 +234,9 @@ export function useBoardBallot({
   useEffect(() => {
     if (!active || restoredFor.current === eventId) return;
     restoredFor.current = eventId;
-    const needPicks = readBoardPicks(eventId).length === 0;
+    const storedPicks = readBoardPicks(eventId);
+    const initialPicks = new Set(storedPicks.map((p) => p.id));
+    const initialWishes = new Set(readBoardWishes(eventId).map((p) => p.id));
     // A browser that never minted an id has never written to a ballot.
     const anonId = readExistingAnonId();
     if (!anonId) return;
@@ -253,14 +268,14 @@ export function useBoardBallot({
       if (!res || res.status !== 200) return;
       const body = res.body as Partial<BoardMineResponse> | null;
       if (!body) return;
-      if (needPicks && Array.isArray(body.picks) && body.picks.length > 0) {
+      if (Array.isArray(body.picks) && body.picks.length > 0) {
         const next = body.picks.map(mineToEntry);
-        setList("pick", (cur) => mergeById(cur, next));
+        setList("pick", (cur) => mergeById(cur, next, initialPicks, initialPicks.size === 0));
       }
       // `wishes` is absent from a response of the previous release.
       if (Array.isArray(body.wishes) && body.wishes.length > 0) {
         const next = body.wishes.map(mineToEntry);
-        setList("wish", (cur) => mergeById(cur, next));
+        setList("wish", (cur) => mergeById(cur, next, initialWishes, true));
       }
     })();
     return () => {
@@ -286,8 +301,7 @@ export function useBoardBallot({
     async (
       kind: BallotKind,
       groupId: string,
-      songId: string,
-      title: string,
+      songRef: BoardSongRef,
       source: BallotSource,
     ): Promise<PickOutcome> => {
       const anonId = getAnonId();
@@ -295,6 +309,7 @@ export function useBoardBallot({
       // a ballot nobody can come back to is not worth creating.
       if (!anonId) return { ok: false, reason: "invalid_anon_id" };
       const cfg = KIND[kind];
+      const { songId, title, song } = songRef;
       const key = `${kind}:${songId}`;
       setPendingFor(key, true);
       try {
@@ -313,6 +328,7 @@ export function useBoardBallot({
               groupId: created.groupId,
               songId: created.songId,
               title,
+              ...(song ? { song } : {}),
               available: true,
             },
           ]);

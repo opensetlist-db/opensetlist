@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { defaultLocale, locales, type Locale } from "@/i18n/routing";
 import { ANON_TOKEN_HEADER, parseRequiredAnonId } from "@/lib/anonId";
 import { getBoardControlCached } from "@/lib/board/boardRead";
 import { parseDecimalId } from "@/lib/board/ids";
@@ -69,11 +68,6 @@ export async function GET(req: Request, { params }: RouteProps) {
       { status: 400, headers: PRIVATE_NO_STORE },
     );
   }
-  const raw = search.get("locale");
-  const locale: Locale = locales.includes(raw as Locale)
-    ? (raw as Locale)
-    : defaultLocale;
-
   try {
     const control = await getBoardControlCached(eventId);
     if (!control) {
@@ -83,8 +77,8 @@ export async function GET(req: Request, { params }: RouteProps) {
       );
     }
     const [picks, wishes] = await Promise.all([
-      loadMinePicks(eventId, anon.value, locale),
-      loadMineWishes(eventId, anon.value, locale),
+      loadMinePicks(eventId, anon.value),
+      loadMineWishes(eventId, anon.value),
     ]);
     const body: BoardMineResponse = { picks, wishes };
     return NextResponse.json(body, { headers: PRIVATE_NO_STORE });

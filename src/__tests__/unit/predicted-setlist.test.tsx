@@ -274,9 +274,9 @@ describe("PredictedSetlist — match-highlight states", () => {
       />,
     );
     // The matched row's title span gets the wishlistMatchBg color.
-    const titleSpan = screen.getByText("残陽");
+    const titleSpan = screen.getByText("残陽").closest("[style]");
     // colors.wishlistMatchBg = #bbf7d0 → rgb(187, 247, 208)
-    expect(titleSpan.getAttribute("style")?.toLowerCase()).toContain(
+    expect(titleSpan?.getAttribute("style")?.toLowerCase()).toContain(
       "rgb(187, 247, 208)",
     );
   });

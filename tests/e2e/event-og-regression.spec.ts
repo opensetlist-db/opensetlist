@@ -69,7 +69,7 @@ test.describe("existing personal PNG and fan-board sharing", () => {
     for (const locale of locales) {
       const m = JSON.parse(await readFile(path.resolve("messages", `${locale}.json`), "utf8"));
       const response = await request.get(`${BASE}/api/events/109/board?locale=${locale}`); expect(response.status()).toBe(200);
-      const data: { groups: { groupId: string; slug: string; name: string; expects: { top: { songId: string; title: string; available: boolean }[] } }[] } = await response.json();
+      const data: { groups: { groupId: string; slug: string; name: string; nameSub?: string; expects: { top: { songId: string; title: string; available: boolean }[] } }[] } = await response.json();
       const group = data.groups.find((g) => g.expects.top.some((s) => s.available)); expect(group).toBeTruthy();
       const song = group!.expects.top.find((s) => s.available)!;
       const context = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"], viewport: { width: 390, height: 844 } });
@@ -77,7 +77,9 @@ test.describe("existing personal PNG and fan-board sharing", () => {
       await context.addInitScript(({ groupId, song }) => { localStorage.setItem("board-109", JSON.stringify({ picks: [{ id: "og05-local-only", groupId, songId: song.songId, title: song.title, available: true }] })); }, { groupId: group!.groupId, song });
       const page = await context.newPage(); await page.goto(`${BASE}/${locale}/events/109`);
       const tabs = page.getByTestId("board-group-tabs"); await expect(tabs).toHaveAccessibleName(m.Board.groupsAria);
-      const groupTab = tabs.getByTestId(`board-group-${group!.groupId}`); await expect(groupTab).toHaveAccessibleName(group!.name); await groupTab.click();
+      const groupTab = tabs.getByTestId(`board-group-${group!.groupId}`);
+      await expect(groupTab).toHaveAccessibleName([group!.name, group!.nameSub].filter(Boolean).join(" "));
+      await groupTab.click();
       const copyButton = page.getByTestId("board-copy"); await expect(copyButton).toHaveAccessibleName(m.Board.copy); await copyButton.click();
       const copy = await page.evaluate(() => navigator.clipboard.readText()); const url = copy.match(/https?:\/\/\S+/)?.[0];
       const responseHtml = await request.get(page.url()); expect(responseHtml.status()).toBe(200);

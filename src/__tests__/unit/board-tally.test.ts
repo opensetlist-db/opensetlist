@@ -17,7 +17,13 @@ function shortlist(
   rows: BoardSongCount[],
   titleOf: (id: string) => string | null = titled,
 ) {
-  return { groupId, top: buildBoardColumn(rows, 10, titleOf).top };
+  return {
+    groupId,
+    top: buildBoardColumn(rows, 10, (songId) => {
+      const title = titleOf(songId);
+      return title === null ? null : { songId, title };
+    }).top,
+  };
 }
 
 describe("playedSongIds", () => {

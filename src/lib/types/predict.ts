@@ -29,10 +29,8 @@ export interface AvailableSong {
   variantLabel: string | null;
   baseVersionId: number | null;
   /** Translation rows shipped raw so `displayOriginalTitle` can
-   *  render locale-aware titles client-side without a refetch on
-   *  locale change. Strict locale filter (`[locale, "ja"]`) applied
-   *  server-side mirrors `getEvent`'s policy — keeps the payload
-   *  small without losing the original-language fallback. */
+   *  render saved selections after a locale change, including after the
+   *  show when the picker catalog no longer loads. */
   translations: Array<{
     locale: string;
     title: string;
@@ -97,9 +95,10 @@ export interface AvailableSong {
 export interface AvailableSongUnit {
   artistId: number;
   slug: string;
-  /** Localized display name (`displayNameWithFallback(...)`-cascaded
-   *  server-side at fetch time using the request locale). */
+  /** Original display name and the requested locale's separate name. */
   label: string;
+  labelSub?: string | null;
+  labelLang?: string;
   /** Resolved via `resolveUnitColor(artist)` — uses `Artist.color`
    *  when set, otherwise the slug-hashed palette fallback. Never
    *  null on the wire. */
@@ -153,6 +152,8 @@ export interface UnitFilter {
    *  for the composites; the artist's `slug` for `group` + `individual`. */
   key: string;
   label: string;
+  labelSub?: string | null;
+  labelLang?: string;
   /** Used for the active-chip border + tint. `null` for the "all"
    *  filter (active state falls back to the neutral primary). */
   color: string | null;

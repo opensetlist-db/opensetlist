@@ -360,6 +360,8 @@ afterAll(async () => {
     ]) {
       await pg.query(sql, [id]);
     }
+    await pg.query('DELETE FROM "SongTranslation" WHERE "songId" IN (SELECT id FROM "Song" WHERE slug = $1)', [SLUG]);
+    await pg.query('DELETE FROM "Song" WHERE slug = $1', [SLUG]);
     await pg.query("COMMIT");
   }
   await pg.end();
@@ -880,6 +882,53 @@ describe("8. GET /api/setlist reports how it resolved minRev (x-snapshot-verify)
     const rev = await currentRev();
     expect((await getSetlist(`&minRev=${rev}`)).verify).toBe("satisfied");
     expect((await getSetlist(`&minRev=0&hint=1`)).verify).toBe("satisfied");
+  });
+
+  it("a revision from an admin song save leads to a fresh snapshot with the original and requested names", async () => {
+    const song = await prisma.song.create({
+      data: {
+        slug: SLUG,
+        originalTitle: "[QA] 雨の日の曲",
+        originalLanguage: "ja",
+        variantLabel: "公演版",
+        translations: { create: [
+          { locale: "ko", title: "[QA] 비 오는 날의 곡", variantLabel: "공연판" },
+          { locale: "en", title: "[QA] Rainy Day Song", variantLabel: "Concert version" },
+        ] },
+      },
+    });
+    const res = await expectOneSave(() =>
+      ADMIN_CREATE(req("http://x/api/admin/setlist-items", {
+        eventId: eventId.toString(),
+        position: 9001,
+        type: "song",
+        songIds: [Number(song.id)],
+      })),
+    );
+    expect(res.status).toBe(201);
+    const { id, rev } = await res.json();
+    for (const locale of ["ko", "en", "ja"] as const) {
+      const snapshot = await SETLIST_GET(req(
+        `http://x/api/setlist?eventId=${eventId}&locale=${locale}&minRev=${rev}`,
+        null,
+        "GET",
+      ));
+      expect(snapshot.status).toBe(200);
+      expect(snapshot.headers.get("x-snapshot-verify")).toBe("satisfied");
+      const { items } = await snapshot.json();
+      const saved = items.find((item: { id: number }) => String(item.id) === String(id));
+      expect(saved?.songs[0].song).toMatchObject({
+        id: Number(song.id),
+        originalTitle: song.originalTitle,
+        originalLanguage: "ja",
+        variantLabel: "公演版",
+        translations: locale === "ja" ? [] : [
+          locale === "ko"
+            ? { locale, title: "[QA] 비 오는 날의 곡", variantLabel: "공연판" }
+            : { locale, title: "[QA] Rainy Day Song", variantLabel: "Concert version" },
+        ],
+      });
+    }
   });
 
   // Memo / coalesced-waiter / deferred outcomes depend on timing (the
