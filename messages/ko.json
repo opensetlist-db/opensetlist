@@ -233,6 +233,7 @@
       "basicOptions": "특전 없는 구매 옵션",
       "storeCount": "판매점 {count}곳",
       "deadline": "특전 마감: {time}",
+      "label": "구매 특전",
       "buyAt": "{store}에서 상품 보기",
       "officialInfo": "공식 상품 안내",
       "status": {

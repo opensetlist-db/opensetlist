@@ -67,13 +67,13 @@ describe("bonus lifecycle against PostgreSQL", () => {
     });
     const missingRevision = await patchBonus(make("/bonus", { originalBonusType: tag }), context);
     expect(missingRevision.status).toBe(400);
-    const edited = await patchBonus(make("/bonus", { originalBonusType: `${tag}-edited`, expectedRevision: 0 }), context);
+    const edited = await patchBonus(make("/bonus", { sourceUrl: "https://example.com/reviewed", expectedRevision: 0 }), context);
     expect(edited.status).toBe(200);
     expect((await edited.json()).revision).toBe(1);
     const stale = { ...payload(randomUUID()), listingId: listing.id };
     expect((await POST(request(stale), context)).status).toBe(409);
 
-    const listingEdit = await patchListing(make("/listing", { originalStoreName: `${tag}-edited-store`, status: "active" }),
+    const listingEdit = await patchListing(make("/listing", { sourceUrl: "https://example.com/reviewed" }),
       { params: Promise.resolve({ id: listing.id }) });
     expect(listingEdit.status).toBe(200);
     expect((await listingEdit.json()).revision).toBe(1);
