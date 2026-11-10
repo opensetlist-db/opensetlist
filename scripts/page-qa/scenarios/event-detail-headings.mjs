@@ -6,7 +6,9 @@ const headings = [
   '#event-series-title',
 ];
 
-async function checkHeadings({ page, name, check }, selectors, singleLine) {
+const widths = [320, 375, 390, 430, 1440];
+
+async function checkHeadings({ page, name, check }, selectors) {
   for (const selector of selectors) {
     const result = await page.locator(selector).evaluateAll((elements) => elements.map((el) => {
       const range = document.createRange();
@@ -14,15 +16,27 @@ async function checkHeadings({ page, name, check }, selectors, singleLine) {
       const rects = [...range.getClientRects()];
       const box = el.getBoundingClientRect();
       const parent = el.parentElement.getBoundingClientRect();
+      const header = el.closest('[class$="__panelHead"]');
+      const siblings = new Set([...el.parentElement.children, ...(header?.children ?? [])]);
+      const overlap = [...siblings].some((sibling) => {
+        if (sibling.contains(el)) return false;
+        const peer = sibling.getBoundingClientRect();
+        return box.left < peer.right && box.right > peer.left &&
+          box.top < peer.bottom && box.bottom > peer.top;
+      });
       return {
         text: el.textContent.trim(),
         lines: new Set(rects.filter((r) => r.width > 0).map((r) => Math.round(r.top))).size,
         width: Math.round(box.width),
         parentWidth: Math.round(parent.width),
         overflow: el.scrollWidth > el.clientWidth + 1 || box.right > parent.right + 1,
+        overlap,
       };
     }));
-    check(name(`${selector}: ${singleLine ? 'one line without overflow' : 'no overflow'}`), result.length === 1 && (!singleLine || result[0].lines === 1) && !result[0].overflow, JSON.stringify(result));
+    const [title] = result;
+    check(name(`${selector}: one line without overflow or overlap`),
+      result.length === 1 && title.lines === 1 && !title.overflow && !title.overlap,
+      JSON.stringify(result));
   }
 }
 
@@ -31,18 +45,20 @@ const scenario = {
   async run(h) {
     await h.layoutMatrix({
       path: (locale) => `/${locale}/events/107/lovelive-15th-fes-day1`,
-      widths: [320, 375, 390, 430, 1440],
-      cell: (cell) => checkHeadings(cell, headings, true),
+      widths,
+      cell: (cell) => checkHeadings(cell, headings),
     });
     await h.layoutMatrix({
       prefix: 'completed',
       path: (locale) => `/${locale}/events/81/niji-5th-live-cdcs-day1`,
-      widths: [320, 1440],
+      widths,
       cell: async (cell) => {
-        await checkHeadings(cell, headings, true);
-        await checkHeadings(cell, ['#event-bd-title'], false);
+        await checkHeadings(cell, [...headings, '#event-bd-title']);
         const rows = await cell.page.locator('ol[class*="setlistList"] > li').count();
         cell.check(cell.name('actual setlist is populated'), rows > 0, `${rows} rows`);
+        const purchase = cell.page.getByTestId('event-bd-purchase');
+        cell.check(cell.name('BD purchase link is visible'), await purchase.isVisible() &&
+          (await purchase.getAttribute('href'))?.endsWith('?tab=bonus'));
       },
     });
   },
