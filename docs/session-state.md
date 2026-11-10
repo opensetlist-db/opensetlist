@@ -111,6 +111,29 @@ For a tooling task without device testing, use an empty attestation requirement
 list. Define the actual required independent reviews; a green provider status
 or a skipped check never substitutes for an explicit review pass.
 
+## PR handoff and external review
+
+Start the state file when assigning a ticket that requires PR follow-up.
+Record the PR and current head with `observe-pr`. Use `record-check`
+for CI and Preview, with the run or deployment URL in `ref`. Use
+`record-review` for the SHA the reviewer actually reviewed, with the
+review link in `ref`.
+
+For an external review, keep the approval and packet in operator-owned
+files. Record their reference with `record-evidence` on the approved
+head. The approval record names the destination, approved material and
+exclusions, and the user's approval source. If the user gives an
+earliest call time, record that timestamp and source in the same record.
+Keep approval and execution separate. An approved review remains
+`unrun` until it executes. Check the packet against the approved head, scope and earliest
+call time before sending. Use the retry ledger below for observed
+provider rate limits.
+
+After a review fix, observe the new head and record its checks separately.
+Link the prior review and the fix commit as evidence. Keep the review
+attached to the SHA it covered, even if an operator authorizes merge
+based on that review and the fix. The `complete` rules below still apply.
+
 ## Observation and transition events
 
 All events are JSON files passed to `apply --revision N --event event.json`.

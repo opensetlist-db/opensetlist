@@ -5,6 +5,13 @@ import {
   type SongAlbumsVocalTrack,
 } from "@/lib/songAlbums";
 
+const listing = (status: string, count: number) => ({
+  status, originalStoreName: "Store", productUrl: "https://example.com/product",
+  includesPerformanceVideo: true, isBonusOption: true, storeKey: "store", officialOrder: null,
+  startsAt: null, endsAt: null,
+  bonuses: Array.from({ length: count }, () => ({ startsAt: null, endsAt: null, endedAt: null })),
+});
+
 function album(overrides: Partial<SongAlbumsAlbum> = {}): SongAlbumsAlbum {
   return {
     id: "1",
@@ -101,8 +108,8 @@ describe("getSongAlbums", () => {
       track({
         album: album({
           listings: [
-            { status: "active", bonuses: [{}, {}, {}] },
-            { status: "sold_out", bonuses: [{}] },
+            listing("active", 3),
+            listing("sold_out", 1),
           ],
         }),
       }),
@@ -115,8 +122,8 @@ describe("getSongAlbums", () => {
       track({
         album: album({
           listings: [
-            { status: "active", bonuses: [{}, {}] },
-            { status: "ended", bonuses: [{}, {}, {}] },
+            listing("active", 2),
+            listing("ended", 3),
           ],
         }),
       }),
@@ -128,7 +135,7 @@ describe("getSongAlbums", () => {
     const result = getSongAlbums([
       track({
         album: album({
-          listings: [{ status: "ended", bonuses: [{}, {}] }],
+          listings: [listing("ended", 2)],
         }),
       }),
     ]);

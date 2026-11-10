@@ -166,6 +166,17 @@ describe("admin and CSV relationship order on isolated dev fixtures", () => {
     expect(revalidateTag).toHaveBeenCalledWith("public-data", { expire: 0 });
     await vi.waitFor(async () => expect(await cache.get(`${PREFIX}csv-warm`)).toBeNull());
     expect((await (await run(csv)).json()).count).toBe(0);
+    const beforeConflict = await relations();
+    const conflicting = ["artistSlug,memberSlug,sortOrder",
+      `${unitA.slug},${members[2].slug},1`,
+      `${unitA.slug},${members[2].slug},2`,
+    ].join("\n");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const rejected = await (await run(conflicting)).json();
+      expect(rejected.count).toBe(0);
+      expect(rejected.log.filter((line: string) => line.includes("conflicting ranks"))).toHaveLength(2);
+      expect(await relations()).toEqual(beforeConflict);
+    }
     await run(`artistSlug,memberSlug,sortOrder\n${unitA.slug},${members[2].slug},`);
     expect(await order(unitA.id)).toEqual([members[1].id, members[2].id, members[0].id]);
     // An artist/member may exist with no relationship; it is an error,

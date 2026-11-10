@@ -14,11 +14,26 @@ export function parseMembershipRank(raw: string | undefined): number | null | un
 export async function importMembershipOrders(rows: readonly Record<string, string>[]) {
   let count = 0;
   const log: string[] = [];
-  for (const [index, row] of rows.entries()) {
+  const parsed = rows.map((row) => ({
+    row,
+    pair: JSON.stringify([row.artistSlug, row.memberSlug]),
+    sortOrder: parseMembershipRank(row.sortOrder),
+  }));
+  const desired = new Map<string, number | null>();
+  const conflicts = new Set<string>();
+  for (const { row, pair, sortOrder } of parsed) {
+    if (!row.artistSlug || !row.memberSlug || sortOrder === "invalid" || sortOrder === undefined) continue;
+    if (desired.has(pair) && desired.get(pair) !== sortOrder) conflicts.add(pair);
+    desired.set(pair, sortOrder);
+  }
+  for (const [index, { row, pair, sortOrder }] of parsed.entries()) {
     const label = `Row ${index + 2} (${row.artistSlug ?? ""}/${row.memberSlug ?? ""})`;
-    const sortOrder = parseMembershipRank(row.sortOrder);
     if (!row.artistSlug || !row.memberSlug || sortOrder === "invalid") {
       log.push(`ERROR: ${label}: artistSlug/memberSlug and signed 32-bit sortOrder or __CLEAR__ required`);
+      continue;
+    }
+    if (conflicts.has(pair)) {
+      log.push(`ERROR: ${label}: conflicting ranks for the same membership`);
       continue;
     }
     // A row transaction changes only this pair's rank. It never upserts
@@ -28,7 +43,7 @@ export async function importMembershipOrders(rows: readonly Record<string, strin
         const artist = await tx.artist.findFirst({ where: { slug: row.artistSlug, isDeleted: false }, select: { id: true } });
         const member = await tx.stageIdentity.findUnique({ where: { slug: row.memberSlug }, select: { id: true } });
         if (!artist || !member) return "missing";
-        const where = { stageIdentityId: member.id, artistId: artist.id };
+        const where = { stageIdentityId: member.id, artistId: artist.id, artist: { isDeleted: false } };
         if (sortOrder !== undefined) {
           const result = await tx.stageIdentityArtist.updateMany({
             where: { ...where, ...(sortOrder === null
@@ -38,7 +53,7 @@ export async function importMembershipOrders(rows: readonly Record<string, strin
           });
           if (result.count) return "updated";
         }
-        const relation = await tx.stageIdentityArtist.findUnique({ where: { stageIdentityId_artistId: where } });
+        const relation = await tx.stageIdentityArtist.findFirst({ where, select: { id: true } });
         return relation ? "preserved" : "missing";
       });
       if (result === "missing") log.push(`ERROR: ${label}: artist, member or existing membership not found (no relation created)`);

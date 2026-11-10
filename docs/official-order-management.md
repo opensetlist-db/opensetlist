@@ -26,7 +26,8 @@ unit-slug,preserve-this-member,
 
 Blank or missing cells preserve. `__CLEAR__` clears; the word `null`, fractions,
 NaN, exponents and out-of-range integers are errors. Missing artists, members
-or memberships are row errors, including preserve rows. Each row transaction
+or memberships are row errors, including preserve rows. Conflicting ranks for the
+same pair are rejected before writing that pair. Each row transaction
 changes only the existing pair's rank. Successful rows remain committed on
 partial failure; replay is safe and reports unchanged rows as PRESERVED.
 The response `count` is the number of changed rows, with UPDATED/PRESERVED/ERROR

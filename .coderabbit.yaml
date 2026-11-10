@@ -10,6 +10,7 @@ reviews:
       - "main"
       - "dev"
       - "feature/redesign"
+      - "feature/event-og-renewal"
     drafts: false
     ignore_title_keywords:
       - "WIP"

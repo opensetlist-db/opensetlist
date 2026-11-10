@@ -56,6 +56,7 @@ interface ButtonBaseProps {
    *  inline style. Style cascade: variant defaults → className →
    *  inline `style`. */
   className?: string;
+  testId?: string;
 }
 
 /**
@@ -68,6 +69,7 @@ interface ButtonBaseProps {
  */
 
 export function PrimaryButton({
+  testId,
   children,
   onClick,
   fullWidth = false,
@@ -80,6 +82,7 @@ export function PrimaryButton({
 }: ButtonBaseProps) {
   return (
     <button
+      data-testid={testId}
       type={type}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
@@ -97,6 +100,7 @@ export function PrimaryButton({
 }
 
 export function SecondaryButton({
+  testId,
   children,
   onClick,
   fullWidth = false,
@@ -114,6 +118,7 @@ export function SecondaryButton({
       type={type}
       onClick={disabled ? undefined : onClick}
       onPointerEnter={() => !disabled && setHovered(true)}
+      data-testid={testId}
       onPointerLeave={() => setHovered(false)}
       onPointerCancel={() => setHovered(false)}
       disabled={disabled}

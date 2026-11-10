@@ -1,4 +1,9 @@
 {
+  "EventShareCard": {
+    "prediction": "セットリスト予想",
+    "live": "セットリスト速報",
+    "setlist": "セットリスト公開"
+  },
   "Home": {
     "title": "OpenSetlist",
     "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",
@@ -222,10 +227,17 @@
       "events": "関連公演の情報は準備中です。"
     },
     "bonus": {
+      "options": "特典付き購入オプション",
+      "basicOptions": "特典なしの購入オプション",
+      "storeCount": "販売店 {count}店",
+      "deadline": "特典締切：{time}",
+      "buyAt": "{store}で商品を見る",
+      "officialInfo": "公式商品情報",
       "status": {
         "active": "販売中",
         "ended": "終了"
       },
+      "affiliateDisclosure": "Amazonアソシエイトリンクです。Amazonのアソシエイトとして、OpenSetlistは適格販売により収入を得ています。",
       "buy": "購入する",
       "showEnded": "{count, plural, other {終了済みの店舗を見る (#)}}",
       "summary": {
@@ -233,7 +245,7 @@
         "current": "現在 {count}",
         "ended": "終了 {count}"
       },
-      "empty": "登録された店舗情報がありません。"
+      "empty": "購入リンクは登録されていません。"
     },
     "tracks": {
       "discN": "Disc {disc}",
@@ -865,5 +877,16 @@
     "memberTitleNoGroup": "{name} | 歌唱曲・出演ライブ | OpenSetlist",
     "seriesTitle": "{name} 全公演セットリスト | OpenSetlist",
     "seriesDescription": "{name}の全公演のセットリスト・曲順"
+  },
+  "EventSharePage": {
+    "heading": "OpenSetlist イベント共有カード",
+    "opening": "イベントの詳細ページを開きます。移動しない場合はリンクを選択してください。",
+    "open": "イベントの詳細を開く",
+    "correctionHeading": "この共有カードは訂正されています",
+    "correctionBody": "元のカードは記録として残しています。最新の情報は訂正後のカードをご確認ください。",
+    "openCorrection": "訂正後の共有カードを開く",
+    "correctionUnavailable": "訂正後のカードは現在利用できません。下のリンクからイベント詳細をご確認いただけます。",
+    "suspensionHeading": "この共有カードの公開は停止されています",
+    "suspensionBody": "この版のカードは現在公開していません。最新のイベント情報は下のリンクからご確認ください。"
   }
 }

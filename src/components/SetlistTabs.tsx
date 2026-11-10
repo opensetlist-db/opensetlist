@@ -118,6 +118,7 @@ export function SetlistTabs({
     >
       <TabButton
         id={tabIds.predicted}
+        testId="setlist-tab-predicted"
         panelId={panelIds.predicted}
         active={effectiveActiveTab === "predicted"}
         onClick={() => onTabChange("predicted")}
@@ -130,6 +131,7 @@ export function SetlistTabs({
       />
       <TabButton
         id={tabIds.actual}
+        testId="setlist-tab-actual"
         panelId={panelIds.actual}
         active={effectiveActiveTab === "actual"}
         onClick={() => onTabChange("actual")}
@@ -144,6 +146,7 @@ export function SetlistTabs({
 }
 
 function TabButton({
+  testId,
   id,
   panelId,
   active,
@@ -153,6 +156,7 @@ function TabButton({
   buttonRef,
 }: {
   id: string;
+  testId: string;
   panelId: string;
   active: boolean;
   onClick: () => void;
@@ -170,6 +174,7 @@ function TabButton({
     <button
       type="button"
       id={id}
+      data-testid={testId}
       ref={buttonRef}
       role="tab"
       aria-selected={active}

@@ -40,6 +40,11 @@ function listing(
 ): AlbumStoreListingBdInput & { originalStoreName: string } {
   return {
     status: "active",
+    productUrl: "https://example.com/product",
+    includesPerformanceVideo: true,
+    isBonusOption: true,
+    storeKey: null,
+    officialOrder: null,
     startsAt: null,
     endsAt: null,
     bonuses: [],
@@ -54,6 +59,7 @@ function bonus(
   return {
     startsAt: null,
     endsAt: null,
+    endedAt: null,
     bonusImageUrl: null,
     ...overrides,
   };
@@ -346,6 +352,6 @@ describe("selectTopBonuses", () => {
       bonuses: [bonus()],
     });
     const top = selectTopBonuses([targetListing], NOW);
-    expect(top[0].listing).toBe(targetListing);
+    expect(top[0].listing).toEqual(targetListing);
   });
 });

@@ -10,7 +10,8 @@
  *      walked up the `parentArtistId` chain to their ROOT group, so a
  *      member linked only to a sub-unit (Cerise Bouquet) still lands
  *      on its group (Hasunosora). Guests count too — a guest's group
- *      is on stage, fans predict its songs.
+ *      is on stage, fans predict its songs. Side projects require an
+ *      explicit per-event collaboration assignment instead.
  *   2. The page loads one catalog per root (`getAvailableSongsCached`,
  *      root + all descendants — the same cache entry the group's own
  *      single-artist events use).
@@ -21,10 +22,8 @@
  *   4. `deriveFestivalFilters` (in `unitFilters.ts`) — `all` + one
  *      chip per group.
  *
- * Known gap (v1, by decision): an act with no member rows on the
- * roster (the Musical guest slot) is unreachable here, so its songs
- * aren't in the picker. Fans are not expected to predict the guest
- * slot; revisit after Day.1.
+ * Ordinary groups need roster members; an explicitly assigned
+ * collaboration may appear without any member affiliations recorded.
  *
  * Pure — no Prisma / Next imports, so it unit-tests in isolation.
  */
@@ -60,13 +59,16 @@ export interface FestivalGroupRef {
  * This is the ONE place festival roots are ordered: the fan board's
  * chips and the prediction picker's chips both come from here.
  *
- * A performer linked to two roots (a member of a cross-IP collab
- * group) counts toward both; that is what puts the collab group's
- * chip on the row at all.
+ * Side-project membership alone does not establish a collaboration's
+ * appearance: members of GKSS or AiScReam may attend as part of their
+ * home groups. Only the operator's per-event assignment adds a side
+ * project, regardless of how many of its members attend. No assignment
+ * changes membership data or the side project's own headlined shows.
  */
 export function resolveFestivalGroups(
   roster: readonly EventRosterEntry[],
   hierarchy: ArtistHierarchy,
+  collaborationArtistIds: readonly (bigint | number | string)[] = [],
 ): FestivalGroupRef[] {
   const counts = new Map<string, number>();
   for (const entry of roster) {
@@ -77,9 +79,18 @@ export function resolveFestivalGroups(
     }
     for (const root of roots) counts.set(root, (counts.get(root) ?? 0) + 1);
   }
+  const assigned = new Set(collaborationArtistIds.map(String));
+  for (const id of assigned) {
+    // A stale/deleted/reclassified assignment cannot invent an artist
+    // outside the live hierarchy, or turn a sub-unit into another root.
+    if (hierarchy.sideProjects.has(id) && hierarchy.parentOf.get(id) === null) {
+      if (!counts.has(id)) counts.set(id, 0);
+    }
+  }
   // Map iteration is insertion order, and `Array.prototype.sort` is
   // stable, so equal keys keep first-appearance order.
   return [...counts]
+    .filter(([root]) => !hierarchy.sideProjects.has(root) || assigned.has(root))
     .map(([rootId, performerCount]) => ({
       rootId,
       performerCount,
