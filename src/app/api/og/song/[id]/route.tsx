@@ -1,10 +1,9 @@
 import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
-import {
-  pickLocaleTranslation,
-  formatDate,
-} from "@/lib/utils";
-import { displayNameWithFallback } from "@/lib/display";
+import { OgName } from "@/lib/ogName";
+import { shareName } from "@/lib/shareNames";
+import { formatDate } from "@/lib/utils";
+import { resolveDisplayPair } from "@/lib/display";
 import { deriveOgPaletteFromSong, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
 import {
@@ -59,21 +58,16 @@ export async function GET(req: Request, { params }: Props) {
       return new Response("Not found", { status: 404 });
     }
 
-    const t = pickLocaleTranslation(song.translations, lang);
-    const title = t?.title ?? song.originalTitle ?? FALLBACK_TITLES[lang].song;
-
-    const firstArtist = song.artists[0]?.artist ?? null;
-    const artistName = firstArtist
-      ? displayNameWithFallback(firstArtist, firstArtist.translations, lang)
-      : "";
-    const releaseYear = song.releaseDate
-      ? String(song.releaseDate.getUTCFullYear())
-      : "";
-    const subtitle = [artistName, releaseYear].filter(Boolean).join(" · ");
+    const title = resolveDisplayPair(
+      { original: song.originalTitle || FALLBACK_TITLES[lang].song, originalLanguage: song.originalLanguage },
+      song.translations, lang, "title", { kind: "title" },
+    );
+    const firstArtist = song.artists[0]?.artist;
+    const artistName = firstArtist ? shareName(firstArtist, lang) : null;
 
     const dateStr = song.releaseDate ? formatDate(song.releaseDate, lang) : "";
     const pillLabel = SONG_PILL_LABEL[lang];
-    const sized = titleFontSize(title, 72);
+
 
     return new ImageResponse(
       (
@@ -121,11 +115,11 @@ export async function GET(req: Request, { params }: Props) {
               display: "flex",
               flexDirection: "column",
               position: "absolute",
-              top: 95,
+              top: 62,
               left: 80,
-              width: 700,
-              minHeight: 440,
-              padding: "48px",
+              width: 960,
+              minHeight: 500,
+              padding: "32px 40px",
               background: "rgba(255, 255, 255, 0.05)",
               border: "1px solid rgba(255, 255, 255, 0.1)",
               borderRadius: 24,
@@ -142,42 +136,14 @@ export async function GET(req: Request, { params }: Props) {
                 fontSize: 18,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                marginBottom: 28,
+                marginBottom: 18,
               }}
             >
               {pillLabel}
             </div>
 
-            <div
-              style={{
-                display: "-webkit-box",
-                fontSize: sized.fontSize,
-                fontWeight: 700,
-                lineHeight: 1.1,
-                color: "#ffffff",
-                overflow: "hidden",
-                letterSpacing: "-0.015em",
-              }}
-            >
-              {title}
-            </div>
-
-            {subtitle && (
-              <div
-                style={{
-                  display: "flex",
-                  marginTop: 20,
-                  fontSize: 30,
-                  lineHeight: 1.3,
-                  color: "rgba(255, 255, 255, 0.8)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {subtitle}
-              </div>
-            )}
+            <OgName name={title} size={titleFontSize(title.main, 72).fontSize} />
+            {artistName && <OgName name={artistName} size={30} secondary />}
 
             <div style={{ display: "flex", flex: 1 }} />
 
@@ -186,7 +152,7 @@ export async function GET(req: Request, { params }: Props) {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginTop: 32,
+                marginTop: 18,
               }}
             >
               <div

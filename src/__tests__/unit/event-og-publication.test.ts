@@ -50,6 +50,37 @@ describe("published event-card transport", () => {
       expect(html).not.toContain("untrusted.invalid");
     } finally { vi.unstubAllEnvs(); vi.clearAllMocks(); }
   });
+  it("serves a new bilingual snapshot without interpreting old localized fields as visible names", async () => {
+    const params = { locale: "ko", eventId: card.eventId, mode: card.mode, revision: card.publicationId };
+    const destination = "/ko/events/7/event-seven";
+    const shareUrl = card.shareUrl.replace("/ja/", "/ko/");
+    const names = {
+      event: { main: "夏の公演", sub: "여름 공연", lang: "ja" },
+      series: { main: "Day.1", sub: null, lang: "en" },
+      artist: null,
+      venue: null,
+    };
+    const alt = "夏の公演 / 여름 공연의 세트리스트 예상 카드";
+    const content = { ...card.content, names, title: "夏の公演 / 여름 공연 | OpenSetlist", alt };
+    vi.mocked(lookupPublication).mockResolvedValueOnce({ ...card, locale: "ko", shareUrl, content });
+    const response = await GET(new Request(shareUrl), { params: Promise.resolve(params) });
+    expect(response.status).toBe(200);
+    const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+    expect(doc.documentElement.lang).toBe("ko");
+    expect(doc.querySelector("h1 span[lang=ja]")?.textContent).toBe(names.event.main);
+    expect(doc.querySelector("h1 span[lang=ko]")?.textContent).toBe(names.event.sub);
+    expect(doc.querySelector("meta[property='og:title']")?.getAttribute("content")).toBe(content.title);
+    expect(doc.querySelector("meta[property='og:image:alt']")?.getAttribute("content")).toBe(alt);
+    expect(doc.querySelector("img")?.alt).toBe(alt);
+    expect(doc.querySelector("[data-event-destination]")?.getAttribute("href")).toBe(destination);
+    expect(doc.body.textContent!.match(/Day\.1/g)).toHaveLength(1);
+
+    const historical = new DOMParser().parseFromString(eventShareHtml(card, "/ja/events/7/event-seven", copy), "text/html");
+    expect(historical.querySelector("h1")?.textContent).toBe(card.content.officialEventTitle);
+    expect(historical.querySelector("h1 span[lang]")).toBeNull();
+    expect(historical.querySelector("img")?.src).toBe(card.image.url);
+    expect(historical.querySelector("img")?.alt).toBe(card.content.alt);
+  });
   it("keeps a suspended card on a neutral accessible notice without frozen content or correction/navigation/image leakage", () => {
     const parse = (html: string) => new DOMParser().parseFromString(html, "text/html");
     const normal = eventShareHtml({ ...card, correction: { replacementUrl: card.shareUrl } }, "/ja/events/7/current-slug", copy);

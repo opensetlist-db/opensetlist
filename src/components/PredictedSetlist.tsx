@@ -1,5 +1,6 @@
 "use client";
 
+import type { ShareNames } from "@/lib/shareNames";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
@@ -77,6 +78,7 @@ interface Props {
   seriesName: string;
   eventTitle: string;
   dateLine: string;
+  shareNames?: ShareNames;
   /**
    * Catalog for the song picker (server-fetched in `page.tsx` via
    * `getAvailableSongs`). Empty array on multi-artist festivals or
@@ -129,6 +131,7 @@ export function PredictedSetlist({
   seriesName,
   eventTitle,
   dateLine,
+  shareNames,
   availableSongs,
   unitFilters,
   boardGroups,
@@ -698,6 +701,7 @@ export function PredictedSetlist({
         seriesName={seriesName}
         eventTitle={eventTitle}
         dateLine={dateLine}
+        shareNames={shareNames}
         locale={locale}
         status={status}
         actualSongs={actualSongs}

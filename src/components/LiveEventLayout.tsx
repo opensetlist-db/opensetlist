@@ -1,5 +1,6 @@
 "use client";
 
+import type { ShareNames } from "@/lib/shareNames";
 import { useMemo } from "react";
 import { createEventDisplayOrdering, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
 // `useSetlistPolling` is only a type source here. The hook itself has
@@ -94,6 +95,7 @@ interface Props {
    */
   seriesShortName: string | null;
   eventShortName: string | null;
+  shareNames?: ShareNames;
 
   // EventImpressions independent polling state (its own hook owns it).
   // The cursor + total are computed by the SSR fetch and threaded
@@ -210,6 +212,7 @@ export function LiveEventLayout({
   city,
   seriesShortName,
   eventShortName,
+  shareNames,
   initialImpressions,
   initialImpressionsNextCursor,
   initialImpressionsTotalCount,
@@ -415,29 +418,11 @@ export function LiveEventLayout({
           snapshotCapturedAt={capturedAt ?? undefined}
           isWishPredictOpen={isWishPredictOpen}
           board={board}
-          // Share-card header pair. v0.11.6 added short-variant
-          // preference (operator preference): the captured PNG is
-          // space-constrained, and long series names like the
-          // Hasunosora tour ("ラブライブ！蓮ノ空女学院スクールアイドルクラブ
-          // 6TH LIVE DREAM ~BLOOM GARDEN PARTY~") wrap across multiple
-          // lines and visually dominate the card. Each input prefers
-          // its short variant via `displayNameWithFallback(..., "short")`
-          // resolved upstream by the page; falls back to the full
-          // variant when no short exists.
-          //
-          //   - `seriesName`: short series name when the event belongs
-          //     to a series, else empty string (preview hides the
-          //     series row in that case).
-          //   - `eventTitle`: short event-specific identifier (e.g.
-          //     "Hyogo Day.1" instead of "Garden Stage / Hyogo Day.1").
-          //
-          // `dateLine`: "2026.05.02 · venue" under the title, as the
-          // approved 18-share-v1 cards print it (the card had carried
-          // no date row since v0.11.6). Built from the venue date's
-          // UTC parts — the stored calendar date, not the viewer's.
+          // Keep the legacy caller working while the detail page adopts shareNames.
           seriesName={seriesShortName ?? series?.name ?? ""}
           eventTitle={eventShortName ?? title}
-          dateLine={shareDateLine(date, venue)}
+          dateLine={shareDateLine(date, shareNames ? null : venue)}
+          shareNames={shareNames}
           availableSongs={availableSongs}
           unitFilters={unitFilters}
           setlistStartLabel={setlistStartLabel}

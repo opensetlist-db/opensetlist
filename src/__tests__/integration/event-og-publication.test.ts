@@ -25,6 +25,11 @@ const root = process.cwd();
 const storage = () => new MemoryImageStorage(NAMESPACE, "https://images.test.invalid/og02itest");
 const originalName = "カード発行テスト Day.1";
 const originalVenue = "テスト会場";
+const names = {
+  ja: { name: originalName, venue: originalVenue },
+  ko: { name: "카드 발행 테스트 Day.1", venue: "테스트 공연장" },
+  en: { name: "Card publication test Day.1", venue: "Test Hall" },
+};
 
 async function purge() {
   const ids = (await prisma.event.findMany({ where: { slug: { startsWith: PREFIX } }, select: { id: true } })).map((e) => e.id);
@@ -37,7 +42,8 @@ async function purge() {
 beforeAll(async () => {
   await purge();
   const row = await prisma.event.create({ data: { slug: `${PREFIX}${Date.now()}`, originalName, originalLanguage: "ja",
-    type: "concert", status: "scheduled", startTime: new Date("2099-07-11T08:00:00Z"), date: new Date("2099-07-11T00:00:00Z"), originalVenue } });
+    type: "concert", status: "scheduled", startTime: new Date("2099-07-11T08:00:00Z"), date: new Date("2099-07-11T00:00:00Z"), originalVenue,
+    translations: { create: Object.entries(names).map(([locale, fields]) => ({ locale, ...fields })) } } });
   eventId = String(row.id);
   folder = await mkdtemp(path.join(tmpdir(), "og02-itest-"));
   manifest = await preparePreview({ root, events: await readCardEvents(prisma, [eventId]), output: path.join(folder, "packet") });
@@ -50,6 +56,7 @@ afterAll(async () => {
   await purge();
   expect(await prisma.event.count({ where: { slug: { startsWith: PREFIX } } })).toBe(0);
   expect(await prisma.eventCardPublication.count({ where: { namespace: NAMESPACE } })).toBe(0);
+  expect(await prisma.eventCardWriteAttempt.count({ where: { namespace: NAMESPACE } })).toBe(0);
   expect(await prisma.imageAsset.count({ where: { objectKey: { startsWith: `${NAMESPACE}/event-cards/` } } })).toBe(0);
   if (folder) await rm(folder, { recursive: true, force: true });
 });
@@ -98,10 +105,14 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
     expect(first.status).toBe("created");
     expect(Object.keys(first.urls).sort()).toEqual(["en", "ja", "ko"]);
     expect(mem.objects.size).toBe(3);
-    for (const locale of ["ja", "ko", "en"]) {
+    for (const locale of ["ja", "ko", "en"] as const) {
       const card = await lookup(input.revision, "prediction", locale);
       expect(card?.shareUrl).toBe(first.urls[locale]);
       expect(card?.content?.officialEventTitle).toBe(originalName);
+      expect(card?.content?.names?.event).toEqual({ main: originalName, sub: locale === "ja" ? null : names[locale].name, lang: "ja" });
+      const title = locale === "ja" ? originalName : `${originalName} / ${names[locale].name}`;
+      expect(card?.content?.title).toContain(`${title} |`);
+      expect(card?.content?.alt).toContain(title);
       expect(card?.image).toMatchObject({ width: 1200, height: 630, mimeType: "image/png" });
       expect([...mem.objects.values()].some((o) => o.sha256 === card?.image?.sha256)).toBe(true);
       expect((await readFile(input.approvalFile, "utf8"))).toContain("evidenceFile");
@@ -119,9 +130,10 @@ describe("event-card lifecycle: real dev DB and immutable memory storage", () =>
   it("rejects stale facts while historical content and current canonical slug stay independent", async () => {
     const mem = storage(); const first = await request();
     await publishPreview(first, { storage: mem, origin: ORIGIN });
-    const before = await lookup(first.revision);
+    const before = await lookup(first.revision, "prediction", "ko");
+    expect(before?.content?.names?.event.sub).toBe(names.ko.name);
     await prisma.event.update({ where: { id: BigInt(eventId) }, data: { originalName: "Changed title", originalVenue: "Changed venue", date: new Date("2099-07-12T00:00:00Z"), slug: `${PREFIX}changed-${Date.now()}` } });
-    const changed = await lookup(first.revision);
+    const changed = await lookup(first.revision, "prediction", "ko");
     expect(changed?.content).toEqual(before?.content);
     expect(changed?.image).toEqual(before?.image);
     expect(changed?.slug).not.toBe(before?.slug);

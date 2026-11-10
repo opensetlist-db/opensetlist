@@ -1,5 +1,6 @@
 {
   "EventShareCard": {
+    "imageAlt": "{names}の{label}カード",
     "prediction": "セットリスト予想",
     "live": "セットリスト速報",
     "setlist": "セットリスト公開"

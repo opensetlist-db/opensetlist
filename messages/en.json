@@ -1,5 +1,6 @@
 {
   "EventShareCard": {
+    "imageAlt": "{label} card for {names}",
     "prediction": "Setlist predictions",
     "live": "Live setlist",
     "setlist": "Published setlist"

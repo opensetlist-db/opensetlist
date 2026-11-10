@@ -1,5 +1,6 @@
 "use client";
 
+import type { ShareNames } from "@/lib/shareNames";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistSection } from "@/components/SetlistSection";
@@ -117,6 +118,7 @@ interface Props {
   seriesName: string;
   eventTitle: string;
   dateLine: string;
+  shareNames?: ShareNames;
   /**
    * Catalog + filter chips for the predicted-tab song picker.
    * Threaded through to `<SetlistSection>` → `<PredictedSetlist>`.
@@ -163,6 +165,7 @@ export function LiveSetlist({
   seriesName,
   eventTitle,
   dateLine,
+  shareNames,
   availableSongs,
   unitFilters,
   eventArtistId,
@@ -399,6 +402,7 @@ export function LiveSetlist({
         seriesName={seriesName}
         eventTitle={eventTitle}
         dateLine={dateLine}
+        shareNames={shareNames}
         isWishPredictOpen={isWishPredictOpen}
         emptyFallback={
           <div>

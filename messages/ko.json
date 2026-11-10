@@ -1,5 +1,6 @@
 {
   "EventShareCard": {
+    "imageAlt": "{names}의 {label} 카드",
     "prediction": "세트리스트 예상",
     "live": "실황 세트리스트",
     "setlist": "공개 세트리스트"

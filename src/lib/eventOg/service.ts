@@ -3,6 +3,8 @@ import path from "node:path";
 import sharp from "sharp";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createTranslator } from "next-intl";
+import { shareNameText } from "../shareNames";
 import { CARD_LOCALES, CARD_MODES, cardContent, type CardEvent, type CardLocale } from "./content";
 import { CardLayoutError, loadCardResources, renderCard, sha256, TEMPLATE } from "./render";
 
@@ -48,6 +50,7 @@ export async function preparePreview({ root, events, output, legacy, displayTitl
   })));
   const files: { file: string; sha256: string; width: number; height: number; bytes: number; role: string }[] = [];
   const pending = new Map<string, Buffer>();
+  const imageAlts = new Map<string, string>();
   async function add(file: string, bytes: Buffer, role: string) {
     const meta = await sharp(bytes).metadata();
     if (meta.format !== "png" || !meta.width || !meta.height) throw new Error(`PNG 검증 실패: ${file}`);
@@ -59,7 +62,10 @@ export async function preparePreview({ root, events, output, legacy, displayTitl
     if (!/^[1-9]\d*$/.test(event.id)) throw new Error("잘못된 공연 ID입니다.");
     for (const locale of CARD_LOCALES) {
       const messages = JSON.parse(await readFile(path.join(root, "messages", `${locale}.json`), "utf8"));
+      const t = createTranslator({ locale, messages, namespace: "EventShareCard" });
       const content = cardContent(event, locale);
+      const names = [...new Set([content.names.series, content.names.event, content.names.artist, content.names.venue]
+        .flatMap((name) => name ? [shareNameText(name)] : []))].join(" · ");
       const review = displayTitles.find((r) => r.eventId === event.id && r.locale === locale);
       const thumbnails: Buffer[] = [];
       for (const mode of CARD_MODES) {
@@ -80,12 +86,14 @@ export async function preparePreview({ root, events, output, legacy, displayTitl
         if (review && !officialLayoutFailure) throw new Error("공식 전체 제목이 읽기 기준에 맞으므로 표시명을 사용할 수 없습니다.");
         const { png, layout } = result;
         const prefix = `${event.id}-${locale}-${mode}`;
+        const alt = t("imageAlt", { label, names });
+        imageAlts.set(prefix, alt);
         await add(`${prefix}.png`, png, "original");
         await add(`${prefix}-600.png`, await sharp(png).resize(600, 315).png().toBuffer(), "half");
         const mobile = await sharp(png).resize(360, 189).png().toBuffer();
         await add(`${prefix}-mobile.png`, mobile, "mobile");
         thumbnails.push(mobile);
-        renditions.push({ eventId: event.id, locale, mode, content: { ...content, title: review?.title ?? content.title, purposeLabel: label, displayTitle: review ?? null }, officialLayoutFailure, layout, file: `${prefix}.png` });
+        renditions.push({ eventId: event.id, locale, mode, content: { ...content, title: review?.title ?? content.title, purposeLabel: label, alt, displayTitle: review ?? null }, officialLayoutFailure, layout, file: `${prefix}.png` });
       }
       await add(`${event.id}-${locale}-modes.png`, await sharp({ create: { width: 1080, height: 189, channels: 4, background: "white" } })
         .composite(thumbnails.map((input, i) => ({ input, left: i * 360, top: 0 }))).png().toBuffer(), "mode-comparison");
@@ -129,13 +137,15 @@ export async function preparePreview({ root, events, output, legacy, displayTitl
       h("img", { width: 1080, height: 189, src: `${event.id}-${locale}-modes.png`, alt: "모드 비교" }),
       legacy?.[`${event.id}-${locale}`] ? h("div", null, h("p", null, "기존 OG / 새 prediction"),
         h("img", { width: 1200, height: 315, src: `${event.id}-${locale}-old-new.png`, alt: "기존 OG와 새 카드" })) : null,
-      ...CARD_MODES.map((mode) => h("details", { key: mode },
-        h("summary", null, `${mode} · 원본 / 600 / 모바일`),
-        ...["", "-600", "-mobile"].map((suffix) => {
-          const file = `${event.id}-${locale}-${mode}${suffix}.png`;
-          return h("p", { key: suffix }, h("a", { href: file }, h("img", { src: file, alt: `${locale} ${mode}${suffix}` })));
-        }),
-      )),
+      ...CARD_MODES.map((mode) => {
+        const prefix = `${event.id}-${locale}-${mode}`;
+        return h("details", { key: mode },
+          h("summary", null, `${mode} · 원본 / 600 / 모바일`),
+          ...["", "-600", "-mobile"].map((suffix) => {
+            const file = `${prefix}${suffix}.png`;
+            return h("p", { key: suffix }, h("a", { href: file }, h("img", { src: file, alt: imageAlts.get(prefix) })));
+          }));
+      }),
     )),
   ));
   // Let React escape database-sourced text in its actual HTML context rather
