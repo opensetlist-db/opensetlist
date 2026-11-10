@@ -84,7 +84,7 @@ const FES_ROSTER: EventRosterEntry[] = [
   member("kozue", [rosterArtist(2, 1)]),
   member("kanon", [rosterArtist(10, null)]),
   member("kinako", [rosterArtist(11, 10), rosterArtist(20, null)]),
-  member("ayumu", [rosterArtist(30, null)], true),
+  member("ayumu", [rosterArtist(30, null), rosterArtist(20, null)], true),
   member("ghost", [rosterArtist(99, null, true)]),
 ];
 
@@ -128,12 +128,12 @@ const H_SIDE = buildArtistHierarchy([
 
 describe("fanBoardRootIds (side projects off the board)", () => {
   it("festival: drops a side project, everything else keeps the picker's order", () => {
-    const picker = boardGroupRootIds({ roster: FES_ROSTER, hierarchy: H_SIDE, primaryArtistId: null });
+    const picker = boardGroupRootIds({ roster: FES_ROSTER, hierarchy: H_SIDE, primaryArtistId: null, collaborationArtistIds: [20] });
     // The picker keeps the side project (unordered → last) …
     expect(picker).toEqual(["30", "1", "10", "20"]);
     // … the board does not, and agrees with the picker on the rest.
     expect(
-      fanBoardRootIds({ roster: FES_ROSTER, hierarchy: H_SIDE, primaryArtistId: null }),
+      fanBoardRootIds({ roster: FES_ROSTER, hierarchy: H_SIDE, primaryArtistId: null, collaborationArtistIds: [20] }),
     ).toEqual(["30", "1", "10"]);
   });
 
