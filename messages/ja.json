@@ -239,7 +239,7 @@
         "active": "販売中",
         "ended": "終了"
       },
-      "affiliateDisclosure": "Amazonアソシエイトリンクです。Amazonのアソシエイトとして、OpenSetlistは適格販売により収入を得ています。",
+      "affiliateDisclosure": "Amazonアソシエイトとして紹介料を得ます。",
       "buy": "購入する",
       "showEnded": "{count, plural, other {終了済みの店舗を見る (#)}}",
       "summary": {
