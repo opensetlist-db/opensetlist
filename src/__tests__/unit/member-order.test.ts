@@ -159,14 +159,16 @@ describe("GET /api/events/[id]/performers (performer checklists)", () => {
       stageIdentityId: id,
       isGuest: false,
       stageIdentity: {
+        id,
+        sortOrder: ["b", "a", "c"].indexOf(id),
         originalName: id,
         originalShortName: null,
         originalLanguage: "ja",
         translations: [],
-        artistLinks: [{ artistId: BigInt(1) }],
+        artistLinks: [],
       },
     });
-    // The DB returns rows already sorted; the route must not reorder.
+    // With no group or relation ranks, the checklist uses the same default order.
     event.findFirst.mockResolvedValue({ performers: [row("b"), row("a"), row("c")] });
     const res = await call();
     expect(res.status).toBe(200);

@@ -1,4 +1,6 @@
+import { displayArtistId, type EventDisplayOrdering } from "@/lib/eventDisplayOrder";
 import { displayNameWithFallback } from "@/lib/display";
+import { createResilientOfficialOrdering } from "@/lib/officialOrder";
 import { resolveUnitColor } from "@/lib/artistColor";
 import type {
   ReactionCountsMap,
@@ -38,8 +40,7 @@ export type { EventPerformerSummary };
  * (Pass-1 collect units, Pass-2 fill members, Pass-3 collect
  * performers) and shares the unit-color resolution.
  *
- * Behavior must stay identical to the original page.tsx version —
- * any divergence would cause the sidebar to flash on first poll
+ * SSR and polling must agree — any divergence would flash on first poll
  * (server-rendered shape ≠ client-derived shape). The unit tests in
  * `src/__tests__/unit/performers-card.test.tsx` and
  * `src/__tests__/unit/units-card.test.tsx` cover the cards
@@ -52,6 +53,8 @@ export function deriveSidebarUnitsAndPerformers(
   locale: string,
   unknownArtistLabel: string,
   unknownPerformerLabel: string,
+  ordering?: EventDisplayOrdering,
+  rosterGroupIds?: Readonly<Record<string, string>>,
 ): { units: UnitsCardItem[]; performers: PerformersCardItem[] } {
   // Guest set (D10a + D9 source). Sourced from `EventPerformer`
   // (a different relation from `setlistItems[].performers`, which
@@ -60,6 +63,8 @@ export function deriveSidebarUnitsAndPerformers(
   const guestStageIdentityIds = new Set<string>(
     eventPerformers.filter((p) => p.isGuest).map((p) => p.stageIdentityId),
   );
+
+  const isGuest = (id: string) => ordering?.isGuest(id) ?? guestStageIdentityIds.has(id);
 
   // Internal extension: keep `resolvedColor` on the unit map so the
   // performer-pill walk can read it without re-running
@@ -73,10 +78,12 @@ export function deriveSidebarUnitsAndPerformers(
   // tint stay in lockstep.
   const unitsById = new Map<string, SidebarUnitInternal>();
   const memberSeen = new Map<string, Set<string>>();
+  const memberById = new Map<string, LiveSetlistItem["performers"][number]["stageIdentity"]>();
+  const creditedUnitIds = new Map<string, ReturnType<typeof displayArtistId>>();
   for (const item of items) {
     for (const a of item.artists) {
       if (a.artist.type !== "unit") continue;
-      const id = String(a.artist.id);
+      const id = String(displayArtistId(a.artist));
       if (unitsById.has(id)) continue;
       // Full unit name (operator preference: the sidebar has the room
       // for the full title, and the short name reads as too compressed
@@ -98,6 +105,7 @@ export function deriveSidebarUnitsAndPerformers(
         members: [],
       });
       memberSeen.set(id, new Set());
+      creditedUnitIds.set(id, displayArtistId(a.artist));
     }
   }
 
@@ -106,10 +114,10 @@ export function deriveSidebarUnitsAndPerformers(
   // when no link resolves; caller then falls back to the global
   // default tint.
   const pickPrimaryUnit = (
-    links: ReadonlyArray<{ artistId: number }>,
+    links: ReadonlyArray<{ artistId: number; orderArtistId?: string }>,
   ): SidebarUnitInternal | null => {
     for (const link of links) {
-      const u = unitsById.get(String(link.artistId));
+      const u = unitsById.get((link.orderArtistId ?? String(link.artistId)));
       if (u) return u;
     }
     return null;
@@ -126,15 +134,16 @@ export function deriveSidebarUnitsAndPerformers(
 
   for (const item of items) {
     for (const p of item.performers) {
+      memberById.set(p.stageIdentity.id, p.stageIdentity);
       // D10a: skip guests entirely from member-sublist building.
       // They still surface in the PerformersCard with the D9
       // "· 게스트" suffix; they just don't pollute host-unit sublists
       // when their `artistLinks` happen to match a host unit
       // (returning graduate, cross-affiliation).
-      if (guestStageIdentityIds.has(p.stageIdentity.id)) continue;
+      if (isGuest(p.stageIdentity.id)) continue;
       const links = p.stageIdentity.artistLinks ?? [];
       for (const link of links) {
-        const unitId = String(link.artistId);
+        const unitId = (link.orderArtistId ?? String(link.artistId));
         const u = unitsById.get(unitId);
         if (!u) continue;
         unitHasHostMember.set(unitId, true);
@@ -164,11 +173,18 @@ export function deriveSidebarUnitsAndPerformers(
       slug,
       name,
       color,
-      members,
+      members: ordering ? ordering.sortMembers([...memberSeen.get(id)!], (memberId) => memberById.get(memberId)!, {
+        kind: "artist", artistId: creditedUnitIds.get(id)!,
+      }).map((memberId) => {
+        const member = memberById.get(memberId)!;
+        return displayNameWithFallback(member, member.translations, locale, "full") || unknownPerformerLabel;
+      }) : members,
       isGuest: !unitHasHostMember.get(id),
     }),
   );
-  const sortedUnits: UnitsCardItem[] = [
+  const sortedUnits: UnitsCardItem[] = ordering ? ordering.sortArtists(allUnits, (u) => ({
+    artistId: creditedUnitIds.get(u.id)!, isGuest: u.isGuest,
+  })) : [
     ...allUnits.filter((u) => !u.isGuest),
     ...allUnits.filter((u) => u.isGuest),
   ];
@@ -199,12 +215,12 @@ export function deriveSidebarUnitsAndPerformers(
         // (rare) falls through to the same fallback.
         color:
           primaryUnit?.resolvedColor ?? resolveUnitColor({ color: null }),
-        isGuest: guestStageIdentityIds.has(id),
+        isGuest: isGuest(id),
       });
     }
   }
   const allPerformers = [...performerSeen.values()];
-  const sortedPerformers: PerformersCardItem[] = [
+  const sortedPerformers: PerformersCardItem[] = ordering ? ordering.sortMembers(allPerformers, (p) => memberById.get(p.id)!, { kind: "mixed" }, (id) => rosterGroupIds?.[id] ? [rosterGroupIds[id]] : []) : [
     ...allPerformers.filter((p) => !p.isGuest),
     ...allPerformers.filter((p) => p.isGuest),
   ];
@@ -224,6 +240,7 @@ export interface Lineup {
   units: UnitsCardItem[];
   performers: PerformersCardItem[];
   groups: LineupGroup[];
+  groupByPerformerId: Record<string, string>;
 }
 
 /**
@@ -255,10 +272,7 @@ export interface Lineup {
  *     suffix, never counted into a group/unit member list; a group or
  *     unit with no host member is itself marked guest and sorts last.
  *
- * Order follows the roster's input order (first appearance). The page
- * fetches the roster in the official member order (`sortOrder`, nulls
- * last, then creation order — see `src/lib/memberOrder.ts`), so groups
- * and members read in their canonical sequence.
+ * Ordering happens after the existing grouping and membership decisions.
  */
 export function deriveLineupFromRoster(
   roster: EventRosterEntry[],
@@ -266,8 +280,10 @@ export function deriveLineupFromRoster(
   unknownArtistLabel: string,
   unknownPerformerLabel: string,
 ): Lineup {
+  const rosterArtistId = (artist: RosterArtist) => artist.orderId ?? String(artist.id);
+  const parentId = (artist: RosterArtist) => artist.orderParentId ?? artist.parentArtistId?.toString() ?? null;
   const isTopLevelGroup = (a: RosterArtist) =>
-    a.type === "group" && a.parentArtistId === null;
+    a.type === "group" && parentId(a) === null;
   const liveLinks = (e: EventRosterEntry) =>
     e.stageIdentity.artistLinks
       .map((l) => l.artist)
@@ -275,11 +291,11 @@ export function deriveLineupFromRoster(
 
   // Roster headcount per top-level group — the tiebreaker that keeps a
   // collab group from stealing anyone's section.
-  const groupHeadcount = new Map<number, number>();
+  const groupHeadcount = new Map<string, number>();
   for (const e of roster) {
     for (const a of liveLinks(e)) {
       if (!isTopLevelGroup(a)) continue;
-      groupHeadcount.set(a.id, (groupHeadcount.get(a.id) ?? 0) + 1);
+      groupHeadcount.set(rosterArtistId(a), (groupHeadcount.get(rosterArtistId(a)) ?? 0) + 1);
     }
   }
   const sectionGroupOf = (e: EventRosterEntry): RosterArtist | null => {
@@ -287,13 +303,23 @@ export function deriveLineupFromRoster(
     for (const a of liveLinks(e)) {
       if (!isTopLevelGroup(a)) continue;
       // Strict `>` keeps the first-listed group on a tie.
-      if (!best || groupHeadcount.get(a.id)! > groupHeadcount.get(best.id)!) {
+      if (!best || groupHeadcount.get(rosterArtistId(a))! > groupHeadcount.get(rosterArtistId(best))!) {
         best = a;
       }
     }
     return best;
   };
 
+  const rosterArtists = new Map(roster.flatMap((e) => liveLinks(e)).map((a) => [a.orderId ?? String(a.id), a]));
+  const ordering = createResilientOfficialOrdering([...rosterArtists.values()].map((a) => ({
+    id: a.orderId ?? a.id, parentArtistId: a.orderParentId ?? a.parentArtistId, type: a.type, sortOrder: a.sortOrder ?? null,
+  })));
+  const memberKey = (e: EventRosterEntry) => ({
+    id: e.stageIdentity.id, sortOrder: e.stageIdentity.sortOrder ?? null,
+    createdAt: e.stageIdentity.createdAt ?? "1970-01-01T00:00:00Z",
+    membershipOrders: e.stageIdentity.artistLinks.map((l) => ({ artistId: l.artist.orderId ?? l.artist.id, sortOrder: l.sortOrder ?? null })),
+    groupArtistIds: [], isGuest: e.isGuest,
+  });
   const performerName = (e: EventRosterEntry) =>
     displayNameWithFallback(
       e.stageIdentity,
@@ -307,11 +333,11 @@ export function deriveLineupFromRoster(
 
   type Bucket = {
     artist: RosterArtist;
-    members: string[];
+    members: EventRosterEntry[];
     memberIds: Set<string>;
     hasHost: boolean;
   };
-  type GroupBucket = Bucket & { units: Map<number, Bucket> };
+  type GroupBucket = Bucket & { units: Map<string, Bucket> };
   const newBucket = (artist: RosterArtist): Bucket => ({
     artist,
     members: [],
@@ -323,54 +349,49 @@ export function deriveLineupFromRoster(
     b.hasHost = true;
     if (b.memberIds.has(e.stageIdentity.id)) return;
     b.memberIds.add(e.stageIdentity.id);
-    b.members.push(performerName(e));
+    b.members.push(e);
   };
 
-  const groups = new Map<number, GroupBucket>();
+  const groups = new Map<string, GroupBucket>();
   const sectionOf = new Map<string, RosterArtist | null>();
   for (const e of roster) {
     const section = sectionGroupOf(e);
     sectionOf.set(e.stageIdentity.id, section);
     if (!section) continue;
-    let g = groups.get(section.id);
+    let g = groups.get(rosterArtistId(section));
     if (!g) {
       g = { ...newBucket(section), units: new Map() };
-      groups.set(section.id, g);
+      groups.set(rosterArtistId(section), g);
     }
     addMember(g, e);
     for (const a of liveLinks(e)) {
-      if (a.type !== "unit" || a.parentArtistId !== section.id) continue;
-      let u = g.units.get(a.id);
+      if (a.type !== "unit" || parentId(a) !== rosterArtistId(section)) continue;
+      let u = g.units.get(rosterArtistId(a));
       if (!u) {
         u = newBucket(a);
-        g.units.set(a.id, u);
+        g.units.set(rosterArtistId(a), u);
       }
       addMember(u, e);
     }
   }
 
-  const hostsFirst = <T extends { isGuest?: boolean }>(xs: T[]): T[] => [
-    ...xs.filter((x) => !x.isGuest),
-    ...xs.filter((x) => x.isGuest),
-  ];
   const toRow = (b: Bucket, kind: "group" | "unit"): UnitsCardItem => ({
-    id: String(b.artist.id),
+    id: rosterArtistId(b.artist),
     slug: b.artist.slug,
     name: artistName(b.artist),
     color: b.artist.color ?? null,
-    members: b.members,
+    members: ordering.sortMembers(b.members, memberKey, { kind: "artist", artistId: b.artist.orderId ?? b.artist.id }).map(performerName),
     isGuest: !b.hasHost,
     kind,
   });
 
-  const orderedGroups = hostsFirst(
-    [...groups.values()].map((g) => ({ g, isGuest: !g.hasHost })),
-  ).map(({ g }) => g);
+  const sortBuckets = <T extends Bucket>(buckets: T[]) => ordering.sortArtists(buckets, (b) => ({ artistId: b.artist.orderId ?? b.artist.id, isGuest: !b.hasHost }));
+  const orderedGroups = sortBuckets([...groups.values()]);
 
   // Units actually shown per group (main-unit filter applied). Kept for
   // the pill-tint lookup below so a pill is never tinted by a unit the
   // card doesn't list.
-  const shownUnitIdsByGroup = new Map<number, Set<number>>();
+  const shownUnitIdsByGroup = new Map<string, Set<string>>();
   const units: UnitsCardItem[] = [];
   for (const g of orderedGroups) {
     const all = [...g.units.values()];
@@ -378,21 +399,24 @@ export function deriveLineupFromRoster(
       ? all.filter((u) => u.artist.isMainUnit)
       : all;
     shownUnitIdsByGroup.set(
-      g.artist.id,
-      new Set(shown.map((u) => u.artist.id)),
+      rosterArtistId(g.artist),
+      new Set(shown.map((u) => rosterArtistId(u.artist))),
     );
     units.push(toRow(g, "group"));
-    units.push(...hostsFirst(shown.map((u) => toRow(u, "unit"))));
+    units.push(...sortBuckets(shown).map((u) => toRow(u, "unit")));
   }
 
-  // Pills: section order first, roster order within a section; a
+  // Pills: section order first, official member order within a section; a
   // performer with no section group (data gap) goes after every section.
-  const sectionRank = new Map(orderedGroups.map((g, i) => [g.artist.id, i]));
-  const performerRows = roster.map((e, inputIdx) => {
+  const orderedRoster = ordering.sortMembers(roster, (e) => {
+    const section = sectionOf.get(e.stageIdentity.id);
+    return { ...memberKey(e), groupArtistIds: section ? [section.orderId ?? section.id] : [] };
+  }, { kind: "mixed" });
+  const performerRows = orderedRoster.map((e) => {
     const section = sectionOf.get(e.stageIdentity.id) ?? null;
-    const shownIds = section ? shownUnitIdsByGroup.get(section.id) : undefined;
+    const shownIds = section ? shownUnitIdsByGroup.get(rosterArtistId(section)) : undefined;
     const primaryUnit = shownIds
-      ? liveLinks(e).find((a) => shownIds.has(a.id))
+      ? liveLinks(e).find((a) => shownIds.has(rosterArtistId(a)))
       : undefined;
     const item: PerformersCardItem = {
       id: e.stageIdentity.id,
@@ -401,18 +425,15 @@ export function deriveLineupFromRoster(
       color: resolveUnitColor(primaryUnit ?? section ?? { color: null }),
       isGuest: e.isGuest,
     };
-    const rank = section
-      ? (sectionRank.get(section.id) ?? Number.MAX_SAFE_INTEGER)
-      : Number.MAX_SAFE_INTEGER;
-    return { item, rank, inputIdx };
+    return item;
   });
-  performerRows.sort((a, b) => a.rank - b.rank || a.inputIdx - b.inputIdx);
 
   return {
     units,
-    performers: hostsFirst(performerRows.map((r) => r.item)),
+    performers: performerRows,
+    groupByPerformerId: Object.fromEntries([...sectionOf].flatMap(([id, group]) => group ? [[id, rosterArtistId(group)]] : [])),
     groups: orderedGroups.map((g) => ({
-      id: String(g.artist.id),
+      id: rosterArtistId(g.artist),
       slug: g.artist.slug,
       name: artistName(g.artist),
       isGuest: !g.hasHost,

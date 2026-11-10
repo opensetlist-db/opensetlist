@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { StageIdentity } from "@/generated/prisma/client";
+import { createEventDisplayOrdering } from "@/lib/eventDisplayOrder";
+import { orderSetlistWriteResponse, readEventDisplayOrder } from "@/lib/readEventDisplayOrder";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { createOfficialOrdering, membershipOrderBy } from "@/lib/officialOrder";
@@ -91,6 +93,20 @@ describe("official ordering on isolated dev fixtures", () => {
         }
       };
       await assertPureMatchesSql();
+      const actual = await tx.setlistItem.findUniqueOrThrow({ where: { id: item.id }, include: {
+        artists: { include: { artist: true } },
+        performers: { include: { stageIdentity: { include: { artistLinks: true } } } },
+        songs: true,
+      } });
+      const [a, b] = identities;
+      const readOrder = createEventDisplayOrdering(await readEventDisplayOrder(tx, event.id, [actual]));
+      for (const projection of [readOrder.sortItem(actual), await orderSetlistWriteResponse(tx, event.id, actual)]) {
+        expect(projection.performers.map((row) => [row.stageIdentityId, row.realPersonId]))
+          .toEqual([[b.id, voice.id], [a.id, voice.id]]);
+        expect(projection.songs).toEqual(actual.songs);
+        expect(projection.position).toBe(7);
+        expect(projection.isEncore).toBe(true);
+      }
       expect(await queryNames(unitB.id, true)).toEqual(["a", "b", "c"]);
       expect(await queryNames(unitA.id, true)).toEqual(["b", "a", "c"]);
       expect(await queryNames(root.id, true)).toEqual(["a", "b", "c"]);
@@ -110,5 +126,45 @@ describe("official ordering on isolated dev fixtures", () => {
     expect(await prisma.artist.count({ where: { slug: { startsWith: PREFIX } } })).toBe(0);
     expect(await prisma.stageIdentity.count({ where: { slug: { startsWith: PREFIX } } })).toBe(0);
     expect(await prisma.event.count({ where: { slug: { startsWith: PREFIX } } })).toBe(0);
+  });
+  it("keeps an event 8-sized cast and the two recorded unit credits", async () => {
+    const rollback = new Error("rollback event display fixture");
+    await expect(prisma.$transaction(async (tx) => {
+      const slug = `${PREFIX}event8`;
+      const event = await tx.event.create({ data: { slug, originalName: "Event 8 fixture", type: "concert", status: "completed", startTime: new Date("2020-01-01T09:00:00Z") } });
+      const voice = await tx.realPerson.create({ data: { slug, originalName: "Recorded performer" } });
+      const root = await tx.artist.create({ data: { slug, originalName: "Hasunosora fixture", type: "group" } });
+      const unit = await tx.artist.create({ data: { slug: slug + "-unit", originalName: "Cerise fixture", type: "unit", parentArtistId: root.id } });
+      const names = ["花帆", "さやか", "梢", "綴理", "瑠璃乃", "慈", "吟子", "小鈴", "姫芽", "セラス", "泉"];
+      const identities = await tx.stageIdentity.createManyAndReturn({ data: names.map((name, index) => ({
+        slug: slug + "-" + index, originalName: name, type: "character", sortOrder: index + 1,
+      })) });
+      identities.sort((a, b) => a.sortOrder! - b.sortOrder!);
+      const two = [identities[0], identities[6]];
+      await tx.stageIdentityArtist.createMany({ data: [
+        ...identities.map(({ id }) => ({ stageIdentityId: id, artistId: root.id })),
+        ...[...two, identities[2]].map(({ id }) => ({ stageIdentityId: id, artistId: unit.id })),
+      ] });
+      const row = (position: number, artistId: bigint, members: StageIdentity[]) => tx.setlistItem.create({
+        data: {
+          eventId: event.id, position, stageType: position === 1 ? "full_group" : "unit",
+          artists: { create: { artistId } },
+          performers: { create: [...members].reverse().map(({ id }) => ({ stageIdentityId: id, realPersonId: voice.id })) },
+        },
+        include: { performers: { include: { stageIdentity: true } }, artists: { include: { artist: true } } },
+      });
+      const first = await row(1, root.id, identities);
+      const watercolor = await row(7, unit.id, two);
+      const metadata = await readEventDisplayOrder(tx, event.id, [first, watercolor]);
+      expect(metadata.members).toHaveLength(11);
+      const ordering = createEventDisplayOrdering(metadata);
+      for (const [item, expected] of [[first, identities], [watercolor, two]] as const) {
+        const ordered = ordering.sortItem(item);
+        expect(ordered.performers.map((row) => [row.stageIdentityId, row.realPersonId]))
+          .toEqual(expected.map(({ id }) => [id, voice.id]));
+      }
+      throw rollback;
+    }, { timeout: 60_000 })).rejects.toBe(rollback);
+    expect(await prisma.event.count({ where: { slug: PREFIX + "event8" } })).toBe(0);
   });
 });

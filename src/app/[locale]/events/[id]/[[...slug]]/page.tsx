@@ -1,3 +1,6 @@
+import type { Prisma } from "@/generated/prisma/client";
+import { readEventDisplayOrder, withDisplayIds } from "@/lib/readEventDisplayOrder";
+import { createEventDisplayOrdering } from "@/lib/eventDisplayOrder";
 import { connection } from "next/server";
 import { cache } from "react";
 import { notFound } from "next/navigation";
@@ -100,9 +103,9 @@ type Props = {
 // `resolveLocalizedField`) still cascade through the parent's
 // `originalName` / `originalShortName` columns when neither row
 // matches, so a missing translation never renders blank.
-async function fetchEvent(id: bigint, locale: string) {
+async function fetchEventRow(tx: Prisma.TransactionClient, id: bigint, locale: string) {
   const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
-  const event = await prisma.event.findFirst({
+  return tx.event.findFirst({
     where: { id, isDeleted: false },
     // F24-sibling: this SSR query uses the `relationJoins` strategy
     // (single LATERAL JOIN with JSONB aggregation — see the q1/q2
@@ -285,13 +288,22 @@ async function fetchEvent(id: bigint, locale: string) {
       },
     },
   });
-  if (!event) return null;
-  const { bdAlbum } = event;
-  return serializeBigInt({
-    ...event,
-    // Preserve the exact ID used by the canonical purchase link.
-    bdAlbum: bdAlbum && { ...bdAlbum, id: String(bdAlbum.id) },
-  });
+}
+
+async function fetchEvent(id: bigint, locale: string) {
+  return prisma.$transaction(async (tx) => {
+    const event = await fetchEventRow(tx, id, locale);
+    if (!event) return null;
+    const { bdAlbum } = event;
+    const displayOrder = await readEventDisplayOrder(tx, id, event.setlistItems);
+    return serializeBigInt({
+      ...event,
+      setlistItems: event.setlistItems.map(withDisplayIds),
+      displayOrder,
+      // Preserve the exact ID used by the canonical purchase link.
+      bdAlbum: bdAlbum && { ...bdAlbum, id: String(bdAlbum.id) },
+    });
+  }, { isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 10_000 });
 }
 
 // Narrow status read — the only thing `getEvent` needs to decide
@@ -1151,30 +1163,20 @@ export default async function EventPage({ params }: Props) {
   // While ongoing, the live seed's items (already wire-shaped) are the
   // source, so the sidebar, the counts and the client's initial items
   // all describe the snapshot whose `rev` the client starts from.
+  const displayOrder = liveSeed ? liveSeed.displayOrder : event.displayOrder;
+  const displayOrdering = displayOrder ? createEventDisplayOrdering(displayOrder) : undefined;
   const setlistItemsForDerivation: LiveSetlistItem[] = liveSeed
     ? liveSeed.items
-    : (event.setlistItems as unknown as LiveSetlistItem[]);
+    : (event.setlistItems as unknown as LiveSetlistItem[]).map((item) => displayOrdering?.sortItem(item) ?? item);
   const eventPerformers: EventPerformerSummary[] = event.performers.map(
     (p) => ({
       stageIdentityId: p.stageIdentityId,
       isGuest: p.isGuest,
     }),
   );
-  const { units: sidebarUnits, performers: sidebarPerformers } =
-    deriveSidebarUnitsAndPerformers(
-      setlistItemsForDerivation,
-      eventPerformers,
-      locale,
-      aT("unknown"),
-      t("unknownPerformer"),
-    );
-  const songsCount = deriveSongsCount(setlistItemsForDerivation);
-  const reactionsValue = deriveReactionsValue(reactionCounts, locale);
-
   // Roster-derived lineup. Computed for every status because its
   // `groups` also feed the JSON-LD performers, but handed to the
-  // sidebar only for upcoming events — completed-with-empty-setlist
-  // and the live sidebar keep their item-derived behavior.
+  // sidebar until an upcoming or live event has actual credits.
   const rosterLineup: Lineup | null =
     roster.length > 0
       ? deriveLineupFromRoster(
@@ -1185,9 +1187,22 @@ export default async function EventPage({ params }: Props) {
         )
       : null;
   const sidebarLineup =
-    resolvedStatus === "upcoming" && rosterLineup
+    (resolvedStatus === "upcoming" || resolvedStatus === "ongoing") && rosterLineup
       ? { units: rosterLineup.units, performers: rosterLineup.performers }
       : null;
+
+  const { units: sidebarUnits, performers: sidebarPerformers } =
+    deriveSidebarUnitsAndPerformers(
+      setlistItemsForDerivation,
+      eventPerformers,
+      locale,
+      aT("unknown"),
+      t("unknownPerformer"),
+      displayOrdering,
+      rosterLineup?.groupByPerformerId,
+    );
+  const songsCount = deriveSongsCount(setlistItemsForDerivation);
+  const reactionsValue = deriveReactionsValue(reactionCounts, locale);
 
   // Pre-show empty-state copy pieces, venue-local and server-formatted
   // (hydration-stable). The predict-opens line shows only while the
@@ -1454,10 +1469,12 @@ export default async function EventPage({ params }: Props) {
         initialImpressionsNextCursor={impressionsNextCursor}
         initialImpressionsTotalCount={impressionsTotalCount}
         initialItems={setlistItemsForDerivation}
+        initialDisplayOrder={displayOrder}
         initialReactionCounts={reactionCounts}
         initialSidebarUnits={sidebarUnits}
         initialSidebarPerformers={sidebarPerformers}
         lineup={sidebarLineup}
+        rosterGroupIds={rosterLineup?.groupByPerformerId}
         setlistStartLabel={setlistStartLabel}
         predictOpensLabel={predictOpensLabel}
         initialSongsCount={songsCount}
