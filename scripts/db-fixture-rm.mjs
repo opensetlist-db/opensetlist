@@ -193,7 +193,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * would make the reference check incomplete (the queries below address
  * tables in `public` by bare name), so it refuses instead of guessing.
  */
-async function referencingKeys(client, table) {
+export async function referencingKeys(client, table) {
   const r = await client.query(
     `SELECT c.conname, ns.nspname AS schema, ch.relname AS child, a.attname AS col,
             NOT a.attnotnull AS nullable, pa.attname AS pcol, cardinality(c.conkey) AS ncols

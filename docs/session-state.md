@@ -152,8 +152,10 @@ based on that review and the fix. The `complete` rules below still apply.
    review process. If the base moved, compare the candidate diff against
    the reviewed patch and rerun the relevant checks on the combined tree.
 3. Record the reviewed head, current base, candidate tree and check results
-   in the handoff, and link it with `record-evidence`. Recheck head and base
-   immediately before merging. Before recording completion, verify the target
+   in the handoff, and link it with `record-evidence`. Include the
+   [read-only dev schema check](../TESTING.md#dev-schema-preflight-before-merge) for this tree.
+   Recheck head and base immediately before merging. Before recording
+   completion, verify the target
    branch contains the PR's reported merge result and its tree matches the
    candidate. For a merge commit, also verify the base and head parents.
 

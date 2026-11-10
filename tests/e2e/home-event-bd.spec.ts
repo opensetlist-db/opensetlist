@@ -1,5 +1,9 @@
 import "./helpers/env";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import { test, expect } from "@playwright/test";
 import { Client } from "pg";
 import { pointsAtDevProject } from "../../scripts/dev-db-guard.mjs";
@@ -8,21 +12,28 @@ test("home, event and purchase stay consistent after bonus changes", async ({ pa
   test.setTimeout(240_000);
   test.skip(!process.env.ADMIN_PASSWORD, "ADMIN_PASSWORD is required");
   test.skip(!baseURL || !["localhost", "127.0.0.1"].includes(new URL(baseURL).hostname), "Fixture test requires a local app");
-  if (!pointsAtDevProject(process.env.DATABASE_URL ?? "") || !pointsAtDevProject(process.env.DATABASE_URL_UNPOOLED ?? "")) throw new Error("Both database URLs must point at dev");
-  const db = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+  const sessionUrl = process.env.DATABASE_URL_UNPOOLED;
+  if (!pointsAtDevProject(process.env.DATABASE_URL ?? "") || !sessionUrl || !pointsAtDevProject(sessionUrl) ||
+      (new URL(sessionUrl).port || "5432") !== "5432") throw new Error("Both database URLs must point at dev, with DATABASE_URL_UNPOOLED on the session port");
+  const db = new Client({ connectionString: sessionUrl });
   const tag = `home-bd-e2e-${randomUUID()}`;
-  let albumId: string | undefined;
-  let eventId: string | undefined;
-  let songId: string | undefined;
-  let itemId: string | undefined;
   const listing = randomUUID(), otherListing = randomUUID(), base = randomUUID(), first = randomUUID(), second = randomUUID();
+  const fixture = { tag, songLinkId: randomUUID(), listingIds: [listing, otherListing, base], bonusIds: [first, second] };
+  const receiptDir = ".claude/tmp/home-bd-fixtures";
+  mkdirSync(receiptDir, { recursive: true });
+  const receipt = join(receiptDir, `${tag}.json`);
+  writeFileSync(receipt, JSON.stringify(fixture), { flag: "wx", flush: true });
+  console.log(`BD fixture recovery receipt: ${receipt}`);
+  await db.connect();
   try {
-    await db.connect();
-    albumId = (await db.query('INSERT INTO "Album" (slug, type, "originalTitle") VALUES ($1, \'live_album\', $1) RETURNING id', [tag])).rows[0].id;
-    eventId = (await db.query('INSERT INTO "Event" (slug, type, status, "startTime", "originalName", "bdAlbumId") VALUES ($1, \'concert\', \'completed\', NOW() - interval \'10 minutes\', $1, $2) RETURNING id', [`${tag}-event`, albumId])).rows[0].id;
-    songId = (await db.query('INSERT INTO "Song" (slug, "originalTitle") VALUES ($1, $1) RETURNING id', [`${tag}-song`])).rows[0].id;
-    itemId = (await db.query('INSERT INTO "SetlistItem" ("eventId", position) VALUES ($1, 1) RETURNING id', [eventId])).rows[0].id;
-    await db.query('INSERT INTO "SetlistItemSong" (id, "setlistItemId", "songId") VALUES ($1, $2, $3)', [randomUUID(), itemId, songId]);
+    const albumId = (await db.query('INSERT INTO "Album" (slug, type, "originalTitle") VALUES ($1, \'live_album\', $1) RETURNING id', [tag])).rows[0].id;
+    const eventId = (await db.query('INSERT INTO "Event" (slug, type, status, "startTime", "originalName", "bdAlbumId") VALUES ($1, \'concert\', \'completed\', NOW() - interval \'10 minutes\', $1, $2) RETURNING id', [`${tag}-event`, albumId])).rows[0].id;
+    const songId = (await db.query('INSERT INTO "Song" (slug, "originalTitle") VALUES ($1, $1) RETURNING id', [`${tag}-song`])).rows[0].id;
+    await db.query(
+      `WITH item AS (INSERT INTO "SetlistItem" ("eventId", position) VALUES ($1, 1) RETURNING id)
+       INSERT INTO "SetlistItemSong" (id, "setlistItemId", "songId") SELECT $2, id, $3 FROM item`,
+      [eventId, fixture.songLinkId, songId],
+    );
     for (const [id, bonus, url] of [[listing, true, "https://example.com/bonus"], [otherListing, true, "https://example.com/other"], [base, false, "https://www.amazon.co.jp/dp/B000000002"]] as const) {
       await db.query('INSERT INTO "AlbumStoreListing" (id, "albumId", "originalStoreName", "storeKey", "optionKey", status, "productUrl", "includesPerformanceVideo", "isBonusOption", "updatedAt") VALUES ($1, $2, $3, $4, $1, \'active\', $5, true, $6, NOW())', [id, albumId, `${tag}-store`, tag, url, bonus]);
     }
@@ -80,16 +91,7 @@ test("home, event and purchase stay consistent after bonus changes", async ({ pa
     await check([first]);
   } finally {
     try {
-      if (itemId) {
-        await db.query('DELETE FROM "SetlistItemSong" WHERE "setlistItemId" = $1', [itemId]);
-        await db.query('DELETE FROM "SetlistItem" WHERE id = $1 AND "eventId" = $2', [itemId, eventId]);
-      }
-      if (eventId) await db.query('DELETE FROM "Event" WHERE id = $1 AND slug = $2', [eventId, `${tag}-event`]);
-      if (songId) await db.query('DELETE FROM "Song" WHERE id = $1 AND slug = $2', [songId, `${tag}-song`]);
-      if (albumId) {
-        await db.query('DELETE FROM "AlbumStoreBonusLifecycleOperation" WHERE "bonusId" IN ($1, $2)', [first, second]);
-        await db.query('DELETE FROM "Album" WHERE id = $1 AND slug = $2', [albumId, tag]);
-      }
+      await promisify(execFile)(process.execPath, ["scripts/db-home-bd-fixture-rm.mjs", receipt], { timeout: 45_000 });
     } finally {
       await db.end();
     }

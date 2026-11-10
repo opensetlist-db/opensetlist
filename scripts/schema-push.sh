@@ -2,10 +2,11 @@
 # `prisma db push` for the migrate workflows (migrate-dev.yml,
 # migrate-prod.yml), against $DATABASE_URL.
 #
-#   scripts/schema-push.sh <true|false|--check-only>
+#   scripts/schema-push.sh <true|false|--check-only|--check-dev>
 #
 #   true  → the operator chose `--accept-data-loss` on manual dispatch.
 #   --check-only → run the DROP check and exit before any push.
+#   --check-dev → require a dev session URL, then run --check-only locally.
 #   false → diff the database against the schema first.
 #           1. A diff that DROPs a column, a table, or an index of a table
 #              that stays (scripts/schema-diff-additive.mjs --drops) stops
@@ -21,11 +22,28 @@
 #              real data-loss warning as before.
 set -euo pipefail
 
-mode="${1:-false}"
+mode="${1-false}"
 case "$mode" in
-  true|false|--check-only) ;;
-  *) echo "usage: $0 <true|false|--check-only>" >&2; exit 2 ;;
+  true|false|--check-only|--check-dev) ;;
+  *) echo "usage: $0 <true|false|--check-only|--check-dev>" >&2; exit 2 ;;
 esac
+if [ "$#" -gt 1 ]; then
+  echo "Expected at most one schema mode" >&2
+  exit 2
+fi
+
+if [ "$mode" = "--check-dev" ]; then
+  node --input-type=module <<'NODE'
+import "dotenv/config";
+import { pointsAtDevProject } from "./scripts/dev-db-guard.mjs";
+const url = process.env.DATABASE_URL_UNPOOLED ?? "";
+if (!pointsAtDevProject(url) || (new URL(url).port || "5432") !== "5432") {
+  console.error("Read-only schema check requires the dev session DATABASE_URL_UNPOOLED");
+  process.exit(2);
+}
+NODE
+  mode=--check-only
+fi
 
 if [ "$mode" = "true" ]; then
   echo "Running with --accept-data-loss (manual dispatch)"
