@@ -362,6 +362,7 @@ afterAll(async () => {
     }
     await pg.query('DELETE FROM "SongTranslation" WHERE "songId" IN (SELECT id FROM "Song" WHERE slug = $1)', [SLUG]);
     await pg.query('DELETE FROM "Song" WHERE slug = $1', [SLUG]);
+    await pg.query('DELETE FROM "Song" WHERE slug = $1', [`${SLUG}-base`]);
     await pg.query("COMMIT");
   }
   await pg.end();
@@ -885,11 +886,16 @@ describe("8. GET /api/setlist reports how it resolved minRev (x-snapshot-verify)
   });
 
   it("a revision from an admin song save leads to a fresh snapshot with the original and requested names", async () => {
+    const originalTitle = "[QA] 雨の日の曲";
+    const base = await prisma.song.create({
+      data: { slug: `${SLUG}-base`, originalTitle, originalLanguage: "ja" },
+    });
     const song = await prisma.song.create({
       data: {
         slug: SLUG,
-        originalTitle: "[QA] 雨の日の曲",
+        originalTitle,
         originalLanguage: "ja",
+        baseVersionId: base.id,
         variantLabel: "公演版",
         translations: { create: [
           { locale: "ko", title: "[QA] 비 오는 날의 곡", variantLabel: "공연판" },
