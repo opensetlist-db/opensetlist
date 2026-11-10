@@ -80,9 +80,9 @@ files=$(git diff --name-only --diff-filter=d origin/dev...HEAD -- '*.ts' '*.tsx'
 
 ### Unit — no database
 
-In Windows Codex worktrees, use a writable worktree-local temp directory
-for Vitest if workers fail to start or temp-file renames fail with
-`EPERM`. Run this in a task PowerShell from the worktree root, replacing
+In Windows Codex worktrees, set a writable worktree-local temp directory
+before starting Vitest to avoid worker startup and temp-file rename
+failures. Run this in a task PowerShell from the worktree root, replacing
 the example path with the relevant unit test:
 
 ```powershell
@@ -345,6 +345,10 @@ is started from.
 ---
 
 ## Windows task tools
+
+Run the local production build and full unit suite sequentially from the task
+worktree. For Vitest worker or temp-file failures, use the
+[worktree-local TEMP/TMP setup](#unit--no-database).
 
 Use `powershell -NoProfile -File scripts/task-runtime.ps1 serve-build
 -Runtime GitBash -Port 3191` to select Git Bash explicitly, or select

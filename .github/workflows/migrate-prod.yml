@@ -39,6 +39,10 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
         run: npx prisma db execute --file prisma/post-deploy.sql
+      - name: Check anon/authenticated exposure of public tables
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
+        run: node scripts/check-anon-exposure.mjs
       - name: Verify migration
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}

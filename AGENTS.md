@@ -15,7 +15,8 @@ Before investigating, editing, or reviewing this repository:
    Keep its contents and local reference material out of tracked files.
 3. Read the task document and relevant source/configuration before
    implementing. For testing, consult [TESTING.md](./TESTING.md) and the
-   scripts in `package.json`.
+   scripts in `package.json`. For Windows worktree validation, serving, or
+   cleanup, start with [Windows task tools](./TESTING.md#windows-task-tools).
 
 Use the local context file to resolve `memory/` references from CLAUDE.md;
 those paths refer to Claude's external project memory, not this repository.
