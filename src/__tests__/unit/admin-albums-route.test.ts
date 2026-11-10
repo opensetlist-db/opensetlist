@@ -69,6 +69,23 @@ describe("POST /api/admin/albums", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: "9007199254740993" });
   });
+
+  it("rejects Han in the Korean title while preserving it in the Japanese original", async () => {
+    const create = (title: string) => POST(baseJsonRequest("http://x/api/admin/albums", {
+      ...baseBody,
+      originalTitle: "永久hours",
+      translations: [{ locale: "ko", title }, { locale: "en", title: "Eikyu hours" }],
+    }, "POST") as never);
+    const rejected = await create("永久 hours");
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).error).toContain("한자");
+
+    vi.mocked(prisma.album.create).mockResolvedValueOnce({ id: BigInt(42) } as never);
+    const accepted = await create("영구 hours");
+    expect(accepted.status).toBe(201);
+    expect(prisma.album.create).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(prisma.album.create).mock.calls[0][0].data.originalTitle).toBe("永久hours");
+  });
 });
 
 describe("PATCH /api/admin/albums/[id]", () => {

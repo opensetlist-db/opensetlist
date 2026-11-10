@@ -13,6 +13,9 @@ export function albumTitleIssues(
   reviewedTranslations?: readonly TitleTranslation[],
 ) {
   return locales.flatMap((locale) => {
+    if (locale === "ko" && translations.some((row) => row.locale === locale && /\p{Script=Han}/u.test(row.title))) {
+      return ["ko 표기의 한자를 한글로 적어 주세요."];
+    }
     const { status } = resolveDisplayPair(
       { original: originalTitle, originalLanguage },
       translations, locale, "title", { kind: "title" },
