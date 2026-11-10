@@ -7,14 +7,19 @@ function invalid(field: string): never {
   throw new PurchaseInputError(field + " 값을 확인해 주세요.");
 }
 
-function optionalString(body: Record<string, unknown>, key: string, max = 2048) {
+export function parseRevision(value: unknown) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 2147483647) invalid("리비전");
+  return value;
+}
+
+export function optionalString(body: Record<string, unknown>, key: string, max = 2048) {
   const value = body[key];
   if (value == null) return value;
   if (typeof value !== "string" || value.length > max) invalid(key);
   return value.trim() || null;
 }
 
-function optionalUrl(body: Record<string, unknown>, key: string) {
+export function optionalUrl(body: Record<string, unknown>, key: string) {
   const value = optionalString(body, key);
   if (value != null && (!/^https?:\/\//i.test(value) || !isSafeExternalUrl(value) ||
     new URL(value).username || new URL(value).password)) invalid(key);
@@ -27,7 +32,7 @@ function optionalBoolean(body: Record<string, unknown>, key: string) {
   return invalid(key);
 }
 
-function parseInstant(value: unknown, key: string) {
+export function parseInstant(value: unknown, key: string) {
   if (value === null) return null;
   if (typeof value !== "string" ||
     !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || value.endsWith("-00:00")) invalid(key);
@@ -38,7 +43,7 @@ function parseInstant(value: unknown, key: string) {
   return instant;
 }
 
-function parsePeriod(body: Record<string, unknown>) {
+export function parsePeriod(body: Record<string, unknown>) {
   if (body.startsAt === undefined && body.endsAt === undefined) return {};
   const startsAt = parseInstant(body.startsAt, "시작 시각");
   const endsAt = parseInstant(body.endsAt, "종료 시각");

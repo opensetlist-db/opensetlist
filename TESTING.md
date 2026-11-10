@@ -137,6 +137,7 @@ know what each suite leaves behind:
 |---|---|---|
 | `board-picks.test.ts` | **writes** | artist, song, series, event, setlist item, `BoardPick` rows; `afterAll` deletes them |
 | `board-wishes.test.ts` | **writes** | artists, songs, series, event, `SongWish` rows; `afterAll` deletes them |
+| `bonus-lifecycle.test.ts` | **writes** | one album, listing, bonus and lifecycle history; `afterAll` deletes only its own rows |
 | `member-order.test.ts` | **writes** | artist, event, stage identity, performers; `afterAll` deletes them |
 | `official-order.test.ts` | **writes** | `officialorder-itest-` artists, identities, relations, event, explicit voice, song and historical item in a rolled-back transaction; fixed-prefix purge before/after handles interrupted fixtures |
 | `n14-live-path.test.ts` | **writes** | event, setlist items, reactions, wishes, confirms; also joins the dev Supabase Realtime channel (anon key) and broadcasts; `afterAll` deletes the rows |
@@ -212,6 +213,7 @@ the skip count.
 | `album.spec.ts` | GET only | `E2E_ALBUM_ID`, `E2E_SINGLE_ID`, `E2E_LIVE_ALBUM_ID` |
 | `album-cross-links.spec.ts` | GET only | `E2E_MULTI_ALBUM_SONG_ID`, `E2E_DISCOGRAPHY_ARTIST_ID`, `E2E_BD_SERIES_ID` |
 | `bonus-scrape.spec.ts` | GET only | `E2E_BONUS_ALBUM_ID` |
+| `bonus-lifecycle.spec.ts` | **writes** | local app, dev DB URLs and `ADMIN_PASSWORD`; creates and deletes its own album, listings, bonuses and history |
 | `event-bd-section.spec.ts` | GET only | `E2E_BD_EVENT_ID`, `E2E_PLAIN_EVENT_ID` |
 | `home.spec.ts` | GET only | none — asserts roles, landmarks and URLs, so any dev catalog state passes |
 | `search.spec.ts` | GET only | a catalog where `a` matches >20 songs (any seeded dev DB) |

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { entityPath } from "@/lib/seo/entityUrl";
 import BonusesClient, { type BonusRow } from "./BonusesClient";
 
 type Props = { params: Promise<{ id: string; listingId: string }> };
@@ -27,6 +28,8 @@ export default async function AlbumBonusesPage({ params }: Props) {
         id: true,
         originalStoreName: true,
         originalEditionLabel: true,
+        productUrl: true,
+        album: { select: { slug: true, originalTitle: true } },
       },
     }),
     prisma.albumStoreBonus.findMany({
@@ -41,6 +44,7 @@ export default async function AlbumBonusesPage({ params }: Props) {
     ...bonus,
     startsAt: bonus.startsAt?.toISOString() ?? null,
     endsAt: bonus.endsAt?.toISOString() ?? null,
+    endedAt: bonus.endedAt?.toISOString() ?? null,
   }));
 
   const label = listing.originalEditionLabel
@@ -54,10 +58,11 @@ export default async function AlbumBonusesPage({ params }: Props) {
           href={`/admin/albums/${id}/listings`}
           className="text-blue-600 hover:underline"
         >
-          ← {label}
+          ← {listing.album.originalTitle} · {label}
         </Link>
       </div>
-      <BonusesClient listingId={listing.id} bonuses={rows} />
+      <BonusesClient listingId={listing.id} bonuses={rows} productUrl={listing.productUrl}
+        purchaseHref={`${entityPath("albums", "ko", albumId, listing.album.slug)}?tab=bonus`} />
     </div>
   );
 }

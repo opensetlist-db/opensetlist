@@ -244,7 +244,8 @@ export function timeBucket(now: Date, seconds: number): number {
 // but only works inside Server Actions; these are Route Handlers.)
 const EXPIRE_NOW = { expire: 0 };
 
-function expireTags(tags: string[]): void {
+function expireTags(tags: string[]): boolean {
+  let expired = true;
   for (const tag of tags) {
     try {
       revalidateTag(tag, EXPIRE_NOW);
@@ -256,8 +257,10 @@ function expireTags(tags: string[]): void {
       // `tag` goes in as a %s argument, not interpolated into the
       // format string, so a `%` in it can't be read as a directive.
       console.error("[dataCache] revalidateTag(%s) failed", tag, err);
+      expired = false;
     }
   }
+  return expired;
 }
 
 // ---------------------------------------------------------------------
@@ -378,9 +381,10 @@ function expireWarmPublicData(): void {
  * live path's warm Runtime Cache entries. Call after a committed admin
  * write.
  */
-export function revalidatePublicData(): void {
-  expireTags([PUBLIC_DATA_TAG]);
+export function revalidatePublicData(): boolean {
+  const expired = expireTags([PUBLIC_DATA_TAG]);
   expireWarmPublicData();
+  return expired;
 }
 
 /**

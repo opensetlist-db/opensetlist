@@ -1,21 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import AlbumBonusFormModal, {
   type BonusInitial,
 } from "@/components/admin/AlbumBonusFormModal";
+import { isSafeExternalUrl } from "@/lib/utils";
+import BonusLifecyclePanel from "./BonusLifecyclePanel";
 
-export type BonusRow = Omit<BonusInitial, "listingId" | "id"> & { id: string };
+export type BonusRow = Omit<BonusInitial, "listingId"> & { endedAt: string | null };
 
 type Props = {
   listingId: string;
   bonuses: BonusRow[];
+  productUrl: string | null;
+  purchaseHref: string;
 };
 
-export default function BonusesClient({ listingId, bonuses }: Props) {
+export default function BonusesClient({ listingId, bonuses, productUrl, purchaseHref }: Props) {
   const router = useRouter();
   const [modal, setModal] = useState<BonusInitial | "new" | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
 
   async function handleDelete(id: string) {
     if (!confirm("정말 삭제하시겠습니까?")) return;
@@ -24,7 +29,7 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
         method: "DELETE",
       });
       if (res.ok) router.refresh();
-      else alert("삭제에 실패했습니다.");
+      else alert((await res.json().catch(() => null))?.error ?? "삭제에 실패했습니다.");
     } catch {
       alert("삭제에 실패했습니다. 네트워크를 확인해 주세요.");
     }
@@ -33,7 +38,14 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">특전 관리</h1>
+        <div>
+          <h1 className="text-2xl font-bold">특전 관리</h1>
+          {isSafeExternalUrl(productUrl) && (
+            <a href={productUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline">
+              이 옵션의 판매점 상품
+            </a>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => setModal("new")}
@@ -61,10 +73,17 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
               .map((tr) => `${tr.locale}: ${tr.bonusType}`)
               .join(" · ");
             return (
-              <tr key={b.id} className="border-b border-zinc-100 align-top">
-                <td className="py-2 font-medium">{b.originalBonusType}</td>
+              <Fragment key={b.id}>
+              <tr className="border-b border-zinc-100 align-top">
+                <td className="py-2 font-medium">{b.originalBonusType}{b.endedAt && <span className="ml-2 text-zinc-500">종료</span>}</td>
                 <td className="py-2 text-zinc-500">{tlSummary || "—"}</td>
                 <td className="space-x-2 py-2 whitespace-nowrap">
+                  <button type="button" aria-expanded={selected === b.id}
+                    data-testid={`bonus-lifecycle-open-${b.id}`}
+                    onClick={() => setSelected(selected === b.id ? null : b.id)}
+                    className="text-blue-600 hover:underline">
+                    종료·복구 이력
+                  </button>
                   <button
                     type="button"
                     onClick={() =>
@@ -83,6 +102,14 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
                   </button>
                 </td>
               </tr>
+              {selected === b.id && (
+                <tr>
+                  <td colSpan={3} className="py-2">
+                    <BonusLifecyclePanel id={b.id} listingId={listingId} purchaseHref={purchaseHref} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
           {bonuses.length === 0 && (

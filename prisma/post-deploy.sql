@@ -629,14 +629,14 @@ BEGIN
   END LOOP;
 END $$;
 
--- Publication approvals and mutable operator annotations are server-only.
+-- Publication approvals, operator annotations and bonus evidence are server-only.
 -- Public share readers project only the frozen, published locale payload.
 DO $$
 DECLARE
   t TEXT;
   r TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['EventCardPublication', 'EventCardRendition', 'EventCardAnnotation', 'EventCardCorrection', 'EventCardWriteAttempt', 'EventCardSuspension', 'EventCardSuspensionAttempt'] LOOP
+  FOREACH t IN ARRAY ARRAY['EventCardPublication', 'EventCardRendition', 'EventCardAnnotation', 'EventCardCorrection', 'EventCardWriteAttempt', 'EventCardSuspension', 'EventCardSuspensionAttempt', 'AlbumStoreBonusLifecycleOperation'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('REVOKE ALL ON TABLE %I FROM PUBLIC', t);
     FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP

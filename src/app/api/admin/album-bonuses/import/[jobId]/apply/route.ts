@@ -204,7 +204,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
         listingIdByIdx.set(lc.listingIdx, created.id);
         listingsInserted++;
       } else if (lc.kind === "update-changed" && lc.matchedListingId) {
-        const updates: Prisma.AlbumStoreListingUpdateInput = {};
+        const updates: Prisma.AlbumStoreListingUpdateInput = { revision: { increment: 1 } };
         for (const diff of lc.diffs) {
           if (diff.field === "productUrl") updates.productUrl = diff.to;
         }

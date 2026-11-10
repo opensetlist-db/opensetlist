@@ -84,6 +84,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       where: { id },
       data: {
         ...purchase,
+        revision: { increment: 1 },
         // Verified choices are no longer safe matches for the store/edition importer.
         ...(purchase.isBonusOption != null ? { optionKey: id } : {}),
         originalStoreName: (body.originalStoreName as string).trim(),
@@ -163,6 +164,9 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
         { error: "구매처를 찾을 수 없습니다." },
         { status: 404 },
       );
+    }
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+      return NextResponse.json({ error: "종료·복구 이력이 있는 구매 옵션은 삭제할 수 없습니다." }, { status: 409 });
     }
     throw e;
   }

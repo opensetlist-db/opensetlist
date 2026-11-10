@@ -52,7 +52,7 @@ export default function ListingsClient({
         method: "DELETE",
       });
       if (res.ok) router.refresh();
-      else alert("삭제에 실패했습니다.");
+      else alert((await res.json().catch(() => null))?.error ?? "삭제에 실패했습니다.");
     } catch {
       alert("삭제에 실패했습니다. 네트워크를 확인해 주세요.");
     }
