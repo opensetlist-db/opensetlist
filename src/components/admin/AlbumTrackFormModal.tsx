@@ -29,12 +29,10 @@ type Props = {
 // ja/ko/en columns. Source languages may also be outside the routed locales.
 const LOCALES: readonly string[] = locales;
 
-// Korean labels for the live preview + variant select come from
-// `ALBUM_TRACK_VARIANT_SUFFIX_KO` in `@/lib/albumTrackVariants` so
-// the admin surface and the import-side allowlist stay in lockstep.
-// Indexed lookups fall back to the raw variant string if a future
-// schema change adds a value before this map catches up.
-
+/**
+ * Edits linked songs and independent titles. Variant labels share the import
+ * allowlist, with the stored variant as a fallback for older rows.
+ */
 export default function AlbumTrackFormModal({
   albumId,
   initialData,
@@ -97,6 +95,7 @@ export default function AlbumTrackFormModal({
   >(initialData?.translations ?? []);
   const [confirmedSameLocales, setConfirmedSameLocales] = useState<string[]>([]);
 
+  /** Drops confirmations and errors from the previous pattern before switching fields. */
   function changePattern(next: TrackPattern) {
     setPattern(next);
     setConfirmedSameLocales([]);
@@ -126,6 +125,7 @@ export default function AlbumTrackFormModal({
     if (next) setTranslations((p) => [...p, { locale: next, title: "" }]);
   }
 
+  /** Changing a locale or its title invalidates the prior confirmation for that row. */
   function editTranslation(index: number, changes: { locale?: string; title?: string }) {
     setConfirmedSameLocales((prev) => prev.filter((locale) => locale !== translations[index].locale));
     setTranslations((prev) => prev.map((row, i) => i === index ? { ...row, ...changes } : row));
@@ -136,6 +136,7 @@ export default function AlbumTrackFormModal({
     return tr?.title ?? s.originalTitle;
   }
 
+  /** Omits untouched titles on edit and sends the original title snapshot for conflict detection. */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);

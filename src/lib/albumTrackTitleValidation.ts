@@ -1,6 +1,7 @@
 import { locales } from "@/i18n/routing";
 import { resolveDisplayPair } from "@/lib/display";
 
+/** Keeps stored text exact while ignoring translation row order in stale edit checks. */
 export function trackTitleSnapshot(track: {
   title: string | null;
   titleLanguage: string | null;
@@ -11,6 +12,7 @@ export function trackTitleSnapshot(track: {
   return JSON.stringify([track.title, track.titleLanguage, translations]);
 }
 
+/** Applies the public title rules to each routed language before an independent track is saved. */
 export function albumTrackTitleError(
   original: string,
   originalLanguage: string,
