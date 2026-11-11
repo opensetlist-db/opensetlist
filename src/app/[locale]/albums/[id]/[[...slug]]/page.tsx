@@ -15,6 +15,7 @@ import { FireAlbumView } from "@/components/FireAlbumView";
 import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
 import { resolveStoreKey } from "@/lib/albumBonusDisplay";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import { IdentityName } from "@/components/artists/IdentityName";
 import { AlbumIdentity } from "@/components/albums/detail/AlbumIdentity";
 import { AlbumTabs } from "@/components/albums/detail/AlbumTabs";
 import { AlbumTracksPanel } from "@/components/albums/detail/AlbumTracksPanel";
@@ -285,12 +286,11 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   // card itself lists every credited artist.
   const primaryArtist = album.artists[0]?.artist ?? null;
 
-  // 22-v1 breadcrumb: Home / Albums / <album>. The leaf is the original
-  // title, the same string as the H1.
+  const { main, sub } = displayOriginalTitle(album, album.translations, locale, "paired");
   const breadcrumbItems: BreadcrumbItem[] = [
     { label: t("breadcrumb.home"), href: `/${locale}` },
     { label: t("breadcrumb.albums"), href: `/${locale}/albums` },
-    { label: album.originalTitle },
+    { label: <IdentityName name={{ main, sub, lang: album.originalLanguage, locale }} /> },
   ];
 
   return (
