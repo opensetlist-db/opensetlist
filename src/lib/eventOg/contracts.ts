@@ -2,7 +2,7 @@ import type { Prisma } from "../../generated/prisma/client";
 import type { prisma } from "../prisma";
 import type { ImageStorage } from "../imageUpload/storage";
 import { BASE_URL } from "../config";
-import { CARD_LOCALES, CARD_MODES, type CardLocale, type CardMode } from "./content";
+import { CARD_LOCALES, CARD_MODES, type CardContent, type CardLocale, type CardMode } from "./content";
 
 export class CardPublicationError extends Error {
   readonly code: string;
@@ -14,6 +14,7 @@ export const isPublicationId = (value: string) => UUID.test(value);
 export type CardDb = Pick<typeof prisma, "$transaction" | "event" | "eventCardPublication" | "eventCardWriteAttempt">;
 export type PublicationDeps = { db?: CardDb; storage?: ImageStorage; origin?: string };
 export type FrozenCard = {
+  names?: CardContent["names"];
   title: string; description: string; alt: string;
   officialEventTitle: string; officialSeriesTitle: string | null;
   localizedEventTitle: string; localizedSeriesTitle: string;

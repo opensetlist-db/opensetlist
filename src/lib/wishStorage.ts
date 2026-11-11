@@ -94,7 +94,7 @@ function isTranslation(value: unknown): boolean {
   );
 }
 
-function isWishSongDisplay(value: unknown): value is WishSongDisplay {
+export function isWishSongDisplay(value: unknown): value is WishSongDisplay {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   if (typeof v.originalTitle !== "string") return false;

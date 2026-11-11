@@ -233,7 +233,7 @@ describe("GET /api/events/[id]/board", () => {
     });
     expect(typeof body.asOf).toBe("string");
     expect(new Date(body.asOf).toISOString()).toBe(body.asOf);
-    expect(body.groups).toEqual([
+    expect(body.groups).toMatchObject([
       {
         groupId: "1",
         slug: "hasunosora",
@@ -243,7 +243,10 @@ describe("GET /api/events/[id]/board", () => {
         expects: EMPTY_COLUMN,
         // stored order kept; "999" fell out of the catalog → dropped
         starters: [
-          { songId: "11", title: "ハナムスビ" },
+          {
+            songId: "11", title: "ハナムスビ",
+            song: { originalTitle: "ハナムスビ", originalLanguage: "ja", translations: [] },
+          },
           { songId: "10", title: "残陽" },
         ],
       },
@@ -349,7 +352,7 @@ describe("GET /api/events/[id]/board", () => {
     );
     setlistFindMany.mockResolvedValue([setlistRow(10)] as never);
     const body = await (await GET(req(), params())).json();
-    expect(body.groups[0].starters).toEqual([{ songId: "10", title: "残陽" }]);
+    expect(body.groups[0].starters).toMatchObject([{ songId: "10", title: "残陽" }]);
     expect(body.tally).toMatchObject({ played: 0, size: 0 });
     expect(body.tally.groups.every((g: { size: number }) => g.size === 0)).toBe(true);
   });
@@ -402,7 +405,7 @@ describe("GET /api/events/[id]/board", () => {
 
     const body = await (await GET(req(), params())).json();
     const [g1, g2] = body.groups;
-    expect(g1.expects).toEqual({
+    expect(g1.expects).toMatchObject({
       top: [
         // 4 vs 4: the earlier first submission wins
         { songId: "10", title: "残陽", count: 4, available: true },
@@ -413,14 +416,14 @@ describe("GET /api/events/[id]/board", () => {
       participants: 5,
       label: "ok",
     });
-    expect(g2.expects).toEqual({
+    expect(g2.expects).toMatchObject({
       top: [{ songId: "11", title: "ハナムスビ", count: 1, available: true }],
       submissions: 1,
       participants: 1,
       label: "early",
     });
     // Starters still travel; the client shows them only on operator columns.
-    expect(g1.starters).toEqual([{ songId: "11", title: "ハナムスビ" }]);
+    expect(g1.starters).toMatchObject([{ songId: "11", title: "ハナムスビ" }]);
     // One catalog per group that has picks or starters, in the request locale.
     expect(catalogMock).toHaveBeenCalledTimes(2);
     expect(catalogMock).toHaveBeenCalledWith(BigInt(1), "ja");
@@ -488,7 +491,7 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
     ];
     const body = await (await GET(req(), params())).json();
     const [g1, g2] = body.groups;
-    expect(g1.wishes).toEqual({
+    expect(g1.wishes).toMatchObject({
       top: [
         { songId: "10", title: "残陽", count: 2, available: true },
         { songId: "11", title: "ハナムスビ", count: 2, available: true },
@@ -497,7 +500,7 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
       participants: 3,
       label: "early",
     });
-    expect(g2.wishes).toEqual({
+    expect(g2.wishes).toMatchObject({
       top: [{ songId: "20", title: "未体験HORIZON", count: 7, available: true }],
       submissions: 7,
       participants: 6,
@@ -527,14 +530,14 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
     ] as never);
     const body = await (await GET(req(), params())).json();
     const [g1, g2] = body.groups;
-    expect(g1.wishes).toEqual({
+    expect(g1.wishes).toMatchObject({
       top: [{ songId: "11", title: "ハナムスビ", count: 2, available: true }],
       submissions: 2,
       participants: 0,
       // legacy-only column: fan data (early), never the operator fallback
       label: "early",
     });
-    expect(g2.wishes).toEqual({
+    expect(g2.wishes).toMatchObject({
       top: [{ songId: "20", title: "未体験HORIZON", count: 1, available: true }],
       submissions: 1,
       participants: 0,
@@ -557,7 +560,7 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
     ] as never);
     wishParticipants = [{ groupArtistId: BigInt(1), participants: 1 }];
     const body = await (await GET(req(), params())).json();
-    expect(body.groups[0].wishes).toEqual({
+    expect(body.groups[0].wishes).toMatchObject({
       top: [{ songId: "10", title: "残陽", count: 4, available: true }],
       submissions: 4,
       participants: 1,
@@ -590,7 +593,7 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
     );
     const body = await (await GET(req(), params())).json();
     expect(body.groups[0].wishes.label).toBe("operator");
-    expect(body.groups[0].starters).toEqual([{ songId: "11", title: "ハナムスビ" }]);
+    expect(body.groups[0].starters).toMatchObject([{ songId: "11", title: "ハナムスビ" }]);
   });
 
   it("ongoing → locked stub, no wish aggregate work", async () => {

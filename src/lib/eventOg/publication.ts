@@ -1,3 +1,4 @@
+import { shareNameText } from "../shareNames";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -85,10 +86,14 @@ export async function publishPreview(input: {
     const url = new URL(publicUrl);
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw invalid("잘못된 이미지 공개 URL입니다.");
     const c = s.rendition.content;
+    const eventTitle = shareNameText(c.names.event);
+    const seriesTitle = c.names.series ? shareNameText(c.names.series) : "";
     const content: FrozenCard = {
-      title: `${c.officialEventTitle} | ${c.purposeLabel} | OpenSetlist`,
-      description: [c.localizedSeriesTitle, c.localizedEventTitle, c.date, c.venue, c.purposeLabel].filter(Boolean).join(" · "),
-      alt: `${c.title} · ${c.purposeLabel}`,
+      names: c.names,
+      title: `${eventTitle} | ${c.purposeLabel} | OpenSetlist`,
+      description: [seriesTitle !== eventTitle ? seriesTitle : "", eventTitle, c.date,
+        c.names.venue ? shareNameText(c.names.venue) : "", c.purposeLabel].filter(Boolean).join(" · "),
+      alt: c.alt,
       officialEventTitle: c.officialEventTitle, officialSeriesTitle: c.officialSeriesTitle,
       localizedEventTitle: c.localizedEventTitle, localizedSeriesTitle: c.localizedSeriesTitle,
       displayTitle: c.title, performance: c.performance, context: c.context, date: c.date, venue: c.venue, purposeLabel: c.purposeLabel,

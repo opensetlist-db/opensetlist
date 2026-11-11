@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 import { SongMatchBadge } from "@/components/SongMatchBadge";
-import { displayOriginalTitle } from "@/lib/display";
+import { ParticipationSongName } from "@/components/ParticipationSongName";
 import { useMounted } from "@/hooks/useMounted";
 import { setTimeoutAt } from "@/lib/timeoutAt";
 import { readWishes, writeWishes, type WishEntry } from "@/lib/wishStorage";
@@ -353,15 +353,6 @@ export function EventWishSection({
             {myWishes.length > 0 && (
             <ul className={styles.crowdList}>
             {myWishes.map((entry) => {
-              const display = displayOriginalTitle(
-                {
-                  originalTitle: entry.song.originalTitle,
-                  originalLanguage: entry.song.originalLanguage,
-                  variantLabel: entry.song.variantLabel,
-                },
-                entry.song.translations,
-                locale,
-              );
               return (
                 <li
                   key={entry.dbId === "__pending__" ? `pending-${entry.songId}` : entry.dbId}
@@ -379,12 +370,9 @@ export function EventWishSection({
                       disabled={!isLocked}
                     >
                       <span style={{ color: colors.textPrimary }}>
-                        {display.main}
+                        <ParticipationSongName song={entry.song} locale={locale} />
                       </span>
                     </SongMatchBadge>
-                    {display.sub && (
-                      <span className={styles.songSub}> {display.sub}</span>
-                    )}
                   </span>
                   {!isLocked && (
                     <button
@@ -457,15 +445,6 @@ export function EventWishSection({
             {displayedTop3.length > 0 && (
             <ol className={styles.crowdList}>
             {displayedTop3.map((entry, i) => {
-              const display = displayOriginalTitle(
-                {
-                  originalTitle: entry.song.originalTitle,
-                  originalLanguage: entry.song.originalLanguage,
-                  variantLabel: entry.song.variantLabel,
-                },
-                entry.song.translations,
-                locale,
-              );
               return (
                 <li key={entry.song.id} className={styles.crowdItem}>
                   <span className={styles.rank}>{i + 1}</span>
@@ -479,12 +458,9 @@ export function EventWishSection({
                       disabled={!isLocked}
                     >
                       <span style={{ color: colors.textPrimary }}>
-                        {display.main}
+                        <ParticipationSongName song={entry.song} locale={locale} />
                       </span>
                     </SongMatchBadge>
-                    {display.sub && (
-                      <span className={styles.songSub}> {display.sub}</span>
-                    )}
                   </span>
                   <span className={styles.crowdCount}>
                     {t("count", { count: entry.count })}

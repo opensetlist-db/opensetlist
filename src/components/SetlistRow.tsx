@@ -3,10 +3,8 @@
 import { useId, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import {
-  displayNameWithFallback,
-  displayOriginalTitle,
-} from "@/lib/display";
+import { resolveDisplayPair } from "@/lib/display";
+import { ParticipationSongName } from "@/components/ParticipationSongName";
 import { trackEvent } from "@/lib/analytics";
 import { ReactionButtons } from "@/components/ReactionButtons";
 import { RowContestButton } from "@/components/RowContestButton";
@@ -21,7 +19,6 @@ import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
 import {
-  groupBadgeLabel,
   MAX_ROW_BADGES,
   pickRowArtistBadges,
 } from "@/lib/setlistRowBadge";
@@ -163,38 +160,22 @@ export function SetlistRow({
   const confirmT = useTranslations("Confirm");
   const setlistT = useTranslations("Setlist");
 
-  const songNames = item.songs.map((s) => {
-    const { main, sub, variant } = displayOriginalTitle(
-      s.song,
-      s.song.translations,
-      locale,
+  const songNames = item.songs.map(({ song }) => song);
+  const performers = item.performers.map(({ stageIdentity: performer }, index) => {
+    const name = resolveDisplayPair(
+      { original: performer.originalName ?? "", originalLanguage: performer.originalLanguage },
+      performer.translations, locale, "name",
     );
-    // Schema declares `Song.slug` as required + unique, but some
-    // pre-redesign imports left it blank; `entityPath` drops the slug
-    // segment for an empty slug, and the `[[...slug]]` catch-all
-    // resolves on id alone.
-    return {
-      id: s.song.id,
-      href: entityPath("songs", locale, s.song.id, s.song.slug),
-      main,
-      sub,
-      variantLabel: variant,
-    };
+    return (
+      <span key={performer.id}>
+        {index > 0 && ", "}
+        <span lang={name.main ? performer.originalLanguage : locale}>
+          {name.main || name.sub || t("unknownPerformer")}
+        </span>
+        {name.main && name.sub && <span lang={locale} className="ml-1 text-[0.85em]">{name.sub}</span>}
+      </span>
+    );
   });
-
-  // Short performer names match the mockup's compact shape — characters
-  // like 林田乃理 fit the 180px column at small font sizes only when the
-  // shortName cascade kicks in (e.g. "ノリ"). The cascade falls through
-  // to the long name when no short variant exists.
-  const performers = item.performers.map(
-    (p) =>
-      displayNameWithFallback(
-        p.stageIdentity,
-        p.stageIdentity.translations,
-        locale,
-        "short",
-      ) || t("unknownPerformer"),
-  );
 
   // Honor the row's first SetlistItemArtist as a "unit credit" for
   // any non-`full_group` stage type, EXCEPT when the credit is a
@@ -226,32 +207,17 @@ export function SetlistRow({
   // MAX_ROW_BADGES chips in official display order, then a `+N` chip whose
   // title lists the rest.
   const badgeArtists = pickRowArtistBadges(item, eventArtistId);
-  // Full unit name on setlist rows — operator preference. UnitBadge
-  // already constrains horizontal width via the row's grid column,
-  // so a longer label clips with ellipsis rather than reflowing the
-  // row. Group-type credits (the festival case: 「Aqours」「虹ヶ咲」
-  // 「蓮ノ空」) use the SHORT form instead — group full names
-  // ("虹ヶ咲学園スクールアイドル同好会") would eat the whole badge
-  // and the short form is how fans name them anyway. `groupBadgeLabel`
-  // prefers `originalShortName` over a long localized name (see its
-  // doc for why the generic short cascade isn't enough).
-  //
   // Credits with no resolvable name are dropped from the chip list;
   // if that leaves nothing, the row shows the stageType fallback.
   const namedBadges = badgeArtists
     .map((artist) => ({
       artist,
-      label:
-        artist.type === "group"
-          ? groupBadgeLabel(artist, locale)
-          : displayNameWithFallback(
-              artist,
-              artist.translations,
-              locale,
-              "full",
-            ),
+      name: resolveDisplayPair(
+        { original: artist.originalName ?? "", originalLanguage: artist.originalLanguage },
+        artist.translations, locale, "name",
+      ),
     }))
-    .filter((b) => b.label);
+    .filter(({ name }) => name.main || name.sub);
   const shownBadges = namedBadges.slice(0, MAX_ROW_BADGES);
   const hiddenBadges = namedBadges.slice(MAX_ROW_BADGES);
 
@@ -325,6 +291,7 @@ export function SetlistRow({
       <div className={styles.songBody}>
         <SongTitleBlock
           songNames={songNames}
+          locale={locale}
           itemType={item.type}
           position={item.position}
           eventId={eventId}
@@ -337,21 +304,26 @@ export function SetlistRow({
             panelTitle={creditsT("songPerformers")}
           >
             <div className={styles.creditLine}>
-              {shownBadges.map(({ artist, label }) => (
+              {shownBadges.map(({ artist, name }) => (
                 <UnitBadge
                   key={artist.orderId ?? artist.id}
                   artistColor={artist.color}
                   locale={locale}
                   artistId={artist.orderId ?? artist.id}
                   artistSlug={artist.slug}
-                  label={label}
+                  label={
+                    <>
+                      <span lang={name.main ? artist.originalLanguage : locale}>{name.main || name.sub}</span>
+                      {name.main && name.sub && <span lang={locale} className="block text-[0.85em]">{name.sub}</span>}
+                    </>
+                  }
                 />
               ))}
               {hiddenBadges.length > 0 && (
                 <span
                   className={styles.artistTag}
                   style={{ "--artist": colors.border } as React.CSSProperties}
-                  title={hiddenBadges.map((b) => b.label).join(", ")}
+                  title={hiddenBadges.map(({ name }) => [name.main, name.sub].filter(Boolean).join(" / ")).join(", ")}
                 >
                   +{hiddenBadges.length}
                 </span>
@@ -389,7 +361,7 @@ export function SetlistRow({
             itself, so show them directly under the song title. */}
         {!hasCreditLine && hasPerformerCredits && (
           <p className={styles.performerNames} data-testid="setlist-performers">
-            {performers.join(", ")}
+            {performers}
           </p>
         )}
 
@@ -451,7 +423,7 @@ function CreditHeading({
   panelTitle,
   children,
 }: {
-  performers: string[] | null;
+  performers: React.ReactNode[] | null;
   panelTitle: string;
   children: React.ReactNode;
 }) {
@@ -486,7 +458,7 @@ function CreditHeading({
       {performers && (
         <div id={panelId} className={styles.creditBody} hidden={!open}>
           <strong>{panelTitle}</strong>
-          <p>{performers.join(", ")}</p>
+          <p>{performers}</p>
         </div>
       )}
     </>
@@ -495,19 +467,15 @@ function CreditHeading({
 
 function SongTitleBlock({
   songNames,
+  locale,
   itemType,
   position,
   eventId,
   t,
   unknownSongLabel,
 }: {
-  songNames: Array<{
-    id: number;
-    href: string;
-    main: string;
-    sub: string | null;
-    variantLabel: string | null;
-  }>;
+  songNames: Array<LiveSetlistItem["songs"][number]["song"]>;
+  locale: string;
   itemType: string;
   position: number;
   eventId: string;
@@ -534,7 +502,7 @@ function SongTitleBlock({
         <span key={song.id}>
           {i > 0 && <span className={styles.medleyJoin}>/</span>}
           <Link
-            href={song.href}
+            href={entityPath("songs", locale, song.id, song.slug)}
             onClick={() =>
               trackEvent("setlist_item_click", {
                 song_id: String(song.id),
@@ -543,12 +511,8 @@ function SongTitleBlock({
               })
             }
           >
-            {song.main}
+            <ParticipationSongName song={song} locale={locale} />
           </Link>
-          {song.sub && <span className={styles.songSub}> {song.sub}</span>}
-          {song.variantLabel && (
-            <span className={styles.songSub}> ({song.variantLabel})</span>
-          )}
         </span>
       ))}
     </div>
@@ -566,7 +530,7 @@ function UnitBadge({
   locale: string;
   artistId: string | number;
   artistSlug: string;
-  label: string;
+  label: React.ReactNode;
 }) {
   // 18-v3 `.artist-tag`: the unit colour washes the chip
   // (`color-mix(--artist 32%, white)`) and the label stays ink, so an

@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { CACHE_TTL, cachedQuery, splitIdKey } from "@/lib/dataCache";
-import { displayNameWithFallback } from "@/lib/display";
+import { resolveDisplayPair } from "@/lib/display";
 import { resolveUnitColor } from "@/lib/artistColor";
 import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
 import { descendantsOf, getArtistHierarchyCached } from "@/lib/artistHierarchy";
-import { FALLBACK_LOCALE } from "@/i18n/routing";
+import { FALLBACK_LOCALE, locales } from "@/i18n/routing";
 import type { AvailableSong } from "@/lib/types/predict";
 
 /**
@@ -58,7 +58,7 @@ async function fetchAvailableSongRows(scopeIds: bigint[], locale: string) {
       baseVersionId: true,
       releaseDate: true,
       translations: {
-        where: localeFilter,
+        where: { locale: { in: [...locales] } },
         select: { locale: true, title: true, variantLabel: true },
       },
       artists: {
@@ -170,6 +170,10 @@ export function mapAvailableSongRows(
       creditedSet.add(aid);
     }
     const creditedArtistIds = [...creditedSet];
+    const unitName = resolveDisplayPair(
+      { original: unitArtist.originalName, originalLanguage: unitArtist.originalLanguage },
+      unitArtist.translations, locale, "name",
+    );
 
     out.push({
       songId,
@@ -181,12 +185,9 @@ export function mapAvailableSongRows(
       unit: {
         artistId: unitArtistId,
         slug: unitArtist.slug,
-        label: displayNameWithFallback(
-          unitArtist,
-          unitArtist.translations,
-          locale,
-          "short",
-        ),
+        label: unitName.main,
+        labelSub: unitName.sub,
+        labelLang: unitArtist.originalLanguage,
         color: resolveUnitColor(unitArtist),
         isSubUnit: unitArtist.parentArtistId !== null,
         isMainUnit: unitArtist.isMainUnit,

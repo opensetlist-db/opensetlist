@@ -28,7 +28,7 @@
 
 import { rootOf, type ArtistHierarchy } from "@/lib/artistHierarchyTree";
 import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
-import { displayNameWithFallback } from "@/lib/display";
+import { resolveDisplayPair } from "@/lib/display";
 import { resolveFestivalGroups } from "@/lib/predict/festivalCatalog";
 import type { EventRosterEntry } from "@/lib/types/setlist";
 
@@ -57,8 +57,9 @@ export interface BoardGroupArtistRow {
 export interface BoardGroup {
   artistId: number;
   slug: string;
-  /** Localized SHORT name (`displayNameWithFallback(…, "short")`). */
   label: string;
+  labelSub?: string | null;
+  labelLang?: string;
   /** `Artist.color`; null means "use the primary colour" downstream. */
   color: string | null;
 }
@@ -180,10 +181,16 @@ export function boardGroupsFromRows(
     const r = rowById.get(rootId);
     const artistId = r ? safeBigIntToNumber(BigInt(rootId)) : null;
     if (!r || artistId === null) continue;
+    const name = resolveDisplayPair(
+      { original: r.originalName ?? "", originalLanguage: r.originalLanguage },
+      r.translations, locale, "name",
+    );
     groups.push({
       artistId,
       slug: r.slug,
-      label: displayNameWithFallback(r, r.translations, locale, "short"),
+      label: name.main || name.sub || "",
+      labelSub: name.main ? name.sub : null,
+      labelLang: name.main ? r.originalLanguage : locale,
       color: r.color,
     });
   }

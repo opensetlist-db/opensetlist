@@ -1,5 +1,6 @@
 "use client";
 
+import { shareNameText, type ShareNames } from "@/lib/shareNames";
 import {
   useEffect,
   useMemo,
@@ -100,6 +101,7 @@ interface Props {
   seriesName: string;
   eventTitle: string;
   dateLine: string;
+  shareNames?: ShareNames;
   actualSongs: LiveSetlistItem[];
   predictions: PredictionEntry[];
   matched: number;
@@ -164,6 +166,7 @@ export function ShareCardModal({
   seriesName,
   eventTitle,
   dateLine,
+  shareNames,
   actualSongs,
   predictions,
   matched,
@@ -383,6 +386,7 @@ export function ShareCardModal({
     seriesName,
     eventTitle,
     dateLine,
+    JSON.stringify(shareNames),
     JSON.stringify(actualSongs),
     JSON.stringify(predictions),
     matched,
@@ -535,6 +539,9 @@ export function ShareCardModal({
           : mode === "live"
             ? t("shareTextLive", { matched, total, percentage })
             : t("shareText", { matched, total, percentage });
+      const eventName = shareNames ? shareNameText(shareNames.event) : eventTitle;
+      const seriesTitle = shareNames?.series ? shareNameText(shareNames.series) : "";
+      const shareTitle = seriesTitle && seriesTitle !== eventName ? `${seriesTitle} · ${eventName}` : eventName;
       let blob = preRasterizedBlob;
       if (!blob) {
         blob = await renderCardToBlob(captureRef.current);
@@ -554,8 +561,8 @@ export function ShareCardModal({
         // always attached regardless of which fields the platform
         // honors.
         share: {
-          title: eventTitle,
-          text: shareText,
+          title: shareTitle,
+          text: `${shareTitle}\n${shareText}`,
           url: shareUrl,
         },
       });
@@ -790,6 +797,7 @@ export function ShareCardModal({
             seriesName={seriesName}
             eventTitle={eventTitle}
             dateLine={dateLine}
+            shareNames={shareNames}
             actualSongs={actualSongs}
             predictions={predictions}
             matched={matched}
@@ -842,6 +850,7 @@ export function ShareCardModal({
             seriesName={seriesName}
             eventTitle={eventTitle}
             dateLine={dateLine}
+            shareNames={shareNames}
             actualSongs={actualSongs}
             predictions={predictions}
             matched={matched}

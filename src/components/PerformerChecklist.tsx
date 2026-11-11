@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { displayNameWithFallback } from "@/lib/display";
+import { resolveDisplayPair } from "@/lib/display";
 import { createOfficialOrdering } from "@/lib/officialOrder";
 
 const memberOrdering = createOfficialOrdering([]);
@@ -39,10 +39,7 @@ interface Props {
  * scroll. Guests render with a muted "· 게스트" suffix (mirrors
  * `<PerformersCard>`'s convention).
  *
- * Display names use `displayNameWithFallback(..., "full")` — same
- * helper the rest of the surface uses. The "full" variant (vs
- * "short") gives the unabbreviated form so similar-name disambiguation
- * is easier in a tappable list.
+ * Use full names so similar names are easier to tell apart.
  */
 export function PerformerChecklist({
   performers,
@@ -76,15 +73,14 @@ export function PerformerChecklist({
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
       {displayPerformers.map((p) => {
-        const name = displayNameWithFallback(
+        const name = resolveDisplayPair(
           {
-            originalName: p.originalName ?? "",
-            originalShortName: p.originalShortName,
+            original: p.originalName ?? "",
             originalLanguage: p.originalLanguage,
           },
           p.translations,
           locale,
-          "full",
+          "name",
         );
         const checked = checkedIds.has(p.stageIdentityId);
         return (
@@ -102,7 +98,10 @@ export function PerformerChecklist({
               onChange={() => onToggle(p.stageIdentityId)}
               className="accent-gray-900"
             />
-            <span className="text-gray-900">{name}</span>
+            <span className="min-w-0 text-gray-900 [overflow-wrap:anywhere]">
+              <span lang={p.originalLanguage}>{name.main}</span>
+              {name.sub && <span lang={locale} className="block text-xs opacity-80">{name.sub}</span>}
+            </span>
             {p.isGuest && (
               <span className="text-xs text-gray-400">
                 · {eventT("guestLabel")}

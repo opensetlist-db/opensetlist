@@ -1,11 +1,12 @@
 import { ImageResponse } from "@vercel/og";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
+import { OgName } from "@/lib/ogName";
+import { shareName } from "@/lib/shareNames";
+import { resolveDisplayPair } from "@/lib/display";
 import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
 import { BRAND_GRADIENT, getArtistColor } from "@/lib/artistColor";
 import { normalizeOgLocale } from "@/lib/ogLabels";
-import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /*
  * Open Graph image for `/[locale]/albums/[id]/...`. Mirrors the
@@ -41,6 +42,7 @@ const ERROR_HEADERS = {
 
 const TITLE_FALLBACK = "OPENSETLIST";
 
+/** Use the artist's theme and the album's original and localized titles. */
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
   const url = new URL(req.url);
@@ -61,14 +63,14 @@ export async function GET(req: Request, { params }: Props) {
     const album = await prisma.album.findUnique({
       where: { id: BigInt(id) },
       include: {
-        translations: { where: { locale: { in: [lang, FALLBACK_LOCALE] } } },
+        translations: { where: { locale: lang } },
         artists: {
           take: 1,
           include: {
             artist: {
               include: {
                 translations: {
-                  where: { locale: { in: [lang, FALLBACK_LOCALE] } },
+                  where: { locale: lang },
                 },
               },
             },
@@ -81,23 +83,12 @@ export async function GET(req: Request, { params }: Props) {
       return renderDefault(fallback, await loadFontsSafe());
     }
 
-    const title =
-      resolveLocalizedField(
-        album,
-        album.translations,
-        lang,
-        "title",
-        "originalTitle",
-      ) ?? fallback;
-
-    const primaryArtist = album.artists[0]?.artist ?? null;
-    const artistName = primaryArtist
-      ? displayNameWithFallback(
-          primaryArtist,
-          primaryArtist.translations,
-          lang,
-        )
-      : "";
+    const title = resolveDisplayPair(
+      { original: album.originalTitle || fallback, originalLanguage: album.originalLanguage },
+      album.translations, lang, "title", { kind: "title" },
+    );
+    const primaryArtist = album.artists[0]?.artist;
+    const artistName = primaryArtist ? shareName(primaryArtist, lang) : null;
     const accent = primaryArtist
       ? (getArtistColor(primaryArtist) ?? BRAND_GRADIENT)
       : BRAND_GRADIENT;
@@ -160,28 +151,8 @@ export async function GET(req: Request, { params }: Props) {
           >
             {typeLabel}
           </div>
-          <div
-            style={{
-              fontSize: titleFontSize(title).fontSize,
-              fontWeight: 800,
-              lineHeight: 1.1,
-              maxWidth: 1000,
-              marginBottom: artistName ? 28 : 0,
-            }}
-          >
-            {title}
-          </div>
-          {artistName ? (
-            <div
-              style={{
-                fontSize: 38,
-                fontWeight: 600,
-                opacity: 0.9,
-              }}
-            >
-              {artistName}
-            </div>
-          ) : null}
+          <OgName name={title} size={titleFontSize(title.main).fontSize} />
+          {artistName && <OgName name={artistName} size={32} secondary />}
         </div>
       ),
       { width: 1200, height: 630, fonts, headers: DEFAULT_HEADERS },

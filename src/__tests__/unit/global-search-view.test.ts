@@ -39,17 +39,19 @@ function eventHit(overrides: Partial<SearchHit<"events">> = {}): SearchHit<"even
 }
 
 describe("buildRowView", () => {
-  it("renders a concert with the viewer-locale name, original subtitle, UTC date and Day chip", () => {
+  it("renders a concert with its original title, exact locale subtitle and venue pair", () => {
     const row = buildRowView(eventHit(), "ko", "Dream", labels);
     expect(row).toMatchObject({
       href: "/ko/events/21/colorful-dreams-day1",
-      title: "Colorful Dreams! Colorful Smiles! 공연 Day.1",
-      titleLang: "ko",
-      sub: "Colorful Dreams! Colorful Smiles!公演 Day.1",
-      subLang: "ja",
+      title: "Colorful Dreams! Colorful Smiles!公演 Day.1",
+      titleLang: "ja",
+      sub: "Colorful Dreams! Colorful Smiles! 공연 Day.1",
+      subLang: "ko",
       date: "2022년 9월 10일",
       day: "Day.1",
-      meta: "도쿄 가든 시어터",
+      meta: "東京ガーデンシアター",
+      metaSub: "도쿄 가든 시어터",
+      metaLang: "ja",
       matched: null,
     });
   });
@@ -130,7 +132,7 @@ describe("buildRowView", () => {
     };
     const row = buildRowView(variant, "ko", "Dream", labels);
     expect(row.href).toBe("/ko/songs/62/dream-believers-104");
-    expect(row.version).toEqual({ label: "104기 Ver.", lang: "ko", base: false });
+    expect(row.version).toEqual({ label: "104期 Ver.", sub: "104기 Ver.", lang: "ja", base: false });
     expect(buildRowView(variant, "en", "Dream", labels).version).toEqual({
       label: "104期 Ver.",
       lang: "ja",

@@ -1,5 +1,8 @@
 "use client";
 
+import { ParticipationSongName } from "@/components/ParticipationSongName";
+import { selectedSongSource } from "@/lib/participationSongDisplay";
+
 import {
   useCallback,
   useEffect,
@@ -679,13 +682,7 @@ export function AddItemBottomSheet({
                     />
                     {selectedSong && (
                       <div className="mt-2 text-sm text-gray-700">
-                        ✓ {selectedSong.originalTitle}
-                        {selectedVariant?.variantLabel && (
-                          <span className="text-gray-500">
-                            {" "}
-                            ({selectedVariant.variantLabel})
-                          </span>
-                        )}
+                        ✓ <ParticipationSongName song={selectedSongSource(selectedSong, selectedVariant)} locale={locale} />
                       </div>
                     )}
                   </div>

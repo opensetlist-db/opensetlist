@@ -24,12 +24,12 @@
  */
 
 import { isDecimalId } from "@/lib/board/ids";
+import type { BoardSongRef } from "@/lib/board/types";
+import { isWishSongDisplay } from "@/lib/wishStorage";
 
-export interface StoredBoardPick {
+export interface StoredBoardPick extends BoardSongRef {
   id: string;
   groupId: string;
-  songId: string;
-  title: string;
   available: boolean;
 }
 
@@ -66,7 +66,12 @@ export function readBoardPicks(eventId: string): StoredBoardPick[] {
     const picks = (parsed as Record<string, unknown>).picks;
     // A tampered or half-written entry drops only the bad rows, not the
     // whole ballot — the good ones still carry valid server ids.
-    return Array.isArray(picks) ? picks.filter(isStoredPick) : [];
+    return Array.isArray(picks)
+      ? picks.filter(isStoredPick).map(({ id, groupId, songId, title, available, song }) => ({
+          id, groupId, songId, title, available,
+          ...(isWishSongDisplay(song) ? { song } : {}),
+        }))
+      : [];
   } catch {
     return [];
   }

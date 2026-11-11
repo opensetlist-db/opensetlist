@@ -3,7 +3,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import styles from "./songPicker.module.css";
-import { displayOriginalTitle } from "@/lib/display";
+import { ParticipationSongName } from "@/components/ParticipationSongName";
 import { sortPickerSongs, type PickerSort } from "@/lib/predict/sortSongs";
 import { colors } from "@/styles/tokens";
 import type {
@@ -166,6 +166,7 @@ export function SongPickerContent({
         if (tr.title.toLowerCase().includes(q)) return true;
       }
       if (song.unit.label.toLowerCase().includes(q)) return true;
+      if (song.unit.labelSub?.toLowerCase().includes(q)) return true;
       return false;
     });
   }, [songs, query, activeFilter, coveredArtistIds, isFestivalChipSet]);
@@ -208,6 +209,8 @@ export function SongPickerContent({
         {
           unitKey: null as string | null,
           label: "",
+          labelSub: null,
+          labelLang: undefined,
           color: "",
           songs: sortPickerSongs(filtered, sort),
         },
@@ -216,7 +219,14 @@ export function SongPickerContent({
     const MULTI_ARTIST_BUCKET_KEY = -1;
     const buckets = new Map<
       number,
-      { unitKey: string; label: string; color: string; songs: AvailableSong[] }
+      {
+        unitKey: string;
+        label: string;
+        labelSub?: string | null;
+        labelLang?: string;
+        color: string;
+        songs: AvailableSong[];
+      }
     >();
     for (const song of filtered) {
       const bucketKey = song.isMultiArtist
@@ -231,15 +241,15 @@ export function SongPickerContent({
           label: song.isMultiArtist
             ? t("picker.multiArtistSection")
             : song.unit.label,
+          labelSub: song.isMultiArtist ? null : song.unit.labelSub,
+          labelLang: song.isMultiArtist ? undefined : song.unit.labelLang,
           color: song.isMultiArtist ? colors.textMuted : song.unit.color,
           songs: [song],
         });
       }
     }
     return [...buckets.values()].map((b) => ({
-      unitKey: b.unitKey,
-      label: b.label,
-      color: b.color,
+      ...b,
       songs: sortPickerSongs(b.songs, sort),
     }));
   }, [filtered, showSectionHeaders, sort, t]);
@@ -342,10 +352,12 @@ export function SongPickerContent({
                 type="button"
                 onClick={() => setActiveFilterKey(f.key)}
                 aria-pressed={active}
+                lang={f.labelLang}
                 className={styles.filter}
                 style={style}
               >
                 {f.label}
+                {f.labelSub && <span lang={locale} className="block text-[0.9em] font-normal">{f.labelSub}</span>}
               </button>
             );
           })}
@@ -435,13 +447,13 @@ export function SongPickerContent({
                     padding: "6px 16px",
                     background: colors.bgSubtle,
                     borderBottom: `1px solid ${colors.borderLight}`,
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: 700,
                     color: bucket.color,
                     letterSpacing: "0.04em",
                   }}
                 >
-                  {bucket.label}
+                  <PickerLabel item={bucket} locale={locale} />
                 </div>
               )}
               {bucket.songs.map((song) => (
@@ -493,15 +505,6 @@ function SongRow({
   locale,
   showInlineBadge,
 }: SongRowProps) {
-  const title = displayOriginalTitle(
-    {
-      originalTitle: song.originalTitle,
-      originalLanguage: song.originalLanguage,
-      variantLabel: song.variantLabel,
-    },
-    song.translations,
-    locale,
-  );
   return (
     <div
       role="button"
@@ -573,18 +576,8 @@ function SongRow({
               color: selected ? "var(--primary)" : colors.textPrimary,
             }}
           >
-            {title.main}
+            <ParticipationSongName song={song} locale={locale} />
           </span>
-          {title.sub && (
-            <span style={{ fontSize: 11, color: colors.textMuted }}>
-              {title.sub}
-            </span>
-          )}
-          {title.variant && (
-            <span style={{ fontSize: 10, color: colors.textMuted }}>
-              ({title.variant})
-            </span>
-          )}
           {showInlineBadge && !song.isMultiArtist && (
             // Multi-artist collab songs don't get an inline badge —
             // `song.unit.label` only points at the first sub-unit
@@ -595,16 +588,16 @@ function SongRow({
             // `others` bucket" without the badge.
             <span
               style={{
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 600,
                 color: song.unit.color,
                 background: `${song.unit.color}15`,
                 borderRadius: 8,
                 padding: "1px 6px",
-                whiteSpace: "nowrap",
+                maxWidth: "100%",
               }}
             >
-              {song.unit.label}
+              <PickerLabel item={song.unit} locale={locale} />
             </span>
           )}
         </div>
@@ -622,5 +615,20 @@ function SongRow({
         {selected ? "−" : "+"}
       </span>
     </div>
+  );
+}
+
+function PickerLabel({
+  item,
+  locale,
+}: {
+  item: { label: string; labelSub?: string | null; labelLang?: string };
+  locale: string;
+}) {
+  return (
+    <span className="[overflow-wrap:anywhere]">
+      <span lang={item.labelLang}>{item.label}</span>
+      {item.labelSub && <span lang={locale} className="block text-[0.9em] font-normal">{item.labelSub}</span>}
+    </span>
   );
 }

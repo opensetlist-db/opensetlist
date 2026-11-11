@@ -6,12 +6,12 @@ import {
   eventBoardTag,
   eventTag,
 } from "@/lib/dataCache";
-import { displayOriginalTitle } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
 import { getAvailableSongsCached } from "@/lib/predict/availableSongs";
 import { seriesPrimaryArtistOf } from "@/lib/board/boardGroups";
 import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
 import { readStarterMap } from "@/lib/board/starterPicks";
+import { boardSongRef } from "@/lib/board/pickTitle";
 import {
   addSongCount,
   buildBoardColumn,
@@ -80,17 +80,16 @@ export const getBoardControlCached = cachedQuery(
 
 type AggregateStatus = "upcoming" | "completed";
 
-/** A group's (already cached) base catalog as song id → localized
- *  title. Holds live base songs only, so a missing id means the song is
+/** A group's (already cached) base catalog as song id → display
+ *  data. Holds live base songs only, so a missing id means the song is
  *  gone from the group's catalog (soft-deleted, or became a variant). */
-function catalogTitles(
+function catalogRefs(
   catalog: Awaited<ReturnType<typeof getAvailableSongsCached>>,
-  locale: string,
-): Map<string, string> {
+): Map<string, BoardSongRef> {
   return new Map(
     catalog.map((s) => [
       String(s.songId),
-      displayOriginalTitle(s, s.translations, locale).main,
+      boardSongRef(String(s.songId), s),
     ]),
   );
 }
@@ -100,12 +99,12 @@ function catalogTitles(
  *  is nothing to preserve. */
 function starterRefs(
   songIds: readonly string[],
-  titles: ReadonlyMap<string, string>,
+  songs: ReadonlyMap<string, BoardSongRef>,
 ): BoardSongRef[] {
   const out: BoardSongRef[] = [];
   for (const id of songIds) {
-    const title = titles.get(id);
-    if (title !== undefined) out.push({ songId: id, title });
+    const song = songs.get(id);
+    if (song) out.push(song);
   }
   return out;
 }
@@ -355,24 +354,26 @@ export const getBoardAggregateCached = cachedQuery(
     // in the table.
     const views: BoardGroupView[] = groups.map((g, i) => {
       const groupId = String(g.artistId);
-      const titles = catalogTitles(catalogs[i], locale);
-      const titleOf = (songId: string) => titles.get(songId) ?? null;
+      const songs = catalogRefs(catalogs[i]);
+      const songOf = (songId: string) => songs.get(songId) ?? null;
       return {
         groupId,
         slug: g.slug,
         name: g.label,
+        nameSub: g.labelSub,
+        nameLang: g.labelLang,
         color: g.color,
         wishes: buildBoardColumn(
           wishesByGroup.get(groupId) ?? [],
           wishCounts.participantsByGroup.get(groupId) ?? 0,
-          titleOf,
+          songOf,
         ),
         expects: buildBoardColumn(
           counts.songsByGroup.get(groupId) ?? [],
           counts.participantsByGroup.get(groupId) ?? 0,
-          titleOf,
+          songOf,
         ),
-        starters: starterRefs(starters[groupId] ?? [], titles),
+        starters: starterRefs(starters[groupId] ?? [], songs),
       };
     });
     // Each group's shortlist is its expect column's TOP3 — built above
