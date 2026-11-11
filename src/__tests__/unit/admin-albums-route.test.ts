@@ -255,7 +255,31 @@ describe("PATCH /api/admin/albums/[id]", () => {
     });
   });
 
-  it("accepts a same-title PATCH only when its translation carries a source URL", async () => {
+  it("preserves a stored same-title locale when editing another locale", async () => {
+    const originalTitle = "μ's Best Album";
+    vi.mocked(prisma.album.findUnique).mockResolvedValueOnce({
+      ...storedTitle,
+      originalTitle,
+      translations: [
+        { locale: "ko", title: originalTitle },
+        { locale: "en", title: "Previous English title" },
+      ],
+    } as never);
+    const res = await PATCH(jsonRequest("http://x/api/admin/albums/42", {
+      translations: [{ locale: "en", title: "Best Album by μ's" }],
+    }) as never, { params });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(prisma.album.update).mock.calls[0][0].data.translations).toMatchObject({
+      deleteMany: { locale: { in: [] } },
+      upsert: [{
+        where: { albumId_locale: { albumId: BigInt(42), locale: "en" } },
+        update: { title: "Best Album by μ's" },
+      }],
+    });
+  });
+
+  it("accepts a new same-title PATCH only when its translation carries a source URL", async () => {
     const originalTitle = "μ's Best Album";
     vi.mocked(prisma.album.findUnique).mockResolvedValue({
       ...storedTitle,

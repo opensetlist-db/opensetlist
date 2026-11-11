@@ -172,7 +172,9 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
       if (title && !nextLocales.has(locale)) translationEdits.push({ locale, title: "", sameSource: undefined });
     }
     if (creating || sourceChanged || translationEdits.length) {
-      const issues = albumTitleIssues(next);
+      const issues = albumTitleIssues(next, creating ? undefined : {
+        previous: initialData, submitted: translationEdits,
+      });
       if (issues.length) {
         setTitleError(issues.join(", "));
         return;

@@ -120,9 +120,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       };
       const titleChanged = albumTitleChanged(exists, nextTitle);
       if (titleChanged || translations?.some((row) => row.sameSource)) {
-        const sourceChanged = exists.originalTitle !== nextTitle.originalTitle ||
-          exists.originalLanguage !== nextTitle.originalLanguage;
-        const issues = albumTitleIssues(nextTitle, sourceChanged ? translations ?? [] : undefined);
+        const issues = albumTitleIssues(nextTitle, { previous: exists, submitted: translations ?? [] });
         if (issues.length) throw new AlbumInputError(`앨범 제목: ${issues.join(", ")}`);
       }
 
