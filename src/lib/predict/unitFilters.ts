@@ -78,6 +78,7 @@ export function deriveUnitFilters(
   filterAllLabel: string,
   filterOthersLabel: string,
   primaryColor: string,
+  primaryName?: Pick<UnitFilter, "labelSub" | "labelLang">,
 ): UnitFilter[] {
   const out: UnitFilter[] = [
     { key: "all", label: filterAllLabel, color: null, kind: "all", artistId: null },
@@ -105,6 +106,7 @@ export function deriveUnitFilters(
     out.push({
       key: "group",
       label: primaryArtistLabel,
+      ...primaryName,
       color: groupSong?.unit.color ?? primaryColor,
       kind: "group",
       artistId: primaryArtistId,
@@ -127,6 +129,8 @@ export function deriveUnitFilters(
   type Bucket = {
     slug: string;
     label: string;
+    labelSub?: string | null;
+    labelLang?: string;
     color: string;
     isMainUnit: boolean;
     count: number;
@@ -151,6 +155,8 @@ export function deriveUnitFilters(
       buckets.set(song.unit.artistId, {
         slug: song.unit.slug,
         label: song.unit.label,
+        labelSub: song.unit.labelSub,
+        labelLang: song.unit.labelLang,
         color: song.unit.color,
         isMainUnit: song.unit.isMainUnit,
         count: 1,
@@ -164,6 +170,8 @@ export function deriveUnitFilters(
     artistId: number;
     slug: string;
     label: string;
+    labelSub?: string | null;
+    labelLang?: string;
     color: string;
     isMainUnit: boolean;
   }> = [];
@@ -174,6 +182,8 @@ export function deriveUnitFilters(
         artistId,
         slug: info.slug,
         label: info.label,
+        labelSub: info.labelSub,
+        labelLang: info.labelLang,
         color: info.color,
         isMainUnit: info.isMainUnit,
       });
@@ -193,6 +203,8 @@ export function deriveUnitFilters(
     out.push({
       key: ind.slug,
       label: ind.label,
+      labelSub: ind.labelSub,
+      labelLang: ind.labelLang,
       color: ind.color,
       kind: "individual",
       artistId: ind.artistId,
@@ -237,6 +249,8 @@ export function deriveFestivalFilters(
     artistId: number;
     slug: string;
     label: string;
+    labelSub?: string | null;
+    labelLang?: string;
     color: string | null;
   }>,
   songs: readonly AvailableSong[],
@@ -260,6 +274,8 @@ export function deriveFestivalFilters(
       // composite keys (the active-chip state is keyed on this).
       key: `festival:${g.slug}`,
       label: g.label,
+      labelSub: g.labelSub,
+      labelLang: g.labelLang,
       color: g.color ?? primaryColor,
       kind: "festivalGroup",
       artistId: g.artistId,

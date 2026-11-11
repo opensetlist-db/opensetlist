@@ -160,18 +160,19 @@ function ResultRow({
         )}
         {row.version && (
           <span
-            lang={row.version.lang}
-            className="mt-1.5 inline-block rounded px-1.5 py-0.5 text-[12px]"
+            className="mt-1.5 inline-block max-w-full rounded px-1.5 py-0.5 text-[12px] [overflow-wrap:anywhere]"
             style={
               row.version.base
                 ? { background: searchColors.baseChipBg, color: colors.textSecondary }
                 : { background: colors.accentLavender, color: searchColors.variantInk }
             }
           >
-            {row.version.label}
+            <span lang={row.version.lang}>{row.version.label}</span>
+            {row.version.sub && <span lang={row.subLang} className="block text-[11px]">{row.version.sub}</span>}
           </span>
         )}
-        {row.meta && <Meta>{row.meta}</Meta>}
+        {row.meta && <Meta lang={row.metaLang}>{row.meta}</Meta>}
+        {row.metaSub && <Meta lang={row.subLang}>{row.metaSub}</Meta>}
         {row.matched && (
           <Meta color={searchColors.matchedInk}>
             {matchedLabel}: <span lang={row.matched.lang}>{row.matched.name}</span>

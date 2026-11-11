@@ -9,14 +9,12 @@ export interface TrendingSong {
   setlistItemId: string;
   /** Original-language title (always present). */
   mainTitle: string;
-  /** Localized title — set only when locale ≠ originalLanguage AND the
-   *  translated title differs from the original. Mirrors the `sub` slot
-   *  on `<SetlistRow>` so the trending card reads as "original · localized"
-   *  with the same visual treatment everywhere songs are listed. */
+  mainTitleLang?: string;
   subTitle: string | null;
-  /** Variant label resolved per the same locale-strict cascade as the
-   *  setlist row (`displayOriginalTitle` returns this). */
+  subTitleLang?: string;
   variantLabel: string | null;
+  variantLang?: string;
+  variantSub?: string | null;
   totalReactions: number;
   /** Per-reaction-type counts, indexed by Prisma `ReactionType` value
    *  ("waiting" | "best" | "surprise" | "moved"). Missing keys mean
@@ -116,14 +114,17 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                     instead of the old single truncated line. The values
                     are the SSR / deriveTrendingSongs ones, built with the
                     same cascade as <SetlistRow>'s title block. */}
-                <div className={styles.trendingOriginal}>{song.mainTitle}</div>
+                <div className={styles.trendingOriginal} lang={song.mainTitleLang}>{song.mainTitle}</div>
                 {song.subTitle && (
-                  <div className={styles.trendingSub}>{song.subTitle}</div>
+                  <div className={styles.trendingSub} lang={song.subTitleLang}>{song.subTitle}</div>
                 )}
                 {song.variantLabel && (
-                  <div className={styles.trendingSub}>
+                  <div className={styles.trendingSub} lang={song.variantLang}>
                     ({song.variantLabel})
                   </div>
+                )}
+                {song.variantSub && (
+                  <div className={styles.trendingSub} lang={song.subTitleLang}>({song.variantSub})</div>
                 )}
                 {/* REACTION_TYPES canonical order (waiting / best /
                     surprise / moved), positive counts only — upstream

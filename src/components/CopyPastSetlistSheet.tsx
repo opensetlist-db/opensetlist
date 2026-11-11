@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Drawer } from "vaul";
-import { displayOriginalName, displayOriginalTitle } from "@/lib/display";
+import { resolveDisplayPair } from "@/lib/display";
+import { ParticipationSongName } from "@/components/ParticipationSongName";
 import { formatDate } from "@/lib/utils";
 import {
   mergeAppendUnique,
@@ -154,8 +155,7 @@ export function CopyPastSetlistSheet({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
-    // Locale is handled fully client-side (via `displayOriginalName` /
-    // `displayOriginalTitle` / `formatDate` on the picker cards), so
+    // Locale is handled fully client-side on the picker cards, so
     // no query param is appended — the server ships every locale's
     // translations and never reads a `?locale=` filter.
     fetch(`/api/events/${eventId}/past-setlists`)
@@ -349,32 +349,41 @@ interface CardProps {
 }
 
 function PastEventCard({ ev, locale, onSelect, t }: CardProps) {
-  const name = displayOriginalName(
+  const name = resolveDisplayPair(
     {
-      originalName: ev.originalName,
-      originalShortName: ev.originalShortName,
+      original: ev.originalName,
       originalLanguage: ev.originalLanguage,
     },
     ev.translations,
     locale,
+    "name",
+    { kind: "title" },
   );
-  const venueTranslation = ev.translations.find((tr) => tr.locale === locale);
-  const venue = venueTranslation?.venue || ev.originalVenue;
+  const venue = ev.originalVenue && resolveDisplayPair(
+    { original: ev.originalVenue, originalLanguage: ev.originalLanguage },
+    ev.translations, locale, "venue",
+  );
+  const localVenue = ev.translations.find((tr) => tr.locale === locale)?.venue;
   const dateLine = ev.date ? formatDate(ev.date, locale) : null;
 
   return (
     <div className="rounded-lg border border-gray-200 px-3 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-gray-900 truncate">
+          <div lang={ev.originalLanguage} className="text-sm font-semibold text-gray-900 [overflow-wrap:anywhere]">
             {name.main}
           </div>
           {name.sub && (
-            <div className="text-xs text-gray-500 truncate">{name.sub}</div>
+            <div lang={locale} className="text-xs text-gray-500 [overflow-wrap:anywhere]">{name.sub}</div>
           )}
           <div className="mt-1 text-xs text-gray-500 flex flex-wrap gap-x-2">
             {dateLine && <span>{dateLine}</span>}
-            {venue && <span>· {venue}</span>}
+            {venue ? (
+              <span className="[overflow-wrap:anywhere]">
+                · <span lang={ev.originalLanguage}>{venue.main}</span>
+                {venue.sub && <span lang={locale} className="ml-1 text-[0.9em]">{venue.sub}</span>}
+              </span>
+            ) : localVenue && <span>· {localVenue}</span>}
             <span>· {t("copy.songCount", { count: ev.songCount })}</span>
           </div>
         </div>
@@ -405,34 +414,29 @@ function SongPreview({
   const previewCount = Math.min(SONG_PREVIEW_COUNT, songs.length);
   const preview = songs.slice(0, previewCount);
   const rest = songs.slice(previewCount);
-  const renderTitle = (p: PredictionEntry) =>
-    displayOriginalTitle(
-      {
-        originalTitle: p.song.originalTitle,
-        originalLanguage: p.song.originalLanguage,
-        variantLabel: p.song.variantLabel,
-      },
-      p.song.translations,
-      locale,
-    ).main;
-  const previewLine = preview.map(renderTitle).join(" · ");
+  const renderTitle = (p: PredictionEntry) => (
+    <span key={p.songId} className="min-w-0 rounded bg-gray-50 px-1.5 py-0.5">
+      <ParticipationSongName song={p.song} locale={locale} />
+    </span>
+  );
+  const previewLine = <span className="flex flex-wrap gap-1">{preview.map(renderTitle)}</span>;
   // No overflow → no disclosure widget. A `<details>` whose body is
   // empty would still render an expand arrow that does nothing on
   // click (CR caught the dead-expansion shape in the prior revision).
   if (rest.length === 0) {
-    return <div className="mt-2 text-xs text-gray-600">{previewLine}</div>;
+    return <div className="mt-2 text-sm text-gray-700">{previewLine}</div>;
   }
   return (
-    <details className="mt-2 text-xs">
-      <summary className="cursor-pointer text-gray-600">
+    <details className="mt-2 text-sm">
+      <summary className="cursor-pointer text-gray-700">
         {previewLine}
         <span className="text-gray-400">
           {" "}
           {t("copy.previewMore", { count: rest.length })}
         </span>
       </summary>
-      <div className="mt-1 pl-3 text-gray-500">
-        {rest.map(renderTitle).join(" · ")}
+      <div className="mt-1 flex flex-wrap gap-1 pl-3 text-gray-700">
+        {rest.map(renderTitle)}
       </div>
     </details>
   );

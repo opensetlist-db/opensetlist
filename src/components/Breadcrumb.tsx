@@ -65,7 +65,7 @@ export function Breadcrumb({ items, ariaLabel }: Props) {
       style={{ color: colors.textMuted }}
     >
       {items.map((item, i) => (
-        <span key={i} className="flex min-w-0 items-center">
+        <span key={i} className="flex min-w-0 items-center [overflow-wrap:anywhere]">
           {i > 0 && (
             <span aria-hidden="true" className="mx-1.5">
               ›

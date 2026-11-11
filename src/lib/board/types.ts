@@ -9,6 +9,8 @@
  * travel in a board read.
  */
 
+import type { WishSongDisplay } from "@/lib/wishStorage";
+
 /** How a column should be presented.
  *   - `operator`: zero fan submissions — show the operator's starter
  *     picks (labelled, never counted) or the empty invitation.
@@ -19,8 +21,9 @@ export type BoardColumnLabel = "operator" | "early" | "ok";
 
 export interface BoardSongRef {
   songId: string;
-  /** Localized display title (variant label already folded in). */
+  /** Original title, also the fallback for older cached rows. */
   title: string;
+  song?: WishSongDisplay;
 }
 
 export interface BoardTopEntry extends BoardSongRef {
@@ -43,6 +46,8 @@ export interface BoardGroupView {
   groupId: string;
   slug: string;
   name: string;
+  nameSub?: string | null;
+  nameLang?: string;
   /** `Artist.color`; null = primary colour. */
   color: string | null;
   /** The "wishlist" column (희망곡 / 希望曲) — per-group wishes (n15). Legacy
@@ -128,6 +133,8 @@ export interface BoardChip {
   groupId: string;
   slug: string;
   label: string;
+  labelSub?: string | null;
+  labelLang?: string;
   color: string | null;
 }
 
@@ -148,13 +155,10 @@ export interface BoardBlockSeed {
 
 /** One of the viewer's own expected-song picks, as `/board/mine`
  *  returns it (n15). Personal — never part of a board read. */
-export interface BoardMinePick {
+export interface BoardMinePick extends BoardSongRef {
   /** Server row id — what a delete names. */
   id: string;
   groupId: string;
-  songId: string;
-  /** Localized display title at read time. */
-  title: string;
   /** False when the song was soft-deleted after it was picked: shown
    *  without a link, still removable, still holding its slot. */
   available: boolean;

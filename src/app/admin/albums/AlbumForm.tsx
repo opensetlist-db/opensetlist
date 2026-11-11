@@ -5,13 +5,15 @@ import { useRouter } from "next/navigation";
 import AlbumCoverEditor, { type CoverProvenance } from "./AlbumCoverEditor";
 import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
 import { ALBUM_TYPES } from "@/lib/albumConstants";
+import { albumTitleIssues } from "@/lib/albumTitlePolicy";
+import { resolveDisplayPair } from "@/lib/display";
 import { UnlistedArtistOption } from "@/components/admin/artistPicker";
 
-type Translation = { locale: string; title: string };
+type Translation = { locale: string; title: string; sameSource?: string };
 
 type AlbumFormProps = {
   initialData: {
-    id: string;
+    id?: string;
     slug: string;
     type: string;
     originalTitle: string;
@@ -28,7 +30,7 @@ type AlbumFormProps = {
   // The cover is edited and saved separately (AlbumCoverEditor); the
   // info save below never sends it, so it cannot overwrite a cover that
   // changed after this page loaded.
-  cover: {
+  cover?: {
     imageUrl: string | null;
     provenance: CoverProvenance | null;
     r2PublicHost: string | null;
@@ -41,9 +43,12 @@ type ArtistOption = {
   translations: { locale: string; name: string }[];
 };
 
+/** Edits album metadata and tracks cover changes separately from the information save. */
 export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [titleError, setTitleError] = useState("");
+  const creating = initialData.id === undefined;
   const infoFormId = useId();
 
   // Unsaved (or unresolved) cover draft: warn before leaving the page,
@@ -117,13 +122,16 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
       .catch(() => setArtistOptions([]));
   }, []);
 
+  /** Clears the source evidence when its title or locale changes. */
   function updateTranslation(
     index: number,
     field: keyof Translation,
     value: string,
   ) {
     setTranslations((prev) =>
-      prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)),
+      prev.map((t, i) => i !== index ? t : {
+        ...t, sameSource: undefined, [field]: value,
+      }),
     );
   }
   function addTranslation() {
@@ -139,11 +147,11 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
     if (next) setArtistIds((prev) => [...prev, next.id]);
   }
 
+  /** Submits edited metadata and preserves newer values in omitted fields. */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
-
-    const payload = {
+    setTitleError("");
+    const next = {
       slug: slug.trim(),
       type,
       originalTitle: originalTitle.trim(),
@@ -151,17 +159,56 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
       releaseDate: releaseDate || null,
       labelName: labelName.trim() || null,
       // imageUrl deliberately absent: the server leaves the cover alone.
-      translations: translations.filter((t) => t.title.trim()),
+      translations: translations.flatMap(({ locale, title, sameSource }) =>
+        title.trim() ? [{ locale, title: title.trim(), sameSource: sameSource?.trim() || undefined }] : [],
+      ),
       artistIds,
     };
+    const sourceChanged = originalTitle !== initialData.originalTitle ||
+      originalLanguage !== initialData.originalLanguage;
+    const existingTitles = new Map(initialData.translations.map((row) => [row.locale, row.title.trim()]));
+    const nextLocales = new Set(next.translations.map((row) => row.locale));
+    const translationEdits = next.translations.filter(
+      (row) => sourceChanged || row.sameSource || row.title !== existingTitles.get(row.locale),
+    );
+    for (const [locale, title] of existingTitles) {
+      if (title && !nextLocales.has(locale)) translationEdits.push({ locale, title: "", sameSource: undefined });
+    }
+    if (creating || sourceChanged || translationEdits.length) {
+      const issues = albumTitleIssues(next, creating ? undefined : {
+        previous: initialData, submitted: translationEdits,
+      });
+      if (issues.length) {
+        setTitleError(issues.join(", "));
+        return;
+      }
+    }
+    // Send only edited fields so an unrelated save preserves newer values.
+    const payload = creating ? next : {
+      slug: next.slug !== initialData.slug ? next.slug : undefined,
+      type: next.type !== initialData.type ? next.type : undefined,
+      originalTitle: originalTitle !== initialData.originalTitle ? next.originalTitle : undefined,
+      originalLanguage: next.originalLanguage !== initialData.originalLanguage ? next.originalLanguage : undefined,
+      releaseDate: next.releaseDate !== initialData.releaseDate ? next.releaseDate : undefined,
+      labelName: labelName !== (initialData.labelName ?? "") ? next.labelName : undefined,
+      translations: translationEdits.length ? translationEdits : undefined,
+      artistIds: artistIds.length !== initialData.artistIds.length ||
+        artistIds.some((id, index) => id !== initialData.artistIds[index]) ? artistIds : undefined,
+    };
+    setLoading(true);
 
     try {
-      const res = await fetch(`/api/admin/albums/${initialData.id}`, {
-        method: "PATCH",
+      const res = await fetch(creating ? "/api/admin/albums" : `/api/admin/albums/${initialData.id}`, {
+        method: creating ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        if (creating) {
+          const { id } = await res.json();
+          router.push(`/admin/albums/${id}/edit`);
+          return;
+        }
         router.refresh();
         alert(
           coverPendingRef.current
@@ -184,10 +231,14 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
       <form id={infoFormId} onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-[1fr_auto] gap-4">
           <div>
-            <label className="mb-1 block text-sm font-medium">원제</label>
+            <label htmlFor={`${infoFormId}-title`} className="mb-1 block text-sm font-medium">원제</label>
             <input
+              id={`${infoFormId}-title`}
               value={originalTitle}
-              onChange={(e) => setOriginalTitle(e.target.value)}
+              onChange={(e) => {
+                setOriginalTitle(e.target.value);
+                setTranslations((rows) => rows.map((row) => ({ ...row, sameSource: undefined })));
+              }}
               className="w-full rounded border border-zinc-300 px-3 py-2"
               required
             />
@@ -196,7 +247,10 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
             <label className="mb-1 block text-sm font-medium">원어</label>
             <select
               value={originalLanguage}
-              onChange={(e) => setOriginalLanguage(e.target.value)}
+              onChange={(e) => {
+                setOriginalLanguage(e.target.value);
+                setTranslations((rows) => rows.map((row) => ({ ...row, sameSource: undefined })));
+              }}
               className="rounded border border-zinc-300 px-3 py-2"
             >
               {ADMIN_LANGUAGES.map((l) => (
@@ -210,9 +264,10 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium">슬러그</label>
+            <label htmlFor={`${infoFormId}-slug`} className="mb-1 block text-sm font-medium">슬러그</label>
             <div className="flex gap-2">
               <input
+                id={`${infoFormId}-slug`}
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 className="flex-1 rounded border border-zinc-300 px-3 py-2 font-mono text-sm"
@@ -270,14 +325,16 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
         </div>
       </form>
 
-      <AlbumCoverEditor
-        albumId={initialData.id}
-        albumTitle={initialData.originalTitle}
-        initial={{ imageUrl: cover.imageUrl, provenance: cover.provenance }}
-        r2PublicHost={cover.r2PublicHost}
-        uploadConfigured={cover.uploadConfigured}
-        onDirtyChange={onCoverDirtyChange}
-      />
+      {cover && initialData.id && (
+        <AlbumCoverEditor
+          albumId={initialData.id}
+          albumTitle={initialData.originalTitle}
+          initial={{ imageUrl: cover.imageUrl, provenance: cover.provenance }}
+          r2PublicHost={cover.r2PublicHost}
+          uploadConfigured={cover.uploadConfigured}
+          onDirtyChange={onCoverDirtyChange}
+        />
+      )}
 
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -296,7 +353,7 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
           {translations.map((tr, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 rounded border border-zinc-200 bg-white p-3"
+              className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-white p-3"
             >
               <select
                 value={tr.locale}
@@ -320,10 +377,11 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
                 })}
               </select>
               <input
+                aria-label={`${tr.locale} 제목`}
                 placeholder="제목"
                 value={tr.title}
                 onChange={(e) => updateTranslation(i, "title", e.target.value)}
-                className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+                className="min-w-0 flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
               />
               {translations.length > 1 && (
                 <button
@@ -336,9 +394,26 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
                   삭제
                 </button>
               )}
+              {resolveDisplayPair(
+                { original: originalTitle.trim(), originalLanguage },
+                [{ locale: tr.locale, title: tr.title.trim() }], tr.locale, "title", { kind: "title" },
+              ).status === "unconfirmed-same" && (
+                <label className="w-full text-xs text-zinc-600">
+                  {tr.locale} 동일 표기 출처 URL
+                  <input
+                    type="url"
+                    value={tr.sameSource ?? ""}
+                    onChange={(e) => updateTranslation(i, "sameSource", e.target.value)}
+                    className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              )}
             </div>
           ))}
         </div>
+        <p className="mt-2 text-xs text-zinc-600">
+          원제나 원어를 바꿀 때는 기존 표기가 새 원제와 맞는지 출처를 확인해 주세요.
+        </p>
       </div>
 
       <div>
@@ -406,11 +481,10 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
         disabled={loading}
         className="rounded bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {loading ? "저장 중..." : "앨범 정보 저장"}
+        {loading ? "저장 중..." : creating ? "앨범 등록" : "앨범 정보 저장"}
       </button>
-      <p className="text-xs text-zinc-500">
-        앨범 정보 저장은 표지를 저장하지 않습니다.
-      </p>
+      {titleError && <p role="alert" className="text-sm text-red-600">{titleError}</p>}
+      {cover && <p className="text-xs text-zinc-500">앨범 정보 저장은 표지를 저장하지 않습니다.</p>}
     </div>
   );
 }

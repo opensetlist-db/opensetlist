@@ -103,13 +103,21 @@ async function renderRow(props: Record<string, unknown> = {}) {
 
 describe("AlbumListRow", () => {
   it("is one canonical album link with the artist as plain text", async () => {
-    const { container } = await renderRow({ artistName: "하스노소라" });
+    const { container } = await renderRow({ album: album({
+      artists: [{ artist: {
+        originalName: "蓮ノ空",
+        originalLanguage: "ja",
+        translations: [{ locale: "ko", name: "하스노소라" }],
+      } }],
+    }) });
     const links = container.querySelectorAll("a");
     expect(links).toHaveLength(1);
     expect(links[0].getAttribute("href")).toBe(
       "/ko/albums/135/bloom-the-smile",
     );
-    expect(screen.getByText("하스노소라").tagName).toBe("SPAN");
+    expect(screen.getByText("蓮ノ空")).toHaveAttribute("lang", "ja");
+    expect(screen.getByText("하스노소라")).toHaveAttribute("lang", "ko");
+    expect(links[0].textContent).toContain("蓮ノ空하스노소라");
   });
 
   it("falls back to the id-only canonical for an empty slug", async () => {
@@ -203,17 +211,17 @@ describe("AlbumListCover", () => {
 
 describe("AlbumArtistFilter", () => {
   const options = [
-    { id: "1", name: "하스노소라" },
-    { id: "109", name: "이키즈라이부!" },
+    { id: "1", main: "蓮ノ空", sub: "하스노소라", originalLanguage: "ja" },
+    { id: "109", main: "いきづらい部！", sub: "이키즈라이부!", originalLanguage: "ja" },
   ];
 
   it("is omitted with one option or none", async () => {
-    expect(await AlbumArtistFilter({ active: null, options: [options[0]] })).toBeNull();
-    expect(await AlbumArtistFilter({ active: null, options: [] })).toBeNull();
+    expect(await AlbumArtistFilter({ locale: "ko", active: null, options: [options[0]] })).toBeNull();
+    expect(await AlbumArtistFilter({ locale: "ko", active: null, options: [] })).toBeNull();
   });
 
   it("links All + each artist and marks the active one current", async () => {
-    const el = await AlbumArtistFilter({ active: "109", options });
+    const el = await AlbumArtistFilter({ locale: "ko", active: "109", options });
     const { container } = render(el as ReactElement);
     const links = [...container.querySelectorAll("a")];
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
@@ -227,7 +235,8 @@ describe("AlbumArtistFilter", () => {
       "page",
     ]);
     // Full names as the visible text.
-    expect(links[1].textContent).toBe("하스노소라");
+    expect(links[1].textContent).toBe("蓮ノ空하스노소라");
+    expect(screen.getByText("하스노소라")).toHaveAttribute("lang", "ko");
   });
 });
 
@@ -364,8 +373,8 @@ describe("AlbumsPage", () => {
 
   it("validates ?artist=: unknown → all, repeated → first", async () => {
     lib.getAlbumArtistFilters.mockResolvedValue([
-      { id: "1", name: "A" },
-      { id: "109", name: "B" },
+      { id: "1", main: "A", sub: null, originalLanguage: "ja" },
+      { id: "109", main: "B", sub: null, originalLanguage: "ja" },
     ]);
     lib.getAlbumsPage.mockResolvedValue(pageResult([album()], 1));
     expect(await redirectOf({ artist: "109" })).toBeNull();
@@ -434,8 +443,8 @@ describe("AlbumsPage", () => {
     [{ artist: "999", page: "1" }, "ko:/albums"],
   ] as const)("redirects %j to %s", async (sp, target) => {
     lib.getAlbumArtistFilters.mockResolvedValue([
-      { id: "1", name: "A" },
-      { id: "109", name: "B" },
+      { id: "1", main: "A", sub: null, originalLanguage: "ja" },
+      { id: "109", main: "B", sub: null, originalLanguage: "ja" },
     ]);
     lib.getAlbumsPage.mockResolvedValue(pageResult([], 474));
     expect(await redirectOf(sp as Sp)).toBe(target);
@@ -443,8 +452,8 @@ describe("AlbumsPage", () => {
 
   it("does not redirect canonical URLs", async () => {
     lib.getAlbumArtistFilters.mockResolvedValue([
-      { id: "1", name: "A" },
-      { id: "2", name: "B" },
+      { id: "1", main: "A", sub: null, originalLanguage: "ja" },
+      { id: "2", main: "B", sub: null, originalLanguage: "ja" },
     ]);
     lib.getAlbumsPage.mockResolvedValue(pageResult([album()], 474));
     expect(await redirectOf({})).toBeNull();

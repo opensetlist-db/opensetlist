@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { EventDisplayText } from "@/lib/eventDisplay";
+import { EventNameText } from "@/components/events/EventNameText";
 import type { LangText } from "./SeriesIdentity";
 import styles from "./seriesDetail.module.css";
 
@@ -12,7 +14,7 @@ export interface SeriesSongRow {
   /** Viewer-language title, when it differs from the original. */
   translated: LangText | null;
   /** First primary artist's label. */
-  artist: LangText | null;
+  artist: EventDisplayText | null;
   count: number;
   countUnit: string;
 }
@@ -67,8 +69,8 @@ export function SeriesSongsPanel({
                   </span>
                 ) : null}
                 {row.artist ? (
-                  <span className={styles.songUnit} lang={row.artist.lang}>
-                    {row.artist.text}
+                  <span className={styles.songUnit}>
+                    <EventNameText pair={row.artist} />
                   </span>
                 ) : null}
               </span>

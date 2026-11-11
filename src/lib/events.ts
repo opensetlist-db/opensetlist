@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
+import { eventDisplayField, eventDisplayName, type EventDisplayText } from "@/lib/eventDisplay";
 import { getEventStatus, ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 import {
@@ -123,7 +123,7 @@ export type EventsListGroup = {
    *                      stored original-language value)
    *   - kind=ungrouped → null (page renders the locale "기타 이벤트")
    */
-  title: string | null;
+  title: EventDisplayText | null;
   /**
    * Resolved short name of the artist that owns this group, for the
    * requested locale. Drives the small artist pill at the start of
@@ -136,7 +136,7 @@ export type EventsListGroup = {
    *   - the fallback chain in `displayNameWithFallback` exhausts
    *     without finding a non-empty value
    */
-  artistShortName: string | null;
+  artistShortName: EventDisplayText | null;
   /**
    * The root series's DB `type`, for the header's "Tour / Festival"
    * tag. Display metadata only — it never feeds grouping, ordering or
@@ -156,7 +156,7 @@ export type EventsListGroup = {
 
 export type EventsListData = {
   artist: string | null;
-  artistOptions: { id: string; name: string }[];
+  artistOptions: { id: string; name: EventDisplayText | null }[];
   /**
    * Groups with at least one active event (ongoing, upcoming, or a
    * future-dated cancelled show). All events of the group are kept
@@ -428,7 +428,7 @@ export async function getEventsListGrouped(
     .filter((row) => availableRoots.has(String(row.id)))
     .map((row) => ({
       id: String(row.id),
-      name: displayNameWithFallback(row, row.translations, locale, "short"),
+      name: eventDisplayName(row, locale, undefined, true),
     }));
   const artistMap = new Map(artists.map((row) => [String(row.id), row]));
   const seriesList = serializeBigInt(seriesRaw) as unknown as SeriesAncestor[];
@@ -460,16 +460,9 @@ export async function getEventsListGrouped(
         ? artistMap.get(String(ev.artistId))
         : undefined;
     ev.artTitle =
-      (ownSeries &&
-        displayNameWithFallback(ownSeries, ownSeries.translations, locale, "short")) ||
-      (standaloneArtist &&
-        displayNameWithFallback(
-          standaloneArtist,
-          standaloneArtist.translations,
-          locale,
-          "short",
-        )) ||
-      displayNameWithFallback(ev, ev.translations, locale, "short") ||
+      (ownSeries && (ownSeries.originalShortName || ownSeries.originalName)) ||
+      (standaloneArtist && (standaloneArtist.originalShortName || standaloneArtist.originalName)) ||
+      ev.originalShortName || ev.originalName ||
       null;
   }
 
@@ -490,32 +483,20 @@ export async function getEventsListGrouped(
       continue;
     }
 
-    let title: string | null = null;
-    let artistShortName: string | null = null;
+    let title: EventDisplayText | null = null;
+    let artistShortName: EventDisplayText | null = null;
     let seriesType: EventSeriesType | null = null;
 
     if (kind === "series" && ref != null) {
       const root = ancestry.get(Number(ref));
       seriesType = root?.type ?? null;
-      title = root
-        ? displayNameWithFallback(root, root.translations, locale) || null
-        : null;
-      // Coerce empty-string returns from displayNameWithFallback to null
-      // so consuming components can branch on a single nullish check.
-      // The fallback chain (locale shortName → locale name →
-      // originalShortName → originalName → "") only yields "" when
-      // every layer is missing.
+      title = root ? eventDisplayName(root, locale, "title") : null;
       artistShortName = root?.artist
-        ? displayNameWithFallback(
-            root.artist,
-            root.artist.translations,
-            locale,
-            "short",
-          ) || null
+        ? eventDisplayName(root.artist, locale, undefined, true)
         : null;
     } else if (kind === "artist" && ref != null) {
       const a = artistMap.get(ref);
-      title = a ? displayNameWithFallback(a, a.translations, locale) || null : null;
+      title = a ? eventDisplayName(a, locale) : null;
       // No parallel pill for artist groups — the title is the artist.
     } else if (kind === "organizer" && ref != null) {
       // Key stays on the original-language value so the bucket is the
@@ -523,14 +504,7 @@ export async function getEventsListGrouped(
       // the group's first event — events sharing an organizer share its
       // translations in well-curated data, and a missing locale row
       // falls back to the trimmed original (`ref`).
-      title =
-        resolveLocalizedField(
-          ev,
-          ev.translations,
-          locale,
-          "organizerName",
-          "organizerName",
-        )?.trim() || ref;
+      title = eventDisplayField(ref, ev.originalLanguage, ev.translations, locale, "organizerName");
     }
 
     groupsMap.set(key, {

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { EventDisplayText } from "@/lib/eventDisplay";
+import { EventNameText } from "@/components/events/EventNameText";
 import type { LangText } from "./SeriesIdentity";
 import { SeriesStatusPill } from "./SeriesStatusPill";
 import styles from "./seriesDetail.module.css";
@@ -14,14 +16,14 @@ export interface SeriesLegEvent {
   /** ISO value for `<time dateTime>` (the stored UTC date). */
   dateTime: string;
   formattedDate: string;
-  name: LangText;
+  name: EventDisplayText;
 }
 
 export interface SeriesLeg {
   key: string;
   /** Localized city, or the "unknown city" label with the page locale. */
   city: LangText;
-  venue: LangText | null;
+  venue: EventDisplayText | null;
   dateRangeLabel: string;
   /**
    * Roll-up status pill, or null when every event is cancelled — 32-v1
@@ -72,7 +74,7 @@ export function SeriesLegGroup({ leg }: { leg: SeriesLeg }) {
           <span className={styles.legSub}>
             {leg.venue ? (
               <>
-                <span lang={leg.venue.lang}>{leg.venue.text}</span>
+                <EventNameText pair={leg.venue} />
                 {" · "}
               </>
             ) : null}
@@ -94,8 +96,8 @@ export function SeriesLegGroup({ leg }: { leg: SeriesLeg }) {
                 <time dateTime={ev.dateTime}>{ev.formattedDate}</time>
                 <SeriesStatusPill status={ev.status} label={ev.statusLabel} />
               </span>
-              <strong className={styles.eventName} lang={ev.name.lang}>
-                {ev.name.text}
+              <strong className={styles.eventName}>
+                <EventNameText pair={ev.name} />
               </strong>
               <span className={styles.arrow} aria-hidden="true">
                 ›

@@ -1,6 +1,7 @@
 import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
-import { displayNameWithFallback } from "@/lib/display";
+import { OgName } from "@/lib/ogName";
+import { shareName } from "@/lib/shareNames";
 import { deriveOgPaletteFromArtist, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
 import {
@@ -27,6 +28,7 @@ const STAR_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M12 2l2.4 7.4H22l-6.2 4.5L18.2 22 12 17.3 5.8 22l2.4-8.1L2 9.4h7.6z"/></svg>';
 const STAR_URI = `data:image/svg+xml;utf8,${STAR_SVG}`;
 
+/** Show a member’s parent name when available and the active member count for a roster. */
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
   const url = new URL(req.url);
@@ -55,27 +57,13 @@ export async function GET(req: Request, { params }: Props) {
       return new Response("Not found", { status: 404 });
     }
 
-    const title =
-      displayNameWithFallback(artist, artist.translations, lang, "full") ||
-      FALLBACK_TITLES[lang].artist;
-
-    let subtitle = "";
-    if (artist.parentArtist) {
-      subtitle = displayNameWithFallback(
-        artist.parentArtist,
-        artist.parentArtist.translations,
-        lang
-      );
-    }
-    if (!subtitle) {
-      const activeCount = artist.stageLinks.filter((s) => !s.endDate).length;
-      if (activeCount > 0) {
-        subtitle = formatMemberCount(activeCount, lang);
-      }
-    }
+    const artistName = shareName(artist, lang);
+    const title = { ...artistName, main: artistName.main || FALLBACK_TITLES[lang].artist };
+    const parentName = artist.parentArtist ? shareName(artist.parentArtist, lang) : null;
+    const activeCount = artist.stageLinks.filter((link) => !link.endDate).length;
 
     const pillLabel = ARTIST_TYPE_LABELS[lang][artist.type];
-    const sized = titleFontSize(title, 72);
+
 
     return new ImageResponse(
       (
@@ -123,11 +111,11 @@ export async function GET(req: Request, { params }: Props) {
               display: "flex",
               flexDirection: "column",
               position: "absolute",
-              top: 95,
+              top: 62,
               left: 80,
-              width: 700,
-              minHeight: 440,
-              padding: "48px",
+              width: 960,
+              minHeight: 500,
+              padding: "32px 40px",
               background: "rgba(255, 255, 255, 0.05)",
               border: "1px solid rgba(255, 255, 255, 0.1)",
               borderRadius: 24,
@@ -144,41 +132,15 @@ export async function GET(req: Request, { params }: Props) {
                 fontSize: 18,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                marginBottom: 28,
+                marginBottom: 18,
               }}
             >
               {pillLabel}
             </div>
 
-            <div
-              style={{
-                display: "-webkit-box",
-                fontSize: sized.fontSize,
-                fontWeight: 700,
-                lineHeight: 1.1,
-                color: "#ffffff",
-                overflow: "hidden",
-                letterSpacing: "-0.015em",
-              }}
-            >
-              {title}
-            </div>
-
-            {subtitle && (
-              <div
-                style={{
-                  display: "flex",
-                  marginTop: 20,
-                  fontSize: 30,
-                  lineHeight: 1.3,
-                  color: "rgba(255, 255, 255, 0.8)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {subtitle}
-              </div>
+            <OgName name={title} size={titleFontSize(title.main, 72).fontSize} />
+            {parentName?.main ? <OgName name={parentName} size={30} secondary /> : activeCount > 0 && (
+              <div style={{ fontSize: 30, marginTop: 12 }}>{formatMemberCount(activeCount, lang)}</div>
             )}
 
             <div style={{ display: "flex", flex: 1 }} />
@@ -188,7 +150,7 @@ export async function GET(req: Request, { params }: Props) {
                 display: "flex",
                 justifyContent: "flex-end",
                 alignItems: "center",
-                marginTop: 32,
+                marginTop: 18,
               }}
             >
               <div

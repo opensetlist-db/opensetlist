@@ -1,8 +1,8 @@
-import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
+import { eventDisplayField, eventDisplayName, localizedEventText, type EventDisplayText } from "@/lib/eventDisplay";
 import { eventHref } from "@/lib/eventHref";
 import { daysUntil, shouldShowWishBadge } from "@/lib/eventTiming";
 import type { HomeEvent } from "@/lib/homeEvents";
-import { formatDate, nonBlank } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 /*
  * Locale projection of a cached `HomeEvent` into what a home card shows
@@ -37,10 +37,11 @@ export interface HomeCardView {
   href: string;
   startTimeIso: string;
   dateLabel: string;
-  title: string;
-  dayLabel: string | null;
+  title: EventDisplayText;
+  dayLabel: EventDisplayText | null;
   artTitle: string;
-  place: string | null;
+  city: string | null;
+  venue: EventDisplayText | null;
   logoUrl: string | null;
   /** 07 representative colour for EventArt's background wash; null = neutral. */
   tint: string | null;
@@ -59,40 +60,26 @@ export function projectHomeCard(
   locale: string,
   unknownName: string,
 ): HomeCardView {
-  const eventFull = nonBlank(
-    displayNameWithFallback(event, event.translations, locale, "full"),
-  );
-  const eventShort = nonBlank(
-    displayNameWithFallback(event, event.translations, locale, "short"),
-  );
+  const eventFull = eventDisplayName(event, locale, "title");
   const series = event.eventSeries;
-  const seriesFull = series
-    ? nonBlank(
-        displayNameWithFallback(series, series.translations, locale, "full"),
-      )
-    : null;
-  const seriesShort = series
-    ? nonBlank(
-        displayNameWithFallback(series, series.translations, locale, "short"),
-      )
-    : null;
+  const seriesFull = series ? eventDisplayName(series, locale, "title") : null;
 
-  const title = seriesFull ?? eventFull ?? unknownName;
-  const city = resolveLocalizedField(
-    event,
+  const title = seriesFull ?? eventFull ??
+    { main: unknownName, sub: null, mainLang: locale, subLang: locale };
+  const city = localizedEventText(
+    event.originalCity,
+    event.originalLanguage,
     event.translations,
     locale,
     "city",
-    "originalCity",
   );
-  const venue = resolveLocalizedField(
-    event,
+  const venue = eventDisplayField(
+    event.originalVenue,
+    event.originalLanguage,
     event.translations,
     locale,
     "venue",
-    "originalVenue",
   );
-  const place = [city, venue].filter((v): v is string => !!nonBlank(v));
 
   return {
     id: event.id,
@@ -103,8 +90,9 @@ export function projectHomeCard(
     // Only a series-titled card needs the event name as its day label;
     // a standalone event's own name is already the title.
     dayLabel: seriesFull ? eventFull : null,
-    artTitle: seriesShort ?? eventShort ?? title,
-    place: place.length > 0 ? place.join(" · ") : null,
+    artTitle: series?.originalShortName || event.originalShortName || title.main,
+    city,
+    venue,
     logoUrl: event.logo.image?.url ?? null,
     tint: event.logo.color,
     songCount: event.songCount,

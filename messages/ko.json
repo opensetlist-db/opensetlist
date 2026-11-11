@@ -1,5 +1,6 @@
 {
   "EventShareCard": {
+    "imageAlt": "{names}의 {label} 카드",
     "prediction": "세트리스트 예상",
     "live": "실황 세트리스트",
     "setlist": "공개 세트리스트"
@@ -189,6 +190,7 @@
     "albumActiveBonuses": "매장특전 {count}건",
     "albumActiveBonusesBadge": "특전 {count}",
     "unknown": "이름 없는 앨범",
+    "coverAlt": "{title} 앨범 표지",
     "type": {
       "single": "싱글",
       "album": "앨범",

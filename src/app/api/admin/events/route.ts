@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { eventLanguageFields, prepareEventLanguageWrite } from "@/lib/adminEventLanguage";
 import { isSlugUniqueViolation, resolveCanonicalSlug } from "@/lib/slug";
 import {
   badRequest,
@@ -23,7 +24,6 @@ import {
   validateEngagementOpensAt,
   validateEventOriginals,
   validateEventSeriesId,
-  validateEventTranslations,
   validatePerformerGuestIds,
 } from "./_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
@@ -95,13 +95,14 @@ export async function POST(request: NextRequest) {
   const organizerName = nullableString(body.organizerName, "organizerName");
   if (!organizerName.ok) return badRequest(organizerName.message);
 
-  const translationsCheck = validateEventTranslations(body.translations);
-  if (!translationsCheck.ok) return translationsCheck.response;
-  const translations = translationsCheck.value;
-
   const originalsCheck = validateEventOriginals(body);
   if (!originalsCheck.ok) return originalsCheck.response;
   const originals = originalsCheck.value;
+  const language = prepareEventLanguageWrite(body, eventLanguageFields, {
+    ...originals, organizerName: organizerName.value,
+  });
+  if (!language.ok) return badRequest(language.message);
+  const translations = language.value.rows;
 
   const performerIdsCheck = nullableStringArray(body.performerIds, "performerIds");
   if (!performerIdsCheck.ok) return badRequest(performerIdsCheck.message);
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
 
-  const slugResult = await resolveCanonicalSlug(body.slug, translations[0].name, "event");
+  const slugResult = await resolveCanonicalSlug(body.slug, translations[0]?.name || originals.originalName, "event");
   if (!slugResult.ok) return badRequest(slugResult.message);
   const slug = slugResult.slug;
 

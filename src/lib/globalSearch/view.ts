@@ -1,4 +1,5 @@
-import { displayOriginalName, displayOriginalTitle, resolveLocalizedField } from "@/lib/display";
+import { displayOriginalTitle, resolveDisplayPair } from "@/lib/display";
+import { participationSongDisplay } from "@/lib/participationSongDisplay";
 import { entityPath } from "@/lib/seo/entityUrl";
 import { formatDate } from "@/lib/utils";
 import { normalizeSearchText } from "./params";
@@ -16,9 +17,7 @@ import type { SearchHit } from "./service";
  *             (variant label, or "base version" when variants exist)
  *   albums    56px cover · original title · locale title · type · date
  *
- * Identity names (event, artist) are translation-primary and titles
- * (song, album) original-primary — the existing `displayOriginalName` /
- * `displayOriginalTitle` conventions. Every `lang` is the language of
+ * The original comes first for each entity. Every `lang` identifies
  * the string it labels, so screen readers switch voice correctly.
  *
  * A "matched name" line appears only when the visible title does not
@@ -38,7 +37,9 @@ export type ResultRowView = {
   /** Concerts: "Day.1"-style chip lifted from the shown name. */
   day: string | null;
   meta: string | null;
-  version: { label: string; lang: string; base: boolean } | null;
+  metaSub?: string | null;
+  metaLang?: string;
+  version: { label: string; lang: string; base: boolean; sub?: string } | null;
   matched: { name: string; lang: string } | null;
   /** Artists: single initial for the avatar. */
   initial: string | null;
@@ -83,17 +84,26 @@ export function buildRowView(
   switch (hit.type) {
     case "events": {
       const e = hit.entity;
-      const name = displayOriginalName(e, e.translations, locale);
+      const name = resolveDisplayPair(
+        { original: e.originalName, originalLanguage: e.originalLanguage },
+        e.translations, locale, "name", { kind: "title" },
+      );
+      const venue = e.originalVenue && resolveDisplayPair(
+        { original: e.originalVenue, originalLanguage: e.originalLanguage },
+        e.translations, locale, "venue",
+      );
       view = {
         key: `events:${e.id}`,
         href: entityPath("events", locale, e.id, e.slug),
         title: name.main,
-        titleLang: name.sub ? locale : e.originalLanguage,
+        titleLang: e.originalLanguage,
         sub: name.sub,
-        subLang: e.originalLanguage,
+        subLang: locale,
         date: formatDate(e.date ?? e.startTime, locale, DATE_FORMAT) || null,
-        day: name.main.match(DAY_PATTERN)?.[0] ?? null,
-        meta: resolveLocalizedField(e, e.translations, locale, "venue", "originalVenue"),
+        day: name.main.match(DAY_PATTERN)?.[0] ?? name.sub?.match(DAY_PATTERN)?.[0] ?? null,
+        meta: venue ? venue.main : e.translations.find((row) => row.locale === locale)?.venue ?? null,
+        metaLang: venue ? e.originalLanguage : locale,
+        metaSub: venue ? venue.sub : null,
         version: null,
         initial: null,
         cover: undefined,
@@ -102,31 +112,38 @@ export function buildRowView(
     }
     case "artists": {
       const a = hit.entity;
-      const name = displayOriginalName(a, a.translations, locale);
+      const name = resolveDisplayPair(
+        { original: a.originalName, originalLanguage: a.originalLanguage },
+        a.translations, locale, "name",
+      );
       view = {
         key: `artists:${a.id}`,
         href: entityPath("artists", locale, a.id, a.slug),
         title: name.main,
-        titleLang: name.sub ? locale : a.originalLanguage,
+        titleLang: a.originalLanguage,
         sub: name.sub,
-        subLang: a.originalLanguage,
+        subLang: locale,
         date: null,
         day: null,
         meta: labels.artistType(a.type),
         version: null,
-        initial: firstCodePoint(name.shortName || name.main),
+        initial: firstCodePoint(a.originalShortName || name.main),
         cover: undefined,
       };
       break;
     }
     case "songs": {
       const s = hit.entity;
-      const title = displayOriginalTitle(s, s.translations, locale);
-      const localeVariant = s.translations.find((t) => t.locale === locale)?.variantLabel;
+      const title = participationSongDisplay(s, locale);
       let version: ResultRowView["version"] = null;
       if (s.baseVersionId !== null) {
         version = title.variant
-          ? { label: title.variant, lang: localeVariant ? locale : s.originalLanguage, base: false }
+          ? {
+              label: title.variant,
+              lang: title.variantLang,
+              base: false,
+              ...(title.variantSub ? { sub: title.variantSub } : {}),
+            }
           : { label: labels.variant, lang: locale, base: false };
       } else if (s._count.variants > 0) {
         version = { label: labels.base, lang: locale, base: true };
@@ -149,7 +166,7 @@ export function buildRowView(
     }
     case "albums": {
       const al = hit.entity;
-      const title = displayOriginalTitle(al, al.translations, locale);
+      const title = displayOriginalTitle(al, al.translations, locale, "paired");
       const released = al.releaseDate ? formatDate(al.releaseDate, locale, DATE_FORMAT) : "";
       view = {
         key: `albums:${al.id}`,
@@ -173,7 +190,7 @@ export function buildRowView(
   const showMatched =
     normalizedQuery !== "" &&
     !normalizeSearchText(view.title).includes(normalizedQuery) &&
-    hit.matchedName !== view.sub;
+    !(view.sub && normalizeSearchText(view.sub).includes(normalizedQuery));
   return {
     ...view,
     matched: showMatched

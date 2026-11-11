@@ -10,11 +10,15 @@ import { cardContent, type CardEvent } from "@/lib/eventOg/content";
 import { loadCardResources, renderCard, sha256, TEMPLATE } from "@/lib/eventOg/render";
 
 const root = process.cwd();
+const eventVenueEnglish = "Keio Arena Tokyo";
 const event: CardEvent = {
   id: "999", slug: "preview-fixture", originalName: "Bloom Garden Party Stage／埼玉公演 Day.1", originalLanguage: "ja",
   date: "2026-07-11", originalVenue: "京王アリーナTOKYO（旧：武蔵野の森総合スポーツプラザ）・メインアリーナ",
-  translations: [{ locale: "ko", name: "Bloom Garden Party Stage／사이타마 Day.1", venue: "사이타마 공연장" }],
-  eventSeries: { originalName: "ラブライブ！蓮ノ空女学院スクールアイドルクラブ 6th Live Dream ～Bloom Garden Party～", originalLanguage: "ja", translations: [] },
+  translations: [{ locale: "ko", name: "Bloom Garden Party Stage／사이타마 Day.1", venue: "사이타마 공연장" }, { locale: "en", name: "Bloom Garden Party Stage / Saitama Day.1", venue: eventVenueEnglish }],
+  eventSeries: { originalName: "ラブライブ！蓮ノ空女学院スクールアイドルクラブ 6th Live Dream ～Bloom Garden Party～", originalLanguage: "ja", translations: [
+    { locale: "ko", name: "러브라이브! 하스노소라 여학원 스쿨 아이돌 클럽 6th Live Dream ～Bloom Garden Party～" },
+    { locale: "en", name: "Love Live! Hasunosora Girls’ High School Idol Club 6th Live Dream ～Bloom Garden Party～" },
+  ] },
   artist: null,
 };
 let folder: string;
@@ -39,6 +43,16 @@ describe("local event-card preview service", () => {
       expect(rendition.content.officialSeriesTitle).toBe(event.eventSeries!.originalName);
       expect(rendition.content.title).toBe(event.eventSeries!.originalName);
       expect(rendition.content.displayTitle).toBeNull();
+      const localizedTitle = event.eventSeries!.translations.find((row) => row.locale === rendition.locale)?.name;
+      expect(rendition.content.titleSub).toBe(localizedTitle ?? null);
+      expect(rendition.content.alt).toContain(event.originalName);
+      if (localizedTitle) {
+        expect(rendition.content.alt).toContain(localizedTitle);
+        expect(rendition.layout.title.sub!.fontSize).toBeLessThan(rendition.layout.title.fontSize);
+        expect(rendition.layout.title.sub!.lines).toBeGreaterThan(1);
+      } else {
+        expect(rendition.layout.title.sub).toBeNull();
+      }
       expect(rendition.layout.title.fontSize).toBeGreaterThanOrEqual(TEMPLATE.title.min);
       expect(rendition.layout.title.lines).toBeLessThanOrEqual(4);
       const bytes = await readFile(path.join(folder, "packet", rendition.file));
@@ -57,10 +71,18 @@ describe("local event-card preview service", () => {
 
   it("reuses strict name/venue fallback, omits missing data and keeps venue calendar dates across zones", () => {
     const ko = cardContent(event, "ko");
-    expect(ko.performance).toContain("사이타마");
-    expect(ko.venue).toBe("사이타마 공연장");
-    expect(cardContent(event, "en").performance).toBe(event.originalName);
-    expect(cardContent(event, "en").venue).toBe(event.originalVenue);
+    expect(ko.performance).toBe(event.originalName);
+    expect(ko.performanceSub).toContain("사이타마");
+    expect(ko.venue).toBe(event.originalVenue);
+    expect(ko.venueSub).toBe("사이타마 공연장");
+    expect(cardContent(event, "en").venueSub).toBe(eventVenueEnglish);
+    expect(cardContent({ ...event, translations: event.translations.filter((row) => row.locale === "ko") }, "en").performanceSub).toBeNull();
+    const exempt = cardContent({ ...event, originalName: "Day.1", translations: [{ locale: "ko", name: "첫째 날" }] }, "ko");
+    expect(exempt.performance).toBe("Day.1");
+    expect(exempt.performanceSub).toBeNull();
+    const sameVenue = cardContent({ ...event, translations: [{ locale: "ko", name: event.originalName, venue: event.originalVenue }] }, "ko");
+    expect(sameVenue.venue).toBe(event.originalVenue);
+    expect(sameVenue.venueSub).toBeNull();
     const previous = process.env.TZ;
     try {
       for (const zone of ["UTC", "America/Los_Angeles", "Asia/Tokyo"]) {
@@ -88,7 +110,7 @@ describe("local event-card preview service", () => {
     const content = cardContent(event, "ja");
     await expect(renderCard(content, "live", "セットリスト速報", resources)).resolves.toHaveProperty("png");
     const contextual = await renderCard({ ...content, title: "蓮".repeat(30), context: "Artist context" }, "live", "セットリスト速報", resources);
-    expect(contextual.layout.title.height).toBeLessThanOrEqual(203);
+    expect(contextual.layout.title.height).toBeLessThanOrEqual(TEMPLATE.title.height);
     expect(contextual.layout.title.fontSize).toBeGreaterThanOrEqual(40);
     await expect(renderCard({ ...content, title: "𓀀" }, "live", "セットリスト速報", resources)).rejects.toThrow(/グリフ|글리프/);
     await expect(renderCard({ ...content, title: "蓮".repeat(300) }, "live", "セットリスト速報", resources)).rejects.toThrow(/읽기 가능한 배치 실패/);
@@ -115,7 +137,7 @@ describe("local event-card preview service", () => {
     await expect(preparePreview({ root, events: [oversized], output: path.join(folder, "needs-title-review") }))
       .rejects.toMatchObject({ field: "title", message: expect.stringContaining("운영자 검토 증거") });
     // The same overflowing text in another field must not request title approval.
-    const venueTitle = { ...event, originalName: "会場".repeat(30), originalVenue: "会場".repeat(30), translations: [], eventSeries: null };
+    const venueTitle = { ...event, originalName: "会場".repeat(30), originalVenue: "会場".repeat(42), translations: [], eventSeries: null };
     await expect(preparePreview({ root, events: [venueTitle], output: path.join(folder, "venue-failure") }))
       .rejects.toMatchObject({ field: "venue", message: expect.not.stringContaining("운영자 검토 증거") });
     const result = await preparePreview({ root, events: [oversized], output: path.join(folder, "display-title"), displayTitles: [review,

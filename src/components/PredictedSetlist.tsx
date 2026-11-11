@@ -1,5 +1,6 @@
 "use client";
 
+import type { ShareNames } from "@/lib/shareNames";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
@@ -77,6 +78,7 @@ interface Props {
   seriesName: string;
   eventTitle: string;
   dateLine: string;
+  shareNames?: ShareNames;
   /**
    * Catalog for the song picker (server-fetched in `page.tsx` via
    * `getAvailableSongs`). Empty array on multi-artist festivals or
@@ -129,6 +131,7 @@ export function PredictedSetlist({
   seriesName,
   eventTitle,
   dateLine,
+  shareNames,
   availableSongs,
   unitFilters,
   boardGroups,
@@ -220,6 +223,7 @@ export function PredictedSetlist({
   // (avoids react-hooks/set-state-in-effect; the canonical project
   // pattern, see useMounted.ts:9-18).
   const [predictions, setPredictions] = useState<PredictionEntry[]>([]);
+  const catalogById = useMemo(() => new Map(availableSongs.map((song) => [song.songId, song])), [availableSongs]);
   // Songs bulk-added from the board's expected songs arrive grouped by
   // board group, not ranked; the builder says so until the fan
   // reorders. Stored with the list, so the label survives a reload.
@@ -322,7 +326,7 @@ export function PredictedSetlist({
       // `availableSongs` set, but a stale payload + a future call
       // path that reuses `handleToggle` for an arbitrary id would
       // otherwise write an entry with no embedded `WishSongDisplay`.
-      const found = availableSongs.find((s) => s.songId === songId);
+      const found = catalogById.get(songId);
       if (!found) return;
       const entry: PredictionEntry = {
         songId: found.songId,
@@ -342,7 +346,7 @@ export function PredictedSetlist({
         song_id: String(songId),
       });
     },
-    [eventId, predictions, isLocked, availableSongs],
+    [eventId, predictions, isLocked, catalogById],
   );
 
   /**
@@ -520,6 +524,12 @@ export function PredictedSetlist({
     isPreShow && availableSongs.length > 0 && unitFilters.length > 0;
   const isDesktopPicker = mounted && isDesktop && showPicker;
 
+  // A saved prediction can predate this locale's catalog translation.
+  const sharePredictions = useMemo(() => predictions.map((entry) => {
+    const song = catalogById.get(entry.songId);
+    return song ? { ...entry, song } : entry;
+  }), [predictions, catalogById]);
+
   const showProvisional = provisional && predictions.length > 0;
   return (
     // 18-v3 `.predict-layout`: the editor beside an always-visible
@@ -585,6 +595,7 @@ export function PredictedSetlist({
         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
           <div className={styles.predictList}>
           {predictions.map((entry, idx) => {
+            const song = catalogById.get(entry.songId);
             const rank = idx + 1;
             const state = rowState(rank, entry.songId);
             // Render the divider AFTER the row at index `total - 1`
@@ -593,7 +604,7 @@ export function PredictedSetlist({
             return (
               <div key={entry.songId}>
                 <PredictSongRow
-                  entry={entry}
+                  entry={song ? { ...entry, song } : entry}
                   rank={rank}
                   state={state}
                   locked={isLocked}
@@ -698,10 +709,11 @@ export function PredictedSetlist({
         seriesName={seriesName}
         eventTitle={eventTitle}
         dateLine={dateLine}
+        shareNames={shareNames}
         locale={locale}
         status={status}
         actualSongs={actualSongs}
-        predictions={predictions}
+        predictions={sharePredictions}
       />
       </div>
       {isDesktopPicker && (

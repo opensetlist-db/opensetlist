@@ -852,6 +852,8 @@ a.groupChip:hover {
 }
 .artistTag {
   display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   padding: 4px 8px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--artist) 32%, white);
@@ -940,6 +942,8 @@ a.artistTag:hover {
 }
 .groupTab {
   min-height: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   padding: 8px 12px;
   border: 1px solid color-mix(in srgb, var(--artist) 50%, var(--border-group-chip));
   border-radius: 9px;

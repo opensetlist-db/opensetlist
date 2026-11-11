@@ -3,6 +3,8 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
+import { ParticipationSongName } from "@/components/ParticipationSongName";
+import { boardSongRef, boardSongText } from "@/lib/board/pickTitle";
 import { entityPath } from "@/lib/seo/entityUrl";
 import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
 import {
@@ -63,6 +65,8 @@ export function BoardMyPicks({
   kind = "pick",
   groupId,
   groupName,
+  groupNameSub,
+  groupNameLang,
   locale,
   picks,
   groupSongs,
@@ -76,6 +80,8 @@ export function BoardMyPicks({
   kind?: "pick" | "wish";
   groupId: string;
   groupName: string;
+  groupNameSub?: string | null;
+  groupNameLang?: string;
   locale: string;
   /** My picks (or wishes) in THIS group. */
   picks: readonly StoredBoardPick[];
@@ -112,8 +118,9 @@ export function BoardMyPicks({
       tPredict("picker.filterAll"),
       tPredict("picker.filterOthers"),
       colors.primary,
+      { labelSub: groupNameSub, labelLang: groupNameLang },
     );
-  }, [groupSongs, groupId, groupName, tPredict]);
+  }, [groupSongs, groupId, groupName, groupNameSub, groupNameLang, tPredict]);
   const max = copy.max;
   const atCap = picks.length >= max;
   const catalogById = new Map(groupSongs.map((s) => [String(s.songId), s]));
@@ -163,6 +170,8 @@ export function BoardMyPicks({
             // A song credited to several groups shows where it counts.
             const crossGroup =
               (catalogById.get(p.songId)?.festivalGroupIds.length ?? 0) > 1;
+            const song = catalogById.get(p.songId) ?? p.song;
+            const title = song ? <ParticipationSongName song={song} locale={locale} /> : p.title;
             const played = playedSongIds?.has(p.songId) ?? false;
             return (
               <li
@@ -175,10 +184,10 @@ export function BoardMyPicks({
                   {available ? (
                     // Bare-id song URL: a stored pick carries no slug;
                     // the song page's canonical 308 adds it.
-                    <Link href={entityPath("songs", locale, p.songId, "")}>{p.title}</Link>
+                    <Link href={entityPath("songs", locale, p.songId, "")}>{title}</Link>
                   ) : (
                     <span style={{ color: colors.textMuted }}>
-                      {p.title}{" "}
+                      {title}{" "}
                       <span className="text-[11px]">({t("unavailable")})</span>
                     </span>
                   )}
@@ -198,7 +207,7 @@ export function BoardMyPicks({
                     type="button"
                     onClick={() => onRemove(p)}
                     disabled={pending.has(p.songId)}
-                    aria-label={t("removeAria", { title: p.title })}
+                    aria-label={t("removeAria", { title: boardSongText(song ? boardSongRef(p.songId, song) : p, locale) })}
                     className={`${styles.myChoiceRemove} disabled:opacity-40`}
                   >
                     ✕

@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, parseReleaseYear } from "@/lib/utils";
-import { displayNameWithFallback } from "@/lib/display";
+import { resolveDisplayPair } from "@/lib/display";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /*
@@ -18,16 +18,14 @@ import { FALLBACK_LOCALE } from "@/i18n/routing";
  *
  * Include note: this mirrors `albumCardInclude` (src/lib/albumHighlights.ts,
  * b09) for `translations` + `listings.bonuses`, but additionally selects
- * the primary artist's name fields (`originalName` / `originalShortName`
- * / `originalLanguage`) so the page can resolve a displayable artist
- * label via `displayOriginalName` — the b09 highlight surfaces never
- * render the artist name, so the shared include doesn't carry it.
+ * the primary artist’s full name and original language for the catalog row.
  */
 
 const localeFilter = (locale: string) => ({
   locale: { in: [locale, FALLBACK_LOCALE] },
 });
 
+/** Selects the titles and purchase information used by album list rows. */
 function albumsListInclude(locale: string) {
   const lf = localeFilter(locale);
   return {
@@ -46,11 +44,10 @@ function albumsListInclude(locale: string) {
           select: {
             color: true,
             originalName: true,
-            originalShortName: true,
             originalLanguage: true,
             translations: {
               where: lf,
-              select: { locale: true, name: true, shortName: true },
+              select: { locale: true, name: true },
             },
           },
         },
@@ -308,15 +305,20 @@ export function groupAlbumsByYear(
     });
 }
 
-export type AlbumArtistFilterOption = { id: string; name: string };
+export type AlbumArtistFilterOption = {
+  id: string;
+  main: string;
+  sub: string | null;
+  originalLanguage: string;
+};
 
-/*
+/**
  * Chip set for the `/albums` artist filter — only top-level
  * (representative) artists, matching the /artists list (the QA pass
  * intent: don't list every sub-unit). A top-level artist appears when it
  * OR any of its sub-units has ≥1 album, since a pick covers the whole
- * family (see getAlbums). Returns id (string, for `?artist=`) + a short
- * display name; ordered by id (≈ creation order, so the parent group
+ * family (see getAlbums). Returns id (string, for `?artist=`) and paired
+ * full names; ordered by id (≈ creation order, so the parent group
  * leads).
  */
 export async function getAlbumArtistFilters(
@@ -336,23 +338,19 @@ export async function getAlbumArtistFilters(
     select: {
       id: true,
       originalName: true,
-      originalShortName: true,
       originalLanguage: true,
       translations: {
         where: localeFilter(locale),
-        select: { locale: true, name: true, shortName: true },
+        select: { locale: true, name: true },
       },
     },
     orderBy: { id: "asc" },
   });
-  return artists.map((a) => ({
-    id: String(a.id),
-    // `Artist.originalName` is non-nullable in the schema, so the chain
-    // already yields a string — the trailing `|| ""` is belt-and-suspenders
-    // to keep `name: string` airtight if the column ever goes nullable.
-    name:
-      displayNameWithFallback(a, a.translations, locale, "short") ||
-      a.originalName ||
-      "",
-  }));
+  return artists.map((a) => {
+    const { main, sub } = resolveDisplayPair(
+      { original: a.originalName, originalLanguage: a.originalLanguage },
+      a.translations, locale, "name",
+    );
+    return { id: String(a.id), main, sub, originalLanguage: a.originalLanguage };
+  });
 }
