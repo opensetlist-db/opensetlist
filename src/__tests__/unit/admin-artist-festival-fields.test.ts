@@ -226,18 +226,18 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
 
   it("rejects a parent cycle without changing the stored parent, while retaining row feedback", async () => {
     artist.findUnique.mockImplementation(async ({ where }: { where: { slug: string } }) => ({ id: BigInt(where.slug === "root" ? 99 : 20), type: "group", translations: [{ locale: "ko", name: "사이드" }, { locale: "en", name: "Side" }] }));
-    expect((await importCsv("slug,ja_name,parentArtist_slug\nside,サイド,root")).status).toBe(200);
+    expect((await importCsv("slug,parentArtist_slug\nside,root")).status).toBe(200);
     const parentWrites = () => artist.update.mock.calls.filter(([args]) => Object.hasOwn(args.data, "parentArtistId"));
     expect(parentWrites()).toHaveLength(1);
     expect(parentWrites()[0][0].data.parentArtistId).toBe(BigInt(99));
-    const res = await importCsv("slug,ja_name,parentArtist_slug\nside,サイド,side");
+    const res = await importCsv("slug,parentArtist_slug\nside,side");
     expect(res.status).toBe(200);
     expect((await res.json()).log).toContain('ERROR: artists.csv parentArtist_slug "side" creates a cycle (artist side) — parent kept');
     expect(parentWrites()).toHaveLength(1);
   });
 
   it("update: columns omitted from the header leave the stored values alone", async () => {
-    const res = await importCsv(["slug,ja_name", "side,サイド"].join("\n"));
+    const res = await importCsv("slug\nside");
     expect(res.status).toBe(200);
     const data = artist.update.mock.calls[0][0].data;
     expect(data.sortOrder).toBeUndefined();
@@ -246,7 +246,7 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
 
   it("update: values set; a blank sortOrder clears, a blank isSideProject keeps", async () => {
     const res = await importCsv(
-      ["slug,ja_name,sortOrder,isSideProject", "side,サイド,2,true", "main,メイン,,"].join("\n"),
+      ["slug,sortOrder,isSideProject", "side,2,true", "main,,"].join("\n"),
     );
     // Blank cells are a valid "keep"/"clear", not an invalid value.
     const body = await res.json();
@@ -262,7 +262,7 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
 
   it("invalid cells WARN and keep the stored value", async () => {
     const res = await importCsv(
-      ["slug,ja_name,sortOrder,isSideProject", "side,サイド,first,maybe"].join("\n"),
+      ["slug,sortOrder,isSideProject", "side,first,maybe"].join("\n"),
     );
     const body = await res.json();
     const warns = body.log.filter((l: string) => l.startsWith("WARN"));

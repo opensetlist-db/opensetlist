@@ -367,7 +367,7 @@ describe("members.csv import — sortOrder", () => {
   });
 
   it("update: column omitted from the header → stored order untouched", async () => {
-    const res = await importCsv(["character_slug,ja_name", "m1,メンバー"].join("\n"));
+    const res = await importCsv("character_slug\nm1");
     expect(res.status).toBe(200);
     expect(si.update.mock.calls[0][0].data.sortOrder).toBeUndefined();
     expect(await warnsOf(res)).toEqual([]);
@@ -375,14 +375,14 @@ describe("members.csv import — sortOrder", () => {
 
   it("update: integer sets, blank clears", async () => {
     const res = await importCsv(
-      ["character_slug,ja_name,sortOrder", "m1,メンバー,3", "m2,メンバー2,"].join("\n"),
+      ["character_slug,sortOrder", "m1,3", "m2,"].join("\n"),
     );
     expect(si.update.mock.calls.map((c) => c[0].data.sortOrder)).toEqual([3, null]);
     expect(await warnsOf(res)).toEqual([]);
   });
 
   it("update: invalid cell WARNs and keeps the stored value", async () => {
-    const res = await importCsv(["character_slug,ja_name,sortOrder", "m1,メンバー,first"].join("\n"));
+    const res = await importCsv(["character_slug,sortOrder", "m1,first"].join("\n"));
     expect(si.update.mock.calls[0][0].data.sortOrder).toBeUndefined();
     expect(await warnsOf(res)).toEqual([
       'WARN: members.csv sortOrder "first" is not an integer (member m1) — kept existing value',

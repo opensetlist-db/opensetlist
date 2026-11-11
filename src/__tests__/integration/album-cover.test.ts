@@ -142,7 +142,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (albumId) await prisma.album.delete({ where: { id: albumId } });
+  if (albumId) {
+    await prisma.$transaction([
+      prisma.albumTranslation.deleteMany({ where: { albumId } }),
+      prisma.album.delete({ where: { id: albumId } }),
+    ]);
+  }
   await prisma.imageAsset.deleteMany({
     where: { publicUrl: { startsWith: BASE } },
   });
@@ -518,5 +523,61 @@ describe("CSV import keeps covers", () => {
     );
     expect(res.status).toBe(200);
     expect(await cover()).toBe(EXTERNAL);
+  });
+
+  it("revalidates catalog CSV originals before writing and keeps earlier date edits", async () => {
+    const importCsv = (csv: string) => IMPORT_POST(
+      json("POST", `${ORIGIN}/api/admin/import`, { type: "albums", csv }),
+    );
+    const read = () => prisma.album.findUniqueOrThrow({
+      where: { id: albumId }, include: { translations: { orderBy: { locale: "asc" } } },
+    });
+    const header = "slug,originalTitle,ko_title,en_title";
+    const existingTitle = "永久の歌";
+    expect((await importCsv(`${header}\n${TAG},${existingTitle},영구의 노래,Eternal Song`)).status).toBe(200);
+    const before = await read();
+    expect(before.originalTitle).toBe(existingTitle);
+    expect(before.translations.map((row) => row.title)).toEqual(["Eternal Song", "영구의 노래"]);
+
+    const changedTitle = "無限大の歌";
+    const stale = await importCsv(
+      `slug,releaseDate,originalTitle\n${TAG},2026-10-01,\n${TAG},,${changedTitle}`,
+    );
+    expect(stale.status).toBe(400);
+    expect((await stale.json()).error).toContain("ko_title: source-review");
+    const afterDate = await read();
+    expect(afterDate).toMatchObject({
+      id: before.id, releaseDate: new Date("2026-10-01"),
+      originalTitle: existingTitle, translations: before.translations, imageUrl: before.imageUrl,
+    });
+
+    const invalidScript = await importCsv(`${header}\n${TAG},${changedTitle},무한대の 노래,Infinite 歌`);
+    expect(invalidScript.status).toBe(400);
+    const { error } = await invalidScript.json();
+    expect(error).toContain("ko_title: localized-japanese-script");
+    expect(error).toContain("en_title: localized-japanese-script");
+    expect(await read()).toEqual(afterDate);
+
+    expect((await importCsv(`${header}\n${TAG},${changedTitle},무한대의 노래,Infinite Song`)).status).toBe(200);
+    const accepted = await read();
+    expect(accepted).toMatchObject({
+      id: before.id, releaseDate: afterDate.releaseDate, originalTitle: changedTitle, imageUrl: before.imageUrl,
+    });
+    expect(accepted.translations.map((row) => row.title)).toEqual(["Infinite Song", "무한대의 노래"]);
+
+    const legacyTitle = "Infinite 歌";
+    await prisma.albumTranslation.update({
+      where: { albumId_locale: { albumId, locale: "en" } },
+      data: { title: legacyTitle },
+    });
+    const legacy = await read();
+    const dateHeader = "slug,releaseDate,en_title";
+    const repeated = await importCsv(`${dateHeader}\n${TAG},2026-10-02,${legacyTitle}`);
+    expect(repeated.status).toBe(400);
+    expect((await repeated.json()).error).toContain("en_title: localized-japanese-script");
+    expect(await read()).toEqual(legacy);
+
+    expect((await importCsv(`${dateHeader}\n${TAG},2026-10-02,`)).status).toBe(200);
+    expect(await read()).toEqual({ ...legacy, releaseDate: new Date("2026-10-02") });
   });
 });

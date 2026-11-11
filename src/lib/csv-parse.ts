@@ -13,6 +13,48 @@ export function isSameSpellingSource(source: unknown): source is string {
   return typeof source === "string" && /^https?:\/\//i.test(source) && URL.canParse(source);
 }
 
+const approvedFullUnitNames: Readonly<Record<string, string>> = {
+  diverdiva: "DiverDiva",
+  azuna: "A・ZU・NA",
+  qu4rtz: "QU4RTZ",
+  r3birth: "R3BIRTH",
+  "a-l-a-n": "A.L.A.N",
+};
+
+/** An event's repeated title keeps its title classification. Only approved units can omit a separate short name. */
+export function catalogShortNameRule(
+  shortName: string | undefined,
+  fullName: string | undefined,
+  fullNameIsTitle: boolean,
+  artistSlug?: string,
+) {
+  if (shortName && fullNameIsTitle && shortName === fullName) return "title";
+  if (fullName && artistSlug && approvedFullUnitNames[artistSlug] === fullName) return "full-name";
+  return undefined;
+}
+
+/** Checks beyond display completeness that depend on the proposed CSV write. */
+export function catalogLocaleReviewIssue({
+  locale, value, originalLanguage, sourceChanged, submitted, status,
+}: {
+  locale: string;
+  value?: string;
+  originalLanguage: string;
+  sourceChanged: boolean;
+  submitted?: string;
+  status?: string;
+}) {
+  // Without a display status, only explicitly submitted text is under review.
+  if ((submitted?.trim() || (status && status !== "exempt" && status !== "original-language")) &&
+      (locale === "ko" || locale === "en") && value &&
+      /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(value.normalize("NFKC"))) {
+    return "localized-japanese-script";
+  }
+  if (sourceChanged && locale !== originalLanguage && !submitted?.trim() &&
+      (status === "present" || status === "confirmed-same")) return "source-review";
+  return undefined;
+}
+
 /**
  * Resolve originalLanguage from CSV row value, with default "ja".
  *

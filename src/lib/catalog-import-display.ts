@@ -1,5 +1,10 @@
 import { locales } from "@/i18n/routing";
-import { ImportValidationError, isSameSpellingSource } from "@/lib/csv-parse";
+import {
+  catalogLocaleReviewIssue,
+  catalogShortNameRule,
+  ImportValidationError,
+  isSameSpellingSource,
+} from "@/lib/csv-parse";
 import { resolveDisplayPair } from "@/lib/display";
 
 type TranslationPatch = { locale: string } & Record<string, unknown>;
@@ -25,9 +30,13 @@ export function catalogDisplayIssues(
   patches: readonly TranslationPatch[],
   fields: readonly DisplayField[],
   prefix = "",
+  artistSlug?: string,
 ) {
   const previousLanguage = text(existing?.originalLanguage) || "ja";
   const originalLanguage = originals.originalLanguage ?? previousLanguage;
+  const previousFullName = text(existing?.originalName);
+  const fullName = originals.originalName === undefined ? previousFullName : text(originals.originalName);
+  const fullNameIsTitle = fields.some(([key, , kind]) => key === "originalName" && kind === "title");
   const issues: string[] = [];
 
   for (const [originalKey, field, kind] of fields) {
@@ -35,10 +44,18 @@ export function catalogDisplayIssues(
     const original = originals[originalKey] === undefined
       ? previous
       : text(originals[originalKey]);
+    const shortRule = field === "shortName"
+      ? catalogShortNameRule(original, fullName, fullNameIsTitle, artistSlug)
+      : undefined;
+    const previousShortRule = field === "shortName"
+      ? catalogShortNameRule(previous, previousFullName, fullNameIsTitle, artistSlug)
+      : undefined;
+    const sourceChanged = existing !== null && (original !== previous ||
+      originalLanguage !== previousLanguage || shortRule !== previousShortRule);
     const translations = locales.map((locale) => {
       const before = text(existing?.translations.find((t) => t.locale === locale)?.[field]);
       const patch = patches.find((t) => t.locale === locale)?.[field];
-      return { locale, before, value: patch === undefined ? before : text(patch) };
+      return { locale, before, submitted: text(patch), value: patch === undefined ? before : text(patch) };
     });
     if (kind === "required") {
       for (const { locale, value } of translations) {
@@ -47,21 +64,26 @@ export function catalogDisplayIssues(
         }
       }
     }
-    if (existing && original === previous && originalLanguage === previousLanguage &&
-        translations.every(({ before, value }) => before === value)) continue;
-    if (!original.trim()) {
+    const unchanged = existing !== null && !sourceChanged &&
+      translations.every(({ before, value }) => before === value);
+    if (!unchanged && !original.trim()) {
       if (kind || translations.some(({ value }) => value.trim())) {
         issues.push(`${prefix}${originalKey}: 원문 표기가 필요합니다`);
       }
       continue;
     }
-    for (const locale of locales) {
+    for (const { locale, value, submitted } of translations) {
+      if (unchanged && !submitted.trim()) continue;
       const key = `${prefix}${locale}_${field}`;
-      const { status } = resolveDisplayPair({ original, originalLanguage }, translations, locale, "value", {
-        kind: kind === "title" ? "title" : undefined,
+      if (shortRule === "full-name" && !value.trim()) continue;
+      const status = unchanged ? undefined : resolveDisplayPair({ original, originalLanguage }, translations, locale, "value", {
+        kind: kind === "title" || shortRule === "title" ? "title" : undefined,
         sameValueConfirmed: isSameSpellingSource(row[`${key}_same_source`]),
-      });
-      if (status === "missing" || status === "unconfirmed-same" || status === "title-review") {
+      }).status;
+      const issue = catalogLocaleReviewIssue({ locale, value, originalLanguage, sourceChanged, submitted, status });
+      if (issue) {
+        issues.push(`${key}: ${issue}`);
+      } else if (status === "missing" || status === "unconfirmed-same" || status === "title-review") {
         issues.push(`${key}: ${status}`);
       }
     }

@@ -196,7 +196,7 @@ describe("events.csv import — localized names and organizers", () => {
   }
 
   beforeEach(() => {
-    const organizerName = "ラブライブ！シリーズ";
+    const organizerName = "Love Live! Series Project";
     const translations = [
       { locale: "ko", name: "페스", organizerName: "러브라이브! 시리즈", city: "도쿄", venue: "돔" },
       { locale: "en", name: "Fes", organizerName: "Love Live! Series", city: "Tokyo", venue: "Dome" },
@@ -233,14 +233,24 @@ describe("events.csv import — localized names and organizers", () => {
   });
 
   it("rejects a copied organizer without confirmation before the event update", async () => {
-    const header = "event_slug,ko_organizerName,ko_organizerName_same_source";
-    const row = "lovelive-15th-fes-day1,ラブライブ！シリーズ";
+    const header = "event_slug,en_organizerName,en_organizerName_same_source";
+    const row = "lovelive-15th-fes-day1,Love Live! Series Project";
     expect((await importCsv(`${header}\n${row},https://example.com/confirmed-fixture`)).status).toBe(200);
     expect(mocked.event.update).toHaveBeenCalledTimes(1);
 
     const res = await importCsv(`${header}\n${row},`);
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toContain("ko_organizerName: unconfirmed-same");
+    expect((await res.json()).error).toContain("en_organizerName: unconfirmed-same");
+    expect(mocked.event.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies the title exemption to a repeated original short name", async () => {
+    const header = "event_slug,originalName,originalShortName";
+    expect((await importCsv(`${header}\nshow,Day.1,Day.1`)).status).toBe(200);
+    expect(mocked.event.update).toHaveBeenCalledTimes(1);
+    const rejected = await importCsv(`${header}\nshow,Day.1,Day.1 Short`);
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).error).toContain("ko_shortName: missing");
     expect(mocked.event.update).toHaveBeenCalledTimes(1);
   });
 });

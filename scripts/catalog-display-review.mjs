@@ -4,13 +4,20 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { locales } from "../src/i18n/routing.ts";
-import { isSameSpellingSource, resolveOriginalLanguage } from "../src/lib/csv-parse.ts";
+import {
+  catalogLocaleReviewIssue,
+  catalogShortNameRule,
+  isSameSpellingSource,
+  resolveOriginalLanguage,
+} from "../src/lib/csv-parse.ts";
 import { resolveDisplayPair } from "../src/lib/display.ts";
 
 const nameFields = { name: "originalName", shortName: "originalShortName" };
 const titleFields = { title: "originalTitle", variantLabel: "variantLabel" };
 const eventFields = { ...nameFields, organizerName: "organizerName" };
-const incompleteStatuses = new Set(["missing-original", "missing", "unconfirmed-same", "title-review"]);
+const incompleteStatuses = new Set([
+  "missing-original", "missing", "unconfirmed-same", "title-review", "source-review", "localized-japanese-script",
+]);
 
 /** Match the server's trimmed cell values when binding a review to a CSV row. */
 function csvCells({ header, row }) {
@@ -126,19 +133,50 @@ export function reviewCatalog(entries, { audit = false } = {}) {
     if (!hold && !fields.length && !relationshipOnly) throw new Error(`${key}: no reviewed fields`);
 
     const reasons = hold ? [hold] : [];
-    const results = fields.flatMap(({ field, kind, original, originalLanguage, originalSource, translations }) => {
-      if (!audit && !originalSource) reasons.push(`${field}: missing original source`);
-      return locales.map((locale) => {
+    const results = fields.flatMap(({
+      field, kind, original, originalLanguage, originalSource, translations, stored, prefix = "", csvIndex = 0,
+    }) => {
+      const record = csv[csvIndex];
+      const cells = record ? csvCells(record) : {};
+      const full = field === "shortName" && fields.find((candidate) =>
+        candidate.field === "name" && (candidate.prefix ?? "") === prefix && (candidate.csvIndex ?? 0) === csvIndex
+      );
+      const artistSlug = record
+        ? (record.file.startsWith("artists") ? cells.slug : undefined)
+        : (key.startsWith("artist:") ? key.slice("artist:".length) : undefined);
+      const shortRule = full ? catalogShortNameRule(original, full.original, full.kind === "title", artistSlug) : undefined;
+      const previousShortRule = full
+        ? catalogShortNameRule(stored?.original, full.stored?.original, full.kind === "title", artistSlug)
+        : undefined;
+      const sourceChanged = !audit && !!stored && (original !== stored.original ||
+        originalLanguage !== (stored.originalLanguage ?? "ja") || shortRule !== previousShortRule);
+      const storedValue = (locale) => stored?.translations?.find((item) => item.locale === locale)?.value ?? "";
+      const unchanged = !audit && !!stored && !sourceChanged &&
+        locales.every((locale) => storedValue(locale) === (translations.find((item) => item.locale === locale)?.value ?? ""));
+      if (!audit && !unchanged && !originalSource) reasons.push(`${field}: missing original source`);
+      return locales.flatMap((locale) => {
+        const submitted = audit ? undefined : cells[`${prefix}${locale}_${field}`];
+        if (unchanged && !submitted) return [];
         const entry = translations.find((item) => item.locale === locale);
-        const status = !original?.trim() ? "missing-original" : resolveDisplayPair(
-          { original, originalLanguage }, translations, locale, "value",
-          { kind, sameValueConfirmed: !!entry?.sameValueConfirmed && isSameSpellingSource(entry.source) },
-        ).status;
+        let status = unchanged ? undefined : "missing-original";
+        if (!unchanged && original?.trim()) {
+          status = shortRule === "full-name" && !entry?.value?.trim() ? "full-name" : resolveDisplayPair(
+            { original, originalLanguage }, translations, locale, "value",
+            {
+              kind: shortRule === "title" ? "title" : kind,
+              sameValueConfirmed: !!entry?.sameValueConfirmed && isSameSpellingSource(entry.source),
+            },
+          ).status;
+        }
+        status = catalogLocaleReviewIssue({
+          locale, value: unchanged ? submitted : entry?.value, originalLanguage, sourceChanged, submitted, status,
+        }) ?? status;
+        if (!status) return [];
         const missing = incompleteStatuses.has(status);
         if (!audit && (missing || (status === "present" && !entry?.source))) {
           reasons.push(`${locale} ${field}: ${missing ? status : "missing source"}`);
         }
-        return { field, locale, status, source: entry?.source };
+        return [{ field, locale, status, source: entry?.source }];
       });
     });
     const dependencies = [...new Set([

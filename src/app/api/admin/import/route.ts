@@ -298,7 +298,7 @@ async function importArtists(rows: Record<string, string>[]) {
     );
 
     if (createBlocked) continue;
-    validateCatalogDisplay(`Artist "${slug}"`, row, existing, originals, translations, NAME_FIELDS);
+    validateCatalogDisplay(`Artist "${slug}"`, row, existing, originals, translations, NAME_FIELDS, "", slug);
     if (existing) {
       const effectiveType = artistType ?? existing.type;
       await prisma.artist.update({
