@@ -84,11 +84,6 @@ interface Props extends Pick<Parameters<typeof LiveSetlist>[0], "shareNames"> {
   venue: string | null;
   city: string | null;
   infoNames?: ComponentProps<typeof EventInfoCard>["names"];
-  shareNames?: {
-    event: { main: string; sub: string | null; lang: string };
-    series: { main: string; sub: string | null; lang: string } | null;
-    venue: { main: string; sub: string | null; lang: string } | null;
-  };
   /**
    * Localized short variants of `series.name` and `title`. The page
    * already resolves both via `displayNameWithFallback(..., "short")`

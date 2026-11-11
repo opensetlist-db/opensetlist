@@ -11,7 +11,6 @@ import { PURCHASE_AVAILABILITY_SELECT } from "@/lib/purchaseAvailability";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import {
   displayNameWithFallback,
-  displayOriginalTitle,
   resolveLocalizedField,
 } from "@/lib/display";
 import { eventDisplayField, eventDisplayName, eventDisplayPlain, localizedEventText, type EventDisplayText } from "@/lib/eventDisplay";
@@ -25,6 +24,7 @@ import { isWishPredictOpen, wishPredictOpensAt } from "@/lib/eventTiming";
 import { deriveOgPaletteFromCachedEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { TrendingSong } from "@/components/TrendingSongs";
+import { trendingSongTitle } from "@/lib/trending";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { Impression } from "@/components/EventImpressions";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
@@ -608,11 +608,7 @@ async function getTrendingSongs(
 
   const itemIds = groups.map((g) => g.setlistItemId);
 
-  // Same `[locale, "ja"]` translation filter as `getEvent` above —
-  // trims the per-song translation join to the requested locale plus
-  // the canonical-original safety net. `displayOriginalTitle` (called
-  // below) does a strict locale lookup that falls through to the
-  // parent `originalTitle` when no row matches, so the filter is safe.
+  // Match the live setlist seed: load the viewer locale and the canonical fallback.
   //
   // The nested `include` here previously emitted 4 sequential SELECTs
   // (SetlistItem → SetlistItemSong → Song → SongTranslation), one per
@@ -669,22 +665,12 @@ async function getTrendingSongs(
   return groups.map((g) => {
     const item = itemById.get(g.setlistItemId);
     const song = item?.songs[0]?.song;
-    // Original-primary title display — same cascade as <SetlistRow>
-    // so the trending card reads "originalTitle (sub: localizedTitle)"
-    // consistently with the main setlist below it. Items without a
-    // backed song (rare; admin-typed placeholder) fall through to the
-    // i18n unknown label on the main slot.
-    const titleDisp = song
-      ? displayOriginalTitle(song, song.translations, locale)
-      : null;
 
     const types = typeMap[g.setlistItemId.toString()] ?? {};
 
     return {
       setlistItemId: g.setlistItemId.toString(),
-      mainTitle: titleDisp?.main ?? unknownSongLabel,
-      subTitle: titleDisp?.sub ?? null,
-      variantLabel: titleDisp?.variant ?? null,
+      ...trendingSongTitle(song, locale, unknownSongLabel),
       totalReactions: g._count.id,
       // Pass the per-type counts straight through. The renderer in
       // `<TrendingSongs>` iterates `REACTION_TYPES` (canonical order)
@@ -822,7 +808,7 @@ export default async function EventPage({ params }: Props) {
   //     artist and all its descendants; chips from `deriveUnitFilters`
   //     (a sub-unit with zero songs produces no chip). Composite chips
   //     ("all" / "others") use `Predict.picker` translations; group /
-  //     individual labels come from the artist's localized name.
+  //     individual labels pair the artist's original and localized names.
   //   - Festival path (no series artist — the Fes, n10): one catalog
   //     per root group reached from the roster, merged and deduped,
   //     with one chip per group (see `src/lib/predict/festivalCatalog.ts`).
@@ -838,20 +824,24 @@ export default async function EventPage({ params }: Props) {
       getTranslations("Predict.picker"),
     ]);
     availableSongs = songs;
-    const primaryArtistLabel = displayNameWithFallback(
-      seriesPrimaryArtist,
+    const primaryArtistName = eventDisplayField(
+      seriesPrimaryArtist.originalName,
+      seriesPrimaryArtist.originalLanguage,
       seriesPrimaryArtist.translations,
       locale,
-      "short",
+      "name",
     );
     const safePrimaryArtistId = safeBigIntToNumber(seriesPrimaryArtist.id);
     unitFilters = deriveUnitFilters(
       songs,
       safePrimaryArtistId,
-      primaryArtistLabel,
+      primaryArtistName?.main ?? displayNameWithFallback(seriesPrimaryArtist, seriesPrimaryArtist.translations, locale, "short"),
       predictPickerTrans("filterAll"),
       predictPickerTrans("filterOthers"),
       colors.primary,
+      primaryArtistName
+        ? { labelSub: primaryArtistName.sub, labelLang: primaryArtistName.mainLang }
+        : undefined,
     );
   } else if (resolvedStatus === "upcoming") {
     const [hierarchy, collaborationArtistIds] = await Promise.all([
@@ -961,6 +951,8 @@ export default async function EventPage({ params }: Props) {
         groupId: String(g.artistId),
         slug: g.slug,
         label: g.label,
+        labelSub: g.labelSub,
+        labelLang: g.labelLang,
         color: g.color,
       })),
     };
