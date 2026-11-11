@@ -63,7 +63,7 @@ export async function EventBdSection({ eventId, startTime, album, locale, refere
       <div className={styles.bdBody}>
         <CoverImage src={album.imageUrl} size={88} />
         <div className={styles.bdProduct}>
-          <h3>
+          <h3 lang={album.originalLanguage}>
             <TrackedAlbumLink
               href={albumHref}
               albumId={String(album.id)}
@@ -74,7 +74,7 @@ export async function EventBdSection({ eventId, startTime, album, locale, refere
               {title.main}
             </TrackedAlbumLink>
           </h3>
-          {title.sub && <p>{title.sub}</p>}
+          {title.sub && <p lang={locale}>{title.sub}</p>}
           {album.releaseDate && (
             <p>{t("releaseDateLabel")} · {formatDate(album.releaseDate, locale)}</p>
           )}
