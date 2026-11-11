@@ -12,9 +12,9 @@ import {
   nullableString,
   originalLanguage as parseOriginalLanguage,
   parseJsonBody,
-  parseEventSeriesTranslations,
   requireString,
 } from "@/lib/admin-input";
+import { prepareEventLanguageWrite, seriesLanguageFields } from "@/lib/adminEventLanguage";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
@@ -67,7 +67,14 @@ export async function POST(request: NextRequest) {
   const language = parseOriginalLanguage(body.originalLanguage);
   if (!language.ok) return badRequest(language.message);
 
-  const translations = parseEventSeriesTranslations(body.translations);
+  const source = {
+    originalName: name.value,
+    originalShortName: shortName.value,
+    originalDescription: description.value,
+    originalLanguage: language.value,
+    organizerName: organizerName.value,
+  };
+  const translations = prepareEventLanguageWrite(body, seriesLanguageFields, source);
   if (!translations.ok) return badRequest(translations.message);
 
   const slugResult = await resolveCanonicalSlug(
@@ -77,7 +84,7 @@ export async function POST(request: NextRequest) {
     // Without the originalName backstop the auto-path would receive
     // "" and `resolveCanonicalSlug` would emit `series-${ts}` — the
     // standalone stage-identity route already does this same fallback.
-    translations.value[0]?.name || name.value,
+    translations.value.rows[0]?.name || name.value,
     "series"
   );
   if (!slugResult.ok) return badRequest(slugResult.message);
@@ -90,13 +97,9 @@ export async function POST(request: NextRequest) {
         type: typeCheck.value,
         artistId: artistIdCheck.value,
         parentSeriesId: parentSeriesIdCheck.value,
-        organizerName: organizerName.value,
         hasBoard: hasBoardCheck.value ?? false,
-        originalName: name.value,
-        originalShortName: shortName.value,
-        originalDescription: description.value,
-        originalLanguage: language.value,
-        translations: { create: translations.value },
+        ...source,
+        translations: { create: translations.value.rows },
       },
       include: { translations: true },
     });

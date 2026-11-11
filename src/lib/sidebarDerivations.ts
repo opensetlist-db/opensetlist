@@ -1,5 +1,6 @@
 import { displayArtistId, type EventDisplayOrdering } from "@/lib/eventDisplayOrder";
 import { displayNameWithFallback } from "@/lib/display";
+import { eventDisplayName, eventDisplayPlain } from "@/lib/eventDisplay";
 import { createResilientOfficialOrdering } from "@/lib/officialOrder";
 import { resolveUnitColor } from "@/lib/artistColor";
 import type {
@@ -100,6 +101,7 @@ export function deriveSidebarUnitsAndPerformers(
         id,
         slug: a.artist.slug,
         name,
+        displayName: eventDisplayName(a.artist, locale),
         color: a.artist.color ?? null,
         resolvedColor: resolveUnitColor(a.artist),
         members: [],
@@ -151,12 +153,7 @@ export function deriveSidebarUnitsAndPerformers(
         if (members.has(p.stageIdentity.id)) continue;
         members.add(p.stageIdentity.id);
         u.members.push(
-          displayNameWithFallback(
-            p.stageIdentity,
-            p.stageIdentity.translations,
-            locale,
-            "full",
-          ) || unknownPerformerLabel,
+          eventDisplayPlain(eventDisplayName(p.stageIdentity, locale)) || unknownPerformerLabel,
         );
       }
     }
@@ -168,16 +165,17 @@ export function deriveSidebarUnitsAndPerformers(
   // at this event linked to it. Hosts sort first, guests last; relative
   // first-appearance order preserved within each group.
   const allUnits: UnitsCardItem[] = [...unitsById.values()].map(
-    ({ id, slug, name, color, members }) => ({
+    ({ id, slug, name, displayName, color, members }) => ({
       id,
       slug,
       name,
+      displayName,
       color,
       members: ordering ? ordering.sortMembers([...memberSeen.get(id)!], (memberId) => memberById.get(memberId)!, {
         kind: "artist", artistId: creditedUnitIds.get(id)!,
       }).map((memberId) => {
         const member = memberById.get(memberId)!;
-        return displayNameWithFallback(member, member.translations, locale, "full") || unknownPerformerLabel;
+        return eventDisplayPlain(eventDisplayName(member, locale)) || unknownPerformerLabel;
       }) : members,
       isGuest: !unitHasHostMember.get(id),
     }),
@@ -210,6 +208,7 @@ export function deriveSidebarUnitsAndPerformers(
       performerSeen.set(id, {
         id,
         name,
+        displayName: eventDisplayName(p.stageIdentity, locale),
         // Always set — `resolveUnitColor` covers the case where the
         // primary unit's own color is null, and a missing primary unit
         // (rare) falls through to the same fallback.
@@ -233,6 +232,7 @@ export interface LineupGroup {
   id: string;
   slug: string;
   name: string;
+  displayName: ReturnType<typeof eventDisplayName>;
   isGuest: boolean;
 }
 
@@ -379,8 +379,10 @@ export function deriveLineupFromRoster(
     id: rosterArtistId(b.artist),
     slug: b.artist.slug,
     name: artistName(b.artist),
+    displayName: eventDisplayName(b.artist, locale),
     color: b.artist.color ?? null,
-    members: ordering.sortMembers(b.members, memberKey, { kind: "artist", artistId: b.artist.orderId ?? b.artist.id }).map(performerName),
+    members: ordering.sortMembers(b.members, memberKey, { kind: "artist", artistId: b.artist.orderId ?? b.artist.id })
+      .map((member) => eventDisplayPlain(eventDisplayName(member.stageIdentity, locale)) || unknownPerformerLabel),
     isGuest: !b.hasHost,
     kind,
   });
@@ -422,6 +424,7 @@ export function deriveLineupFromRoster(
       id: e.stageIdentity.id,
       slug: e.stageIdentity.slug,
       name: performerName(e),
+      displayName: eventDisplayName(e.stageIdentity, locale),
       color: resolveUnitColor(primaryUnit ?? section ?? { color: null }),
       isGuest: e.isGuest,
     };
@@ -436,6 +439,7 @@ export function deriveLineupFromRoster(
       id: rosterArtistId(g.artist),
       slug: g.artist.slug,
       name: artistName(g.artist),
+      displayName: eventDisplayName(g.artist, locale),
       isGuest: !g.hasHost,
     })),
   };

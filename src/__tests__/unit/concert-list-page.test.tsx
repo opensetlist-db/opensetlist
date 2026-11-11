@@ -30,7 +30,7 @@ function event(id: number, status: EventForList["status"], startTime: string): E
 }
 function group(id: number, events: EventForList[]): EventsListGroup {
   return {
-    id: `series:${id}`, kind: "series", title: `Tour ${id}`, artistShortName: null,
+    id: `series:${id}`, kind: "series", title: { main: `Tour ${id}`, sub: null, mainLang: "en", subLang: "en" }, artistShortName: null,
     seriesType: "concert_tour", events, earliestStart: 0, latestStart: 0,
     hasOngoing: events.some((e) => e.status === "ongoing"),
   };
@@ -47,7 +47,7 @@ describe("concert list server page", () => {
 
   it("renders a real empty result and an All link after a populated result", async () => {
     load.mockResolvedValue({
-      artist: "7", artistOptions: [{ id: "7", name: "Group A" }],
+      artist: "7", artistOptions: [{ id: "7", name: { main: "Group A", sub: null, mainLang: "en", subLang: "en" } }],
       activeGroups: [group(1, [event(1, "ongoing", NOW.toISOString())])], pastGroups: [],
     });
     const populated = await show({ filter: "ongoing", artist: "7" });
@@ -78,7 +78,7 @@ describe("concert list server page", () => {
   });
 
   it("paginates whole past groups, clamps the last page and preserves the filter", async () => {
-    load.mockResolvedValue({ artist: "7", artistOptions: [{ id: "7", name: "Group A" }], activeGroups: [], pastGroups: Array.from({ length: 11 }, (_, i) =>
+    load.mockResolvedValue({ artist: "7", artistOptions: [{ id: "7", name: { main: "Group A", sub: null, mainLang: "en", subLang: "en" } }], activeGroups: [], pastGroups: Array.from({ length: 11 }, (_, i) =>
       group(i + 1, [event(i * 2 + 1, "completed", "2026-01-01T00:00:00Z"), event(i * 2 + 2, "cancelled", "2026-01-02T00:00:00Z")])) });
     const first = await show({ filter: "completed", artist: "7", pastPage: "abc" });
     expect(document.querySelectorAll("a[data-status]")).toHaveLength(20);

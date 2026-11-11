@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { EventStartTime } from "@/components/EventStartTime";
+import { EventNameText } from "@/components/events/EventNameText";
+import type { EventDisplayText } from "@/lib/eventDisplay";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { entityPath } from "@/lib/seo/entityUrl";
 import styles from "./eventDetail.module.css";
@@ -41,6 +43,12 @@ interface Props {
   songsCount: number;
   /** Pre-formatted compact reaction total; null hides the row. */
   reactionsValue: string | null;
+  names?: {
+    artist: EventDisplayText | null;
+    organizer: EventDisplayText | null;
+    series: EventDisplayText | null;
+    venue: EventDisplayText | null;
+  };
 }
 
 export function EventInfoCard({
@@ -54,6 +62,7 @@ export function EventInfoCard({
   series,
   songsCount,
   reactionsValue,
+  names,
 }: Props) {
   const t = useTranslations("EventDetail");
   const et = useTranslations("Event");
@@ -67,25 +76,24 @@ export function EventInfoCard({
       label: t("factStart"),
       value: startTime ? <EventStartTime date={date} startTime={startTime} /> : null,
     },
-    { key: "venue", label: ct("venue"), value: venue },
+    { key: "venue", label: ct("venue"), value: names?.venue ? <EventNameText pair={names.venue} /> : venue },
     { key: "city", label: et("iconLabelCity"), value: city },
-    artist
-      ? {
+    {
           key: "artist",
           label: ct("artist"),
-          value: (
+          value: artist ? (
             <Link href={entityPath("artists", locale, artist.id, artist.slug)}>
-              {artist.name}
+              {names?.artist ? <EventNameText pair={names.artist} /> : artist.name}
             </Link>
-          ),
-        }
-      : { key: "organizer", label: est("organizer"), value: organizerName },
+          ) : null,
+    },
+    { key: "organizer", label: est("organizer"), value: names?.organizer ? <EventNameText pair={names.organizer} /> : organizerName },
     {
       key: "series",
       label: ct("series"),
       value: series ? (
         <Link href={entityPath("series", locale, series.id, series.slug)}>
-          {series.name}
+          {names?.series ? <EventNameText pair={names.series} /> : series.name}
         </Link>
       ) : null,
     },

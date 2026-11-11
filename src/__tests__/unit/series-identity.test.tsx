@@ -21,14 +21,14 @@ const ACCENT = "#FB8A9B";
 
 const base = {
   typeLabel: "콘서트 투어",
-  title: { text: "하스노소라 6th Live", lang: "ko" },
-  subtitle: { text: "蓮ノ空 6th Live", lang: "ja" },
-  meta: {
+  title: { text: "蓮ノ空 6th Live", lang: "ja" },
+  subtitle: { text: "하스노소라 6th Live", lang: "ko" },
+  meta: [{
     kind: "artist" as const,
     label: "아티스트",
     href: "/artists/1/hasunosora",
-    name: { text: "하스노소라", lang: "ko" },
-  },
+    name: { main: "蓮ノ空", sub: "하스노소라", mainLang: "ja", subLang: "ko" },
+  }],
   description: null,
   metrics: [
     { label: "총 공연", value: "8회" },
@@ -39,7 +39,7 @@ const base = {
 };
 
 describe("<SeriesIdentity />", () => {
-  it("typography: no logo slot, H1 + original subtitle with their languages", () => {
+  it("typography: original H1 and localized subtitle identify their languages", () => {
     // Positive control: the same panel with an image does render the slot.
     const { container, rerender } = render(
       <SeriesIdentity
@@ -51,16 +51,16 @@ describe("<SeriesIdentity />", () => {
     rerender(<SeriesIdentity {...base} logo={{ image: null, color: null }} />);
     expect(screen.queryByTestId("series-logo")).toBeNull();
     const h1 = screen.getByRole("heading", { level: 1 });
-    expect(h1.textContent).toBe("하스노소라 6th Live");
-    expect(h1.getAttribute("lang")).toBe("ko");
-    expect(screen.getByText("蓮ノ空 6th Live").getAttribute("lang")).toBe("ja");
+    expect(h1.textContent).toBe("蓮ノ空 6th Live");
+    expect(h1.getAttribute("lang")).toBe("ja");
+    expect(screen.getByText("하스노소라 6th Live").getAttribute("lang")).toBe("ko");
     // No colour → the CSS default accent (no inline custom property).
     expect((container.firstChild as HTMLElement).getAttribute("style")).toBeNull();
   });
 
   it("links the representative artist canonically and keeps four metrics", () => {
     render(<SeriesIdentity {...base} logo={{ image: null, color: null }} />);
-    expect(screen.getByRole("link", { name: "하스노소라" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: /蓮ノ空.*하스노소라/ }).getAttribute("href")).toBe(
       "/artists/1/hasunosora",
     );
     expect(screen.getAllByRole("term").map((n) => n.textContent)).toEqual([
@@ -80,11 +80,11 @@ describe("<SeriesIdentity />", () => {
     rerender(
       <SeriesIdentity
         {...base}
-        meta={{ kind: "organizer", label: "주최", name: { text: "러브라이브! 시리즈", lang: "ko" } }}
+        meta={[{ kind: "organizer", label: "주최", name: { main: "ラブライブ！シリーズ", sub: "러브라이브! 시리즈", mainLang: "ja", subLang: "ko" } }]}
         logo={{ image: null, color: null }}
       />,
     );
-    expect(screen.getByText("러브라이브! 시리즈").tagName).toBe("SPAN");
+    expect(screen.getByText("러브라이브! 시리즈").tagName).toBe("SMALL");
     expect(screen.queryByRole("link")).toBeNull();
   });
 
@@ -110,6 +110,6 @@ describe("<SeriesIdentity />", () => {
     fireEvent.error(img);
     expect(screen.queryByTestId("series-logo")).toBeNull();
     expect(container.querySelectorAll("img")).toHaveLength(0);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("하스노소라 6th Live");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("蓮ノ空 6th Live");
   });
 });

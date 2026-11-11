@@ -1,4 +1,5 @@
 import { resolveLocalizedField } from "@/lib/display";
+import { eventDisplayField, type EventDisplayText } from "@/lib/eventDisplay";
 import { getEventStatus } from "@/lib/eventStatus";
 
 /**
@@ -37,7 +38,7 @@ export interface Leg {
   city: string;
   /** Locale-resolved venue from the *first* event in the leg. Most tours
    *  play the same venue for both Day.1/Day.2; multi-venue legs are rare. */
-  venue: string | null;
+  venue: EventDisplayText | null;
   events: SeriesEventInput[];
   /** True when at least one event in the leg currently resolves to "ongoing". */
   hasOngoing: boolean;
@@ -85,12 +86,13 @@ export function groupByCity(
     const startMs = bucketEvents.map((e) => new Date(e.startTime).getTime());
     const start = new Date(Math.min(...startMs)).toISOString();
     const end = new Date(Math.max(...startMs)).toISOString();
-    const venue = resolveLocalizedField(
-      bucketEvents[0] as unknown as Record<string, unknown>,
-      bucketEvents[0].translations,
+    const first = bucketEvents[0];
+    const venue = eventDisplayField(
+      first.originalVenue,
+      first.originalLanguage,
+      first.translations,
       locale,
       "venue",
-      "originalVenue",
     );
     const hasOngoing = bucketEvents.some(
       (e) => getEventStatus(e, referenceNow) === "ongoing",
