@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { IdentityName, type IdentityNamePair } from "@/components/artists/IdentityName";
 import styles from "./memberDetail.module.css";
 
 /*
@@ -22,8 +23,7 @@ export interface MemberSongView {
   variantLang?: string;
   /** Viewer-locale translation, null when it equals the original. */
   titleSub: string | null;
-  unitName: string | null;
-  unitLang?: string;
+  unitName: IdentityNamePair | null;
   timesPerformed: number;
 }
 
@@ -52,8 +52,8 @@ export function MemberSongRow({
             <span className={styles.songSub}>{song.titleSub}</span>
           )}
           {song.unitName && (
-            <span className={styles.unitTag} lang={song.unitLang}>
-              {song.unitName}
+            <span className={styles.unitTag}>
+              <IdentityName name={song.unitName} />
             </span>
           )}
         </span>

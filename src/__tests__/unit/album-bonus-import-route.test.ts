@@ -53,11 +53,19 @@ const validCandidates = {
       originalStoreName: "Amazon.co.jp",
       originalEditionLabel: null,
       productUrl: null,
+      translations: [
+        { locale: "ko", storeName: "아마존 재팬", editionLabel: null },
+        { locale: "en", storeName: "Amazon JP", editionLabel: null },
+      ],
       bonuses: [
         {
           originalBonusType: "スリーブケース",
           originalBonusDescription: null,
           bonusImageUrl: null,
+          translations: [
+            { locale: "ko", bonusType: "슬리브 케이스", bonusDescription: null },
+            { locale: "en", bonusType: "Sleeve case", bonusDescription: null },
+          ],
         },
       ],
     },
@@ -551,6 +559,10 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             originalBonusDescription: null,
             bonusImageUrl: null,
             storeNameHint: null,
+            translations: [
+              { locale: "ko", bonusType: "아크릴 열쇠고리", bonusDescription: null },
+              { locale: "en", bonusType: "Acrylic keychain", bonusDescription: null },
+            ],
           },
         ],
       },
@@ -675,7 +687,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     });
     // Atomic claim flipped status to applied at the top of the tx.
     expect(claimJob).toHaveBeenCalledWith({
-      where: { id: "job-1", status: "pending" },
+      where: { id: "job-1", status: "pending", updatedAt: undefined },
       data: expect.objectContaining({ status: "applied" }),
     });
   });
@@ -835,16 +847,13 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     });
   });
 
-  it("does NOT call translation createMany when no translations exist", async () => {
-    // Backward-compat path: candidate JSON without translations
-    // (validCandidates fixture). Verifies the legacy paste shape
-    // still applies cleanly and skips the second createMany.
+  it("rejects a legacy draft that approves an incomplete insert", async () => {
     (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "job-1",
       status: "pending",
       albumId: BigInt(42),
       sourceUrl: null,
-      candidates: validCandidates,
+      candidates: { ...validCandidates, listings: [{ ...validCandidates.listings[0], translations: [] }] },
       decisions: {
         listings: { 0: { approved: true } },
         bonuses: { "0:0": { approved: true } },
@@ -877,14 +886,9 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
       new Request("http://x", { method: "POST" }) as never,
       fakeParams("job-1"),
     );
-    expect(res.status).toBe(200);
-
-    // No translations.create on the listing.
-    expect(createListing).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.not.objectContaining({ translations: expect.anything() }),
-      }),
-    );
+    expect(res.status).toBe(400);
+    expect(createListing).not.toHaveBeenCalled();
+    expect(createManyBonus).not.toHaveBeenCalled();
     expect(createManyBonusTranslation).not.toHaveBeenCalled();
   });
 });

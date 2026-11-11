@@ -233,6 +233,7 @@
       "basicOptions": "Purchase options without bonuses",
       "storeCount": "{count, plural, one {# store} other {# stores}}",
       "deadline": "Bonus deadline: {time}",
+      "label": "Purchase bonus",
       "buyAt": "View product at {store}",
       "officialInfo": "Official product information",
       "status": {

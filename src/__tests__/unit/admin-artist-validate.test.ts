@@ -1,10 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseArtistTranslations } from "@/app/api/admin/artists/_validate";
 
-// The artist edit route deletes and recreates every ArtistTranslation
-// from this parser's output, so any field it drops is wiped from the DB
-// on each admin save. shortName was dropped once (chips on /albums fell
-// back to the full group name) — these cases pin the round-trip.
 describe("parseArtistTranslations", () => {
   it("keeps shortName alongside name and bio", () => {
     const r = parseArtistTranslations([
@@ -19,14 +15,14 @@ describe("parseArtistTranslations", () => {
     ]);
   });
 
-  it("normalizes a missing or empty shortName to null", () => {
+  it("preserves an omitted shortName and normalizes an explicit blank to null", () => {
     const r = parseArtistTranslations([
       { locale: "en", name: "Hasunosora", shortName: "" },
       { locale: "ja", name: "蓮ノ空" },
     ]);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.map((t) => t.shortName)).toEqual([null, null]);
+    expect(r.value.map((t) => t.shortName)).toEqual([null, undefined]);
   });
 
   it("rejects a non-string shortName", () => {

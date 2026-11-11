@@ -185,7 +185,7 @@ know what each suite leaves behind:
 | `album-list-pagination.test.ts` | **writes** | read-only paging of the whole album catalog and every artist chip against a raw-SQL ordering; then 5 artists (2 deleted sub-units) and 29 albums dated 2099 or undated whose slug starts `c07itest<ts>`, with `AlbumArtist` links; `beforeAll` purges earlier `c07itest` leftovers, `afterAll` deletes them and asserts none are left |
 | `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
-| `purchase-options.test.ts` | **writes** | isolated album, listings and bonuses through admin handlers; `afterAll` hard-deletes its fixture |
+| `purchase-options.test.ts` | **writes** | isolated album, listings, bonuses and import jobs through admin handlers; `afterAll` hard-deletes its fixture |
 
 Every `*.test.ts` here needs a row, and every row a file:
 `npm run check:testing-md` (a CI step right after Lint) fails otherwise. The

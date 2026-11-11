@@ -82,11 +82,11 @@ describe("parseBonusTranslations", () => {
   it("trims bonusType; preserves null when blank", () => {
     expect(
       parseBonusTranslations([
-        { locale: "ko", bonusType: "  태피스트리  " },
+        { locale: "ko", bonusType: "  태피스트리  ", bonusDescription: "  2장 세트  " },
         { locale: "ja", bonusType: "" },
       ]),
     ).toEqual([
-      { locale: "ko", bonusType: "태피스트리" },
+      { locale: "ko", bonusType: "태피스트리", bonusDescription: "2장 세트" },
       { locale: "ja", bonusType: null },
     ]);
   });

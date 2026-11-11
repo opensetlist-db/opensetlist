@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { IdentityName, type IdentityNamePair } from "./IdentityName";
 import styles from "./artistDetail.module.css";
-import { type LocalizedText, accentStyle } from "./artistDetail";
+import { accentStyle } from "./artistDetail";
 
 /*
  * Sub-unit card on the artist detail overview (approved packet 20-v1).
@@ -19,9 +20,9 @@ import { type LocalizedText, accentStyle } from "./artistDetail";
 
 interface Props {
   href: string;
-  name: LocalizedText;
+  name: IdentityNamePair;
   color: string;
-  members: LocalizedText[];
+  members: IdentityNamePair[];
 }
 
 export function UnitCard({ href, name, color, members }: Props) {
@@ -29,8 +30,8 @@ export function UnitCard({ href, name, color, members }: Props) {
     <Link href={href} className={styles.unitCard} style={accentStyle(color)}>
       <span className={styles.unitTop}>
         <i className={styles.dot} aria-hidden="true" />
-        <h3 className={styles.unitName} lang={name.lang}>
-          {name.text}
+        <h3 className={styles.unitName}>
+          <IdentityName name={name} />
         </h3>
         <span className={styles.arrow} aria-hidden="true">
           ›
@@ -39,8 +40,8 @@ export function UnitCard({ href, name, color, members }: Props) {
       {members.length > 0 && (
         <ul className={styles.unitMembers}>
           {members.map((m, i) => (
-            <li key={i} lang={m.lang}>
-              {m.text}
+            <li key={i}>
+              <IdentityName name={m} />
             </li>
           ))}
         </ul>

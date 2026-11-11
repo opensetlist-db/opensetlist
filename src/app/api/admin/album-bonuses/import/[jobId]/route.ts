@@ -195,7 +195,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       }
       return {
         row: await tx.albumBonusImportJob.update({
-          where: { id: jobId },
+          where: { id: jobId, status: "pending" },
           data,
           include: {
             album: {
@@ -227,6 +227,13 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       // FK miss when operator picked a non-existent albumId.
+      if (e.code === "P2025") {
+        const current = await prisma.albumBonusImportJob.findUnique({ where: { id: jobId }, select: { status: true } });
+        if (!current) return NextResponse.json({ error: "임포트 작업을 찾을 수 없습니다." }, { status: 404 });
+        if (current.status !== "pending") {
+          return NextResponse.json({ error: "이미 처리된 작업입니다." }, { status: 409 });
+        }
+      }
       if (e.code === "P2003" || e.code === "P2025") {
         return NextResponse.json(
           { error: "앨범을 찾을 수 없습니다." },

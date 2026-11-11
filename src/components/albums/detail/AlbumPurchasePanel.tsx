@@ -1,11 +1,8 @@
 import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { TrackedStoreLink } from "@/components/TrackedStoreLink";
-import {
-  resolveBonusType,
-  resolveStoreKey,
-  resolveStoreName,
-} from "@/lib/albumBonusDisplay";
+import { resolveStoreKey } from "@/lib/albumBonusDisplay";
+import { resolveBonusText, resolveStorePair } from "@/lib/purchaseLanguage";
 import { projectPurchaseOptions } from "@/lib/purchaseAvailability";
 import { resolvePurchaseLink } from "@/lib/purchaseLink";
 import { formatDate, formatTime, isSafeExternalUrl, type BigIntStringified } from "@/lib/utils";
@@ -23,6 +20,16 @@ export type AlbumForPurchase = BigIntStringified<
     };
   }>
 >;
+
+function StoreName({ listing, locale }: { listing: AlbumForPurchase["listings"][number]; locale: string }) {
+  const { main, sub } = resolveStorePair(listing, locale);
+  return (
+    <>
+      <span lang={listing.originalLanguage}>{main}</span>
+      {sub && <span lang={locale} className={styles.storeNameTranslation}>{sub}</span>}
+    </>
+  );
+}
 
 export async function AlbumPurchasePanel({
   album,
@@ -45,7 +52,7 @@ export async function AlbumPurchasePanel({
   const option = (listing: Listing & { productUrl: string }, bonuses: Listing["bonuses"] = []) => {
     const link = resolvePurchaseLink(listing.productUrl, tag);
     if (!link) return null;
-    const store = resolveStoreName(listing, locale);
+    const { main, sub } = resolveStorePair(listing, locale);
     // Report catalog seller keys, with the legacy buckets as a fallback for missing or malformed keys.
     const storeKey = listing.storeKey && /^[\p{L}\p{N}][\p{L}\p{N} _!&.-]{0,99}$/u.test(listing.storeKey)
       ? listing.storeKey
@@ -55,9 +62,7 @@ export async function AlbumPurchasePanel({
         {bonuses.length > 0 && (
           <ul className={styles.bonusList}>
             {bonuses.map((bonus) => {
-              const label = resolveBonusType(bonus, locale);
-              const description = bonus.translations?.find((entry) => entry.locale === locale)?.bonusDescription
-                ?? bonus.originalBonusDescription;
+              const { type, description } = resolveBonusText(bonus, locale);
               const deadline = [listing.endsAt, bonus.endsAt].filter((date) => date !== null).sort()[0];
               return (
                 <li key={bonus.id}>
@@ -65,7 +70,7 @@ export async function AlbumPurchasePanel({
                     // eslint-disable-next-line @next/next/no-img-element -- bonus images use the approved storage URL directly.
                     <img src={bonus.bonusImageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className={styles.bonusImage} />
                   )}
-                  <strong>{label}</strong>
+                  <strong>{type || t("bonus.label")}</strong>
                   {description && <p>{description}</p>}
                   {deadline && (
                     <p className={styles.deadline}>
@@ -90,7 +95,7 @@ export async function AlbumPurchasePanel({
           surface="album_page"
           className={styles.buy}
         >
-          {t("bonus.buyAt", { store })}
+          {t("bonus.buyAt", { store: sub ? `${main} / ${sub}` : main })}
           <span aria-hidden="true">↗</span>
         </TrackedStoreLink>
         {link.isAffiliate && (
@@ -112,7 +117,7 @@ export async function AlbumPurchasePanel({
           <div className={styles.storeGrid}>
             {bonusStores.map(({ key, options }) => (
               <article key={key} className={styles.store}>
-                <h3>{resolveStoreName(options[0].listing, locale)}</h3>
+                <h3><StoreName listing={options[0].listing} locale={locale} /></h3>
                 {options.map(({ listing, bonuses }) => option(listing, bonuses))}
               </article>
             ))}
@@ -125,7 +130,7 @@ export async function AlbumPurchasePanel({
           <div className={styles.storeGrid}>
             {basicOptions.map((listing) => (
               <article key={listing.id} className={styles.store}>
-                <h4>{resolveStoreName(listing, locale)}</h4>
+                <h4><StoreName listing={listing} locale={locale} /></h4>
                 {option(listing)}
               </article>
             ))}

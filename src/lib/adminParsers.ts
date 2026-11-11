@@ -73,26 +73,21 @@ export function parsePositiveInt(v: unknown): number | null {
 export const ADMIN_WRITABLE_LISTING_STATUSES: ReadonlySet<AlbumStoreListingStatus> =
   new Set<AlbumStoreListingStatus>(["active", "ended"]);
 
-/**
- * Parses the `translations` array in AlbumStoreBonus create / update
- * bodies down to the schema-side shape. The admin form per the
- * simplification handoff only writes `bonusType`; the schema's
- * `bonusDescription` column stays nullable but never receives a write
- * from this surface.
- */
 function optionalTranslationText(value: unknown) {
   return value === undefined ? undefined : typeof value === "string" ? value.trim() || null : null;
 }
 
+/** Normalize submitted bonus copy without replacing omitted type or description overrides. */
 export function parseBonusTranslations(
   input: unknown,
-): { locale: string; bonusType?: string | null }[] {
+): { locale: string; bonusType?: string | null; bonusDescription?: string | null }[] {
   return Array.isArray(input)
-    ? (input as Array<{ locale: unknown; bonusType?: unknown }>)
-        .filter((t) => typeof t.locale === "string")
+    ? (input as Array<{ locale: unknown; bonusType?: unknown; bonusDescription?: unknown }>)
+        .filter((t) => typeof t?.locale === "string")
         .map((t) => ({
           locale: t.locale as string,
           bonusType: optionalTranslationText(t.bonusType),
+          bonusDescription: optionalTranslationText(t.bonusDescription),
         }))
     : [];
 }
@@ -118,7 +113,7 @@ export function parseListingTranslations(
           editionLabel?: unknown;
         }>
       )
-        .filter((t) => typeof t.locale === "string")
+        .filter((t) => typeof t?.locale === "string")
         .map((t) => ({
           locale: t.locale as string,
           storeName: optionalTranslationText(t.storeName),

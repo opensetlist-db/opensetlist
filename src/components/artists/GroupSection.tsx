@@ -1,8 +1,7 @@
 import { getTranslations } from "next-intl/server";
-import { displayNameWithFallback } from "@/lib/display";
 import type { GroupForList } from "@/lib/artists";
 import ArtistListRow from "@/components/artists/ArtistListRow";
-import { fallbackNameLang } from "@/components/artists/artistDetail";
+import { IdentityName, identityName } from "./IdentityName";
 import styles from "./artistList.module.css";
 
 /*
@@ -36,18 +35,7 @@ const CATEGORY_LABEL_KEY: Record<NonNullable<GroupForList["category"]>, string> 
 export default async function GroupSection({ group, locale }: Props) {
   const t = await getTranslations("Artist");
 
-  // Real Groups: localized full name → originalName → t("unknownGroup").
-  // Synthetic buckets: `ungroupedSection` for a category bucket,
-  // `ungroupedNoCategorySection` for the null-category one.
-  const displayedName = group.isSynthetic
-    ? group.category
-      ? t("ungroupedSection")
-      : t("ungroupedNoCategorySection")
-    : displayNameWithFallback(group, group.translations, locale) ||
-      t("unknownGroup");
-  const titleLang = group.isSynthetic
-    ? undefined
-    : fallbackNameLang(group, group.translations, locale);
+  const name = group.isSynthetic ? null : identityName(group, locale, t("unknownGroup"));
 
   const categoryLabel = group.category
     ? t(CATEGORY_LABEL_KEY[group.category])
@@ -58,8 +46,10 @@ export default async function GroupSection({ group, locale }: Props) {
       <header
         className={`${styles.groupHead}${group.isSynthetic ? ` ${styles.synthetic}` : ""}`}
       >
-        <h2 className={styles.groupTitle} lang={titleLang}>
-          {displayedName}
+        <h2 className={styles.groupTitle}>
+          {name ? <IdentityName name={name} /> : t(
+            group.category ? "ungroupedSection" : "ungroupedNoCategorySection",
+          )}
         </h2>
         {categoryLabel && <span className={styles.badge}>{categoryLabel}</span>}
         <span className={styles.teamCount}>

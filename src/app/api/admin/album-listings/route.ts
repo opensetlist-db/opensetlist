@@ -10,6 +10,7 @@ import {
   ADMIN_WRITABLE_LISTING_STATUSES,
   parseListingTranslations,
 } from "@/lib/adminParsers";
+import { requireReviewedText, storeLanguageIssue } from "@/lib/purchaseLanguage";
 import { revalidatePublicData } from "@/lib/dataCache";
 
 type CreateBody = Record<string, unknown> & {
@@ -68,6 +69,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const purchase = parseListingPurchaseFields(body);
+    const text = {
+      originalStoreName: body.originalStoreName.trim(),
+      originalLanguage: typeof body.originalLanguage === "string" ? body.originalLanguage.trim() || "ja" : "ja",
+    };
+    requireReviewedText(false, undefined, storeLanguageIssue(
+      { ...text, translations }, body.reviewedTranslations === true,
+    ));
     const id = randomUUID();
     const created = await prisma.albumStoreListing.create({
       data: {
@@ -75,18 +83,12 @@ export async function POST(request: NextRequest) {
         id,
         optionKey: purchase.isBonusOption == null ? "" : id,
         albumId,
-        originalStoreName: (body.originalStoreName as string).trim(),
+        ...text,
         originalEditionLabel:
           typeof body.originalEditionLabel === "string" &&
           body.originalEditionLabel.trim()
             ? body.originalEditionLabel.trim()
             : null,
-        originalLanguage:
-          typeof body.originalLanguage === "string" &&
-          body.originalLanguage.trim()
-            ? body.originalLanguage.trim()
-            : "ja",
-
         status: body.status as AlbumStoreListingStatus,
         translations: translations.length
           ? { create: translations }

@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import IdentitySameSourceInputs, { clearIdentitySameSources } from "@/components/admin/IdentitySameSourceInputs";
+import type { IdentitySameSources } from "@/lib/adminIdentityNames";
 import { GROUP_CATEGORY_VALUES } from "@/lib/admin-constants";
 
-type Translation = {
+type Translation = IdentitySameSources & {
   locale: string;
   name: string;
   shortName: string;
@@ -33,6 +35,7 @@ const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 export default function GroupForm({ initialData }: GroupFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [slug, setSlug] = useState(initialData?.slug ?? "");
   const [type, setType] = useState(initialData?.type ?? "");
   const [category, setCategory] = useState(initialData?.category ?? "");
@@ -61,7 +64,12 @@ export default function GroupForm({ initialData }: GroupFormProps) {
     value: string
   ) {
     setTranslations((prev) =>
-      prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
+      prev.map((t, i) => i === index ? {
+        ...t,
+        ...(field === "locale" || field === "name" ? { nameSameSource: undefined } : {}),
+        ...(field === "locale" || field === "shortName" ? { shortNameSameSource: undefined } : {}),
+        [field]: value,
+      } : t)
     );
   }
 
@@ -84,6 +92,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSaveError("");
 
     if (!slug.trim()) {
       alert("슬러그(slug)는 필수입니다.");
@@ -95,6 +104,14 @@ export default function GroupForm({ initialData }: GroupFormProps) {
       return;
     }
 
+    const missing = translations.find((row) => !row.name.trim() && (
+      row.shortName?.trim() || row.description?.trim() ||
+      initialData?.translations.some((stored) => stored.locale === row.locale && stored.name.trim())
+    ));
+    if (missing) {
+      setSaveError(originalName + " name (" + missing.locale + ", 표기 필요)");
+      return;
+    }
     setLoading(true);
 
     const payload = {
@@ -114,21 +131,22 @@ export default function GroupForm({ initialData }: GroupFormProps) {
       : "/api/admin/groups";
     const method = initialData ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (res.ok) {
-      router.push("/admin/groups");
-      router.refresh();
-    } else if (res.status === 409) {
-      const body = await res.json().catch(() => ({}));
-      alert(body?.error ?? "이미 사용 중인 슬러그입니다.");
-      setLoading(false);
-    } else {
-      alert("저장에 실패했습니다.");
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        router.push("/admin/groups");
+        router.refresh();
+        return;
+      }
+      const body = await res.json().catch(() => null);
+      setSaveError(body?.error ?? "저장에 실패했습니다.");
+    } catch {
+      setSaveError("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+    } finally {
       setLoading(false);
     }
   }
@@ -201,7 +219,10 @@ export default function GroupForm({ initialData }: GroupFormProps) {
           </label>
           <select
             value={originalLanguage}
-            onChange={(e) => setOriginalLanguage(e.target.value)}
+            onChange={(e) => {
+              setOriginalLanguage(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
             className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
           >
             {ORIGINAL_LANGUAGES.map((l) => (
@@ -214,14 +235,20 @@ export default function GroupForm({ initialData }: GroupFormProps) {
         <input
           placeholder="원본 이름 (필수)"
           value={originalName}
-          onChange={(e) => setOriginalName(e.target.value)}
+          onChange={(e) => {
+              setOriginalName(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
           className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
           required
         />
         <input
           placeholder="원본 짧은 이름 (선택)"
           value={originalShortName}
-          onChange={(e) => setOriginalShortName(e.target.value)}
+          onChange={(e) => {
+              setOriginalShortName(e.target.value);
+              setTranslations((rows) => rows.map(clearIdentitySameSources));
+            }}
           className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
         />
         <textarea
@@ -254,7 +281,9 @@ export default function GroupForm({ initialData }: GroupFormProps) {
             >
               <div className="mb-2 flex items-center justify-between">
                 <select
+                  aria-label="번역 언어"
                   value={tr.locale}
+                  disabled={i < (initialData?.translations.length ?? 0)}
                   onChange={(e) => updateTranslation(i, "locale", e.target.value)}
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 >
@@ -264,7 +293,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
                     </option>
                   ))}
                 </select>
-                {translations.length > 1 && (
+                {!initialData && translations.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeTranslation(i)}
@@ -288,6 +317,8 @@ export default function GroupForm({ initialData }: GroupFormProps) {
                 }
                 className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
+              <IdentitySameSourceInputs row={tr} source={{ originalName, originalShortName, originalLanguage }}
+                onChange={(field, value) => updateTranslation(i, field, value)} />
               <textarea
                 placeholder="설명 (선택)"
                 value={tr.description}
@@ -302,6 +333,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
         </div>
       </div>
 
+      {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
       <button
         type="submit"
         disabled={loading}
