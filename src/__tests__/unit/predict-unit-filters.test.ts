@@ -73,10 +73,11 @@ describe("deriveUnitFilters", () => {
         { creditedArtistIds: [1, 2] },
       ),
     ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    const primaryColor = "#0277BD";
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", primaryColor);
     const groupChip = out.find((f) => f.kind === "group");
     expect(groupChip).toBeDefined();
-    expect(groupChip?.color).toBe("#0277BD");
+    expect(groupChip?.color).toBe(primaryColor);
   });
 
   it("no group chip when the group has only sub-unit songs (it would open an empty list)", () => {
@@ -137,7 +138,9 @@ describe("deriveUnitFilters", () => {
       makeSong(20, {
         artistId: 2,
         slug: "cerise",
-        label: "Cerise",
+        label: "スリーズブーケ",
+        labelSub: "Cerise Bouquet",
+        labelLang: "ja",
         color: "#e91e8c",
         isSubUnit: true,
         isMainUnit: true,
@@ -145,7 +148,13 @@ describe("deriveUnitFilters", () => {
     ];
     const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
     expect(out.map((f) => f.kind)).toEqual(["all", "group", "individual"]);
-    expect(out[2]).toMatchObject({ kind: "individual", artistId: 2, label: "Cerise" });
+    expect(out[2]).toMatchObject({
+      kind: "individual",
+      artistId: 2,
+      label: "スリーズブーケ",
+      labelSub: "Cerise Bouquet",
+      labelLang: "ja",
+    });
   });
 
   it("isMainUnit=false sub-unit with count ≤ threshold (10) is bucketed into 'others'", () => {
@@ -181,7 +190,9 @@ describe("deriveUnitFilters", () => {
         makeSong(200 + i, {
           artistId: 9,
           slug: "ayumu",
-          label: "Ayumu",
+          label: "上原歩夢",
+          labelSub: "Ayumu Uehara",
+          labelLang: "ja",
           color: "#ff7e94",
           isSubUnit: true,
           isMainUnit: false,
@@ -190,7 +201,12 @@ describe("deriveUnitFilters", () => {
     ];
     const out = deriveUnitFilters(songs, 8, "Nijigasaki", "All", "Others", "#0277BD");
     expect(out.map((f) => f.kind)).toEqual(["all", "group", "individual"]);
-    expect(out[2]).toMatchObject({ artistId: 9, label: "Ayumu" });
+    expect(out[2]).toMatchObject({
+      artistId: 9,
+      label: "上原歩夢",
+      labelSub: "Ayumu Uehara",
+      labelLang: "ja",
+    });
   });
 
   it("threshold is strictly greater than 10 (10 songs from non-main → 'others')", () => {

@@ -182,6 +182,8 @@ export function deriveUnitFilters(
         artistId,
         slug: info.slug,
         label: info.label,
+        labelSub: info.labelSub,
+        labelLang: info.labelLang,
         color: info.color,
         isMainUnit: info.isMainUnit,
       });

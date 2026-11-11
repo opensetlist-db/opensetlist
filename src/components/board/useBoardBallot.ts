@@ -164,7 +164,8 @@ function mergeById(
   const updated = cur.map((p) => {
     const fresh = server.get(p.id);
     server.delete(p.id);
-    return fresh?.song ? fresh : p;
+    if (!fresh) return p;
+    return fresh.song ? fresh : { ...p, available: fresh.available };
   });
   return restoreMissing
     ? [...updated, ...[...server.values()].filter((p) => !atStart.has(p.id))]
