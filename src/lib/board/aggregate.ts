@@ -1,5 +1,5 @@
 import { boardColumnLabel } from "@/lib/board/thresholds";
-import type { BoardColumn } from "@/lib/board/types";
+import type { BoardColumn, BoardSongRef } from "@/lib/board/types";
 
 /**
  * Pure rules of the fan board's crowd aggregate (n15). The cached
@@ -115,16 +115,15 @@ export function mergeLegacyWishes(
 export function buildBoardColumn(
   rows: readonly BoardSongCount[],
   participants: number,
-  titleOf: (songId: string) => string | null,
+  songOf: (songId: string) => BoardSongRef | null,
 ): BoardColumn {
   const submissions = rows.reduce((sum, r) => sum + r.count, 0);
   const top = rankBoardSongs(rows).map((r) => {
-    const title = titleOf(r.songId);
+    const song = songOf(r.songId);
     return {
-      songId: r.songId,
-      title: title ?? "",
+      ...(song ?? { songId: r.songId, title: "" }),
       count: r.count,
-      available: title !== null,
+      available: song !== null,
     };
   });
   return {

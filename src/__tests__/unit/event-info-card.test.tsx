@@ -88,17 +88,23 @@ describe("EventInfoCard", () => {
     );
   });
 
-  it("links the series artist, or names the organizer when there is none", () => {
+  it("links the series artist and pairs the organizer in a separate fact", () => {
     const { rerender } = render(
       <EventInfoCard
         {...baseProps}
         artist={{ id: "42", slug: "hasunosora", name: "蓮ノ空" }}
         organizerName="Bandai Namco"
+        names={{
+          artist: null, series: null, venue: null,
+          organizer: { main: "バンダイナムコ", sub: "Bandai Namco", mainLang: "ja", subLang: "en" },
+        }}
       />,
     );
     expect(screen.getByText("蓮ノ空").getAttribute("href")).toBe("/ko/artists/42/hasunosora");
-    expect(screen.queryByText("Bandai Namco")).toBeNull();
+    expect(screen.getByText("バンダイナムコ")).toHaveAttribute("lang", "ja");
+    expect(screen.getByText("Bandai Namco")).toHaveAttribute("lang", "en");
     rerender(<EventInfoCard {...baseProps} artist={null} organizerName="Bandai Namco" />);
+    expect(screen.queryByText("蓮ノ空")).toBeNull();
     expect(screen.getByText("Bandai Namco").tagName).toBe("DD");
     expect(screen.getByText("organizer")).toBeInTheDocument();
   });

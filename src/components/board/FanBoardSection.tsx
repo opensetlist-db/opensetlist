@@ -14,6 +14,7 @@ import type {
   BoardGroupView,
   BoardReadResponse,
   BoardShortlistEntry,
+  BoardSongRef,
   BoardTally,
   BoardTopEntry,
 } from "@/lib/board/types";
@@ -23,11 +24,11 @@ import {
 } from "@/lib/board/config";
 import type { AvailableSong } from "@/lib/types/predict";
 import type { WishEntry } from "@/lib/wishStorage";
-import { displayOriginalTitle } from "@/lib/display";
+import { ParticipationSongName } from "@/components/ParticipationSongName";
 import { colors } from "@/styles/tokens";
 import styles from "@/components/event/eventDetail.module.css";
 import { BoardMyPicks } from "@/components/board/BoardMyPicks";
-import { pickTitle } from "@/lib/board/pickTitle";
+import { boardSongRef, boardSongText } from "@/lib/board/pickTitle";
 import {
   useBoardBallot,
   type BallotEntry,
@@ -360,6 +361,8 @@ export function FanBoardSection({
   const chips = state.kind === "ready" ? state.groups.map((g) => ({
     groupId: g.groupId,
     label: g.name,
+    labelSub: g.nameSub,
+    labelLang: g.nameLang,
     color: g.color,
   })) : seed.chips;
   const activeChipId = active?.groupId ?? activeId;
@@ -405,10 +408,10 @@ export function FanBoardSection({
   const handleAdd = async (
     kind: BallotKind,
     group: BoardGroupView,
-    songId: string,
-    title: string,
+    song: BoardSongRef,
     source: BallotSource,
   ) => {
+    const { songId } = song;
     const list = listOf(kind);
     // Two refusals the client can see coming — answered locally with the
     // same message the server would send, without a request.
@@ -424,7 +427,7 @@ export function FanBoardSection({
       return;
     }
     report(
-      await mutate(() => ballot.add(kind, group.groupId, songId, title, source)),
+      await mutate(() => ballot.add(kind, group.groupId, song, source)),
       group.name,
       kind,
     );
@@ -477,12 +480,15 @@ export function FanBoardSection({
           // The open group's fragment, so a reader of the post lands on
           // the group the fan was looking at.
           url: absoluteUrl(seed.share.path) + boardFragment(active.slug),
-          groups: state.groups,
+          groups: state.groups.map((g) => ({
+            groupId: g.groupId,
+            name: g.nameSub ? `${g.name} / ${g.nameSub}` : g.name,
+          })),
           picks: copyablePicks,
           // null only without a catalog → the stored (add-time) title.
           titleOf: (p) => {
             const song = catalogById.get(p.songId);
-            return song ? pickTitle(song, locale) : null;
+            return boardSongText(song ? boardSongRef(p.songId, song) : p, locale);
           },
         })
       : null;
@@ -582,7 +588,8 @@ export function FanBoardSection({
                 { "--artist": c.color ?? colors.borderStrong } as React.CSSProperties
               }
             >
-              {c.label}
+              <span lang={c.labelLang}>{c.label}</span>
+              {c.labelSub && <span lang={locale} className="block text-[0.85em] font-normal">{c.labelSub}</span>}
             </button>
           );
         })}
@@ -641,8 +648,8 @@ export function FanBoardSection({
                               atCap: mine.length >= capOf(kind),
                               pending: pendingOf(kind),
                               elsewhereOf,
-                              onAdd: (songId, title) =>
-                                void handleAdd(kind, active, songId, title, "row"),
+                              onAdd: (song) =>
+                                void handleAdd(kind, active, song, "row"),
                               onRemove: (songId) => {
                                 const entry = mine.find((p) => p.songId === songId);
                                 if (entry) void handleRemove(kind, active, entry, "row");
@@ -655,6 +662,8 @@ export function FanBoardSection({
                       kind={kind}
                       groupId={active.groupId}
                       groupName={active.name}
+                      groupNameSub={active.nameSub}
+                      groupNameLang={active.nameLang}
                       locale={locale}
                       picks={mine}
                       groupSongs={songsOf(active.groupId)}
@@ -665,8 +674,7 @@ export function FanBoardSection({
                         void handleAdd(
                           kind,
                           active,
-                          String(song.songId),
-                          pickTitle(song, locale),
+                          boardSongRef(String(song.songId), song),
                           "picker",
                         )
                       }
@@ -748,7 +756,7 @@ type RowActions = {
   /** The group name a song is already mine under in this column, or
    *  null when it is not mine elsewhere. */
   elsewhereOf: (songId: string) => string | null;
-  onAdd: (songId: string, title: string) => void;
+  onAdd: (song: BoardSongRef) => void;
   onRemove: (songId: string) => void;
 };
 
@@ -779,8 +787,8 @@ const NADO = {
  */
 function NadoButton({
   kind,
-  songId,
-  title,
+  song,
+  locale,
   available,
   mine,
   actions,
@@ -788,8 +796,8 @@ function NadoButton({
   t,
 }: {
   kind: BallotKind;
-  songId: string;
-  title: string;
+  song: BoardSongRef;
+  locale: string;
   available: boolean;
   mine: boolean;
   actions: RowActions | null;
@@ -797,6 +805,7 @@ function NadoButton({
   t: ReturnType<typeof useTranslations<"Board">>;
 }) {
   if (!actions) return null;
+  const { songId } = song;
   if (!mine) {
     if (!available) return null;
     const elsewhere = actions.elsewhereOf(songId);
@@ -817,11 +826,11 @@ function NadoButton({
       type="button"
       data-testid="board-nado"
       aria-pressed={mine}
-      aria-label={t(copy.aria, { title })}
+      aria-label={t(copy.aria, { title: boardSongText(song, locale) })}
       disabled={pending || capped}
       aria-busy={pending || undefined}
       aria-describedby={capped ? capNoteId : undefined}
-      onClick={() => (mine ? actions.onRemove(songId) : actions.onAdd(songId, title))}
+      onClick={() => (mine ? actions.onRemove(songId) : actions.onAdd(song))}
       className={styles.nadoButton}
     >
       {mine && <span aria-hidden="true">✓ </span>}
@@ -856,13 +865,13 @@ function ColumnPanel({
 }) {
   const meta = COLUMN[kind];
   const capNoteId = `board-row-cap-${kind}-${group.groupId}`;
-  const nado = (songId: string, title: string, available: boolean) => (
+  const nado = (song: BoardSongRef, available: boolean) => (
     <NadoButton
       kind={kind}
-      songId={songId}
-      title={title}
+      song={song}
+      locale={locale}
       available={available}
-      mine={mySongIds.has(songId)}
+      mine={mySongIds.has(song.songId)}
       actions={rowActions}
       capNoteId={capNoteId}
       t={t}
@@ -948,7 +957,7 @@ function ColumnPanel({
                   onClick={() => trackSong(e.songId, "crowd")}
                   className={styles.crowdTitle}
                 >
-                  {e.title}
+                  {e.song ? <ParticipationSongName song={e.song} locale={locale} /> : e.title}
                 </Link>
               ) : (
                 // Soft-deleted after it was picked: the vote and the rank
@@ -957,7 +966,8 @@ function ColumnPanel({
                 <span className={styles.crowdMuted}>
                   {e.title ? (
                     <>
-                      {e.title} <span className="text-[10px]">({t("unavailable")})</span>
+                      {e.song ? <ParticipationSongName song={e.song} locale={locale} /> : e.title}{" "}
+                      <span className="text-[10px]">({t("unavailable")})</span>
                     </>
                   ) : (
                     t("unavailable")
@@ -974,7 +984,7 @@ function ColumnPanel({
               <span className={styles.crowdCount}>
                 {t("submissions", { count: e.count })}
               </span>
-              {nado(e.songId, e.title, e.available)}
+              {nado(e, e.available)}
             </li>
           ))}
         </ol>
@@ -1003,12 +1013,12 @@ function ColumnPanel({
                     onClick={() => trackSong(s.songId, "operator")}
                     className={styles.crowdTitle}
                   >
-                    {s.title}
+                    {s.song ? <ParticipationSongName song={s.song} locale={locale} /> : s.title}
                   </Link>
                   <span className={styles.crowdTag}>{t("operatorPick")}</span>
                   {/* Starters come from the live catalog, so they are
                       always available. */}
-                  {nado(s.songId, s.title, true)}
+                  {nado(s, true)}
                 </li>
               ))}
             </ol>
@@ -1064,7 +1074,7 @@ function LegacyWishes({
       <p className={styles.ballotNote}>{t("legacyWishesNote")}</p>
       <ul className="space-y-1">
         {entries.map((w) => {
-          const title = displayOriginalTitle(w.song, w.song.translations, locale).main;
+          const title = boardSongText(boardSongRef(String(w.songId), w.song), locale);
           return (
             <li
               key={w.dbId}
@@ -1072,8 +1082,8 @@ function LegacyWishes({
               className="flex items-center gap-2 rounded-md px-2 py-1 text-[13px]"
               style={{ background: colors.bgSubtle }}
             >
-              <span className="min-w-0 flex-1 truncate" style={{ color: colors.textPrimary }}>
-                {title}
+              <span className="min-w-0 flex-1" style={{ color: colors.textPrimary }}>
+                <ParticipationSongName song={w.song} locale={locale} />
               </span>
               {!locked && (
                 <button

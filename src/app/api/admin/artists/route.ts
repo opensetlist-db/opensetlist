@@ -1,3 +1,4 @@
+import { checkIdentityNames, identityTranslations } from "@/lib/adminIdentityNames";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest) {
   const language = parseOriginalLanguage(body.originalLanguage);
   if (!language.ok) return badRequest(language.message);
 
-  const translations = parseArtistTranslations(body.translations);
+  const translations = identityTranslations(body.translations, parseArtistTranslations);
   if (!translations.ok) return badRequest(translations.message);
 
   const stageIdentities = parseStageIdentities(body.stageIdentities);
@@ -143,6 +144,15 @@ export async function POST(request: NextRequest) {
   );
   if (!slugResult.ok) return badRequest(slugResult.message);
   const slug = slugResult.slug;
+
+  const nameError = checkIdentityNames("아티스트", {
+    originalName: name.value,
+    originalShortName: shortName.value,
+    originalLanguage: language.value,
+    translations: translations.value,
+    sameNameConfirmations: translations.sameNameConfirmations,
+  }, undefined, slug);
+  if (nameError) return badRequest(nameError);
 
   // Pre-derive each stage identity's slug via `deriveSlug` so the
   // synchronous `.map()` in the nested-create payload below can stay

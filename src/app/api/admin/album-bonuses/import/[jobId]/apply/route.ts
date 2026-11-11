@@ -3,8 +3,12 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { PurchaseInputError } from "@/lib/adminPurchaseFields";
+import { requireReviewedText } from "@/lib/purchaseLanguage";
 import { randomUUID } from "node:crypto";
 import {
+  bonusCandidateLanguageIssue,
+  listingCandidateLanguageIssue,
   normalizeBonusTranslations,
   normalizeListingTranslations,
   readCandidates,
@@ -68,6 +72,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       sourceUrl: true,
       candidates: true,
       decisions: true,
+      updatedAt: true,
     },
   });
   if (!job) {
@@ -109,7 +114,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
     // are intentional duplicates), so dup inserts would persist
     // silently — atomic claim closes that hole.
     const claimed = await tx.albumBonusImportJob.updateMany({
-      where: { id: job.id, status: "pending" },
+      where: { id: job.id, status: "pending", updatedAt: job.updatedAt },
       data: { status: "applied", appliedAt: new Date() },
     });
     if (claimed.count === 0) {
@@ -179,6 +184,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       if (!approved) continue;
 
       if (lc.kind === "insert") {
+        requireReviewedText(false, undefined, listingCandidateLanguageIssue(cand));
         // Listing inserts use nested `translations.create` rather than
         // a separate createMany — already one create per listing (we
         // need the returned id for the bonus-loop's listingIdByIdx),
@@ -244,7 +250,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       const decision = decisions.bonuses[`${bc.listingIdx}:${bc.bonusIdx}`];
       const approved = decision?.approved === true;
       if (!approved) continue;
-      if (bc.kind !== "insert") continue;
+      if (bc.kind !== "insert" || decisions.listings[bc.listingIdx]?.approved !== true) continue;
 
       // Need a listingId — either from the matched listing or the
       // freshly-inserted one. If the operator approved a bonus but
@@ -255,6 +261,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       if (!listingId) continue;
 
       const bonus = candidates.listings[bc.listingIdx].bonuses[bc.bonusIdx];
+      requireReviewedText(false, undefined, bonusCandidateLanguageIssue(bonus));
       const bonusId = randomUUID();
       bonusInserts.push({
         id: bonusId,
@@ -311,6 +318,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
             // contract from spreading to early-booking accidentally.
             continue;
           }
+          requireReviewedText(false, undefined, bonusCandidateLanguageIssue(item));
           const bonusId = randomUUID();
           bonusInserts.push({
             id: bonusId,
@@ -346,11 +354,19 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
     // claim. Don't update again — would just rewrite appliedAt.
 
     return { listingsInserted, listingsUpdated, bonusesInserted };
+  }).catch((error: unknown) => {
+    // Throwing inside the transaction rolls back both the claim and any
+    // earlier candidate writes, so an incomplete job stays pending.
+    if (error instanceof PurchaseInputError) return { languageError: error.message };
+    throw error;
   });
 
+  if ("languageError" in result) {
+    return NextResponse.json({ error: result.languageError }, { status: 400 });
+  }
   if ("conflict" in result) {
     return NextResponse.json(
-      { error: "이 작업은 이미 처리되었습니다." },
+      { error: "이 작업이 변경되었거나 이미 처리되었습니다. 최신 내용을 확인해 주세요." },
       { status: 409 },
     );
   }

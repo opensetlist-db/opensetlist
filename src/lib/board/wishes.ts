@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { displayOriginalTitle } from "@/lib/display";
+import { boardSongRef } from "@/lib/board/pickTitle";
+import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
 import { BOARD_WISHES_PER_GROUP } from "@/lib/board/config";
 import { BallotError, withBallotLock } from "@/lib/board/ballot";
 import type { BoardMineWish } from "@/lib/board/types";
@@ -156,7 +157,6 @@ export async function deleteWish(
 export async function loadMineWishes(
   eventId: bigint,
   anonId: string,
-  locale: string,
 ): Promise<BoardMineWish[]> {
   const rows = await prisma.songWish.findMany({
     where: { eventId, anonId, groupArtistId: { not: null } },
@@ -172,8 +172,8 @@ export async function loadMineWishes(
           originalTitle: true,
           originalLanguage: true,
           variantLabel: true,
+          baseVersionId: true,
           translations: {
-            where: { locale },
             select: { locale: true, title: true, variantLabel: true },
           },
         },
@@ -187,8 +187,10 @@ export async function loadMineWishes(
           {
             id: r.id,
             groupId: r.groupArtistId.toString(),
-            songId: r.songId.toString(),
-            title: displayOriginalTitle(r.song, r.song.translations, locale).main,
+            ...boardSongRef(String(r.songId), {
+              ...r.song,
+              baseVersionId: r.song.baseVersionId == null ? null : safeBigIntToNumber(r.song.baseVersionId),
+            }),
             available: !r.song.isDeleted,
             createdAt: r.createdAt.toISOString(),
           },

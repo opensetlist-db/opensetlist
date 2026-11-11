@@ -15,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({
     albumTrackTranslation: {
       deleteMany: vi.fn(),
     },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
 }));
@@ -24,10 +25,26 @@ import { PATCH } from "@/app/api/admin/album-tracks/[id]/route";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { Prisma } from "@/generated/prisma/client";
+import { trackTitleSnapshot } from "@/lib/albumTrackTitleValidation";
 
 const verifyMock = verifyAdminAPI as ReturnType<typeof vi.fn>;
 
 import { jsonRequest } from "../helpers/requestFactory";
+
+const drama = {
+  pattern: "direct",
+  albumId: 1,
+  discNumber: 1,
+  trackNumber: 1,
+  variant: "drama",
+  title: "ドラマパート",
+  titleLanguage: "ja",
+};
+
+const dramaTranslations = [
+  { locale: "ko", title: "드라마 파트" },
+  { locale: "en", title: "Drama Part" },
+];
 
 describe("POST /api/admin/album-tracks — pattern dispatch", () => {
   beforeEach(() => {
@@ -114,25 +131,39 @@ describe("POST /api/admin/album-tracks — pattern dispatch", () => {
   });
 
   it("Pattern 3 accepts drama with translations", async () => {
-    const res = await POST(
-      jsonRequest("http://x/api/admin/album-tracks", {
-        pattern: "direct",
-        albumId: 1,
-        discNumber: 1,
-        trackNumber: 1,
-        variant: "drama",
-        title: "ドラマパート",
-        titleLanguage: "ja",
-        translations: [{ locale: "ko", title: "드라마 파트" }],
-      }) as never,
-    );
+    const res = await POST(jsonRequest("http://x/api/admin/album-tracks", {
+      ...drama,
+      translations: dramaTranslations,
+    }) as never);
     expect(res.status).toBe(201);
     const call = (prisma.albumTrack.create as ReturnType<typeof vi.fn>).mock
       .calls[0][0];
     expect(call.data.variant).toBe("drama");
-    expect(call.data.translations.create).toEqual([
-      { locale: "ko", title: "드라마 파트" },
-    ]);
+    expect(call.data.translations.create).toEqual(dramaTranslations);
+
+    vi.mocked(prisma.albumTrack.create).mockClear();
+    const missing = await POST(jsonRequest("http://x/api/admin/album-tracks", {
+      ...drama,
+      translations: dramaTranslations.slice(0, 1),
+    }) as never);
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toMatchObject({ error: expect.stringContaining("en 표기 누락") });
+    expect(prisma.albumTrack.create).not.toHaveBeenCalled();
+  });
+
+  it("allows Latin titles, but a symbolic title needs a sourced locale decision", async () => {
+    const create = (data: Record<string, unknown>) => POST(
+      jsonRequest("http://x/api/admin/album-tracks", { ...drama, ...data }) as never,
+    );
+    expect((await create({ title: "ＢＧＭ 1！" })).status).toBe(201);
+    const title = "？？？";
+    const missing = await create({ title });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toMatchObject({ error: expect.stringContaining("기호 제목") });
+    const translations = ["ko", "en"].map((locale) => ({ locale, title }));
+    expect((await create({ title, translations })).status).toBe(400);
+    expect((await create({ title, translations, confirmedSameLocales: ["ko", "en"] })).status).toBe(201);
+    expect(prisma.albumTrack.create).toHaveBeenCalledTimes(2);
   });
 
   it("returns 409 on (album, disc, track) collision", async () => {
@@ -165,7 +196,15 @@ describe("PATCH /api/admin/album-tracks/[id] — pattern transitions", () => {
       async (fn: (tx: typeof prisma) => unknown) => fn(prisma),
     );
     (prisma.albumTrack.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      { id: "track-uuid" },
+      {
+        id: "track-uuid",
+        songId: null,
+        parentSongId: null,
+        variant: "drama",
+        title: drama.title,
+        titleLanguage: "ja",
+        translations: dramaTranslations,
+      },
     );
     (prisma.albumTrack.update as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "track-uuid",
@@ -235,7 +274,7 @@ describe("PATCH /api/admin/album-tracks/[id] — pattern transitions", () => {
           discNumber: 1,
           trackNumber: 1,
           variant: "drama",
-          title: "Drama Update",
+          title: "ドラマパート更新",
           // translations intentionally omitted
         },
         "PATCH",
@@ -244,6 +283,54 @@ describe("PATCH /api/admin/album-tracks/[id] — pattern transitions", () => {
     );
     expect(res.status).toBe(200);
     expect(prisma.albumTrackTranslation.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("allows reordering an incomplete legacy row and rejects removal from a complete row before writing", async () => {
+    const patch = (fields: Record<string, unknown>) => PATCH(
+      jsonRequest("http://x/api/admin/album-tracks/track-uuid", {
+        pattern: "direct", variant: "drama", discNumber: 2, trackNumber: 4,
+        ...fields,
+      }, "PATCH") as never,
+      { params },
+    );
+    const findUnique = vi.mocked(prisma.albumTrack.findUnique);
+    const existing = await findUnique({ where: { id: "track-uuid" } });
+    findUnique.mockResolvedValueOnce({
+      ...existing!,
+      titleLanguage: null,
+      translations: dramaTranslations.slice(0, 1),
+    } as never);
+    expect((await patch({})).status).toBe(200);
+    expect(prisma.albumTrack.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ discNumber: 2, trackNumber: 4, title: undefined, titleLanguage: undefined }),
+    }));
+
+    vi.mocked(prisma.albumTrack.update).mockClear();
+    const rejected = await patch({ translations: dramaTranslations.slice(0, 1) });
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({ error: expect.stringContaining("en 표기 누락") });
+    expect(prisma.albumTrack.update).not.toHaveBeenCalled();
+    expect(prisma.albumTrackTranslation.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale form snapshots before replacing title rows", async () => {
+    const patch = (expectedTitleSnapshot: string) => PATCH(
+      jsonRequest("http://x/api/admin/album-tracks/track-uuid", {
+        ...drama,
+        translations: [dramaTranslations[0], { locale: "en", title: "Mini Drama" }],
+        expectedTitleSnapshot,
+      }, "PATCH") as never,
+      { params },
+    );
+    const snapshot = trackTitleSnapshot({ ...drama, translations: dramaTranslations.toReversed() });
+    expect((await patch(snapshot)).status).toBe(200);
+    expect(prisma.albumTrackTranslation.deleteMany).toHaveBeenCalled();
+
+    vi.mocked(prisma.albumTrackTranslation.deleteMany).mockClear();
+    vi.mocked(prisma.albumTrack.update).mockClear();
+    expect((await patch(trackTitleSnapshot({ ...drama, translations: [] }))).status).toBe(409);
+    expect(prisma.albumTrackTranslation.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.albumTrack.update).not.toHaveBeenCalled();
   });
 
   it("rejects 400 when Pattern 3 translations is non-array (CR follow-up)", async () => {

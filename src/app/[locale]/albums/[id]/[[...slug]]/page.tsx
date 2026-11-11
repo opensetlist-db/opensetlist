@@ -26,7 +26,7 @@ import {
   getAlbumRelatedEventsCount,
   type RelatedEvent,
 } from "@/lib/albumRelatedEvents";
-import { resolveLocalizedField, displayOriginalName } from "@/lib/display";
+import { displayOriginalTitle, resolveDisplayPair } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
 
@@ -134,6 +134,7 @@ type Props = {
   searchParams: Promise<{ tab?: string }>;
 };
 
+/** Uses the same title pair in search and share metadata as on the album page. */
 export async function generateMetadata({
   params,
 }: {
@@ -150,22 +151,15 @@ export async function generateMetadata({
 
   const t = await getTranslations({ locale, namespace: "Album" });
 
-  const title =
-    resolveLocalizedField(
-      album,
-      album.translations,
-      locale,
-      "title",
-      "originalTitle",
-    ) ?? t("unknown");
+  const titleParts = displayOriginalTitle(album, album.translations, locale, "paired");
+  const title = [titleParts.main, titleParts.sub].filter(Boolean).join(" / ") || t("unknown");
 
   const primaryArtist = album.artists[0]?.artist ?? null;
-  // Same helper as the breadcrumb segment + InfoCard sidebar so the
-  // OG/meta artist name reads identically to what the page header
-  // shows.
-  const artistName = primaryArtist
-    ? displayOriginalName(primaryArtist, primaryArtist.translations, locale).main
-    : "";
+  const artist = primaryArtist && resolveDisplayPair(
+    { original: primaryArtist.originalName, originalLanguage: primaryArtist.originalLanguage },
+    primaryArtist.translations, locale, "name",
+  );
+  const artistName = artist ? [artist.main, artist.sub].filter(Boolean).join(" / ") : "";
 
   const fullTitle = t("meta.titleTemplate", { title, artist: artistName });
   const description = t("meta.descriptionTemplate", { title });

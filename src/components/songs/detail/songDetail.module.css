@@ -60,11 +60,18 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+  max-width: 100%;
   min-height: 32px;
   color: var(--primary);
   font-size: 13px;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.pairSub {
+  display: block;
+  font-size: 0.875em;
+  font-weight: 400;
 }
 
 /* Shown in place of the artist link when the song has no credit. */
@@ -570,7 +577,7 @@ a.versionRow:hover {
 .currentVersion .versionCopy strong {
   color: var(--primary);
 }
-.versionCopy small {
+.versionCopy > small {
   display: block;
   color: var(--text-secondary);
   font-size: 12px;

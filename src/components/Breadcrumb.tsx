@@ -1,8 +1,9 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { colors } from "@/styles/tokens";
 
 export interface BreadcrumbItem {
-  label: string;
+  label: ReactNode;
   /**
    * Omit `href` to mark this entry as the current page — it renders as
    * a non-clickable span. Per handoff §4 the current page is always the
@@ -64,7 +65,7 @@ export function Breadcrumb({ items, ariaLabel }: Props) {
       style={{ color: colors.textMuted }}
     >
       {items.map((item, i) => (
-        <span key={i} className="flex items-center">
+        <span key={i} className="flex min-w-0 items-center [overflow-wrap:anywhere]">
           {i > 0 && (
             <span aria-hidden="true" className="mx-1.5">
               ›

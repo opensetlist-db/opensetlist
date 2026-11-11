@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
 import { EventArt } from "@/components/shared/EventArt";
+import { EventNameText } from "@/components/events/EventNameText";
 import { trackEvent } from "@/lib/analytics";
 import type { UpcomingCardView } from "@/lib/homeView";
 import { HomeChevronIcon, HomePinIcon } from "./HomeIcons";
@@ -73,13 +74,16 @@ export function UpcomingCard({ view }: { view: UpcomingCardView }) {
       <div className={styles.cardBody}>
         <div className={styles.dateLine}>
           <time dateTime={view.startTimeIso}>{view.dateLabel}</time>
-          {view.dayLabel && <span className={styles.day}>{view.dayLabel}</span>}
+          {view.dayLabel && <span className={styles.day}><EventNameText pair={view.dayLabel} /></span>}
         </div>
-        <h3 className={styles.cardTitle}>{view.title}</h3>
-        {view.place && (
+        <h3 className={styles.cardTitle}><EventNameText pair={view.title} /></h3>
+        {(view.city || view.venue) && (
           <p className={styles.venue}>
             <HomePinIcon />
-            <span>{view.place}</span>
+            <span className="[overflow-wrap:anywhere]">
+              {view.city}{view.city && view.venue && " · "}
+              {view.venue && <EventNameText pair={view.venue} />}
+            </span>
           </p>
         )}
         <div className={styles.cardBottom}>

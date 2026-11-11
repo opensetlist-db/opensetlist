@@ -448,6 +448,30 @@ describe("<FanBoardSection> my picks", () => {
     expect(JSON.parse(window.localStorage.getItem("board-107")!).picks).toHaveLength(1);
   });
 
+  it("refreshes availability from a response without a song payload", async () => {
+    window.localStorage.setItem(ANON_ID_KEY, "anon-1");
+    const stored = { id: "p1", groupId: "1", songId: "10", title: "残陽", available: true };
+    seedLocal([stored]);
+    handler = (url) => {
+      if (url.startsWith("/api/events/107/board?")) return { status: 200, body: readBoard() };
+      if (url.startsWith("/api/events/107/board/mine?")) {
+        return {
+          status: 200,
+          body: { picks: [{ ...stored, title: "Server fallback", available: false }] },
+        };
+      }
+      return { status: 500, body: {} };
+    };
+
+    renderBlock();
+    const column = await screen.findByTestId("board-col-expect");
+    const unavailable = await within(column).findByText("(unavailable)");
+    expect(unavailable.closest("li")?.querySelector("a")).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem("board-107")!).picks).toEqual([
+      { ...stored, available: false },
+    ]);
+  });
+
   it("a restore cut off by an effect cleanup (StrictMode / locale switch) is asked again", async () => {
     window.localStorage.setItem(ANON_ID_KEY, "anon-1");
     let release: () => void = () => {};

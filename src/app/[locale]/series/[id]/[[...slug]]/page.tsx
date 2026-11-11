@@ -11,12 +11,9 @@ import {
   enforceCanonicalSlug,
 } from "@/lib/seo/entityUrl";
 import { formatDate } from "@/lib/utils";
-import {
-  displayNameWithFallback,
-  displayOriginalName,
-  displayOriginalTitle,
-  resolveLocalizedField,
-} from "@/lib/display";
+import { displayOriginalTitle } from "@/lib/display";
+import { eventDisplayField, eventDisplayName, eventDisplayPlain, localizedEventText, type EventDisplayText } from "@/lib/eventDisplay";
+import { EventNameText } from "@/components/events/EventNameText";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
 import { groupByCity, type SeriesEventInput } from "@/lib/seriesGrouping";
@@ -66,43 +63,6 @@ function resolveTab(value: string | string[] | undefined): TabKey {
   return TABS.includes(v as TabKey) ? (v as TabKey) : "schedule";
 }
 
-type NamedTranslation = {
-  locale: string;
-  name: string;
-  shortName?: string | null;
-};
-
-/**
- * The `lang` of a name picked by `displayNameWithFallback` /
- * `displayOriginalName`'s `main`: the viewer's locale when that
- * locale's row supplied it, otherwise the entity's original language
- * (the strict fallback never borrows a third locale). Screen readers
- * and the JP font fallback both key off it.
- */
-function nameLang(
-  item: { originalLanguage: string },
-  translations: readonly NamedTranslation[],
-  locale: string,
-  mode: "short" | "full" = "full",
-): string {
-  const row = translations.find((t) => t.locale === locale);
-  const fromRow = mode === "short" ? row?.shortName || row?.name : row?.name;
-  return fromRow ? locale : item.originalLanguage;
-}
-
-/** Same rule for a secondary field (city, venue, description, …). */
-function fieldLang(
-  item: { originalLanguage: string },
-  translations: readonly ({ locale: string } & Record<string, unknown>)[],
-  locale: string,
-  field: string,
-): string {
-  const value = translations.find((t) => t.locale === locale)?.[field];
-  return typeof value === "string" && value.length > 0
-    ? locale
-    : item.originalLanguage;
-}
-
 export async function generateMetadata({
   params,
 }: Props): Promise<Metadata> {
@@ -112,18 +72,13 @@ export async function generateMetadata({
   const detail = await getSeriesDetail(BigInt(id));
   if (!detail) return { title: metaT("notFound") };
   const { series } = detail;
-  const seriesName = displayNameWithFallback(
-    series,
-    series.translations,
-    locale,
-    "full",
-  );
-  const description = resolveLocalizedField(
-    series,
+  const seriesName = eventDisplayPlain(eventDisplayName(series, locale, "title"));
+  const description = localizedEventText(
+    series.originalDescription,
+    series.originalLanguage,
     series.translations,
     locale,
     "description",
-    "originalDescription",
   );
   const title = seriesName
     ? metaT("seriesTitle", { name: seriesName })
@@ -213,36 +168,31 @@ export default async function EventSeriesPage({
   };
 
   // ── Identity ────────────────────────────────────────────
-  const { main: seriesMain, sub: seriesSub } = displayOriginalName(
-    series,
-    series.translations,
-    locale,
-  );
-  const title: LangText = seriesMain
-    ? { text: seriesMain, lang: nameLang(series, series.translations, locale) }
-    : { text: t("unknownSeries"), lang: locale };
-  const subtitle: LangText | null = seriesSub
-    ? { text: seriesSub, lang: series.originalLanguage }
+  const fallback = (main: string): EventDisplayText => ({
+    main, sub: null, mainLang: locale, subLang: locale,
+  });
+  const pair = eventDisplayName(series, locale, "title") ?? fallback(t("unknownSeries"));
+  const title: LangText = { text: pair.main, lang: pair.mainLang };
+  const subtitle: LangText | null = pair.sub
+    ? { text: pair.sub, lang: pair.subLang }
     : null;
-  const descriptionText = resolveLocalizedField(
-    series,
+  const descriptionText = localizedEventText(
+    series.originalDescription,
+    series.originalLanguage,
     series.translations,
     locale,
     "description",
-    "originalDescription",
   );
   const description: LangText | null = descriptionText
     ? {
         text: descriptionText,
-        lang: fieldLang(series, series.translations, locale, "description"),
+        lang: locale,
       }
     : null;
 
-  // Representative artist (canonical link) or, for a multi-artist
-  // series (artistId null), the localized organizer as plain text.
-  let meta: SeriesMeta | null = null;
+  const meta: SeriesMeta[] = [];
   if (series.artist) {
-    meta = {
+    meta.push({
       kind: "artist",
       label: t("artistLabel"),
       href: entityPath(
@@ -251,34 +201,14 @@ export default async function EventSeriesPage({
         series.artist.id,
         series.artist.slug,
       ),
-      name: {
-        text:
-          displayNameWithFallback(
-            series.artist,
-            series.artist.translations,
-            locale,
-          ) || aT("unknown"),
-        lang: nameLang(series.artist, series.artist.translations, locale),
-      },
-    };
-  } else {
-    const organizer = resolveLocalizedField(
-      series,
-      series.translations,
-      locale,
-      "organizerName",
-      "organizerName",
-    );
-    if (organizer) {
-      meta = {
-        kind: "organizer",
-        label: t("organizer"),
-        name: {
-          text: organizer,
-          lang: fieldLang(series, series.translations, locale, "organizerName"),
-        },
-      };
-    }
+      name: eventDisplayName(series.artist, locale) ?? fallback(aT("unknown")),
+    });
+  }
+  const organizer = eventDisplayField(
+    series.organizerName, series.originalLanguage, series.translations, locale, "organizerName",
+  );
+  if (organizer) {
+    meta.push({ kind: "organizer", label: t("organizer"), name: organizer });
   }
 
   const metrics = [
@@ -306,13 +236,7 @@ export default async function EventSeriesPage({
   ];
   if (series.parentSeries) {
     breadcrumbItems.push({
-      label:
-        displayNameWithFallback(
-          series.parentSeries,
-          series.parentSeries.translations,
-          locale,
-          "short",
-        ) || t("unknownSeries"),
+      label: <EventNameText pair={eventDisplayName(series.parentSeries, locale, "title", true) ?? fallback(t("unknownSeries"))} />,
       href: entityPath(
         "series",
         locale,
@@ -322,26 +246,21 @@ export default async function EventSeriesPage({
     });
   }
   breadcrumbItems.push({
-    label:
-      displayNameWithFallback(series, series.translations, locale, "short") ||
-      t("unknownSeries"),
+    label: <EventNameText pair={eventDisplayName(series, locale, "title", true) ?? pair} />,
   });
 
   // ── City groups ──────────────────────────────────────────
   const preparedLegs: SeriesLeg[] = legs.map((leg, i) => {
     const first = leg.events[0];
+    const localCity = localizedEventText(first.originalCity, first.originalLanguage, first.translations, locale, "city");
+    const originalCity = first.originalCity?.trim();
     const legEvents = leg.events.map((ev) => {
       const status = getEventStatus(ev, referenceNow);
       // Row date prefers the calendar `date`; the group's range below
       // uses startTime (existing behaviour, kept by 32-v1 even where
       // the two disagree in real data — dev series 1, event 3).
       const rowDate = ev.date ?? ev.startTime;
-      const name = displayNameWithFallback(
-        ev,
-        ev.translations,
-        locale,
-        "short",
-      );
+      const name = eventDisplayName(ev, locale, "title", true);
       return {
         id: String(ev.id),
         href: eventHref(locale, ev.id, ev.slug),
@@ -349,9 +268,7 @@ export default async function EventSeriesPage({
         statusLabel: statusLabels[status],
         dateTime: new Date(rowDate).toISOString(),
         formattedDate: formatDate(rowDate, locale, SERIES_DATE_FORMAT),
-        name: name
-          ? { text: name, lang: nameLang(ev, ev.translations, locale, "short") }
-          : { text: evT("unknownEvent"), lang: locale },
+        name: name ?? fallback(evT("unknownEvent")),
       };
     });
     // Roll-up: ongoing > upcoming > completed; an all-cancelled group
@@ -361,15 +278,11 @@ export default async function EventSeriesPage({
     );
     return {
       key: `${leg.city}-${i}`,
-      city: leg.city
-        ? { text: leg.city, lang: fieldLang(first, first.translations, locale, "city") }
-        : { text: t("unknownCity"), lang: locale },
-      venue: leg.venue
-        ? {
-            text: leg.venue,
-            lang: fieldLang(first, first.translations, locale, "venue"),
-          }
-        : null,
+      city: {
+        text: localCity ?? (originalCity || t("unknownCity")),
+        lang: localCity || !originalCity ? locale : first.originalLanguage,
+      },
+      venue: leg.venue,
       dateRangeLabel: formatSeriesDateRange(
         leg.dateRange.start,
         leg.dateRange.end,
@@ -388,14 +301,11 @@ export default async function EventSeriesPage({
   // ── Songs tab rows ───────────────────────────────────────
   const songRows: SeriesSongRow[] = visibleSongs.map((row) => {
     const song = row.song;
-    const display = displayOriginalTitle(song, song.translations, locale);
+    const display = displayOriginalTitle(song, song.translations, locale, "paired");
     const variantFromLocale = song.translations.find(
       (tr) => tr.locale === locale,
     )?.variantLabel;
     const primary = song.artists[0]?.artist;
-    const artistName = primary
-      ? displayNameWithFallback(primary, primary.translations, locale)
-      : "";
     return {
       key: row.songId,
       href: entityPath("songs", locale, row.songId, song.slug),
@@ -407,13 +317,7 @@ export default async function EventSeriesPage({
           }
         : null,
       translated: display.sub ? { text: display.sub, lang: locale } : null,
-      artist:
-        primary && artistName
-          ? {
-              text: artistName,
-              lang: nameLang(primary, primary.translations, locale),
-            }
-          : null,
+      artist: primary ? eventDisplayName(primary, locale) : null,
       count: row.count,
       countUnit: t("songAppearancesUnit", { count: row.count }),
     };
@@ -490,13 +394,8 @@ export default async function EventSeriesPage({
                             child.id,
                             child.slug,
                           )}
-                          lang={nameLang(child, child.translations, locale)}
                         >
-                          {displayNameWithFallback(
-                            child,
-                            child.translations,
-                            locale,
-                          ) || t("unknownSeries")}{" "}
+                          <EventNameText pair={eventDisplayName(child, locale, "title") ?? fallback(t("unknownSeries"))} />{" "}
                           <span aria-hidden="true">›</span>
                         </Link>
                       </li>
@@ -557,10 +456,7 @@ export default async function EventSeriesPage({
                   title: t("unitsLabel"),
                   names: units.map((u) => ({
                     key: String(u.id),
-                    text:
-                      displayNameWithFallback(u, u.translations, locale) ||
-                      aT("unknown"),
-                    lang: nameLang(u, u.translations, locale),
+                    ...(eventDisplayName(u, locale) ?? fallback(aT("unknown"))),
                   })),
                 }
               : null

@@ -11,10 +11,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { josa } from "es-hangul";
-import {
-  displayOriginalTitle,
-  displayNameWithFallback,
-} from "@/lib/display";
+import { resolveDisplayPair } from "@/lib/display";
+import { ParticipationSongName } from "@/components/ParticipationSongName";
+import { selectedSongSource } from "@/lib/participationSongDisplay";
 import { useMounted } from "@/hooks/useMounted";
 import { colors, zIndex } from "@/styles/tokens";
 
@@ -110,6 +109,8 @@ export interface SongSearchResult {
 // just enough for the picker's row labels + the consumer's variantId.
 export interface SongVariant {
   id: number;
+  originalTitle?: string;
+  originalLanguage?: string;
   variantLabel: string | null;
   translations: {
     locale: string;
@@ -698,21 +699,6 @@ export function SongSearch({
     };
   }, [open, hasQuery]);
 
-  // Variant-row label resolution: prefer the locale-matched translation
-  // from SongTranslation.variantLabel; fall back to the source-language
-  // variantLabel; final fallback is the 원곡 label (which the picker
-  // should never actually hit for child variants, but defensive code is
-  // cheap). 원곡 (the base) is handled separately via a sentinel row
-  // and uses `texts.variantPickerOriginalLabel` directly.
-  function resolveVariantLabel(v: SongVariant): string {
-    const localized = v.translations.find((t) => t.locale === locale);
-    // No hardcoded language fallback — see the SongSearchTexts comment.
-    // Empty string would be a data bug (variants are required to have a
-    // label by domain rules); falling back to a Korean "원곡" would
-    // silently leak Korean into a ja/en surface, which is worse.
-    return localized?.variantLabel || v.variantLabel || "";
-  }
-
   // Future-slot rows are intentionally non-interactive at 1C — they
   // reserve the visual slot so Phase 2's lit-up workflow doesn't shift
   // the rest of the UI. `aria-disabled` + `tabIndex=-1` keep them out
@@ -823,26 +809,16 @@ export function SongSearch({
           )}
           {!loading &&
             visibleResults.map((song, index) => {
-              const title = displayOriginalTitle(
-                {
-                  originalTitle: song.originalTitle,
-                  originalLanguage: song.originalLanguage,
-                  variantLabel: song.variantLabel,
-                },
-                song.translations,
-                locale,
-              );
               const artist = song.artists[0]?.artist;
               const artistName = artist
-                ? displayNameWithFallback(
+                ? resolveDisplayPair(
                     {
-                      originalName: artist.originalName,
-                      originalShortName: artist.originalShortName,
+                      original: artist.originalName ?? "",
                       originalLanguage: artist.originalLanguage,
                     },
                     artist.translations,
                     locale,
-                    "full",
+                    "name",
                   )
                 : null;
               const isActive = index === activeIndex;
@@ -878,15 +854,9 @@ export function SongSearch({
                         : "text-sm font-medium text-gray-900"
                     }
                   >
-                    {title.main}
-                    {title.variant && (
-                      <span className="text-gray-500">
-                        {" "}
-                        ({title.variant})
-                      </span>
-                    )}
+                    <ParticipationSongName song={song} locale={locale} />
                   </div>
-                  {(title.sub || artistName) && (
+                  {artistName && (
                     <div
                       className={
                         isCompact
@@ -894,9 +864,10 @@ export function SongSearch({
                           : "text-xs text-gray-500 mt-0.5"
                       }
                     >
-                      {title.sub && <span>{title.sub}</span>}
-                      {title.sub && artistName && <span> · </span>}
-                      {artistName && <span>{artistName}</span>}
+                      <span lang={artist?.originalLanguage} className="[overflow-wrap:anywhere]">{artistName.main}</span>
+                      {artistName.sub && (
+                        <span lang={locale} className="ml-1 opacity-80 [overflow-wrap:anywhere]">{artistName.sub}</span>
+                      )}
                     </div>
                   )}
                 </button>
@@ -953,18 +924,7 @@ export function SongSearch({
                   : "text-sm font-medium text-gray-900 mt-0.5"
               }
             >
-              {(() => {
-                const t = displayOriginalTitle(
-                  {
-                    originalTitle: pickedBase.originalTitle,
-                    originalLanguage: pickedBase.originalLanguage,
-                    variantLabel: pickedBase.variantLabel,
-                  },
-                  pickedBase.translations,
-                  locale,
-                );
-                return t.main;
-              })()}
+              <ParticipationSongName song={pickedBase} locale={locale} />
             </div>
           </div>
           {/* Variant rows: 원곡 first (sentinel), then each child
@@ -974,9 +934,7 @@ export function SongSearch({
           {variantOptions.map((v, index) => {
             const isActive = index === activeIndex;
             const isOriginal = v === undefined;
-            const label = isOriginal
-              ? texts.variantPickerOriginalLabel ?? ""
-              : resolveVariantLabel(v);
+            const source = v && selectedSongSource(pickedBase, v);
             return (
               <button
                 key={isOriginal ? "original" : v.id}
@@ -1004,7 +962,11 @@ export function SongSearch({
                       : "text-sm font-medium text-gray-900"
                   }
                 >
-                  {label}
+                  {source ? (
+                    <ParticipationSongName song={source} locale={locale} />
+                  ) : (
+                    texts.variantPickerOriginalLabel
+                  )}
                 </div>
               </button>
             );

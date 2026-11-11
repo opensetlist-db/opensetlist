@@ -11,9 +11,10 @@ import { PURCHASE_AVAILABILITY_SELECT } from "@/lib/purchaseAvailability";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import {
   displayNameWithFallback,
-  displayOriginalTitle,
   resolveLocalizedField,
 } from "@/lib/display";
+import { eventDisplayField, eventDisplayName, eventDisplayPlain, localizedEventText, type EventDisplayText } from "@/lib/eventDisplay";
+import { EventNameText } from "@/components/events/EventNameText";
 import {
   getEventStatus,
   type ResolvedEventStatus,
@@ -23,6 +24,7 @@ import { isWishPredictOpen, wishPredictOpensAt } from "@/lib/eventTiming";
 import { deriveOgPaletteFromCachedEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { TrendingSong } from "@/components/TrendingSongs";
+import { trendingSongTitle } from "@/lib/trending";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { Impression } from "@/components/EventImpressions";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
@@ -439,64 +441,36 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!event) return { title: metaT("notFound") };
   const palette = await deriveOgPaletteFromCachedEvent(event);
   const seriesFullName = event.eventSeries
-    ? displayNameWithFallback(
-        event.eventSeries,
-        event.eventSeries.translations,
-        locale,
-        "full"
-      )
-    : null;
-  const seriesShortName = event.eventSeries
-    ? displayNameWithFallback(
-        event.eventSeries,
-        event.eventSeries.translations,
-        locale,
-        "short"
-      )
-    : null;
-  const eventFullName = displayNameWithFallback(
-    event,
-    event.translations,
-    locale,
-    "full"
-  );
-  const city = resolveLocalizedField(
-    event,
+    ? eventDisplayName(event.eventSeries, locale, "title") : null;
+  const eventFullName = eventDisplayName(event, locale, "title");
+  const city = localizedEventText(
+    event.originalCity,
+    event.originalLanguage,
     event.translations,
     locale,
     "city",
-    "originalCity"
   );
-  const venue = resolveLocalizedField(
-    event,
-    event.translations,
-    locale,
-    "venue",
-    "originalVenue"
+  const venue = eventDisplayField(
+    event.originalVenue, event.originalLanguage, event.translations, locale, "venue",
   );
 
-  // Event names are per-day labels ("東京公演 Day.2") that are
-  // ambiguous on their own, while the series full name is identical for
-  // every day of a tour — using it alone gave all days one shared
-  // <title>. Prefix the series SHORT name ("蓮ノ空 6th Live") onto the
-  // event's full name so each day's title is unique and still carries
-  // the group keyword people search for.
+  // Keep the series and its per-day identifier together for distinct titles.
   const headlineName =
-    [seriesShortName || seriesFullName, eventFullName]
+    [eventDisplayPlain(seriesFullName), eventDisplayPlain(eventFullName)]
       .filter(Boolean)
-      .join(" ") || null;
+      .join(" · ");
   const title = headlineName
     ? metaT("eventTitle", { name: headlineName })
     : "OpenSetlist";
   const details = [
     event.date ? formatVenueDate(event.date, locale) : "",
-    venue ?? "",
+    eventDisplayPlain(venue),
     city ?? "",
   ]
     .filter(Boolean)
     .join(" ");
   const description = [
-    [details, seriesFullName ?? ""].filter(Boolean).join(" — "),
+    [details, eventDisplayPlain(seriesFullName)].filter(Boolean).join(" — "),
     metaT("eventDescriptionTail"),
   ]
     .filter(Boolean)
@@ -634,11 +608,7 @@ async function getTrendingSongs(
 
   const itemIds = groups.map((g) => g.setlistItemId);
 
-  // Same `[locale, "ja"]` translation filter as `getEvent` above —
-  // trims the per-song translation join to the requested locale plus
-  // the canonical-original safety net. `displayOriginalTitle` (called
-  // below) does a strict locale lookup that falls through to the
-  // parent `originalTitle` when no row matches, so the filter is safe.
+  // Match the live setlist seed: load the viewer locale and the canonical fallback.
   //
   // The nested `include` here previously emitted 4 sequential SELECTs
   // (SetlistItem → SetlistItemSong → Song → SongTranslation), one per
@@ -695,22 +665,12 @@ async function getTrendingSongs(
   return groups.map((g) => {
     const item = itemById.get(g.setlistItemId);
     const song = item?.songs[0]?.song;
-    // Original-primary title display — same cascade as <SetlistRow>
-    // so the trending card reads "originalTitle (sub: localizedTitle)"
-    // consistently with the main setlist below it. Items without a
-    // backed song (rare; admin-typed placeholder) fall through to the
-    // i18n unknown label on the main slot.
-    const titleDisp = song
-      ? displayOriginalTitle(song, song.translations, locale)
-      : null;
 
     const types = typeMap[g.setlistItemId.toString()] ?? {};
 
     return {
       setlistItemId: g.setlistItemId.toString(),
-      mainTitle: titleDisp?.main ?? unknownSongLabel,
-      subTitle: titleDisp?.sub ?? null,
-      variantLabel: titleDisp?.variant ?? null,
+      ...trendingSongTitle(song, locale, unknownSongLabel),
       totalReactions: g._count.id,
       // Pass the per-type counts straight through. The renderer in
       // `<TrendingSongs>` iterates `REACTION_TYPES` (canonical order)
@@ -848,7 +808,7 @@ export default async function EventPage({ params }: Props) {
   //     artist and all its descendants; chips from `deriveUnitFilters`
   //     (a sub-unit with zero songs produces no chip). Composite chips
   //     ("all" / "others") use `Predict.picker` translations; group /
-  //     individual labels come from the artist's localized name.
+  //     individual labels pair the artist's original and localized names.
   //   - Festival path (no series artist — the Fes, n10): one catalog
   //     per root group reached from the roster, merged and deduped,
   //     with one chip per group (see `src/lib/predict/festivalCatalog.ts`).
@@ -864,20 +824,24 @@ export default async function EventPage({ params }: Props) {
       getTranslations("Predict.picker"),
     ]);
     availableSongs = songs;
-    const primaryArtistLabel = displayNameWithFallback(
-      seriesPrimaryArtist,
+    const primaryArtistName = eventDisplayField(
+      seriesPrimaryArtist.originalName,
+      seriesPrimaryArtist.originalLanguage,
       seriesPrimaryArtist.translations,
       locale,
-      "short",
+      "name",
     );
     const safePrimaryArtistId = safeBigIntToNumber(seriesPrimaryArtist.id);
     unitFilters = deriveUnitFilters(
       songs,
       safePrimaryArtistId,
-      primaryArtistLabel,
+      primaryArtistName?.main ?? displayNameWithFallback(seriesPrimaryArtist, seriesPrimaryArtist.translations, locale, "short"),
       predictPickerTrans("filterAll"),
       predictPickerTrans("filterOthers"),
       colors.primary,
+      primaryArtistName
+        ? { labelSub: primaryArtistName.sub, labelLang: primaryArtistName.mainLang }
+        : undefined,
     );
   } else if (resolvedStatus === "upcoming") {
     const [hierarchy, collaborationArtistIds] = await Promise.all([
@@ -987,6 +951,8 @@ export default async function EventPage({ params }: Props) {
         groupId: String(g.artistId),
         slug: g.slug,
         label: g.label,
+        labelSub: g.labelSub,
+        labelLang: g.labelLang,
         color: g.color,
       })),
     };
@@ -1033,6 +999,10 @@ export default async function EventPage({ params }: Props) {
     locale,
     "short"
   );
+  const eventPair = eventDisplayName(event, locale, "title");
+  const eventShortPair = eventDisplayName(event, locale, "title", true);
+  const seriesPair = event.eventSeries ? eventDisplayName(event.eventSeries, locale, "title") : null;
+  const seriesShortPair = event.eventSeries ? eventDisplayName(event.eventSeries, locale, "title", true) : null;
 
   // Artist context for EventHeader: prefer the series artist (link
   // target → /artists/{id}/{slug}); fall back to the series'
@@ -1086,7 +1056,17 @@ export default async function EventPage({ params }: Props) {
     "organizerName",
     "organizerName"
   );
-  const headerOrganizerName = !headerArtist ? seriesOrganizerName : null;
+  const headerOrganizerName = eventOrganizerName ?? seriesOrganizerName;
+  const eventOrganizerPair = eventDisplayField(
+    event.organizerName, event.originalLanguage, event.translations, locale, "organizerName",
+  );
+  const seriesOrganizerPair = event.eventSeries ? eventDisplayField(
+    event.eventSeries.organizerName, event.eventSeries.originalLanguage,
+    event.eventSeries.translations, locale, "organizerName",
+  ) : null;
+  const venuePair = eventDisplayField(
+    event.originalVenue, event.originalLanguage, event.translations, locale, "venue",
+  );
   const venue = resolveLocalizedField(
     event,
     event.translations,
@@ -1094,12 +1074,12 @@ export default async function EventPage({ params }: Props) {
     "venue",
     "originalVenue"
   );
-  const cityBase = resolveLocalizedField(
-    event,
+  const cityBase = localizedEventText(
+    event.originalCity,
+    event.originalLanguage,
     event.translations,
     locale,
     "city",
-    "originalCity"
   );
   // Mockup `event-page-desktop-mockup-v2.jsx:542` puts city next
   // to country (e.g. `Fukuoka, Japan`). `Event.country` is an
@@ -1134,6 +1114,8 @@ export default async function EventPage({ params }: Props) {
   // parent context above it.
   const headerTitle =
     eventFullName || seriesShortName || t("unknownEvent");
+  const headerPair = eventPair ?? seriesPair ??
+    { main: t("unknownEvent"), sub: null, mainLang: locale, subLang: locale };
 
   // ───────────────────────────────────────────────────────────
   // Sidebar derivations
@@ -1234,9 +1216,9 @@ export default async function EventPage({ params }: Props) {
   // on its own. Performers: the lineup's host groups, else the series
   // artist (single-artist events without a roster).
   const jsonLdName =
-    [seriesShortName || seriesFullName, eventFullName]
+    [eventDisplayPlain(seriesPair), eventDisplayPlain(eventPair)]
       .filter(Boolean)
-      .join(" ") || headerTitle;
+      .join(" · ") || headerTitle;
   // The copy-my-picks text names the event the same way the <title>
   // and JSON-LD do (series short + event full): a bare "Day.1" in an
   // X post says nothing. The link is the canonical path; the client
@@ -1252,19 +1234,21 @@ export default async function EventPage({ params }: Props) {
     rosterLineup?.groups.filter((g) => !g.isGuest) ?? [];
   const jsonLdPerformers =
     rosterHostGroups.length > 0
-      ? rosterHostGroups
-      : headerArtist
-        ? [headerArtist]
+      ? rosterHostGroups.map((group) => ({
+          ...group, name: eventDisplayPlain(group.displayName) || group.name,
+        }))
+      : headerArtist && seriesArtist
+        ? [{ ...headerArtist, name: eventDisplayPlain(eventDisplayName(seriesArtist, locale)) || headerArtist.name }]
         : [];
   const eventJsonLd = buildEventJsonLd({
     name: jsonLdName,
     startTime: event.startTime,
     country: event.country,
     status: resolvedStatus,
-    venue,
+    venue: eventDisplayPlain(venuePair) || null,
     city: cityBase,
     performers: jsonLdPerformers,
-    organizerName: eventOrganizerName ?? seriesOrganizerName,
+    organizerName: eventDisplayPlain(eventOrganizerPair ?? seriesOrganizerPair) || null,
     canonicalUrl: absoluteUrl(entityPath("events", locale, id, event.slug)),
     locale,
   });
@@ -1277,15 +1261,15 @@ export default async function EventPage({ params }: Props) {
   // `Breadcrumb` uses `next/link`.
   const breadcrumbItems: BreadcrumbItem[] = [
     { label: headerT("events"), href: `/${locale}/events` },
-    ...(event.eventSeries && seriesShortName
+    ...(event.eventSeries && seriesShortPair
       ? [
           {
-            label: seriesShortName,
+            label: <EventNameText pair={seriesShortPair} />,
             href: entityPath("series", locale, event.eventSeries.id, event.eventSeries.slug),
           } satisfies BreadcrumbItem,
         ]
       : []),
-    { label: eventShortName || t("unknownEvent") },
+    { label: eventShortPair ? <EventNameText pair={eventShortPair} /> : t("unknownEvent") },
   ];
 
   // ── Hero (18-v3) ──────────────────────────────────────────────
@@ -1294,6 +1278,7 @@ export default async function EventPage({ params }: Props) {
   const heroLogo =
     logoRow && logoGraph ? resolveEventLogo(logoRow, logoGraph) : null;
   const heroStart = formatVenueStart(event.startTime, event.country, locale);
+  const sharePair = ({ main, sub, mainLang }: EventDisplayText) => ({ main, sub, lang: mainLang });
 
   // In-page jump links (18-v3 `.jump`). The first entry is the fan
   // board while it is mounted (upcoming in the open window, or
@@ -1365,9 +1350,9 @@ export default async function EventPage({ params }: Props) {
         }
         logoUrl={heroLogo?.image?.url ?? null}
         logoTint={heroLogo?.color ?? null}
-        artTitle={seriesShortName || eventShortName || headerTitle}
+        artTitle={seriesShortPair?.main ?? eventShortPair?.main ?? headerPair.main}
         series={
-          event.eventSeries && seriesFullName
+          event.eventSeries && seriesPair
             ? {
                 href: entityPath(
                   "series",
@@ -1375,13 +1360,13 @@ export default async function EventPage({ params }: Props) {
                   String(event.eventSeries.id),
                   event.eventSeries.slug,
                 ),
-                name: seriesFullName,
+                name: seriesPair,
               }
             : null
         }
-        title={headerTitle}
+        title={headerPair}
         dateLabel={event.date ? formatVenueDate(event.date, locale) : null}
-        venueLine={venue}
+        venueLine={venuePair}
       />
 
       {resolvedStatus === "completed" && event.bdAlbum && (
@@ -1457,6 +1442,17 @@ export default async function EventPage({ params }: Props) {
         title={headerTitle}
         venue={venue}
         city={city}
+        infoNames={{
+          artist: seriesArtist ? eventDisplayName(seriesArtist, locale) : null,
+          organizer: eventOrganizerPair ?? seriesOrganizerPair,
+          series: seriesPair,
+          venue: venuePair,
+        }}
+        shareNames={{
+          event: sharePair(headerPair),
+          series: seriesPair ? sharePair(seriesPair) : null,
+          venue: venuePair ? sharePair(venuePair) : null,
+        }}
         // Short variants — consumed by LiveEventLayout for the share
         // card header (v0.11.6 preference: prefer short over full for
         // the captured PNG; full names overflow on long series).

@@ -134,7 +134,7 @@ describe("getEventsListGrouped — organizer groups", () => {
     expect(activeGroups).toHaveLength(1);
     expect(activeGroups[0].kind).toBe("organizer");
     expect(activeGroups[0].id).toBe("org:バンダイナムコ / ランティス");
-    expect(activeGroups[0].title).toBe("반다이남코 / 란티스");
+    expect(activeGroups[0].title).toMatchObject({ main: "バンダイナムコ / ランティス", sub: "반다이남코 / 란티스" });
     expect(activeGroups[0].events).toHaveLength(2);
   });
 
@@ -145,7 +145,7 @@ describe("getEventsListGrouped — organizer groups", () => {
     mocked.eventSeries.findMany.mockResolvedValue([]);
 
     const { activeGroups } = await getEventsListGrouped("en", new Date(Date.UTC(2026, 9, 8)));
-    expect(activeGroups[0].title).toBe("Bandai Namco / Lantis");
+    expect(activeGroups[0].title).toMatchObject({ main: "Bandai Namco / Lantis", sub: null });
   });
 });
 
@@ -188,127 +188,69 @@ describe("admin translation validation — organizerName", () => {
   });
 });
 
-describe("events.csv import — *_organizerName columns", () => {
+describe("events.csv import — localized names and organizers", () => {
   function importCsv(csv: string) {
     return IMPORT_POST(
-      jsonRequest("http://localhost/api/admin/import", { type: "events", csv }) as unknown as NextRequest
+      jsonRequest("http://localhost/api/admin/import", { type: "events", csv }) as unknown as NextRequest,
     );
   }
 
   beforeEach(() => {
-    mocked.eventSeries.findUnique.mockResolvedValue({ id: BigInt(26) });
-    mocked.event.findUnique.mockResolvedValue({ id: BigInt(107), startTime: new Date("2026-11-14T07:30:00Z"), engagementOpensAt: null });
+    const organizerName = "Love Live! Series Project";
+    const translations = [
+      { locale: "ko", name: "페스", organizerName: "러브라이브! 시리즈", city: "도쿄", venue: "돔" },
+      { locale: "en", name: "Fes", organizerName: "Love Live! Series", city: "Tokyo", venue: "Dome" },
+    ];
+    mocked.eventSeries.findUnique.mockResolvedValue({
+      id: BigInt(26), originalName: "ラブライブ！フェス", organizerName, translations,
+    });
+    mocked.event.findUnique.mockResolvedValue({
+      id: BigInt(107), originalName: "Day1", organizerName, translations, originalCity: "東京",
+      startTime: new Date("2026-11-14T07:30:00Z"), engagementOpensAt: null,
+    });
     mocked.album.findMany.mockResolvedValue([]);
     mocked.stageIdentity.findMany.mockResolvedValue([]);
   });
 
-  it("writes series + event organizer translations when supplied", async () => {
-    const res = await importCsv(
-      [
-        "series_slug,series_ja_name,series_ko_name,series_ko_organizerName,event_slug,ja_name,ko_name,en_organizerName",
-        "lovelive-15th-fes,ラブライブ！フェス,러브라이브! 페스,러브라이브! 시리즈,lovelive-15th-fes-day1,Day1,1일차,Love Live! Series",
-      ].join("\n")
-    );
+  it("patches the series organizer from a later row and preserves omitted event name and venue", async () => {
+    const res = await importCsv([
+      "series_slug,series_ko_organizerName,event_slug,ko_city,en_organizerName",
+      "lovelive-15th-fes,,lovelive-15th-fes-day1,도쿄도,Love Live! Series Team",
+      "lovelive-15th-fes,러브라이브 시리즈,,,",
+    ].join("\n"));
     expect(res.status).toBe(200);
-
-    const seriesUpserts = mocked.eventSeriesTranslation.upsert.mock.calls.map((c) => c[0]);
-    const koSeries = seriesUpserts.find((u) => u.create.locale === "ko");
-    expect(koSeries.update.organizerName).toBe("러브라이브! 시리즈");
-
-    // en row exists only because en_organizerName was supplied; its
-    // NOT NULL name falls back to the event's ja name.
-    const eventUpserts = mocked.eventTranslation.upsert.mock.calls.map((c) => c[0]);
-    const enEvent = eventUpserts.find((u) => u.create.locale === "en");
-    expect(enEvent.update.organizerName).toBe("Love Live! Series");
-    expect(enEvent.create.name).toBe("Day1");
-  });
-
-  it("leaves organizer translations untouched when the column is blank or absent", async () => {
-    const res = await importCsv(
-      [
-        "series_slug,series_ko_name,event_slug,ko_name,ko_organizerName",
-        "lovelive-15th-fes,러브라이브! 페스,lovelive-15th-fes-day1,1일차,",
-      ].join("\n")
-    );
-    expect(res.status).toBe(200);
-
     const seriesKo = mocked.eventSeriesTranslation.upsert.mock.calls[0][0];
-    expect(seriesKo.update.organizerName).toBeUndefined();
-    const eventKo = mocked.eventTranslation.upsert.mock.calls[0][0];
-    expect(eventKo.update.organizerName).toBeUndefined();
+    expect(seriesKo.update.organizerName).toBe("러브라이브 시리즈");
+
+    const eventUpserts = mocked.eventTranslation.upsert.mock.calls.map((c) => c[0]);
+    const en = eventUpserts.find((u) => u.create.locale === "en");
+    const ko = eventUpserts.find((u) => u.create.locale === "ko");
+    expect(en.update.organizerName).toBe("Love Live! Series Team");
+    expect(en.update.name).toBeUndefined();
+    expect(en.create.name).toBe("");
+    expect(ko.update.city).toBe("도쿄도");
+    expect(ko.update.venue).toBeUndefined();
   });
 
-  it("takes the series organizer from any row of the series, not just the first", async () => {
-    const res = await importCsv(
-      [
-        "series_slug,series_ko_name,series_ko_organizerName,event_slug,ko_name",
-        "lovelive-15th-fes,러브라이브! 페스,,lovelive-15th-fes-day1,1일차",
-        "lovelive-15th-fes,,러브라이브! 시리즈,lovelive-15th-fes-day2,2일차",
-      ].join("\n")
-    );
-    expect(res.status).toBe(200);
-    const koSeries = mocked.eventSeriesTranslation.upsert.mock.calls[0][0];
-    expect(koSeries.update.organizerName).toBe("러브라이브! 시리즈");
+  it("rejects a copied organizer without confirmation before the event update", async () => {
+    const header = "event_slug,en_organizerName,en_organizerName_same_source";
+    const row = "lovelive-15th-fes-day1,Love Live! Series Project";
+    expect((await importCsv(`${header}\n${row},https://example.com/confirmed-fixture`)).status).toBe(200);
+    expect(mocked.event.update).toHaveBeenCalledTimes(1);
+
+    const res = await importCsv(`${header}\n${row},`);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("en_organizerName: unconfirmed-same");
+    expect(mocked.event.update).toHaveBeenCalledTimes(1);
   });
 
-  it("patches an existing series row when only the organizer is supplied", async () => {
-    mocked.eventSeriesTranslation.updateMany.mockResolvedValue({ count: 1 });
-    const res = await importCsv(
-      [
-        "series_slug,series_ko_name,series_en_organizerName,event_slug,ko_name",
-        "lovelive-15th-fes,러브라이브! 페스,Love Live! Series,lovelive-15th-fes-day1,1일차",
-      ].join("\n")
-    );
-    expect(res.status).toBe(200);
-    expect(mocked.eventSeriesTranslation.updateMany).toHaveBeenCalledWith({
-      where: { eventSeriesId: BigInt(26), locale: "en" },
-      data: { organizerName: "Love Live! Series" },
-    });
-  });
-
-  it("WARNs when an organizer-only locale has no series translation row", async () => {
-    mocked.eventSeriesTranslation.updateMany.mockResolvedValue({ count: 0 });
-    const res = await importCsv(
-      [
-        "series_slug,series_ko_name,series_en_organizerName,event_slug,ko_name",
-        "lovelive-15th-fes,러브라이브! 페스,Love Live! Series,lovelive-15th-fes-day1,1일차",
-      ].join("\n")
-    );
-    const body = await res.json();
-    expect(body.log.some((l: string) => l.startsWith("WARN: Series lovelive-15th-fes series_en_organizerName"))).toBe(true);
-  });
-
-  it("does not overwrite an existing event name from an organizer-only row", async () => {
-    const res = await importCsv(
-      [
-        "event_slug,ko_name,en_organizerName",
-        "lovelive-15th-fes-day1,1일차,Love Live! Series",
-      ].join("\n")
-    );
-    expect(res.status).toBe(200);
-    const upserts = mocked.eventTranslation.upsert.mock.calls.map((c) => c[0]);
-    const en = upserts.find((u) => u.create.locale === "en");
-    expect(en.update).not.toHaveProperty("name");
-    expect(en.update.organizerName).toBe("Love Live! Series");
-    const ko = upserts.find((u) => u.create.locale === "ko");
-    expect(ko.update.name).toBe("1일차");
-  });
-
-  it("does not null an existing event's shortName / city / venue from an organizer-only locale", async () => {
-    const res = await importCsv(
-      [
-        "event_slug,ko_name,ko_city,en_organizerName",
-        "lovelive-15th-fes-day1,1일차,도쿄,Love Live! Series",
-      ].join("\n")
-    );
-    expect(res.status).toBe(200);
-    const upserts = mocked.eventTranslation.upsert.mock.calls.map((c) => c[0]);
-    // en carries only the organizer → only organizerName is patched.
-    const en = upserts.find((u) => u.create.locale === "en");
-    expect(en.update).toEqual({ organizerName: "Love Live! Series" });
-    // ko carries clobber fields → keeps the existing clobber-on-blank
-    // semantics for shortName / city / venue.
-    const ko = upserts.find((u) => u.create.locale === "ko");
-    expect(ko.update).toMatchObject({ shortName: null, city: "도쿄", venue: null });
+  it("applies the title exemption to a repeated original short name", async () => {
+    const header = "event_slug,originalName,originalShortName";
+    expect((await importCsv(`${header}\nshow,Day.1,Day.1`)).status).toBe(200);
+    expect(mocked.event.update).toHaveBeenCalledTimes(1);
+    const rejected = await importCsv(`${header}\nshow,Day.1,Day.1 Short`);
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).error).toContain("ko_shortName: missing");
+    expect(mocked.event.update).toHaveBeenCalledTimes(1);
   });
 });

@@ -209,7 +209,7 @@ describe("deriveTrendingSongs", () => {
     expect(out[0].subTitle).toBeNull();
   });
 
-  it("propagates variantLabel via the locale-strict cascade", () => {
+  it("keeps the original variant label and the exact locale label", () => {
     // `displayOriginalTitle` resolves the variant label per the same
     // locale-strict rule it uses for the title's sub slot — locale-
     // matched translation's `variantLabel` first, then the song's own
@@ -237,13 +237,13 @@ describe("deriveTrendingSongs", () => {
     ];
     const counts = { "1": { best: 1 } };
 
-    expect(
-      deriveTrendingSongs(items, counts, "ko", "Unknown")[0].variantLabel,
-    ).toBe("사쿠라 ver.");
+    expect(deriveTrendingSongs(items, counts, "ko", "Unknown")[0]).toMatchObject({
+      variantLabel: "SAKURA Ver.", variantSub: "사쿠라 ver.",
+    });
     // No ja translation row → falls through to the song's own label.
     expect(
-      deriveTrendingSongs(items, counts, "ja", "Unknown")[0].variantLabel,
-    ).toBe("SAKURA Ver.");
+      deriveTrendingSongs(items, counts, "ja", "Unknown")[0],
+    ).toMatchObject({ variantLabel: "SAKURA Ver.", variantSub: null });
   });
 
   it("caps the result to top 3", () => {

@@ -1,7 +1,25 @@
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import type { TrendingSong } from "@/components/TrendingSongs";
-import { displayOriginalTitle } from "@/lib/display";
+import { participationSongDisplay } from "@/lib/participationSongDisplay";
+
+export function trendingSongTitle(
+  song: Parameters<typeof participationSongDisplay>[0] | null | undefined,
+  locale: string,
+  unknownSongLabel: string,
+) {
+  if (!song) return { mainTitle: unknownSongLabel, subTitle: null, variantLabel: null };
+  const display = participationSongDisplay(song, locale);
+  return {
+    mainTitle: display.main,
+    mainTitleLang: display.mainLang,
+    subTitle: display.sub,
+    subTitleLang: locale,
+    variantLabel: display.variant,
+    variantLang: display.variantLang,
+    variantSub: display.variantSub,
+  };
+}
 
 // Mirrors the SSR `getTrendingSongs` (in src/app/[locale]/events/[id]/...)
 // closely enough to produce equivalent rankings: items with no songs are
@@ -35,14 +53,9 @@ export function deriveTrendingSongs(
 
   return scored.map(({ item, total, types }) => {
     const song = item.songs[0]?.song;
-    const titleDisp = song
-      ? displayOriginalTitle(song, song.translations, locale)
-      : null;
     return {
       setlistItemId: String(item.id),
-      mainTitle: titleDisp?.main ?? unknownSongLabel,
-      subTitle: titleDisp?.sub ?? null,
-      variantLabel: titleDisp?.variant ?? null,
+      ...trendingSongTitle(song, locale, unknownSongLabel),
       totalReactions: total,
       // Pass the per-type counts straight through — the renderer in
       // `<TrendingSongs>` iterates `REACTION_TYPES` and falls back to 0

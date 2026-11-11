@@ -96,7 +96,8 @@ import type { NextRequest } from "next/server";
 // fixtures + measurement helpers
 // ---------------------------------------------------------------------
 
-const SLUG = `n14-itest-${Date.now()}`;
+const PREFIX = "n14-itest-";
+const SLUG = `${PREFIX}${Date.now()}`;
 let eventId: bigint;
 let topic: string;
 let songA: bigint;
@@ -315,9 +316,43 @@ async function createItemViaAdmin(position: number): Promise<bigint> {
   return BigInt((await res.json()).id);
 }
 
+/** Remove interrupted fixtures as well as the current run's rows. */
+async function purgeFixtures(prefix: string): Promise<void> {
+  const events = `(SELECT id FROM "Event" WHERE slug LIKE $1)`;
+  const items = `(SELECT id FROM "SetlistItem" WHERE "eventId" IN ${events})`;
+  const songs = `(SELECT id FROM "Song" WHERE slug LIKE $1)`;
+  await pg.query("BEGIN");
+  try {
+    for (const sql of [
+      `DELETE FROM "SetlistItemConfirm" WHERE "setlistItemId" IN ${items}`,
+      `DELETE FROM "ContestReport" WHERE "setlistItemId" IN ${items}`,
+      `DELETE FROM "SetlistItemReaction" WHERE "setlistItemId" IN ${items}`,
+      `DELETE FROM "SetlistItemSong" WHERE "setlistItemId" IN ${items}`,
+      `DELETE FROM "SetlistItemMember" WHERE "setlistItemId" IN ${items}`,
+      `DELETE FROM "SetlistItemArtist" WHERE "setlistItemId" IN ${items}`,
+      `DELETE FROM "SetlistItem" WHERE "eventId" IN ${events}`,
+      `DELETE FROM "SongWish" WHERE "eventId" IN ${events}`,
+      `DELETE FROM "EventImpression" WHERE "eventId" IN ${events}`,
+      `DELETE FROM "EventPerformer" WHERE "eventId" IN ${events}`,
+      `DELETE FROM "EventTranslation" WHERE "eventId" IN ${events}`,
+      `DELETE FROM "Event" WHERE slug LIKE $1`,
+      `DELETE FROM "SongTranslation" WHERE "songId" IN ${songs}`,
+      `DELETE FROM "Song" WHERE slug LIKE $1 AND "baseVersionId" IS NOT NULL`,
+      `DELETE FROM "Song" WHERE slug LIKE $1`,
+    ]) {
+      await pg.query(sql, [`${prefix}%`]);
+    }
+    await pg.query("COMMIT");
+  } catch (error) {
+    await pg.query("ROLLBACK");
+    throw error;
+  }
+}
+
 beforeAll(async () => {
   captureAppNotices();
   await pg.connect();
+  await purgeFixtures(PREFIX);
   await ensureTodaysMessagesPartition();
   const songs = await pg.query<{ id: string }>(
     `SELECT id::text FROM "Song" WHERE "isDeleted" = false ORDER BY id LIMIT 2`,
@@ -340,30 +375,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   __setSnapshotEstablishedHookForTests(null);
-  if (eventId !== undefined) {
-    const id = eventId.toString();
-    const items = `(SELECT id FROM "SetlistItem" WHERE "eventId" = $1)`;
-    await pg.query("BEGIN");
-    for (const sql of [
-      `DELETE FROM "SetlistItemConfirm" WHERE "setlistItemId" IN ${items}`,
-      `DELETE FROM "ContestReport" WHERE "setlistItemId" IN ${items}`,
-      `DELETE FROM "SetlistItemReaction" WHERE "setlistItemId" IN ${items}`,
-      `DELETE FROM "SetlistItemSong" WHERE "setlistItemId" IN ${items}`,
-      `DELETE FROM "SetlistItemMember" WHERE "setlistItemId" IN ${items}`,
-      `DELETE FROM "SetlistItemArtist" WHERE "setlistItemId" IN ${items}`,
-      `DELETE FROM "SetlistItem" WHERE "eventId" = $1`,
-      `DELETE FROM "SongWish" WHERE "eventId" = $1`,
-      `DELETE FROM "EventImpression" WHERE "eventId" = $1`,
-      `DELETE FROM "EventPerformer" WHERE "eventId" = $1`,
-      `DELETE FROM "EventTranslation" WHERE "eventId" = $1`,
-      `DELETE FROM "Event" WHERE id = $1`,
-    ]) {
-      await pg.query(sql, [id]);
-    }
-    await pg.query("COMMIT");
+  try {
+    if (eventId !== undefined) await purgeFixtures(SLUG);
+  } finally {
+    await pg.end();
+    await prisma.$disconnect();
   }
-  await pg.end();
-  await prisma.$disconnect();
 });
 
 // ---------------------------------------------------------------------
@@ -880,6 +897,58 @@ describe("8. GET /api/setlist reports how it resolved minRev (x-snapshot-verify)
     const rev = await currentRev();
     expect((await getSetlist(`&minRev=${rev}`)).verify).toBe("satisfied");
     expect((await getSetlist(`&minRev=0&hint=1`)).verify).toBe("satisfied");
+  });
+
+  it("a revision from an admin song save leads to a fresh snapshot with the original and requested names", async () => {
+    const originalTitle = "[QA] 雨の日の曲";
+    const base = await prisma.song.create({
+      data: { slug: `${SLUG}-base`, originalTitle, originalLanguage: "ja" },
+    });
+    const song = await prisma.song.create({
+      data: {
+        slug: SLUG,
+        originalTitle,
+        originalLanguage: "ja",
+        baseVersionId: base.id,
+        variantLabel: "公演版",
+        translations: { create: [
+          { locale: "ko", title: "[QA] 비 오는 날의 곡", variantLabel: "공연판" },
+          { locale: "en", title: "[QA] Rainy Day Song", variantLabel: "Concert version" },
+        ] },
+      },
+    });
+    const res = await expectOneSave(() =>
+      ADMIN_CREATE(req("http://x/api/admin/setlist-items", {
+        eventId: eventId.toString(),
+        position: 9001,
+        type: "song",
+        songIds: [Number(song.id)],
+      })),
+    );
+    expect(res.status).toBe(201);
+    const { id, rev } = await res.json();
+    for (const locale of ["ko", "en", "ja"] as const) {
+      const snapshot = await SETLIST_GET(req(
+        `http://x/api/setlist?eventId=${eventId}&locale=${locale}&minRev=${rev}`,
+        null,
+        "GET",
+      ));
+      expect(snapshot.status).toBe(200);
+      expect(snapshot.headers.get("x-snapshot-verify")).toBe("satisfied");
+      const { items } = await snapshot.json();
+      const saved = items.find((item: { id: number }) => String(item.id) === String(id));
+      expect(saved?.songs[0].song).toMatchObject({
+        id: Number(song.id),
+        originalTitle: song.originalTitle,
+        originalLanguage: "ja",
+        variantLabel: "公演版",
+        translations: locale === "ja" ? [] : [
+          locale === "ko"
+            ? { locale, title: "[QA] 비 오는 날의 곡", variantLabel: "공연판" }
+            : { locale, title: "[QA] Rainy Day Song", variantLabel: "Concert version" },
+        ],
+      });
+    }
   });
 
   // Memo / coalesced-waiter / deferred outcomes depend on timing (the

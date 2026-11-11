@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import type { AlbumArtistFilterOption } from "@/lib/albums";
@@ -12,18 +13,18 @@ import styles from "./albumList.module.css";
  * getAlbumArtistFilters).
  *
  * Visual (26-v1): 44px-tall pills that wrap within the page and show the
- * complete name, never an ellipsis: a locale without a `shortName` shows
- * the full translated name (蓮ノ空女学院スクールアイドルクラブ), wrapping
- * inside the pill when it is wider than the page.
+ * full original and localized names, wrapping inside the pill.
  */
 
 interface Props {
   /** Current `?artist=` id, or null for the "전체" (no-filter) state. */
   active: string | null;
   options: AlbumArtistFilterOption[];
+  locale: string;
 }
 
-export async function AlbumArtistFilter({ active, options }: Props) {
+/** Pairs artist names and starts at page one when the active artist changes. */
+export async function AlbumArtistFilter({ active, options, locale }: Props) {
   const t = await getTranslations("Album");
 
   // Nothing to filter by (0 or 1 artist in the catalog) → omit the bar
@@ -36,7 +37,7 @@ export async function AlbumArtistFilter({ active, options }: Props) {
       | { pathname: "/albums" }
       | { pathname: "/albums"; query: { artist: string } },
     isActive: boolean,
-    label: string,
+    label: ReactNode,
   ) => (
     <Link
       key={key}
@@ -56,7 +57,10 @@ export async function AlbumArtistFilter({ active, options }: Props) {
           o.id,
           { pathname: "/albums", query: { artist: o.id } },
           active === o.id,
-          o.name,
+          <span>
+            <span lang={o.originalLanguage}>{o.main}</span>
+            {o.sub && <small lang={locale}>{o.sub}</small>}
+          </span>,
         ),
       )}
     </nav>

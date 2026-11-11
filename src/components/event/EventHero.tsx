@@ -2,6 +2,8 @@ import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
 import { EventArt } from "@/components/shared/EventArt";
 import { ConcertStatusPill } from "@/components/events/ConcertStatusPill";
+import { EventNameText } from "@/components/events/EventNameText";
+import type { EventDisplayText } from "@/lib/eventDisplay";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import styles from "./eventDetail.module.css";
@@ -45,10 +47,10 @@ interface Props {
   logoTint: string | null;
   /** Typography fallback inside the logo slot. */
   artTitle: string;
-  series: { href: string; name: string } | null;
-  title: string;
+  series: { href: string; name: EventDisplayText } | null;
+  title: EventDisplayText;
   dateLabel: string | null;
-  venueLine: string | null;
+  venueLine: EventDisplayText | null;
 }
 
 export function EventHero({
@@ -77,14 +79,14 @@ export function EventHero({
       <div className={styles.heroCopy}>
         {series && (
           <Link href={series.href} className={styles.seriesLink}>
-            {series.name}
+            <EventNameText pair={series.name} />
           </Link>
         )}
-        <h1 className={styles.title}>{title}</h1>
+        <h1 className={styles.title}><EventNameText pair={title} /></h1>
         {(dateLabel || venueLine) && (
           <p className={styles.meta}>
             {dateLabel && <span>{dateLabel}</span>}
-            {venueLine && <span>{venueLine}</span>}
+            {venueLine && <EventNameText pair={venueLine} />}
           </p>
         )}
       </div>

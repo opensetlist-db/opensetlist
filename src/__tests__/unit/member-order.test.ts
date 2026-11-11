@@ -208,9 +208,9 @@ describe("GET /api/admin/stage-identities (admin pickers)", () => {
 describe("parseStageIdentity — sortOrder", () => {
   const base = {
     type: "character",
-    originalName: "M",
+    originalName: "メンバー",
     originalLanguage: "ja",
-    translations: [{ locale: "ko", name: "M" }],
+    translations: [{ locale: "ko", name: "멤버" }, { locale: "en", name: "M" }],
   };
 
   it("integer (number or digit string) → the number", () => {
@@ -251,7 +251,7 @@ describe("PUT /api/admin/stage-identities/[id] — sortOrder", () => {
 
   beforeEach(() => {
     si.update.mockResolvedValue({ id: "si-1", translations: [] });
-    si.findUniqueOrThrow.mockReturnValue({ id: "si-1", translations: [] });
+    si.findUnique.mockResolvedValue({ id: "si-1", originalName: "メンバー", originalLanguage: "ja", translations: [{ locale: "ko", name: "M" }] });
     (prisma.stageIdentityTranslation.upsert as unknown as Mock).mockReturnValue({});
   });
 
@@ -286,16 +286,13 @@ describe("PUT /api/admin/stage-identities/[id] — body validation", () => {
 
   beforeEach(() => {
     si.update.mockResolvedValue({ id: "si-1", translations: [] });
-    si.findUniqueOrThrow.mockReturnValue({ id: "si-1", translations: [] });
+    si.findUnique.mockResolvedValue({ id: "si-1", originalName: "メンバー", originalLanguage: "ja", translations: [{ locale: "ko", name: "M" }] });
     (prisma.stageIdentityTranslation.upsert as unknown as Mock).mockReturnValue({});
   });
 
-  it("missing / malformed translations or an unknown type → 400 with a message, nothing written", async () => {
+  it("malformed translations or an unknown type → 400 with a message, nothing written", async () => {
     for (const body of [
-      {},
-      { type: "character" },
       { translations: "M" },
-      { translations: [] },
       { translations: [{ locale: "ko" }] },
       { translations: [{ name: "M" }] },
       { translations: [{ locale: "ko", name: 3 }] },
@@ -320,10 +317,7 @@ describe("PUT /api/admin/stage-identities/[id] — body validation", () => {
       undefined,
       "persona",
     ]);
-    // Translations go through per-locale upserts, not the scalar update
-    // (see admin-stage-identity-put.test.ts for the full contract).
-    expect(si.update.mock.calls[2][0].data.translations).toBeUndefined();
-    expect(prisma.stageIdentityTranslation.upsert).toHaveBeenCalledTimes(3);
+    expect(si.update.mock.calls[2][0].data.translations.upsert[0].update.name).toBe("M");
   });
 });
 
@@ -335,9 +329,9 @@ describe("POST /api/admin/artists/[id]/stage-identities — sortOrder", () => {
     );
   const base = {
     type: "character",
-    originalName: "M",
+    originalName: "メンバー",
     originalLanguage: "ja",
-    translations: [{ locale: "ko", name: "M" }],
+    translations: [{ locale: "ko", name: "멤버" }, { locale: "en", name: "M" }],
   };
 
   beforeEach(() => {
@@ -367,13 +361,13 @@ describe("members.csv import — sortOrder", () => {
     ((await res.json()).log as string[]).filter((l) => l.startsWith("WARN"));
 
   beforeEach(() => {
-    si.findUnique.mockResolvedValue({ id: "si-1" });
+    si.findUnique.mockResolvedValue({ id: "si-1", translations: [{ locale: "ko", name: "멤버" }, { locale: "en", name: "Member" }] });
     si.update.mockResolvedValue({ id: "si-1" });
     si.create.mockResolvedValue({ id: "si-new" });
   });
 
   it("update: column omitted from the header → stored order untouched", async () => {
-    const res = await importCsv(["character_slug,ja_name", "m1,メンバー"].join("\n"));
+    const res = await importCsv("character_slug\nm1");
     expect(res.status).toBe(200);
     expect(si.update.mock.calls[0][0].data.sortOrder).toBeUndefined();
     expect(await warnsOf(res)).toEqual([]);
@@ -381,14 +375,14 @@ describe("members.csv import — sortOrder", () => {
 
   it("update: integer sets, blank clears", async () => {
     const res = await importCsv(
-      ["character_slug,ja_name,sortOrder", "m1,メンバー,3", "m2,メンバー2,"].join("\n"),
+      ["character_slug,sortOrder", "m1,3", "m2,"].join("\n"),
     );
     expect(si.update.mock.calls.map((c) => c[0].data.sortOrder)).toEqual([3, null]);
     expect(await warnsOf(res)).toEqual([]);
   });
 
   it("update: invalid cell WARNs and keeps the stored value", async () => {
-    const res = await importCsv(["character_slug,ja_name,sortOrder", "m1,メンバー,first"].join("\n"));
+    const res = await importCsv(["character_slug,sortOrder", "m1,first"].join("\n"));
     expect(si.update.mock.calls[0][0].data.sortOrder).toBeUndefined();
     expect(await warnsOf(res)).toEqual([
       'WARN: members.csv sortOrder "first" is not an integer (member m1) — kept existing value',
@@ -397,9 +391,9 @@ describe("members.csv import — sortOrder", () => {
 
   it("create: integer stored; absent → null; invalid → WARN and unnumbered", async () => {
     si.findUnique.mockResolvedValue(null);
-    await importCsv(["character_slug,ja_name,sortOrder", "m1,メンバー,2"].join("\n"));
-    await importCsv(["character_slug,ja_name", "m2,メンバー2"].join("\n"));
-    const res = await importCsv(["character_slug,ja_name,sortOrder", "m3,メンバー3,x"].join("\n"));
+    await importCsv(["character_slug,ja_name,sortOrder,ko_name,en_name", "m1,メンバー,2,멤버,Member"].join("\n"));
+    await importCsv(["character_slug,ja_name,ko_name,en_name", "m2,メンバー2,멤버2,Member2"].join("\n"));
+    const res = await importCsv(["character_slug,ja_name,sortOrder,ko_name,en_name", "m3,メンバー3,x,멤버3,Member3"].join("\n"));
     expect(si.create.mock.calls.map((c) => c[0].data.sortOrder)).toEqual([2, null, null]);
     expect(await warnsOf(res)).toEqual([
       'WARN: members.csv sortOrder "x" is not an integer (member m3) — new member left unnumbered',

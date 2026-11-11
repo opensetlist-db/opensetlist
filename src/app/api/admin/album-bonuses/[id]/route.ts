@@ -6,6 +6,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { pruneBonusCheckReceipts } from "@/lib/bonusLifecycle";
 import { parseBonusTranslations } from "@/lib/adminParsers";
+import { bonusLanguageIssue, requireReviewedText, translationChanged } from "@/lib/purchaseLanguage";
 import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
@@ -34,8 +35,8 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   }
 
   if (
-    typeof body.originalBonusType !== "string" ||
-    !body.originalBonusType.trim()
+    body.originalBonusType !== undefined &&
+    (typeof body.originalBonusType !== "string" || !body.originalBonusType.trim())
   ) {
     return NextResponse.json(
       { error: "특전 종류는 필수입니다." },
@@ -66,12 +67,17 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     const purchase = parseBonusPurchaseFields(body);
     const originalLanguage = typeof body.originalLanguage === "string"
       ? body.originalLanguage.trim() || "ja"
-      : "ja";
+      : undefined;
+    const originalBonusType = typeof body.originalBonusType === "string" ? body.originalBonusType.trim() : undefined;
     const revision = parseRevision(body.expectedRevision);
     const updated = await prisma.$transaction(async (tx) => {
       // Evaluate the cutoff after waiting for any concurrent lifecycle write.
       await tx.$queryRaw`SELECT id FROM "AlbumStoreBonus" WHERE id = ${id} FOR NO KEY UPDATE`;
-      return tx.albumStoreBonus.update({
+      const before = await tx.albumStoreBonus.findUniqueOrThrow({
+        where: { id },
+        include: { translations: true },
+      });
+      const after = await tx.albumStoreBonus.update({
         where: {
           id,
           revision,
@@ -85,7 +91,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         data: {
           ...purchase,
           revision: { increment: 1 },
-          originalBonusType: (body.originalBonusType as string).trim(),
+          originalBonusType,
           originalLanguage,
           translations: translationsProvided || removed !== undefined ? {
             deleteMany: removed !== undefined
@@ -100,6 +106,13 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         },
         include: { translations: true },
       });
+      const sourceChanged = before.originalBonusType !== after.originalBonusType ||
+        before.originalBonusDescription !== after.originalBonusDescription ||
+        before.originalLanguage !== after.originalLanguage;
+      if (sourceChanged || translationChanged(before.translations, after.translations, ["bonusType", "bonusDescription"])) {
+        requireReviewedText(sourceChanged, body.reviewedTranslations, bonusLanguageIssue(after, body.reviewedTranslations === true));
+      }
+      return after;
     }, { timeout: 15000 });
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));

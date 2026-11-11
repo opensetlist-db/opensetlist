@@ -34,10 +34,15 @@ const base: HomeEvent = {
 describe("projectHomeCard", () => {
   it("titles a series event with the series and keeps the day as live text", () => {
     const v = projectHomeCard(base, "ko", "?");
-    expect(v.title).toBe("러브라이브! 시리즈 15주년 러브라이브! 페스");
-    expect(v.dayLabel).toBe("Day.1");
-    expect(v.artTitle).toBe("러브라이브! 페스");
-    expect(v.place).toBe("나고야 · 반테린 돔 나고야");
+    expect(v.title).toEqual({
+      main: base.eventSeries?.originalName,
+      sub: "러브라이브! 시리즈 15주년 러브라이브! 페스",
+      mainLang: "ja", subLang: "ko",
+    });
+    expect(v.dayLabel).toMatchObject({ main: "Day.1", sub: null });
+    expect(v.artTitle).toBe("ラブライブ！フェス");
+    expect(v.city).toBe("나고야");
+    expect(v.venue).toMatchObject({ main: "バンテリンドーム ナゴヤ", sub: "반테린 돔 나고야" });
     expect(v.href).toBe("/ko/events/109/lovelive-15th-fes-day1");
     expect(v.logoUrl).toBeNull();
     expect(v.tint).toBeNull();
@@ -45,8 +50,9 @@ describe("projectHomeCard", () => {
 
   it("falls back to original-language names where a locale has no translation", () => {
     const v = projectHomeCard(base, "en", "?");
-    expect(v.title).toBe("LoveLive! Series 15th Anniversary ラブライブ！フェス");
-    expect(v.place).toBe("名古屋 · バンテリンドーム ナゴヤ");
+    expect(v.title).toMatchObject({ main: "LoveLive! Series 15th Anniversary ラブライブ！フェス", sub: null });
+    expect(v.city).toBeNull();
+    expect(v.venue).toMatchObject({ main: "バンテリンドーム ナゴヤ", sub: null });
   });
 
   it("formats the date from the UTC instant, not the server's local day", () => {
@@ -72,7 +78,7 @@ describe("projectHomeCard", () => {
       "ko",
       "?",
     );
-    expect(v.title).toBe("리허설: 러브라이브! 페스 2020 Day.2");
+    expect(v.title.main).toBe("리허설: 러브라이브! 페스 2020 Day.2");
     expect(v.dayLabel).toBeNull();
     expect(v.artTitle).toBe("리허설: 러브라이브! 페스 2020 Day.2");
   });
@@ -83,13 +89,14 @@ describe("projectHomeCard", () => {
       "ko",
       "?",
     );
-    expect(v.place).toBe("バンテリンドーム ナゴヤ");
+    expect(v.city).toBeNull();
+    expect(v.venue?.main).toBe("バンテリンドーム ナゴヤ");
     const none = projectHomeCard(
       { ...base, originalCity: null, originalVenue: null, translations: [] },
       "ko",
       "?",
     );
-    expect(none.place).toBeNull();
+    expect(none.venue).toBeNull();
   });
 
   const TINT = "#E50080";

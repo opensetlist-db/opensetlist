@@ -60,6 +60,7 @@ const getArtistAlbums = cachedQuery(
 
 type AlbumRow = Awaited<ReturnType<typeof getArtistAlbums>>[number];
 
+/** Shares title display between the artist overview and the full discography. */
 export async function ArtistAlbumsSection({
   artistId,
   artistSlug,
@@ -89,7 +90,7 @@ export async function ArtistAlbumsSection({
     mode === "preview" ? serialized.slice(0, PREVIEW_LIMIT) : serialized;
 
   const renderRow = (album: AlbumRow) => {
-    const title = displayOriginalTitle(album, album.translations, locale);
+    const title = displayOriginalTitle(album, album.translations, locale, "paired");
     const year = parseReleaseYear(album.releaseDate);
     const bonusCount = countActiveBonuses(album.listings, album._count.bdEvents > 0);
     return (
@@ -121,7 +122,7 @@ export async function ArtistAlbumsSection({
               {title.main}
             </strong>
             {title.sub && (
-              <span className={styles.translation}>{title.sub}</span>
+              <span className={styles.translation} lang={locale}>{title.sub}</span>
             )}
             {(year !== null || bonusCount > 0) && (
               <span className={styles.albumMeta}>

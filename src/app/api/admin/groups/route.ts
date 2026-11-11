@@ -1,3 +1,4 @@
+import { checkIdentityNames, identityTranslations } from "@/lib/adminIdentityNames";
 import { NextRequest, NextResponse } from "next/server";
 import { GroupType, GroupCategory } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
@@ -58,8 +59,17 @@ export async function POST(request: NextRequest) {
   const language = parseOriginalLanguage(body.originalLanguage);
   if (!language.ok) return badRequest(language.message);
 
-  const translations = parseLocalizedTranslations(body.translations);
+  const translations = identityTranslations(body.translations, parseLocalizedTranslations);
   if (!translations.ok) return badRequest(translations.message);
+
+  const nameError = checkIdentityNames("그룹", {
+    originalName: name.value,
+    originalShortName: shortName.value,
+    originalLanguage: language.value,
+    translations: translations.value,
+    sameNameConfirmations: translations.sameNameConfirmations,
+  });
+  if (nameError) return badRequest(nameError);
 
   // Slug is a @unique column. Catch P2002 from `create` rather than
   // pre-flighting `findUnique` + `create` (TOCTOU: a concurrent

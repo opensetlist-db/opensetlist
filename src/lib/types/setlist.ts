@@ -165,6 +165,7 @@ export interface UnitsCardItem {
   id: string;
   slug: string;
   name: string;
+  displayName?: import("@/lib/eventDisplay").EventDisplayText | null;
   /**
    * Unit color (e.g. `#e91e8c`). Null when the operator hasn't
    * backfilled the brand color yet — the card falls back to a brand-
@@ -206,6 +207,7 @@ export interface PerformersCardItem {
   id: string;
   /** Resolved character name — `displayNameWithFallback(..., "full")`. */
   name: string;
+  displayName?: import("@/lib/eventDisplay").EventDisplayText | null;
   /**
    * Tint color for this character's pill — the resolved color of
    * their primary unit (`resolveUnitColor(unit)`, which substitutes a

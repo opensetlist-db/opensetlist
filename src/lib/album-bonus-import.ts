@@ -17,6 +17,7 @@
 // approve/reject choices live on AlbumBonusImportJob.decisions, keyed
 // by stable array indices into the frozen `candidates` document.
 
+import { bonusLanguageIssue, storeLanguageIssue } from "@/lib/purchaseLanguage";
 import type { Prisma } from "@/generated/prisma/client";
 
 // ── Parsed candidates (matches wiki/scrape/bonus/pattern-notes.md §12)
@@ -48,6 +49,7 @@ export type ParsedBonus = {
   originalBonusDescription: string | null;
   bonusImageUrl: string | null;
   translations?: ParsedBonusTranslation[];
+  reviewedTranslations?: boolean;
 };
 
 export type ParsedListing = {
@@ -55,6 +57,7 @@ export type ParsedListing = {
   originalEditionLabel: string | null;
   productUrl: string | null;
   translations?: ParsedListingTranslation[];
+  reviewedTranslations?: boolean;
   bonuses: ParsedBonus[];
 };
 
@@ -64,6 +67,7 @@ export type ParsedGlobalEarlyBookingItem = {
   bonusImageUrl: string | null;
   storeNameHint: string | null;
   translations?: ParsedBonusTranslation[];
+  reviewedTranslations?: boolean;
 };
 
 export type ParsedCandidates = {
@@ -261,6 +265,7 @@ export function isParsedCandidates(v: unknown): v is ParsedCandidates {
     if (!l || typeof l !== "object") return false;
     const ll = l as Record<string, unknown>;
     if (typeof ll.originalStoreName !== "string") return false;
+    if (ll.reviewedTranslations !== undefined && typeof ll.reviewedTranslations !== "boolean") return false;
     if (ll.originalEditionLabel !== null && typeof ll.originalEditionLabel !== "string") return false;
     if (!Array.isArray(ll.bonuses)) return false;
     if (ll.translations !== undefined && !isTranslationsArray(ll.translations, "listing")) {
@@ -270,6 +275,8 @@ export function isParsedCandidates(v: unknown): v is ParsedCandidates {
       if (!b || typeof b !== "object") return false;
       const bb = b as Record<string, unknown>;
       if (typeof bb.originalBonusType !== "string") return false;
+      if (bb.originalBonusDescription != null && typeof bb.originalBonusDescription !== "string") return false;
+      if (bb.reviewedTranslations !== undefined && typeof bb.reviewedTranslations !== "boolean") return false;
       if (bb.translations !== undefined && !isTranslationsArray(bb.translations, "bonus")) {
         return false;
       }
@@ -289,6 +296,8 @@ export function isParsedCandidates(v: unknown): v is ParsedCandidates {
       if (!item || typeof item !== "object") return false;
       const ii = item as Record<string, unknown>;
       if (typeof ii.originalBonusType !== "string") return false;
+      if (ii.originalBonusDescription != null && typeof ii.originalBonusDescription !== "string") return false;
+      if (ii.reviewedTranslations !== undefined && typeof ii.reviewedTranslations !== "boolean") return false;
       if (ii.translations !== undefined && !isTranslationsArray(ii.translations, "bonus")) {
         return false;
       }
@@ -377,6 +386,22 @@ export function normalizeBonusTranslations(
           ? t.bonusDescription.trim()
           : null,
     }));
+}
+
+/** Check a new scraped listing using the same normalized values that apply will write. */
+export function listingCandidateLanguageIssue(candidate: ParsedListing) {
+  return storeLanguageIssue({
+    ...candidate, originalLanguage: "ja",
+    translations: normalizeListingTranslations(candidate.translations),
+  }, candidate.reviewedTranslations === true);
+}
+
+/** Check regular and early-booking bonus inserts before they enter the write batch. */
+export function bonusCandidateLanguageIssue(candidate: ParsedBonus) {
+  return bonusLanguageIssue({
+    ...candidate, originalLanguage: "ja",
+    translations: normalizeBonusTranslations(candidate.translations),
+  }, candidate.reviewedTranslations === true);
 }
 
 /**

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ShareNames } from "@/lib/shareNames";
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardModal } from "@/components/ShareCardModal";
@@ -26,6 +27,7 @@ interface Props {
   seriesName: string;
   eventTitle: string;
   dateLine: string;
+  shareNames?: ShareNames;
   locale: string;
   status: ResolvedEventStatus;
   /**
@@ -71,6 +73,7 @@ export function ShareCardButton({
   seriesName,
   eventTitle,
   dateLine,
+  shareNames,
   locale,
   status,
   actualSongs,
@@ -155,6 +158,7 @@ export function ShareCardButton({
         seriesName={seriesName}
         eventTitle={eventTitle}
         dateLine={dateLine}
+        shareNames={shareNames}
         actualSongs={actualSongs}
         predictions={predictions}
         matched={score.matched}
