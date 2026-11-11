@@ -13,6 +13,7 @@ import {
   parsePattern3TrackTranslations,
 } from "@/lib/adminParsers";
 import { revalidatePublicData } from "@/lib/dataCache";
+import { albumTrackTitleError } from "@/lib/albumTrackTitleValidation";
 
 type CreateBody = {
   albumId?: unknown;
@@ -28,6 +29,7 @@ type CreateBody = {
   title?: unknown;
   titleLanguage?: unknown;
   translations?: unknown;
+  confirmedSameLocales?: unknown;
 };
 
 /**
@@ -57,6 +59,7 @@ export async function POST(request: NextRequest) {
   let body: CreateBody;
   try {
     body = (await request.json()) as CreateBody;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
   } catch {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
@@ -132,17 +135,27 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    const title = body.title.trim();
+    const titleLanguage =
+      typeof body.titleLanguage === "string" && body.titleLanguage.trim()
+        ? body.titleLanguage.trim()
+        : "ja";
     const translations = parsePattern3TrackTranslations(body.translations);
+    if (!translations) {
+      return NextResponse.json(
+        { error: "트랙 표기의 언어와 제목을 확인해 주세요. 같은 언어는 한 번만 입력할 수 있습니다." },
+        { status: 400 },
+      );
+    }
+    const error = albumTrackTitleError(title, titleLanguage, translations, body.confirmedSameLocales);
+    if (error) return NextResponse.json({ error }, { status: 400 });
     data = {
       album: { connect: { id: albumId } },
       discNumber,
       trackNumber,
       variant: body.variant,
-      title: body.title.trim(),
-      titleLanguage:
-        typeof body.titleLanguage === "string" && body.titleLanguage.trim()
-          ? body.titleLanguage.trim()
-          : "ja",
+      title,
+      titleLanguage,
       translations: translations.length ? { create: translations } : undefined,
     };
   } else {
