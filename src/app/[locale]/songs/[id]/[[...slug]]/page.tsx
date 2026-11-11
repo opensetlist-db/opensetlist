@@ -18,6 +18,7 @@ import { getEventStatus } from "@/lib/eventStatus";
 import { getSongPerformanceCells } from "@/lib/songPerformance";
 import { getSongAlbums } from "@/lib/songAlbums";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { IdentityName } from "@/components/artists/IdentityName";
 import { SongIdentity } from "@/components/songs/detail/SongIdentity";
 import { SongAlbumPanel } from "@/components/songs/detail/SongAlbumPanel";
 import { SongTabs } from "@/components/songs/detail/SongTabs";
@@ -524,7 +525,7 @@ export default async function SongPage({ params, searchParams }: Props) {
           ariaLabel={ct("breadcrumb")}
           items={[
             { label: ct("home"), href: `/${locale}` },
-            { label: pairText(title) },
+            { label: <IdentityName name={{ ...title, locale }} /> },
           ]}
         />
       </div>
