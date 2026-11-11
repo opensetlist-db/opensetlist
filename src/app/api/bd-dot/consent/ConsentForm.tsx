@@ -37,7 +37,7 @@ export default function ConsentForm({ supabaseUrl, anonKey, clientId, subject, r
         email: String(form.get("email") ?? "").trim(),
         password: String(form.get("password") ?? ""),
       });
-      if (signIn.error || signIn.data.user.id !== subject) throw new Error();
+      if (signIn.error || signIn.data.user?.id !== subject) throw new Error();
       phase = "authorization";
       const details = await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
       if (details.error) throw new Error();
@@ -71,7 +71,9 @@ export default function ConsentForm({ supabaseUrl, anonKey, clientId, subject, r
       </label>
       {failure === "sign-in" && <p role="alert">BD 점검 계정으로 로그인하지 못했습니다. 이메일 주소와 비밀번호를 확인해 주세요.</p>}
       {failure === "authorization" && <p role="alert">로그인은 완료됐지만 OAuth 요청을 승인하지 못했습니다. ChatGPT에서 연결을 다시 시작해 주세요.</p>}
-      <button className="rounded border px-3 py-2" type="submit" disabled={pending}>로그인하고 읽기 권한 승인</button>
+      <button className="rounded border px-3 py-2" type="submit" disabled={pending} aria-busy={pending}>
+        {pending ? "승인 처리 중…" : "로그인하고 읽기 권한 승인"}
+      </button>
     </form>
   );
 }

@@ -1,3 +1,4 @@
+// @vitest-environment-options {"url":"https://chatgpt.com/connector/oauth/test-callback"}
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ConsentForm from "@/app/api/bd-dot/consent/ConsentForm";
@@ -34,31 +35,34 @@ function submit() {
   fireEvent.click(screen.getByRole("button", { name: "로그인하고 읽기 권한 승인" }));
 }
 
-describe("BD dev OAuth consent", () => {
-  beforeEach(() => vi.resetAllMocks());
+describe("BD OAuth consent", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    window.history.replaceState(null, "", redirectUri);
+  });
 
   it("approves the exact ChatGPT request including its email identity scope", async () => {
     signInWithPassword.mockResolvedValue({ data: { user: { id: "test-subject" } }, error: null });
     getAuthorizationDetails.mockResolvedValue(permittedRequest);
-    approveAuthorization.mockResolvedValue({ error: {} });
+    approveAuthorization.mockResolvedValue({ data: { redirect_url: `${redirectUri}#approved` }, error: null });
     submit();
     await waitFor(() => expect(approveAuthorization).toHaveBeenCalledWith(authorizationId, { skipBrowserRedirect: true }));
+    expect(window.location.href).toBe(`${redirectUri}#approved`);
   });
 
   it("rejects identity data beyond the disclosed email scope after sign-in", async () => {
     signInWithPassword.mockResolvedValue({ data: { user: { id: "test-subject" } }, error: null });
-    getAuthorizationDetails.mockResolvedValueOnce(permittedRequest).mockResolvedValueOnce({
+    getAuthorizationDetails.mockResolvedValueOnce({
       ...permittedRequest,
       data: { ...permittedRequest.data, scope: "openid profile email offline_access" },
-    });
-    approveAuthorization.mockResolvedValue({ error: {} });
+    }).mockResolvedValueOnce(permittedRequest);
+    approveAuthorization.mockResolvedValue({ data: { redirect_url: `${redirectUri}#approved` }, error: null });
     submit();
     expect(await screen.findByRole("alert")).toHaveTextContent("로그인은 완료됐지만 OAuth 요청을 승인하지 못했습니다");
-    expect(approveAuthorization).toHaveBeenCalledTimes(1);
+    expect(approveAuthorization).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "로그인하고 읽기 권한 승인" }));
-    await waitFor(() => expect(getAuthorizationDetails).toHaveBeenCalledTimes(2));
-    expect(await screen.findByRole("alert")).toHaveTextContent("로그인은 완료됐지만 OAuth 요청을 승인하지 못했습니다");
-    expect(approveAuthorization).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(approveAuthorization).toHaveBeenCalledExactlyOnceWith(authorizationId, { skipBrowserRedirect: true }));
+    expect(window.location.href).toBe(`${redirectUri}#approved`);
   });
 
   it("distinguishes a dev sign-in failure from authorization failure", async () => {

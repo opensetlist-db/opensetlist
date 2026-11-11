@@ -54,7 +54,13 @@ export async function POST(request: Request) {
       if (typeof args !== "object" || Array.isArray(args) || Object.keys(args).length !== 0) {
         return error(-32602, "This tool takes no arguments");
       }
-      const queue = await getBonusCheckQueue().catch(() => null);
+      const queue = await getBonusCheckQueue().catch((cause: unknown) => {
+        console.error(JSON.stringify({
+          event: "bd_dot_read_failed", environment: config.environment,
+          error: cause instanceof Error ? cause.name : typeof cause,
+        }));
+        return null;
+      });
       if (!queue) {
         return result({ isError: true, content: [{ type: "text", text: "Unable to load BD check targets." }] });
       }

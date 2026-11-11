@@ -34,10 +34,13 @@ function setClaims(overrides: Record<string, unknown> = {}) {
   });
 }
 
-function rpc(method: string, params: unknown, token: string | null, host: string) {
+function rpc(method: string, params: unknown, token: string | null, host: string, requestOrigin?: string) {
   return POST(new Request(host + "/api/bd-dot/mcp", {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(requestOrigin ? { Origin: requestOrigin } : {}),
+    },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   }));
 }
@@ -121,11 +124,30 @@ describe("BD OAuth tool", () => {
   it.each([
     { client_id: "unapproved" }, { sub: "another-user" }, { role: "service_role" },
     { aud: "another-resource" }, { iss: "https://another-issuer.example" }, { exp: 1 },
+    { iat: 4_102_444_800 }, { iat: 1.5 }, { session_id: 123 },
   ])("denies mismatched verified claims %o", async (overrides) => {
     await expectReadableQueue();
     setClaims(overrides);
     expect((await call()).status).toBe(401);
     expect(mocks.getBonusCheckQueue).not.toHaveBeenCalled();
+  });
+
+  it("rejects a JWT verifier error response", async () => {
+    await expectReadableQueue();
+    mocks.getClaims.mockResolvedValue({ data: null, error: new Error("Invalid token") });
+    expect((await call()).status).toBe(401);
+    expect(mocks.getBonusCheckQueue).not.toHaveBeenCalled();
+  });
+
+  it("rejects an untrusted request origin before verifying the token", async () => {
+    const params = { name: "list_bd_bonus_check_targets" };
+    const trusted = await rpc("tools/call", params, validToken, origin, "https://chatgpt.com");
+    expect(trusted.status).toBe(200);
+    expect(mocks.getBonusCheckQueue).toHaveBeenCalledTimes(1);
+    const blocked = await rpc("tools/call", params, validToken, origin, "https://another-origin.example");
+    expect(blocked.status).toBe(403);
+    expect(mocks.getClaims).toHaveBeenCalledTimes(1);
+    expect(mocks.getBonusCheckQueue).toHaveBeenCalledTimes(1);
   });
 
   it("has no write tool", async () => {
@@ -139,10 +161,14 @@ describe("BD OAuth tool", () => {
   });
 
   it("reports a read failure through MCP without exposing the database error", async () => {
+    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.getBonusCheckQueue.mockRejectedValue(new Error("Private connection error"));
     const response = await call();
     const payload = await response.json();
     expect(mocks.getBonusCheckQueue).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalledExactlyOnceWith(JSON.stringify({
+      event: "bd_dot_read_failed", environment: "dev", error: "Error",
+    }));
     expect(payload).toEqual({
       jsonrpc: "2.0", id: 1,
       result: { isError: true, content: [{ type: "text", text: "Unable to load BD check targets." }] },
