@@ -1,7 +1,9 @@
 import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
+import { OgName } from "@/lib/ogName";
+import { shareName } from "@/lib/shareNames";
 import { formatVenueDate } from "@/lib/eventDateTime";
-import { displayNameWithFallback } from "@/lib/display";
+
 import {
   getEventStatus,
   ONGOING_BUFFER_MS,
@@ -94,6 +96,7 @@ const AIRPLANE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>';
 const AIRPLANE_URI = `data:image/svg+xml;utf8,${AIRPLANE_SVG}`;
 
+/** Render a status-pinned card so a shared URL can keep its status across crawler refreshes. */
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
   const url = new URL(req.url);
@@ -133,27 +136,11 @@ export async function GET(req: Request, { params }: Props) {
       return new Response("Not found", { status: 404 });
     }
 
-    const eventName = displayNameWithFallback(
-      event,
-      event.translations,
-      lang
-    );
-    const seriesName = event.eventSeries
-      ? displayNameWithFallback(
-          event.eventSeries,
-          event.eventSeries.translations,
-          lang
-        )
-      : "";
-    const title =
-      seriesName || eventName || FALLBACK_TITLES[lang].event;
-    // Subtitle now carries only the alternate event name (when title
-    // falls on the series and the event has a distinct identifier).
-    // City + venue dropped — the event name typically already encodes
-    // those (e.g. "Day 2 · Marine Messe Fukuoka"), and an OG card
-    // doesn't have the room to say it twice.
-    const subtitle =
-      seriesName && eventName && seriesName !== eventName ? eventName : "";
+    const eventName = shareName(event, lang, "title");
+    const seriesName = event.eventSeries ? shareName(event.eventSeries, lang, "title") : null;
+    const title = seriesName?.main ? seriesName : { ...eventName, main: eventName.main || FALLBACK_TITLES[lang].event };
+    const performance = seriesName?.main && (seriesName.main !== eventName.main || seriesName.sub !== eventName.sub)
+      ? eventName : null;
     const dateStr = formatVenueDate(event.date, lang);
 
     const now = new Date();
@@ -168,7 +155,7 @@ export async function GET(req: Request, { params }: Props) {
     const cacheHeaders = pinnedStatus
       ? PINNED_STATUS_HEADERS
       : cacheHeadersForStatus(resolved, event.startTime, now);
-    const sized = titleFontSize(title, 60);
+
 
     return new ImageResponse(
       (
@@ -218,11 +205,11 @@ export async function GET(req: Request, { params }: Props) {
               display: "flex",
               flexDirection: "column",
               position: "absolute",
-              top: 95,
+              top: 62,
               left: 80,
-              width: 700,
-              minHeight: 440,
-              padding: "48px",
+              width: 960,
+              minHeight: 500,
+              padding: "32px 40px",
               background: "rgba(255, 255, 255, 0.05)",
               border: "1px solid rgba(255, 255, 255, 0.1)",
               borderRadius: 24,
@@ -240,7 +227,7 @@ export async function GET(req: Request, { params }: Props) {
                 background: "rgba(0, 0, 0, 0.3)",
                 fontSize: 18,
                 letterSpacing: "0.02em",
-                marginBottom: 28,
+                marginBottom: 18,
               }}
             >
               <div
@@ -254,40 +241,8 @@ export async function GET(req: Request, { params }: Props) {
               <div>{statusLabel}</div>
             </div>
 
-            {/* Title */}
-            <div
-              style={{
-                display: "-webkit-box",
-                fontSize: sized.fontSize,
-                fontWeight: 700,
-                lineHeight: 1.1,
-                color: "#ffffff",
-                overflow: "hidden",
-                letterSpacing: "-0.015em",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-              }}
-            >
-              {title}
-            </div>
-
-            {/* Subtitle */}
-            {subtitle && (
-              <div
-                style={{
-                  display: "-webkit-box",
-                  marginTop: 20,
-                  fontSize: 26,
-                  lineHeight: 1.3,
-                  color: "rgba(255, 255, 255, 0.8)",
-                  overflow: "hidden",
-                  WebkitLineClamp: sized.subtitleClamp,
-                  WebkitBoxOrient: "vertical",
-                }}
-              >
-                {subtitle}
-              </div>
-            )}
+            <OgName name={title} size={titleFontSize(title.main).fontSize} />
+            {performance && <OgName name={performance} size={Math.min(32, titleFontSize(performance.main).fontSize)} secondary />}
 
             <div style={{ display: "flex", flex: 1 }} />
 
@@ -297,7 +252,7 @@ export async function GET(req: Request, { params }: Props) {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginTop: 32,
+                marginTop: 18,
               }}
             >
               <div

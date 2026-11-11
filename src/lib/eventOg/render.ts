@@ -8,13 +8,13 @@ import { OG_FONTS, OG_FONT_STACK } from "../ogFonts";
 import type { CardContent, CardMode } from "./content";
 
 export const TEMPLATE = {
-  id: "event-setlist-paper-v1",
+  id: "event-setlist-paper-v2",
   width: 1200, height: 630,
-  textWidth: 712,
-  title: { min: 40, max: 60, lines: 4, height: 208, lineHeight: 1.18 },
-  performance: { min: 28, max: 32, lines: 2, height: 78, lineHeight: 1.18 },
-  context: { min: 24, max: 24, lines: 1, height: 30, lineHeight: 1.18 },
-  venue: { min: 28, max: 28, lines: 2, height: 68, lineHeight: 1.18 },
+  textWidth: 905,
+  title: { min: 40, max: 60, lines: 4, height: 224, lineHeight: 1.18 },
+  performance: { min: 28, max: 34, lines: 2, height: 82, lineHeight: 1.18 },
+  context: { min: 28, max: 28, lines: 1, height: 60, lineHeight: 1.18 },
+  venue: { min: 30, max: 32, lines: 2, height: 108, lineHeight: 1.18 },
 } as const;
 export const sha256 = (bytes: string | Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const ACCENTS = { prediction: "#bc2869", live: "#176bb1", setlist: "#7042b4" };
@@ -45,7 +45,8 @@ export async function loadCardResources(root: string) {
 }
 export type CardResources = Awaited<ReturnType<typeof loadCardResources>>;
 
-type Layout = { fontSize: number; height: number; lines: number };
+type TextLayout = { fontSize: number; height: number; lines: number };
+type Layout = TextLayout & { sub: TextLayout | null };
 type LayoutField = "title" | "performance" | "context" | "venue" | "date" | "label";
 export class CardLayoutError extends Error {
   readonly field: LayoutField;
@@ -55,40 +56,74 @@ export class CardLayoutError extends Error {
   }
 }
 export class CardFontError extends Error {}
-async function fit(field: LayoutField, text: string, area: { min: number; max: number; lines: number; height: number; lineHeight: number }, fonts: Font[]): Promise<Layout> {
-  if (!text) return { fontSize: area.max, height: 0, lines: 0 };
-  if (/[\u0000-\u001f\u007f]/u.test(text)) throw new Error("제어 문자가 포함된 표시 내용입니다.");
+/** Reserve measured space for each language before rendering the labels. */
+async function fit(
+  field: LayoutField, text: string, sub: string | null,
+  area: { min: number; max: number; lines: number; height: number; lineHeight: number },
+  fonts: Font[],
+): Promise<Layout> {
+  if (!text && !sub) return { fontSize: area.max, height: 0, lines: 0, sub: null };
+  if (/[\u0000-\u001f\u007f]/u.test(text) || (sub && /[\u0000-\u001f\u007f]/u.test(sub))) {
+    throw new Error("제어 문자가 포함된 표시 내용입니다.");
+  }
   for (let size = area.max; size >= area.min; size -= 2) {
-    let measured = 0;
+    const subSize = Math.round(size * 0.84);
+    let height = 0;
+    let subHeight = 0;
+    const measure = (value: string, fontSize: number, part: string) => h("div", {
+      "data-measure": part, style: { fontSize, lineHeight: area.lineHeight, wordBreak: "break-word" },
+    }, value);
     await satori(box({ width: TEMPLATE.textWidth, flexDirection: "column", fontFamily: OG_FONT_STACK, fontWeight: 700 },
-      h("div", { "data-measure": true, style: { fontSize: size, lineHeight: area.lineHeight, wordBreak: "break-word" } }, text)), {
+      text ? measure(text, size, "main") : null, sub ? measure(sub, subSize, "sub") : null), {
       width: TEMPLATE.textWidth, fonts,
       loadAdditionalAsset: async (_code, segment) => { throw new CardFontError(`필수 글리프 누락: ${segment}`); },
-      onNodeDetected: (node) => { if (node.props["data-measure"]) measured = node.height; },
+      onNodeDetected: (node) => {
+        if (node.props["data-measure"] === "main") height = node.height;
+        if (node.props["data-measure"] === "sub") subHeight = node.height;
+      },
     });
-    const lines = Math.round(measured / (size * area.lineHeight));
-    if (measured > 0 && measured <= area.height && lines <= area.lines) return { fontSize: size, height: measured, lines };
+    const lines = Math.round(height / (size * area.lineHeight));
+    const subLines = Math.round(subHeight / (subSize * area.lineHeight));
+    if ((!text || height > 0) && (!sub || subHeight > 0)
+      && height + subHeight <= area.height && lines <= area.lines && subLines <= area.lines) {
+      return { fontSize: size, height, lines, sub: sub ? { fontSize: subSize, height: subHeight, lines: subLines } : null };
+    }
   }
   throw new CardLayoutError(`읽기 가능한 배치 실패 (${area.min}px / ${area.lines}줄): ${text}`, field);
 }
 
+/** Reject overflow before the image can enter a preview packet for approval. */
 export async function renderCard(content: CardContent, mode: CardMode, label: string, resources: CardResources) {
   const { fonts } = resources;
-  const layout = {
-    title: await fit("title", content.title, { ...TEMPLATE.title, height: content.context ? 203 : TEMPLATE.title.height }, fonts),
-    performance: await fit("performance", content.performance, TEMPLATE.performance, fonts),
-    context: await fit("context", content.context, TEMPLATE.context, fonts),
-    venue: await fit("venue", content.venue, TEMPLATE.venue, fonts),
-    date: await fit("date", content.date, { min: 34, max: 34, lines: 1, height: 43, lineHeight: 1.18 }, fonts),
-    label: await fit("label", label, { min: 30, max: 30, lines: 1, height: 38, lineHeight: 1.18 }, fonts),
-  };
+  const performance = await fit("performance", content.performance, content.performanceSub, TEMPLATE.performance, fonts);
+  const context = await fit("context", content.context, content.contextSub, TEMPLATE.context, fonts);
+  const venue = await fit("venue", content.venue, content.venueSub, TEMPLATE.venue, fonts);
+  const date = await fit("date", content.date, null, { min: 30, max: 30, lines: 1, height: 39, lineHeight: 1.18 }, fonts);
+  const labelLayout = await fit("label", label, null, { min: 30, max: 30, lines: 1, height: 38, lineHeight: 1.18 }, fonts);
+  const totalHeight = (part: Layout) => part.height + (part.sub?.height ?? 0);
+  const gap = 6;
+  let top = 154;
+  const supportingHeight = [performance, context, venue, date].reduce((height, part) =>
+    totalHeight(part) ? height + totalHeight(part) + gap : height, 0);
+  const titleHeight = Math.min(TEMPLATE.title.height, TEMPLATE.height - top - supportingHeight - gap - 8);
+  const title = await fit("title", content.title, content.titleSub, { ...TEMPLATE.title, height: titleHeight }, fonts);
+  const layout = { title, performance, context, venue, date, label: labelLayout };
   const accent = ACCENTS[mode];
-  const text = (value: string, top: number, size: number, color = "#172542") => box({ position: "absolute", left: 54, top, width: TEMPLATE.textWidth, fontSize: size, lineHeight: 1.18, wordBreak: "break-word", color }, value);
-  const sheet = box({ position: "absolute", left: 830, top: 154, width: 310, height: 412, borderRadius: 24, background: "#ffffff", border: "2px solid #d5e0f3", transform: "rotate(7deg)", flexDirection: "column", padding: "34px 24px", boxShadow: "0 14px 28px #c9d7ee" },
+  const text = (value: string, sub: string | null, measured: Layout, color = "#172542") => {
+    if (!value && !sub) return null;
+    const line = (value: string, fontSize: number, color: string) =>
+      box({ fontSize, lineHeight: 1.18, wordBreak: "break-word", color }, value);
+    const group = box({ position: "absolute", left: 54, top, width: TEMPLATE.textWidth, flexDirection: "column" },
+      value ? line(value, measured.fontSize, color) : null,
+      sub && measured.sub ? line(sub, measured.sub.fontSize, "#445976") : null);
+    top += totalHeight(measured) + gap;
+    return group;
+  };
+  const sheet = box({ position: "absolute", left: 992, top: 154, width: 150, height: 412, borderRadius: 24, background: "#ffffff", border: "2px solid #d5e0f3", transform: "rotate(7deg)", flexDirection: "column", padding: "34px 14px", boxShadow: "0 14px 28px #c9d7ee" },
     box({ width: 80, height: 7, borderRadius: 4, background: accent, marginBottom: 34 }),
     ...Array.from({ length: 6 }, (_, i) => box({ alignItems: "center", marginBottom: 24, gap: 14 },
       box({ fontSize: 23, color: "#7d8dab" }, String(i + 1).padStart(2, "0")),
-      box({ width: [164, 134, 153, 118, 142, 109][i], height: 14, borderRadius: 7, background: i % 2 ? "#dce9f8" : "#e7dcf5", borderLeft: `5px solid ${accent}` }),
+      box({ width: [76, 67, 68, 53, 72, 60][i], height: 14, borderRadius: 7, background: i % 2 ? "#dce9f8" : "#e7dcf5", borderLeft: `5px solid ${accent}` }),
     )),
   );
   const tree = box({ width: 1200, height: 630, position: "relative", fontFamily: OG_FONT_STACK, fontWeight: 700, background: "linear-gradient(115deg, #f5faff 0%, #edf4ff 58%, #eeeafa 100%)", color: "#172542" },
@@ -96,18 +131,18 @@ export async function renderCard(content: CardContent, mode: CardMode, label: st
     h("img", { src: resources.logo, width: 40, height: 40, alt: "", style: { position: "absolute", left: 54, top: 38 } }),
     h("img", { src: resources.wordmark, width: 220, height: 48, alt: "", style: { position: "absolute", left: 106, top: 49 } }),
     box({ position: "absolute", left: 54, top: 101, padding: "7px 16px", borderLeft: `5px solid ${accent}`, background: "#ffffff", color: accent, fontSize: 30, lineHeight: 1.18 }, label),
-    text(content.context, 159, layout.context.fontSize, "#596a87"),
-    text(content.title, content.context ? 195 : 163, layout.title.fontSize),
-    text(content.performance, 405, layout.performance.fontSize, "#334968"),
-    text(content.date, 492, layout.date.fontSize),
-    text(content.venue, 543, layout.venue.fontSize, "#445976"),
+    text(content.context, content.contextSub, layout.context, "#596a87"),
+    text(content.title, content.titleSub, layout.title),
+    text(content.performance, content.performanceSub, layout.performance, "#334968"),
+    text(content.date, null, layout.date),
+    text(content.venue, content.venueSub, layout.venue, "#445976"),
     sheet,
     // Small mode motif; positions and sheet geometry stay constant.
     box({ position: "absolute", left: 1080, top: 93, width: 34, height: 34, borderRadius: mode === "live" ? 17 : 6, border: `3px solid ${accent}`, transform: "rotate(12deg)", background: mode === "setlist" ? accent : "transparent" }),
   );
   // Both passes use the same Satori/fonts. Validate the whole composition too:
   // fitting each string alone must not hide collisions with adjacent regions.
-  if (layout.title.height + (content.context ? 195 : 163) > 398) throw new CardLayoutError("제목과 회차 영역이 겹칩니다.", "title");
+  if (top > TEMPLATE.height) throw new CardLayoutError("카드의 텍스트 영역을 벗어났습니다.", "venue");
   const png = Buffer.from(await new ImageResponse(tree, { width: 1200, height: 630, fonts }).arrayBuffer());
   return { png, layout };
 }

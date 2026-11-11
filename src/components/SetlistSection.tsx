@@ -1,5 +1,6 @@
 "use client";
 
+import type { ShareNames } from "@/lib/shareNames";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { ActualSetlist } from "@/components/ActualSetlist";
@@ -51,6 +52,7 @@ interface Props {
   seriesName: string;
   eventTitle: string;
   dateLine: string;
+  shareNames?: ShareNames;
   /**
    * D-7 open-window indicator (Wishlist + Predicted Setlist
    * visibility, from `raw/20260503-1b-1c-timeline.md` §"희망곡/예상곡
@@ -127,6 +129,7 @@ export function SetlistSection({
   seriesName,
   eventTitle,
   dateLine,
+  shareNames,
   isWishPredictOpen,
   emptyFallback,
   availableSongs,
@@ -244,6 +247,7 @@ export function SetlistSection({
         seriesName={seriesName}
         eventTitle={eventTitle}
         dateLine={dateLine}
+        shareNames={shareNames}
         availableSongs={availableSongs}
         unitFilters={unitFilters}
         boardGroups={boardGroups}

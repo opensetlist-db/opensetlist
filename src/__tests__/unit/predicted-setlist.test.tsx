@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act, render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent, within } from "@testing-library/react";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, vars?: Record<string, unknown>) => {
@@ -186,6 +186,35 @@ describe("PredictedSetlist — render gates by status + lock", () => {
     expect(screen.getByText("afterHint")).toBeTruthy();
     expect(screen.getByText(/finalScore:/)).toBeTruthy();
   });
+});
+
+it("shares the current locale catalog titles without rewriting saved predictions", () => {
+  writePredictions("1", [entry(10, "残陽"), entry(11, "夢の歌")]);
+  const before = localStorage.getItem("predict-1");
+  render(
+    <PredictedSetlist
+      eventId="1"
+      locale="ko"
+      startTime={FUTURE}
+      status="upcoming"
+      actualSongs={[]}
+      seriesName="Test Series"
+      eventTitle="Test Event"
+      dateLine="2026-05-23"
+      availableSongs={[{
+        ...SAMPLE_AVAILABLE[0],
+        translations: [{ locale: "ko", title: "잔양", variantLabel: null }],
+      }]}
+      unitFilters={SAMPLE_FILTERS}
+    />,
+  );
+  fireEvent.click(screen.getByTestId("personal-share-open"));
+  const dialog = screen.getByTestId("personal-share-dialog");
+  const card = within(dialog).getAllByTestId("personal-share-card")[0];
+  expect(within(card).getByText("残陽")).toBeTruthy();
+  expect(within(card).getByText("잔양")).toBeTruthy();
+  expect(within(card).getByText("夢の歌")).toBeTruthy();
+  expect(localStorage.getItem("predict-1")).toBe(before);
 });
 
 describe("PredictedSetlist — add / remove", () => {
