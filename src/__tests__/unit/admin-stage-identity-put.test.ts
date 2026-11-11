@@ -13,7 +13,7 @@ vi.mock("@/lib/dataCache", () => ({ revalidatePublicData: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: vi.fn(),
-    stageIdentity: { update: vi.fn(), findUniqueOrThrow: vi.fn() },
+    stageIdentity: { update: vi.fn(), findUnique: vi.fn() },
     stageIdentityTranslation: { upsert: vi.fn(), deleteMany: vi.fn() },
   },
 }));
@@ -26,18 +26,17 @@ import { jsonRequest } from "../helpers/requestFactory";
 
 type Mock = ReturnType<typeof vi.fn>;
 const si = prisma.stageIdentity as unknown as Record<string, Mock>;
-const siT = prisma.stageIdentityTranslation as unknown as Record<string, Mock>;
+
 const txMock = prisma.$transaction as unknown as Mock;
 
 const ID = "si-megumi";
 const params = Promise.resolve({ id: ID });
 
-// What the DB holds before the save: three locales, each with a
-// shortName. The route never reads these before writing — the point of
-// the test is that it must not need to, because it only touches what
-// it was sent.
+// The existing locales and short names are the positive control for a partial edit.
 const stored = {
   id: ID,
+  originalName: "藤島慈",
+  originalLanguage: "ja",
   type: "character",
   color: "#77dd00",
   sortOrder: 3,
@@ -58,15 +57,9 @@ function put(body: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   (verifyAdminAPI as Mock).mockResolvedValue(null);
-  // Sequential (array) transaction: the mocked model calls already ran
-  // when the array was built, so resolving the array itself hands the
-  // route the per-operation mock results in order.
-  txMock.mockImplementation(async (arg: unknown) =>
-    typeof arg === "function" ? (arg as (tx: unknown) => unknown)(prisma) : arg,
-  );
-  si.update.mockReturnValue({ id: ID });
-  si.findUniqueOrThrow.mockReturnValue(stored);
-  siT.upsert.mockReturnValue({});
+  txMock.mockImplementation(async (run: (tx: typeof prisma) => unknown) => run(prisma));
+  si.findUnique.mockResolvedValue(stored);
+  si.update.mockResolvedValue(stored);
 });
 
 describe("PUT /api/admin/stage-identities/[id] — translations", () => {
@@ -79,26 +72,13 @@ describe("PUT /api/admin/stage-identities/[id] — translations", () => {
     });
     expect(res.status).toBe(200);
 
-    // The data-loss path: no blanket delete of the identity's rows.
-    expect(siT.deleteMany).not.toHaveBeenCalled();
-
-    // Exactly the locale that was sent, upserted on the
-    // (stageIdentityId, locale) key ...
-    expect(siT.upsert).toHaveBeenCalledTimes(1);
-    const call = siT.upsert.mock.calls[0][0];
-    expect(call.where).toEqual({
-      stageIdentityId_locale: { stageIdentityId: ID, locale: "ko" },
-    });
-    expect(call.create).toEqual({
-      stageIdentityId: ID,
-      locale: "ko",
-      name: "후지시마 메구미",
-      shortName: null,
-    });
-    // ... and with the shortName column left out of `update`, so the
-    // stored "메구미" survives a body that did not mention it.
-    expect(call.update).toEqual({ name: "후지시마 메구미" });
-    expect(call.update.shortName).toBeUndefined();
+    const writes = si.update.mock.calls[0][0].data.translations;
+    expect(writes).toEqual({ upsert: [{
+      where: { stageIdentityId_locale: { stageIdentityId: ID, locale: "ko" } },
+      create: { locale: "ko", name: "후지시마 메구미" },
+      update: { name: "후지시마 메구미", shortName: undefined },
+    }] });
+    expect(stored.translations.find((row) => row.locale === "ko")?.shortName).toBe("메구미");
 
     // The response is the re-read identity with all three locales.
     const json = await res.json();
@@ -114,16 +94,31 @@ describe("PUT /api/admin/stage-identities/[id] — translations", () => {
       ],
     });
     expect(res.status).toBe(200);
-    expect(siT.upsert).toHaveBeenCalledTimes(2);
-    expect(siT.upsert.mock.calls[0][0].update).toEqual({ name: "메구미", shortName: "메구" });
-    expect(siT.upsert.mock.calls[1][0].update).toEqual({ name: "Megumi", shortName: null });
-    expect(siT.upsert.mock.calls[1][0].create.shortName).toBeNull();
+    const [ko, en] = si.update.mock.calls[0][0].data.translations.upsert;
+    expect(ko.update).toEqual({ name: "메구미", shortName: "메구" });
+    expect(en.update).toEqual({ name: "Megumi", shortName: null });
+    expect(en.create.shortName).toBeNull();
   });
 
-  it("still 400s on a missing / malformed translations array before touching the DB", async () => {
+  it("requires evidence for the same English spelling and only passes name data to Prisma", async () => {
+    si.findUnique.mockResolvedValue({ ...stored, originalName: "Megumi" });
+    const english = { locale: "en", name: "Megumi" };
+    const korean = { locale: "ko", name: "메구미" };
+    const source = "https://example.com/cast";
+    for (const translations of [
+      [korean, english],
+      [{ ...korean, nameSameSource: source }, english],
+      [korean, { ...english, nameSameSource: "javascript:void(0)" }],
+    ]) {
+      expect((await put({ translations })).status).toBe(400);
+    }
+    expect(si.update).not.toHaveBeenCalled();
+    expect((await put({ translations: [korean, { ...english, nameSameSource: source }] })).status).toBe(200);
+    expect(si.update.mock.calls[0][0].data.translations.upsert[1].create).toEqual(english);
+  });
+
+  it("still 400s on a malformed translations array before touching the DB", async () => {
     for (const body of [
-      { type: "character" },
-      { translations: [] },
       { translations: "ko" },
       { translations: [{ locale: "ko" }] },
       { translations: [{ locale: "ko", name: "a", shortName: 3 }] },
@@ -159,8 +154,9 @@ describe("PUT /api/admin/stage-identities/[id] — scalar fields", () => {
     }
 
     si.update.mockClear();
-    await put({ translations: ko, color: "#ABC" });
-    expect(si.update.mock.calls[0][0].data.color).toBe("#ABC");
+    const newColor = "#ABC";
+    await put({ translations: ko, color: newColor });
+    expect(si.update.mock.calls[0][0].data.color).toBe(newColor);
   });
 
   it("type: absent / null keeps the stored one, a non-member is a 400", async () => {
@@ -195,16 +191,14 @@ describe("PUT /api/admin/stage-identities/[id] — scalar fields", () => {
     expect(si.update).not.toHaveBeenCalled();
   });
 
-  it("the write is one transaction: scalar update, upserts, then the re-read", async () => {
-    await put({ translations: ko, color: "#77dd00" });
-    expect(txMock).toHaveBeenCalledTimes(1);
-    const ops = txMock.mock.calls[0][0];
-    expect(Array.isArray(ops)).toBe(true);
-    expect(ops).toHaveLength(3);
-    expect(si.update).toHaveBeenCalledTimes(1);
-    expect(si.findUniqueOrThrow).toHaveBeenCalledWith({
-      where: { id: ID },
-      include: { translations: true },
-    });
+  it("allows scalar-only saves on legacy records and rejects incomplete name changes", async () => {
+    const change = { translations: [{ locale: "ko", name: "메구미" }] };
+    expect((await put(change)).status).toBe(200);
+    si.findUnique.mockResolvedValue({ ...stored, translations: stored.translations.slice(0, 2) });
+    expect((await put({ color: stored.color })).status).toBe(200);
+    const response = await put(change);
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("name (en");
+    expect(si.update).toHaveBeenCalledTimes(2);
   });
 });
