@@ -151,15 +151,15 @@ export function reviewCatalog(entries, { audit = false } = {}) {
       const sourceChanged = !audit && !!stored && (original !== stored.original ||
         originalLanguage !== (stored.originalLanguage ?? "ja") || shortRule !== previousShortRule);
       const storedValue = (locale) => stored?.translations?.find((item) => item.locale === locale)?.value ?? "";
-      if (!audit && stored && !sourceChanged &&
-          locales.every((locale) => storedValue(locale) === (translations.find((item) => item.locale === locale)?.value ?? ""))) {
-        return [];
-      }
-      if (!audit && !originalSource) reasons.push(`${field}: missing original source`);
-      return locales.map((locale) => {
+      const unchanged = !audit && !!stored && !sourceChanged &&
+        locales.every((locale) => storedValue(locale) === (translations.find((item) => item.locale === locale)?.value ?? ""));
+      if (!audit && !unchanged && !originalSource) reasons.push(`${field}: missing original source`);
+      return locales.flatMap((locale) => {
+        const submitted = audit ? undefined : cells[`${prefix}${locale}_${field}`];
+        if (unchanged && !submitted) return [];
         const entry = translations.find((item) => item.locale === locale);
-        let status = "missing-original";
-        if (original?.trim()) {
+        let status = unchanged ? undefined : "missing-original";
+        if (!unchanged && original?.trim()) {
           status = shortRule === "full-name" && !entry?.value?.trim() ? "full-name" : resolveDisplayPair(
             { original, originalLanguage }, translations, locale, "value",
             {
@@ -169,14 +169,14 @@ export function reviewCatalog(entries, { audit = false } = {}) {
           ).status;
         }
         status = catalogLocaleReviewIssue({
-          locale, value: entry?.value, originalLanguage, sourceChanged,
-          submitted: audit ? undefined : cells[`${prefix}${locale}_${field}`], status,
+          locale, value: unchanged ? submitted : entry?.value, originalLanguage, sourceChanged, submitted, status,
         }) ?? status;
+        if (!status) return [];
         const missing = incompleteStatuses.has(status);
         if (!audit && (missing || (status === "present" && !entry?.source))) {
           reasons.push(`${locale} ${field}: ${missing ? status : "missing source"}`);
         }
-        return { field, locale, status, source: entry?.source };
+        return [{ field, locale, status, source: entry?.source }];
       });
     });
     const dependencies = [...new Set([

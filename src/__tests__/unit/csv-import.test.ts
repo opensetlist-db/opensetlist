@@ -152,6 +152,9 @@ describe("catalog display completeness", () => {
     expect(catalogDisplayIssues({}, existing, { originalTitle: "別の題名" }, [ko, en], title)).toEqual([]);
     const legacy = { ...mixed, translations: [{ ...ko, title: "永久의 노래" }, en] };
     expect(catalogDisplayIssues({}, legacy, {}, [], title)).toEqual([]);
+    expect(catalogDisplayIssues({}, legacy, {}, [en], title)).toEqual([]);
+    expect(catalogDisplayIssues({}, legacy, {}, [legacy.translations[0]], title))
+      .toEqual(["ko_title: localized-japanese-script"]);
     expect(catalogDisplayIssues({}, existing, {}, legacy.translations, title)).toEqual(["ko_title: localized-japanese-script"]);
     expect(catalogDisplayIssues({}, legacy, { originalTitle: "Day.1" }, [], title)).toEqual([]);
     expect(catalogDisplayIssues({}, legacy, { originalTitle: "Day.1" }, [legacy.translations[0]], title))
@@ -213,6 +216,11 @@ describe("catalog display completeness", () => {
     expect(reviewCatalog([date]).ready).toEqual(["album:fixture"]);
     expect(() => verifyReviewedCsv(date)).not.toThrow();
     expect(reviewCatalog([date], { audit: true }).statuses).toMatchObject({ "localized-japanese-script": 1 });
+    const repeated = reviewCatalog([entry(["fixture", "", oldKo.value, "", "2026-10-01"])]);
+    expect(repeated.ready).toEqual([]);
+    expect(repeated.held[0]?.reasons).toEqual(["ko title: localized-japanese-script"]);
+    expect(reviewCatalog([entry(["fixture", "", "", oldEn.value, "2026-10-01"])]).ready)
+      .toEqual(["album:fixture"]);
 
     const changed = { ...field, original: "無限大の歌" };
     const stale = reviewCatalog([entry(["fixture", changed.original, "", "", ""], changed)]);

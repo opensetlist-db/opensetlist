@@ -564,5 +564,20 @@ describe("CSV import keeps covers", () => {
       id: before.id, releaseDate: afterDate.releaseDate, originalTitle: changedTitle, imageUrl: before.imageUrl,
     });
     expect(accepted.translations.map((row) => row.title)).toEqual(["Infinite Song", "무한대의 노래"]);
+
+    const legacyTitle = "Infinite 歌";
+    await prisma.albumTranslation.update({
+      where: { albumId_locale: { albumId, locale: "en" } },
+      data: { title: legacyTitle },
+    });
+    const legacy = await read();
+    const dateHeader = "slug,releaseDate,en_title";
+    const repeated = await importCsv(`${dateHeader}\n${TAG},2026-10-02,${legacyTitle}`);
+    expect(repeated.status).toBe(400);
+    expect((await repeated.json()).error).toContain("en_title: localized-japanese-script");
+    expect(await read()).toEqual(legacy);
+
+    expect((await importCsv(`${dateHeader}\n${TAG},2026-10-02,`)).status).toBe(200);
+    expect(await read()).toEqual({ ...legacy, releaseDate: new Date("2026-10-02") });
   });
 });

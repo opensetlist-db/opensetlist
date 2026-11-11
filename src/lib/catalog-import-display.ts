@@ -64,21 +64,22 @@ export function catalogDisplayIssues(
         }
       }
     }
-    if (existing && !sourceChanged &&
-        translations.every(({ before, value }) => before === value)) continue;
-    if (!original.trim()) {
+    const unchanged = existing !== null && !sourceChanged &&
+      translations.every(({ before, value }) => before === value);
+    if (!unchanged && !original.trim()) {
       if (kind || translations.some(({ value }) => value.trim())) {
         issues.push(`${prefix}${originalKey}: 원문 표기가 필요합니다`);
       }
       continue;
     }
     for (const { locale, value, submitted } of translations) {
+      if (unchanged && !submitted.trim()) continue;
       const key = `${prefix}${locale}_${field}`;
       if (shortRule === "full-name" && !value.trim()) continue;
-      const { status } = resolveDisplayPair({ original, originalLanguage }, translations, locale, "value", {
+      const status = unchanged ? undefined : resolveDisplayPair({ original, originalLanguage }, translations, locale, "value", {
         kind: kind === "title" || shortRule === "title" ? "title" : undefined,
         sameValueConfirmed: isSameSpellingSource(row[`${key}_same_source`]),
-      });
+      }).status;
       const issue = catalogLocaleReviewIssue({ locale, value, originalLanguage, sourceChanged, submitted, status });
       if (issue) {
         issues.push(`${key}: ${issue}`);

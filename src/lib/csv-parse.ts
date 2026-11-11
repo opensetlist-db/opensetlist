@@ -42,12 +42,14 @@ export function catalogLocaleReviewIssue({
   originalLanguage: string;
   sourceChanged: boolean;
   submitted?: string;
-  status: string;
+  status?: string;
 }) {
-  // Excluded titles and unchanged original-language copies supply no localized display text.
-  if ((locale === "ko" || locale === "en") && value &&
-      /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(value.normalize("NFKC")) &&
-      (submitted?.trim() || (status !== "exempt" && status !== "original-language"))) return "localized-japanese-script";
+  // Without a display status, only explicitly submitted text is under review.
+  if ((submitted?.trim() || (status && status !== "exempt" && status !== "original-language")) &&
+      (locale === "ko" || locale === "en") && value &&
+      /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(value.normalize("NFKC"))) {
+    return "localized-japanese-script";
+  }
   if (sourceChanged && locale !== originalLanguage && !submitted?.trim() &&
       (status === "present" || status === "confirmed-same")) return "source-review";
   return undefined;

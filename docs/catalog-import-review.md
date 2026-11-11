@@ -30,7 +30,8 @@ imports. Use the separate bonus review for album bonuses.
    normal file order and event boundaries.
 4. Recompare the ready inputs with the latest database values before applying.
    Stop on unexpected changes. CSV name columns patch nonblank values and
-   preserve omitted or blank translated cells. To clear a stored translation
+   preserve omitted or blank translated cells. Resubmitted spellings still
+   need to pass the script check. To clear a stored translation
    intentionally, use its entity editor. For a verified identical value, put
    the source URL in the matching CSV column with `_same_source` appended,
    such as `va_en_name_same_source`. Attach the source excerpt or saved
