@@ -1,3 +1,4 @@
+import { checkIdentityNames, identityTranslations } from "@/lib/adminIdentityNames";
 import {
   AdminFieldResult,
   nullableBoolean,
@@ -56,8 +57,8 @@ export function parseArtistDisplayFields(
 export type ArtistTranslationInput = {
   locale: string;
   name: string;
-  shortName: string | null;
-  bio: string | null;
+  shortName?: string | null;
+  bio?: string | null;
 };
 
 export type StageIdentityTranslationInput = {
@@ -75,7 +76,8 @@ export type StageIdentityTranslationInput = {
 export type RealPersonTranslationInput = {
   locale: string;
   name: string;
-  stageName: string | null;
+  stageName?: string | null;
+  shortName?: string | null;
 };
 
 export type ParsedRealPerson = {
@@ -107,26 +109,16 @@ export function parseArtistTranslations(
     if (!locale.ok) return locale;
     const name = requireString(t.name, `translations[${i}].name`);
     if (!name.ok) return name;
-    // shortName must round-trip: the edit route deletes and recreates
-    // every ArtistTranslation from this payload, so a field dropped here
-    // is wiped from the DB on each admin save (the chip/short-label
-    // fallback in displayNameWithFallback then shows the full name).
-    const shortName = nullableString(
-      t.shortName,
-      `translations[${i}].shortName`
-    );
+    const shortName = nullableString(t.shortName, `translations[${i}].shortName`);
     if (!shortName.ok) return shortName;
     const bio = nullableString(t.bio, `translations[${i}].bio`);
     if (!bio.ok) return bio;
-    return {
-      ok: true,
-      value: {
-        locale: locale.value,
-        name: name.value,
-        shortName: shortName.value,
-        bio: bio.value,
-      },
-    };
+    return { ok: true, value: {
+      locale: locale.value,
+      name: name.value,
+      ...("shortName" in t ? { shortName: shortName.value } : {}),
+      ...("bio" in t ? { bio: bio.value } : {}),
+    } };
   });
 }
 
@@ -163,12 +155,15 @@ export function parseRealPersonTranslations(
     if (!name.ok) return name;
     const stageName = nullableString(t.stageName, `${prefix}[${i}].stageName`);
     if (!stageName.ok) return stageName;
+    const shortName = nullableString(t.shortName, `${prefix}[${i}].shortName`);
+    if (!shortName.ok) return shortName;
     return {
       ok: true,
       value: {
         locale: locale.value,
         name: name.value,
-        stageName: stageName.value,
+        ...("stageName" in t ? { stageName: stageName.value } : {}),
+        ...("shortName" in t ? { shortName: shortName.value } : {}),
       },
     };
   });
@@ -196,21 +191,19 @@ export function parseRealPerson(
   if (!stageName.ok) return stageName;
   const language = parseOriginalLanguage(rp.originalLanguage);
   if (!language.ok) return language;
-  const translations = parseRealPersonTranslations(
-    rp.translations,
-    `${prefix}.translations`
+  const translations = identityTranslations(rp.translations, (raw) =>
+    parseRealPersonTranslations(raw, `${prefix}.translations`),
   );
   if (!translations.ok) return translations;
-  return {
-    ok: true,
-    value: {
-      originalName: name.value,
-      originalShortName: shortName.value,
-      originalStageName: stageName.value,
-      originalLanguage: language.value,
-      translations: translations.value,
-    },
+  const person = {
+    originalName: name.value,
+    originalShortName: shortName.value,
+    originalStageName: stageName.value,
+    originalLanguage: language.value,
+    translations: translations.value,
   };
+  const message = checkIdentityNames(prefix, { ...person, sameNameConfirmations: translations.sameNameConfirmations });
+  return message ? { ok: false, message } : { ok: true, value: person };
 }
 
 export function parseStageIdentity(
@@ -239,11 +232,19 @@ export function parseStageIdentity(
   if (!shortName.ok) return shortName;
   const language = parseOriginalLanguage(si.originalLanguage);
   if (!language.ok) return language;
-  const translations = parseStageIdentityTranslations(
-    si.translations,
-    `${prefix}.translations`
+  const translations = identityTranslations(si.translations, (raw) =>
+    parseStageIdentityTranslations(raw, `${prefix}.translations`),
   );
   if (!translations.ok) return translations;
+
+  const message = checkIdentityNames(prefix, {
+    originalName: name.value,
+    originalShortName: shortName.value,
+    originalLanguage: language.value,
+    translations: translations.value,
+    sameNameConfirmations: translations.sameNameConfirmations,
+  });
+  if (message) return { ok: false, message };
 
   let realPerson: ParsedRealPerson | null = null;
   if (si.realPerson !== undefined && si.realPerson !== null) {

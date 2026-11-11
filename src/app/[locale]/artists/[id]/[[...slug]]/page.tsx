@@ -1,3 +1,4 @@
+import { IdentityName, identityName, identityNameText } from "@/components/artists/IdentityName";
 import { cache } from "react";
 import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { notFound } from "next/navigation";
@@ -18,7 +19,6 @@ import {
 } from "@/lib/utils";
 import {
   displayNameWithFallback,
-  displayOriginalName,
   resolveLocalizedField,
 } from "@/lib/display";
 import { deriveOgPaletteFromCachedArtist } from "@/lib/ogPalette";
@@ -41,7 +41,6 @@ import {
   accentStyle,
   fallbackNameLang,
   localizedFieldLang,
-  originalLang,
 } from "@/components/artists/artistDetail";
 import styles from "@/components/artists/artistDetail.module.css";
 
@@ -275,17 +274,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const artist = await getArtist(artistId);
   if (!artist) return { title: metaT("notFound") };
   const palette = await deriveOgPaletteFromCachedArtist(artist);
-  const fullName = displayNameWithFallback(
-    artist,
-    artist.translations,
-    locale,
-    "full",
-  );
-  const shortName = displayNameWithFallback(artist, artist.translations, locale);
+  const fullName = identityNameText(identityName(artist, locale));
   if (!fullName) return { title: "OpenSetlist" };
 
   const title = metaT("artistTitle", { name: fullName });
-  const description = metaT("artistDescription", { name: shortName || fullName });
+  const description = metaT("artistDescription", { name: fullName });
 
   const ogImage = `/api/og/artist/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
   const alternates = entityAlternates("artists", locale, id, artist.slug);
@@ -349,44 +342,12 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // UTC-only rule + matches the artists-list-redesign pattern).
   const referenceNow = new Date();
 
-  // H1: localized name BIG, original name SMALL (operator preference).
-  // `displayOriginalName` is translation-primary at the helper level, so
-  // `.main` is the headline and `.sub` (set only when a distinct
-  // viewer-locale translation exists) is the original-language line.
-  // With no translation, `.main` IS the original — mark it with the
-  // source language so an English page reads a Japanese H1 as Japanese
-  // (20 review: missing source-language attributes).
-  const { main: artistPrimaryName, sub: artistSecondaryName } =
-    displayOriginalName(artist, artist.translations, locale);
-  const localizedFullName = artistPrimaryName || t("unknown");
-  const headlineLang = artistSecondaryName
-    ? undefined
-    : originalLang(artist.originalLanguage, locale);
-  const bio = resolveLocalizedField(
-    artist,
-    artist.translations,
-    locale,
-    "bio",
-    "originalBio",
-  );
+  const name = identityName(artist, locale, t("unknown"));
+  const bio = resolveLocalizedField(artist, artist.translations, locale, "bio", "originalBio");
   const bioLang = localizedFieldLang(artist, artist.translations, locale, "bio");
-  // Breadcrumb crumbs always render the short variant (project rule:
-  // breadcrumbs prefer compact labels; the same artist's full name
-  // shows in the page header anyway). `displayNameWithFallback` with
-  // `mode: "short"` walks the locale-shortName → locale-name →
-  // original-shortName → original-name cascade so we never blank out
-  // the crumb when the operator hasn't backfilled a short variant.
   const parentName = artist.parentArtist
-    ? displayNameWithFallback(
-        artist.parentArtist,
-        artist.parentArtist.translations,
-        locale,
-        "short",
-      )
+    ? identityName(artist.parentArtist, locale)
     : null;
-  const breadcrumbLeafName =
-    displayNameWithFallback(artist, artist.translations, locale, "short") ||
-    t("unknown");
 
   // Map: stageIdentityId → owning sub-unit. Powers the per-member
   // unit-color treatment without a second pass over subArtists at
@@ -596,29 +557,14 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     <UnitCard
       key={unit.id}
       href={entityPath("artists", locale, unit.id, unit.slug)}
-      name={{
-        text:
-          displayNameWithFallback(unit, unit.translations, locale) ||
-          t("unknown"),
-        lang: fallbackNameLang(unit, unit.translations, locale),
-      }}
+      name={identityName(unit, locale, t("unknown"))}
       // Stored `Artist.color`, else a deterministic slug-palette pick,
       // so colour-pending units stay distinguishable and match their
       // event-page setlist pill (same resolver).
       color={resolveUnitColor(unit)}
-      members={unit.stageLinks.map((sl) => ({
-        text:
-          displayNameWithFallback(
-            sl.stageIdentity,
-            sl.stageIdentity.translations,
-            locale,
-          ) || t("unknownMember"),
-        lang: fallbackNameLang(
-          sl.stageIdentity,
-          sl.stageIdentity.translations,
-          locale,
-        ),
-      }))}
+      members={unit.stageLinks.map(({ stageIdentity }) =>
+        identityName(stageIdentity, locale, t("unknownMember")),
+      )}
     />
   );
 
@@ -666,12 +612,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
             <li key={sl.id}>
               <MemberChip
                 href={entityPath("members", locale, si.id, si.slug)}
-                name={{
-                  text:
-                    displayNameWithFallback(si, si.translations, locale) ||
-                    t("unknownMember"),
-                  lang: fallbackNameLang(si, si.translations, locale),
-                }}
+                name={identityName(si, locale, t("unknownMember"))}
                 // Initial from the locale short-name cascade (a
                 // recognised handle), separate from the full body name.
                 avatarLabel={
@@ -687,26 +628,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                       }
                     : null
                 }
-                unitName={
-                  owningUnit
-                    ? {
-                        // Same fallback as the unit card, so a unit
-                        // with no displayable name never leaves an
-                        // empty second line on the chip.
-                        text:
-                          displayNameWithFallback(
-                            owningUnit,
-                            owningUnit.translations,
-                            locale,
-                          ) || t("unknown"),
-                        lang: fallbackNameLang(
-                          owningUnit,
-                          owningUnit.translations,
-                          locale,
-                        ),
-                      }
-                    : null
-                }
+                unitName={owningUnit ? identityName(owningUnit, locale, t("unknown")) : null}
                 color={color}
               />
             </li>
@@ -775,10 +697,10 @@ export default async function ArtistPage({ params, searchParams }: Props) {
             // Artists and the leaf — so a sub-unit reads
             // `Home > Artists > 蓮ノ空 > Cerise Bouquet`.
             { label: ct("artists"), href: `/${locale}/artists` },
-            ...(artist.parentArtist && parentName
+            ...(artist.parentArtist && parentName?.main
               ? [
                   {
-                    label: parentName,
+                    label: <IdentityName name={parentName} />,
                     href: entityPath(
                       "artists",
                       locale,
@@ -788,7 +710,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   } satisfies BreadcrumbItem,
                 ]
               : []),
-            { label: breadcrumbLeafName },
+            { label: <IdentityName name={name} /> },
           ]}
         />
       </div>
@@ -805,15 +727,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
             {t("title")}
             <span className={styles.badge}>{t(`type.${artist.type}`)}</span>
           </p>
-          <h1 className={styles.title} lang={headlineLang}>
-            {localizedFullName}
+          <h1 className={styles.title} lang={name.lang}>
+            {name.main}
           </h1>
-          {artistSecondaryName && (
+          {name.sub && (
             <p
               className={styles.original}
-              lang={originalLang(artist.originalLanguage, locale)}
+              lang={locale}
             >
-              {artistSecondaryName}
+              {name.sub}
             </p>
           )}
           {bio && (

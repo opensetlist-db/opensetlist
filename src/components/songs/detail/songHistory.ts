@@ -20,12 +20,16 @@ export interface SongHistoryRow {
   id: string;
   seriesId: string | null;
   seriesName: string | null;
+  seriesSub?: string | null;
+  seriesLang?: string;
   status: ResolvedEventStatus;
   /** UTC calendar date `YYYY-MM-DD` for `<time dateTime>`; null = no date. */
   dateTime: string | null;
   formattedDate: string;
   dateMs: number;
   name: string;
+  sub?: string | null;
+  lang?: string;
   href: string;
   isEncore: boolean;
   position: number;
@@ -35,6 +39,8 @@ export interface SongHistoryGroup {
   key: string;
   /** null = the "other events" group (label supplied by the panel). */
   label: string | null;
+  sub?: string | null;
+  lang?: string;
   hasOngoing: boolean;
   rows: SongHistoryRow[];
 }
@@ -63,6 +69,8 @@ export function groupSongHistory(rows: ReadonlyArray<SongHistoryRow>): {
       group: {
         key,
         label: bucket[0].seriesName,
+        sub: bucket[0].seriesSub,
+        lang: bucket[0].seriesLang,
         hasOngoing,
         rows: bucket,
       } satisfies SongHistoryGroup,
@@ -70,7 +78,7 @@ export function groupSongHistory(rows: ReadonlyArray<SongHistoryRow>): {
     };
   });
   ranked.sort((a, b) => b.sortKey - a.sortKey);
-  const groups = ranked.map((r) => r.group);
+  const groups: SongHistoryGroup[] = ranked.map((r) => r.group);
 
   if (other.length > 0) {
     other.sort(byDateDesc);

@@ -24,17 +24,25 @@ export const DEV_PROJECT_REF = "nddawybyuedsrshhxikx";
  * @returns {boolean}
  */
 export function pointsAtDevProject(raw) {
-  let url;
+  return pointsAtSupabaseProject(raw, DEV_PROJECT_REF);
+}
+
+/**
+ * @param {string} raw
+ * @param {string} projectRef
+ * @returns {boolean}
+ */
+export function pointsAtSupabaseProject(raw, projectRef) {
   try {
-    url = new URL(raw);
+    const url = new URL(raw);
+    if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") return false;
+    if (["host", "user", "port"].some((key) => url.searchParams.has(key))) return false;
+    return url.hostname === `db.${projectRef}.supabase.co` ||
+      (url.hostname.endsWith(".pooler.supabase.com") &&
+        decodeURIComponent(url.username) === `postgres.${projectRef}`);
   } catch {
     return false;
   }
-  const direct = url.hostname === `db.${DEV_PROJECT_REF}.supabase.co`;
-  const pooler =
-    url.hostname.endsWith(".pooler.supabase.com") &&
-    decodeURIComponent(url.username) === `postgres.${DEV_PROJECT_REF}`;
-  return direct || pooler;
 }
 
 /**

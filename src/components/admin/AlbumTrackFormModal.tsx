@@ -10,6 +10,8 @@ import {
 } from "@/lib/albumTrackVariants";
 import type { TrackPattern, TrackInitial } from "@/lib/albumTrackTypes";
 import { ADMIN_LANGUAGES } from "@/lib/adminLocales";
+import { locales } from "@/i18n/routing";
+import { trackTitleSnapshot } from "@/lib/albumTrackTitleValidation";
 
 // Re-export so existing AlbumTrackFormModal callers don't break on
 // the type-only move. New callers should import directly from
@@ -24,22 +26,13 @@ type Props = {
 
 // Deliberately a 3-locale subset (no zh-CN): Pattern 3 AlbumTrack
 // translations come from the b01b CSV importer which only ships
-// ja/ko/en columns. ADMIN_LOCALES in @/lib/adminLocales widens to
-// zh-CN for surfaces that DO need it (Album / Listing / Bonus).
-// LANGUAGES derives from ADMIN_LANGUAGES so the labels stay in
-// lockstep — a relabeling in adminLocales propagates here for
-// free.
-const LOCALES = ["ko", "ja", "en"] as const;
-const LANGUAGES = ADMIN_LANGUAGES.filter((l) =>
-  (LOCALES as readonly string[]).includes(l.value),
-);
+// ja/ko/en columns. Source languages may also be outside the routed locales.
+const LOCALES: readonly string[] = locales;
 
-// Korean labels for the live preview + variant select come from
-// `ALBUM_TRACK_VARIANT_SUFFIX_KO` in `@/lib/albumTrackVariants` so
-// the admin surface and the import-side allowlist stay in lockstep.
-// Indexed lookups fall back to the raw variant string if a future
-// schema change adds a value before this map catches up.
-
+/**
+ * Edits linked songs and independent titles. Variant labels share the import
+ * allowlist, with the stored variant as a fallback for older rows.
+ */
 export default function AlbumTrackFormModal({
   albumId,
   initialData,
@@ -47,6 +40,7 @@ export default function AlbumTrackFormModal({
 }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [pattern, setPattern] = useState<TrackPattern>(
     initialData?.pattern ?? "vocal",
@@ -99,9 +93,13 @@ export default function AlbumTrackFormModal({
   const [translations, setTranslations] = useState<
     { locale: string; title: string }[]
   >(initialData?.translations ?? []);
+  const [confirmedSameLocales, setConfirmedSameLocales] = useState<string[]>([]);
 
+  /** Drops confirmations and errors from the previous pattern before switching fields. */
   function changePattern(next: TrackPattern) {
     setPattern(next);
+    setConfirmedSameLocales([]);
+    setError(null);
     if (next === "off_vocal_w_parent") {
       setVariant(PATTERN2_ALBUM_TRACK_VARIANTS[0]);
       setSongId(null);
@@ -127,13 +125,21 @@ export default function AlbumTrackFormModal({
     if (next) setTranslations((p) => [...p, { locale: next, title: "" }]);
   }
 
+  /** Changing a locale or its title invalidates the prior confirmation for that row. */
+  function editTranslation(index: number, changes: { locale?: string; title?: string }) {
+    setConfirmedSameLocales((prev) => prev.filter((locale) => locale !== translations[index].locale));
+    setTranslations((prev) => prev.map((row, i) => i === index ? { ...row, ...changes } : row));
+  }
+
   function labelForSong(s: SongSearchResult): string {
     const tr = s.translations.find((t) => t.locale === "ko");
     return tr?.title ?? s.originalTitle;
   }
 
+  /** Omits untouched titles on edit and sends the original title snapshot for conflict detection. */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     setLoading(true);
 
     // Build a discriminated payload so the server can branch on
@@ -173,17 +179,17 @@ export default function AlbumTrackFormModal({
         setLoading(false);
         return;
       }
+      const editingDirect = initialData?.pattern === "direct";
       payload = {
         albumId,
         pattern,
         discNumber,
         trackNumber,
         variant,
-        title: title.trim(),
-        titleLanguage,
-        translations: translations
-          .map((t) => ({ locale: t.locale, title: t.title.trim() }))
-          .filter((t) => t.title),
+        title: editingDirect && title === initialData.title ? undefined : title.trim(),
+        titleLanguage: editingDirect && titleLanguage === (initialData.titleLanguage ?? "ja") ? undefined : titleLanguage,
+        translations: editingDirect && translations === initialData.translations ? undefined : translations,
+        confirmedSameLocales,
       };
     }
 
@@ -191,6 +197,9 @@ export default function AlbumTrackFormModal({
       ? `/api/admin/album-tracks/${initialData.id}`
       : "/api/admin/album-tracks";
     const method = initialData?.id ? "PATCH" : "POST";
+    if (initialData?.pattern === "direct") {
+      payload.expectedTitleSnapshot = trackTitleSnapshot(initialData);
+    }
 
     try {
       const res = await fetch(url, {
@@ -204,9 +213,9 @@ export default function AlbumTrackFormModal({
         return;
       }
       const body = await res.json().catch(() => null);
-      alert(body?.error ?? "저장에 실패했습니다.");
+      setError(body?.error ?? "저장에 실패했습니다.");
     } catch {
-      alert("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+      setError("저장에 실패했습니다. 네트워크를 확인해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -407,14 +416,18 @@ export default function AlbumTrackFormModal({
                 ))}
               </select>
             </div>
-            <div className="mb-4 grid grid-cols-[1fr_auto] gap-4">
+            <div className="mb-4 grid grid-cols-[minmax(0,1fr)_auto] gap-4">
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   원어 제목
                 </label>
                 <input
+                  aria-label="원어 제목"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setConfirmedSameLocales([]);
+                  }}
                   required
                   className="w-full rounded border border-zinc-300 px-3 py-2"
                   placeholder="예: ドラマパート — 第1話"
@@ -423,11 +436,18 @@ export default function AlbumTrackFormModal({
               <div>
                 <label className="mb-1 block text-sm font-medium">원어</label>
                 <select
+                  aria-label="원어"
                   value={titleLanguage}
-                  onChange={(e) => setTitleLanguage(e.target.value)}
+                  onChange={(e) => {
+                    setTitleLanguage(e.target.value);
+                    setConfirmedSameLocales([]);
+                  }}
                   className="rounded border border-zinc-300 px-3 py-2"
                 >
-                  {LANGUAGES.map((l) => (
+                  {titleLanguage && !ADMIN_LANGUAGES.some((l) => l.value === titleLanguage) && (
+                    <option value={titleLanguage}>{titleLanguage}</option>
+                  )}
+                  {ADMIN_LANGUAGES.map((l) => (
                     <option key={l.value} value={l.value}>
                       {l.label}
                     </option>
@@ -438,9 +458,9 @@ export default function AlbumTrackFormModal({
             <div className="mb-4">
               <div className="mb-2 flex items-center justify-between">
                 <label className="text-sm font-medium">
-                  로케일 별 제목 (선택)
+                  언어별 제목
                 </label>
-                {translations.length < LOCALES.length && (
+                {LOCALES.some((locale) => !translations.some((row) => row.locale === locale)) && (
                   <button
                     type="button"
                     onClick={addTranslation}
@@ -450,23 +470,25 @@ export default function AlbumTrackFormModal({
                   </button>
                 )}
               </div>
+              <p className="mb-2 text-sm text-zinc-600">
+                한국어·일본어·영어 중 원어를 제외한 표기는 출처를 확인해 입력하세요.
+                로마자·숫자로 된 제목은 번역 없이 저장할 수 있습니다.
+              </p>
               <div className="space-y-2">
                 {translations.map((tr, i) => (
                   <div
                     key={i}
-                    className="grid grid-cols-[80px_1fr_auto] gap-2 rounded border border-zinc-200 bg-zinc-50 p-2"
+                    className="grid grid-cols-[minmax(0,65px)_minmax(0,1fr)_auto] gap-2 rounded border border-zinc-200 bg-zinc-50 p-2"
                   >
                     <select
+                      aria-label={`${tr.locale} 표기 언어`}
                       value={tr.locale}
-                      onChange={(e) =>
-                        setTranslations((prev) =>
-                          prev.map((t, j) =>
-                            j === i ? { ...t, locale: e.target.value } : t,
-                          ),
-                        )
-                      }
+                      onChange={(e) => editTranslation(i, { locale: e.target.value })}
                       className="rounded border border-zinc-300 px-2 py-1 text-sm"
                     >
+                      {!LOCALES.includes(tr.locale) && (
+                        <option value={tr.locale}>{tr.locale}</option>
+                      )}
                       {LOCALES.map((l) => {
                         // Same dup-locale guard as the other modals —
                         // AlbumTrackTranslation @@unique([albumTrackId,
@@ -485,27 +507,38 @@ export default function AlbumTrackFormModal({
                     </select>
                     <input
                       placeholder="제목"
+                      aria-label={`${tr.locale} 제목`}
                       value={tr.title}
-                      onChange={(e) =>
-                        setTranslations((prev) =>
-                          prev.map((t, j) =>
-                            j === i ? { ...t, title: e.target.value } : t,
-                          ),
-                        )
-                      }
+                      onChange={(e) => editTranslation(i, { title: e.target.value })}
                       className="rounded border border-zinc-300 px-2 py-1 text-sm"
                     />
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
+                        setConfirmedSameLocales((prev) => prev.filter((locale) => locale !== tr.locale));
                         setTranslations((prev) =>
                           prev.filter((_, j) => j !== i),
-                        )
-                      }
+                        );
+                      }}
                       className="text-sm text-red-500"
                     >
                       삭제
                     </button>
+                    {tr.locale !== titleLanguage && !!title.trim() && tr.title.trim() === title.trim() && (
+                      <label className="col-span-full flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={confirmedSameLocales.includes(tr.locale)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setConfirmedSameLocales((prev) => checked
+                              ? [...prev, tr.locale]
+                              : prev.filter((locale) => locale !== tr.locale));
+                          }}
+                        />
+                        출처에서 {tr.locale} 표기가 원문과 같음을 확인했습니다
+                      </label>
+                    )}
                   </div>
                 ))}
               </div>
@@ -513,6 +546,7 @@ export default function AlbumTrackFormModal({
           </>
         )}
 
+        {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"

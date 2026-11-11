@@ -107,6 +107,7 @@ describe("parseArgs", () => {
 describe("pointsAtDevProject", () => {
   it.each([
     ["the direct host", `postgresql://postgres:pw@db.${DEV_PROJECT_REF}.supabase.co:5432/postgres`],
+    ["the short Postgres scheme", `postgres://postgres:pw@db.${DEV_PROJECT_REF}.supabase.co:5432/postgres`],
     ["the pooler user", `postgresql://postgres.${DEV_PROJECT_REF}:pw@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres`],
   ])("accepts %s", (_name, url) => {
     expect(pointsAtDevProject(url)).toBe(true);
@@ -117,6 +118,10 @@ describe("pointsAtDevProject", () => {
     ["the dev ref only in the password", `postgresql://postgres.otherref:${DEV_PROJECT_REF}@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres`],
     ["the dev ref only in the query string", `postgresql://postgres:pw@db.otherref.supabase.co:5432/postgres?x=${DEV_PROJECT_REF}`],
     ["the dev pooler user on a non-Supabase host", `postgresql://postgres.${DEV_PROJECT_REF}:pw@evil.example.com:5432/postgres`],
+    ["a non-Postgres scheme", `mysql://postgres:pw@db.${DEV_PROJECT_REF}.supabase.co:5432/postgres`],
+    ["a host override", `postgresql://postgres:pw@db.${DEV_PROJECT_REF}.supabase.co:5432/postgres?host=other.example`],
+    ["a user override", `postgresql://postgres:pw@db.${DEV_PROJECT_REF}.supabase.co:5432/postgres?user=other`],
+    ["a port override", `postgresql://postgres:pw@db.${DEV_PROJECT_REF}.supabase.co:5432/postgres?port=6543`],
     ["localhost", "postgresql://postgres:pw@localhost:5432/postgres"],
     ["an unparseable string", "not a url"],
     ["an empty string", ""],

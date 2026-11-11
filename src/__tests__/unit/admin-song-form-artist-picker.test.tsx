@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
@@ -88,6 +88,39 @@ describe("SongForm artist credit picker", () => {
       const select = screen.getAllByRole("combobox")
         .find((el) => (el as HTMLSelectElement).value === "1") as HTMLSelectElement;
       expect(select.selectedOptions[0].textContent).toContain("ID: 1");
+    });
+  });
+
+  it("clears the previous confirmation and blocks missing names before saving", () => {
+    mockArtists([]);
+    render(<SongForm />);
+    const check = screen.getByRole("checkbox");
+    fireEvent.click(check);
+    expect(check).toHaveProperty("checked", true);
+    fireEvent.change(screen.getByLabelText("원제"), { target: { value: "検証用の曲" } });
+    expect(check).toHaveProperty("checked", false);
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    expect(screen.getByRole("alert").textContent).toContain("ko 제목");
+    expect(fetch).toHaveBeenCalledWith("/api/admin/artists");
+    expect(fetch).not.toHaveBeenCalledWith("/api/admin/songs", expect.anything());
+  });
+
+  it("sends a date-only patch without revalidating or rewriting legacy names", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ json: () => Promise.resolve([]) })
+      .mockResolvedValueOnce({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(
+      <SongForm initialData={{ ...baseInitial, variantLabel: "  ", artistCredits: [] }} />,
+    );
+    fireEvent.change(container.querySelector('input[type="date"]')!, { target: { value: "2026-11-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => {
+      const save = fetchMock.mock.calls.find(([url]) => url === "/api/admin/songs/43");
+      expect(save).toBeDefined();
+      expect(JSON.parse(save?.[1].body)).toEqual({
+        releaseDate: "2026-11-10", translations: [], reviewedNames: false,
+      });
     });
   });
 });

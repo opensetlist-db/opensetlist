@@ -6,14 +6,13 @@ import { entityPath } from "@/lib/seo/entityUrl";
 import type { ArtistRowData } from "@/lib/artists";
 import {
   accentStyle,
-  fallbackNameLang,
   firstGrapheme,
-  originalLang,
 } from "@/components/artists/artistDetail";
 import {
   avatarAccent,
   avatarGlyphTone,
 } from "@/components/artists/artistList";
+import { IdentityName, identityName } from "./IdentityName";
 import styles from "./artistList.module.css";
 
 /*
@@ -47,33 +46,15 @@ export default async function ArtistListRow({ artist, locale }: Props) {
     getTranslations("Event"),
   ]);
 
-  // Full localized name → original name → translatable "unknown", so a
-  // row never renders as a nameless link. Long names wrap (24-v1 drops
-  // the old desktop ellipsis).
-  const primaryName =
-    displayNameWithFallback(artist, artist.translations, locale) ||
-    t("unknown");
-  const primaryLang = fallbackNameLang(artist, artist.translations, locale);
+  const name = identityName(artist, locale, t("unknown"));
   // Avatar initial keys off the curated short handle (e.g. `C` for
   // Cerise Bouquet) before the full name — same rule the old list used.
   const initialSource =
     displayNameWithFallback(artist, artist.translations, locale, "short") ||
-    primaryName;
-  // Original-language subline only when it differs from what the row
-  // already shows.
-  const originalName =
-    locale !== artist.originalLanguage &&
-    artist.originalName &&
-    primaryName !== artist.originalName
-      ? artist.originalName
-      : null;
-
-  const units = artist.subArtists.map((s) => ({
-    id: s.id,
-    name:
-      displayNameWithFallback(s, s.translations, locale, "full") ||
-      t("unknown"),
-    lang: fallbackNameLang(s, s.translations, locale),
+    name.main;
+  const units = artist.subArtists.map((unit) => ({
+    id: unit.id,
+    name: identityName(unit, locale, t("unknown")),
   }));
 
   const color = getArtistColor(artist);
@@ -94,8 +75,8 @@ export default async function ArtistListRow({ artist, locale }: Props) {
 
         <span className={styles.name}>
           <span className={styles.nameLine}>
-            <span className={styles.artistTitle} lang={primaryLang}>
-              {primaryName}
+            <span className={styles.artistTitle} lang={name.lang}>
+              {name.main}
             </span>
             {artist.hasOngoing && (
               <span className={styles.live}>
@@ -104,12 +85,12 @@ export default async function ArtistListRow({ artist, locale }: Props) {
               </span>
             )}
           </span>
-          {originalName && (
+          {name.sub && (
             <span
               className={styles.originalName}
-              lang={originalLang(artist.originalLanguage, locale)}
+              lang={locale}
             >
-              {originalName}
+              {name.sub}
             </span>
           )}
         </span>
@@ -119,8 +100,8 @@ export default async function ArtistListRow({ artist, locale }: Props) {
         {units.length > 0 ? (
           <span className={styles.units}>
             {units.map((u) => (
-              <span key={u.id} className={styles.unitChip} lang={u.lang}>
-                {u.name}
+              <span key={u.id} className={styles.unitChip}>
+                <IdentityName name={u.name} />
               </span>
             ))}
           </span>
