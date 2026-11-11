@@ -74,6 +74,7 @@ export async function generateMetadata({
   };
 }
 
+/** Normalizes artist and page parameters before rendering the paginated album list. */
 export default async function AlbumsPage({
   params,
   searchParams,

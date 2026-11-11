@@ -42,6 +42,7 @@ type Props = {
   searchParams: Promise<{ sort?: string }>;
 };
 
+/** Lists albums for editing and links to the creation form. */
 export default async function AlbumsListPage({ searchParams }: Props) {
   const params = await searchParams;
   const sort = parseSort(params.sort);

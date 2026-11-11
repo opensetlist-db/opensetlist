@@ -70,18 +70,25 @@ describe("POST /api/admin/albums", () => {
     expect(await res.json()).toEqual({ id: "9007199254740993" });
   });
 
-  it("rejects Han in the Korean title while preserving it in the Japanese original", async () => {
-    const create = (title: string) => POST(baseJsonRequest("http://x/api/admin/albums", {
+  it.each([
+    ["ko", "永久 hours"],
+    ["ko", "えいきゅう hours"],
+    ["ko", "エイキュウ hours"],
+    ["en", "永久 hours"],
+    ["en", "えいきゅう hours"],
+    ["en", "エイキュウ hours"],
+  ])("rejects Japanese script in %s title %s and preserves the original", async (locale, title) => {
+    const create = (ko: string, en: string) => POST(baseJsonRequest("http://x/api/admin/albums", {
       ...baseBody,
       originalTitle: "永久hours",
-      translations: [{ locale: "ko", title }, { locale: "en", title: "Eikyu hours" }],
+      translations: [{ locale: "ko", title: ko }, { locale: "en", title: en }],
     }, "POST") as never);
-    const rejected = await create("永久 hours");
+    const rejected = await create(locale === "ko" ? title : "영구 hours", locale === "en" ? title : "Eikyu hours");
     expect(rejected.status).toBe(400);
-    expect((await rejected.json()).error).toContain("한자");
+    expect((await rejected.json()).error).toContain(`${locale} 표기에 히라가나·가타카나·한자`);
 
     vi.mocked(prisma.album.create).mockResolvedValueOnce({ id: BigInt(42) } as never);
-    const accepted = await create("영구 hours");
+    const accepted = await create("영구 hours", "Eikyu hours");
     expect(accepted.status).toBe(201);
     expect(prisma.album.create).toHaveBeenCalledTimes(1);
     expect(vi.mocked(prisma.album.create).mock.calls[0][0].data.originalTitle).toBe("永久hours");

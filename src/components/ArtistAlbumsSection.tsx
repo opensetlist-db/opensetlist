@@ -60,6 +60,7 @@ const getArtistAlbums = cachedQuery(
 
 type AlbumRow = Awaited<ReturnType<typeof getArtistAlbums>>[number];
 
+/** Shares title display between the artist overview and the full discography. */
 export async function ArtistAlbumsSection({
   artistId,
   artistSlug,

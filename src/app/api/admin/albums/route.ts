@@ -72,6 +72,7 @@ export async function GET() {
   }
 }
 
+/** Creates an album only after its titles satisfy the public locale policy. */
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;

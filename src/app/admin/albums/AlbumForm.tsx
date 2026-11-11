@@ -43,6 +43,7 @@ type ArtistOption = {
   translations: { locale: string; name: string }[];
 };
 
+/** Edits album metadata and tracks cover changes separately from the information save. */
 export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -121,6 +122,7 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
       .catch(() => setArtistOptions([]));
   }, []);
 
+  /** Clears the source evidence when its title or locale changes. */
   function updateTranslation(
     index: number,
     field: keyof Translation,
@@ -145,6 +147,7 @@ export default function AlbumForm({ initialData, cover }: AlbumFormProps) {
     if (next) setArtistIds((prev) => [...prev, next.id]);
   }
 
+  /** Submits edited metadata and preserves newer values in omitted fields. */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setTitleError("");

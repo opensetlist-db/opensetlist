@@ -65,6 +65,7 @@ function toMs(value: unknown): number {
   return Number.isNaN(ms) ? 0 : ms;
 }
 
+/** Keeps the original locale with each event or series title pair. */
 function relatedTitle(
   row: { originalName: string; originalLanguage: string; translations: { locale: string; name: string }[] },
   locale: string,
@@ -80,6 +81,7 @@ function relatedTitle(
   };
 }
 
+/** Displays related performances with the title and venue names for this locale. */
 export async function AlbumEventsPanel({
   events,
   albumType,

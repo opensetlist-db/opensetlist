@@ -8,6 +8,7 @@ type AlbumTitle = {
   translations: readonly TitleTranslation[];
 };
 
+/** Checks locale completeness and whether the submitted titles need fresh source evidence. */
 export function albumTitleIssues(
   { originalTitle, originalLanguage, translations }: AlbumTitle,
   edit?: { previous: AlbumTitle; submitted: readonly TitleTranslation[] },
@@ -15,10 +16,12 @@ export function albumTitleIssues(
   const sourceChanged = edit && (edit.previous.originalTitle !== originalTitle ||
     edit.previous.originalLanguage !== originalLanguage);
   return locales.flatMap((locale) => {
-    if (locale === "ko" && translations.some((row) => row.locale === locale && /\p{Script=Han}/u.test(row.title))) {
-      return ["ko 표기의 한자를 한글로 적어 주세요."];
+    const translation = translations.find((row) => row.locale === locale);
+    if ((locale === "ko" || locale === "en") && translation &&
+        /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(translation.title)) {
+      return [`${locale} 표기에 히라가나·가타카나·한자가 포함되어 있습니다.`];
     }
-    const sameSource = translations.find((row) => row.locale === locale)?.sameSource;
+    const sameSource = translation?.sameSource;
     const { status } = resolveDisplayPair(
       { original: originalTitle, originalLanguage },
       translations, locale, "title", {
@@ -43,6 +46,7 @@ export function albumTitleIssues(
   });
 }
 
+/** Compares stored titles without treating translation order or request evidence as a change. */
 export function albumTitleChanged(previous: AlbumTitle, next: AlbumTitle) {
   return previous.originalTitle !== next.originalTitle ||
     previous.originalLanguage !== next.originalLanguage ||

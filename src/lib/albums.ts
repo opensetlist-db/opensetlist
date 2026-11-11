@@ -25,6 +25,7 @@ const localeFilter = (locale: string) => ({
   locale: { in: [locale, FALLBACK_LOCALE] },
 });
 
+/** Selects the titles and purchase information used by album list rows. */
 function albumsListInclude(locale: string) {
   const lf = localeFilter(locale);
   return {
@@ -311,7 +312,7 @@ export type AlbumArtistFilterOption = {
   originalLanguage: string;
 };
 
-/*
+/**
  * Chip set for the `/albums` artist filter — only top-level
  * (representative) artists, matching the /artists list (the QA pass
  * intent: don't list every sub-unit). A top-level artist appears when it
@@ -345,12 +346,11 @@ export async function getAlbumArtistFilters(
     },
     orderBy: { id: "asc" },
   });
-  return artists.map((a) => ({
-    id: String(a.id),
-    originalLanguage: a.originalLanguage,
-    ...resolveDisplayPair(
+  return artists.map((a) => {
+    const { main, sub } = resolveDisplayPair(
       { original: a.originalName, originalLanguage: a.originalLanguage },
       a.translations, locale, "name",
-    ),
-  }));
+    );
+    return { id: String(a.id), main, sub, originalLanguage: a.originalLanguage };
+  });
 }

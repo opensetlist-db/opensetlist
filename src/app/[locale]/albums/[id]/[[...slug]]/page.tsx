@@ -134,6 +134,7 @@ type Props = {
   searchParams: Promise<{ tab?: string }>;
 };
 
+/** Uses the same title pair in search and share metadata as on the album page. */
 export async function generateMetadata({
   params,
 }: {

@@ -23,6 +23,7 @@ interface Props {
   locale: string;
 }
 
+/** Pairs artist names and starts at page one when the active artist changes. */
 export async function AlbumArtistFilter({ active, options, locale }: Props) {
   const t = await getTranslations("Album");
 

@@ -28,6 +28,7 @@ interface Props {
   activeBonusCount: number;
 }
 
+/** Uses one canonical link for the album title, credit and purchase indicator. */
 export async function AlbumListRow({
   album,
   locale,

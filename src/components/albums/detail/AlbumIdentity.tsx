@@ -41,6 +41,7 @@ export type AlbumForIdentity = BigIntStringified<
 // beside the cover (see `.longTitle` in the CSS module).
 const LONG_TITLE_CHARS = 70;
 
+/** Shares title spelling between the detail heading and the cover description. */
 export async function AlbumIdentity({
   album,
   locale,

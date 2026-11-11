@@ -5,6 +5,7 @@ import { validateCanonicalSlug } from "@/lib/slug";
 
 export class AlbumInputError extends Error {}
 
+/** Parses album metadata while preserving omitted fields for partial edits. */
 export function parseAlbumInput(body: Record<string, unknown>) {
   let slug: string | undefined;
   if (body.slug !== undefined) {

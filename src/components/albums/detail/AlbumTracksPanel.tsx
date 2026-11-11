@@ -9,7 +9,7 @@ import { displayOriginalTitle, resolveDisplayPair } from "@/lib/display";
 import { entityPath } from "@/lib/seo/entityUrl";
 import styles from "./albumDetail.module.css";
 
-/*
+/**
  * Tracks tab of the Album detail page (22-v1): one white panel with a
  * heading row, disc sub-headings only for multi-disc releases, and one
  * row per AlbumTrack.
@@ -74,8 +74,9 @@ export async function AlbumTracksPanel({
                 track.variant && isPattern3AlbumTrackVariant(track.variant) && track.title
                 ? track.title
                 : null;
+              const directLanguage = track.titleLanguage ?? "ja";
               const originalLanguage = track.song?.originalLanguage ??
-                (directTitle ? track.titleLanguage ?? "ja" : undefined);
+                (directTitle ? directLanguage : undefined);
               const title = track.song
                 ? displayOriginalTitle(
                     track.song,
@@ -85,7 +86,7 @@ export async function AlbumTracksPanel({
                   )
                 : directTitle
                   ? resolveDisplayPair(
-                      { original: directTitle, originalLanguage: track.titleLanguage ?? "ja" },
+                      { original: directTitle, originalLanguage: directLanguage },
                       track.translations ?? [], locale, "title", { kind: "title" },
                     )
                   : { main: getAlbumTrackTitle(track, locale, tRoot), sub: null };
