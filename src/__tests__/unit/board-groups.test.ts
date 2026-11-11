@@ -10,7 +10,6 @@ import {
   type BoardGroupArtistRow,
 } from "@/lib/board/boardGroups";
 import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
-import { displayNameWithFallback } from "@/lib/display";
 import { resolveFestivalGroups } from "@/lib/predict/festivalCatalog";
 import type { AvailableSong } from "@/lib/types/predict";
 import type { EventRosterEntry, RosterArtist } from "@/lib/types/setlist";
@@ -162,7 +161,7 @@ describe("fanBoardRootIds (side projects off the board)", () => {
 });
 
 describe("resolveBoardGroups", () => {
-  it("festival: groups in festival order with localized short name and colour", () => {
+  it("festival: groups in festival order with original and exact locale names", () => {
     const groups = resolveBoardGroups({
       roster: FES_ROSTER,
       hierarchy: H,
@@ -172,14 +171,14 @@ describe("resolveBoardGroups", () => {
       locale: "ko",
     });
     expect(groups).toEqual([
-      { artistId: 1, slug: "group-1", label: "그1", color: "#000001" },
-      { artistId: 10, slug: "group-10", label: "그10", color: "#000001" },
-      { artistId: 20, slug: "group-20", label: "그20", color: "#000002" },
-      { artistId: 30, slug: "group-30", label: "그30", color: "#000003" },
+      { artistId: 1, slug: "group-1", label: "原名1", labelSub: "그룹1", labelLang: "ja", color: "#000001" },
+      { artistId: 10, slug: "group-10", label: "原名10", labelSub: "그룹10", labelLang: "ja", color: "#000001" },
+      { artistId: 20, slug: "group-20", label: "原名20", labelSub: "그룹20", labelLang: "ja", color: "#000002" },
+      { artistId: 30, slug: "group-30", label: "原名30", labelSub: "그룹30", labelLang: "ja", color: "#000003" },
     ]);
   });
 
-  it("festival: short-name fallback follows displayNameWithFallback", () => {
+  it("festival: a distinct spelling in the original language is also displayed", () => {
     const groups = resolveBoardGroups({
       roster: [member("kanon", [rosterArtist(10, null)])],
       hierarchy: H,
@@ -187,8 +186,7 @@ describe("resolveBoardGroups", () => {
       groupArtists: [row(10)],
       locale: "ja",
     });
-    // ja translation has no shortName → its full name wins over the original short.
-    expect(groups.map((g) => g.label)).toEqual(["グループ10"]);
+    expect(groups).toMatchObject([{ label: "原名10", labelSub: "グループ10", labelLang: "ja" }]);
   });
 
   it("festival: a root whose display row is missing drops out, order kept", () => {
@@ -202,7 +200,7 @@ describe("resolveBoardGroups", () => {
     expect(groups.map((g) => g.artistId)).toEqual([1, 20, 30]);
   });
 
-  it("single-artist: exactly one group carrying the root's id, short name and colour", () => {
+  it("single-artist: exactly one group carrying the root's id, names and colour", () => {
     const primary = row(BigInt(1), { color: "#fb8a9b" });
     const groups = resolveBoardGroups({
       roster: FES_ROSTER,
@@ -212,7 +210,7 @@ describe("resolveBoardGroups", () => {
       locale: "ko",
     });
     expect(groups).toEqual([
-      { artistId: 1, slug: "group-1", label: "그1", color: "#fb8a9b" },
+      { artistId: 1, slug: "group-1", label: "原名1", labelSub: "그룹1", labelLang: "ja", color: "#fb8a9b" },
     ]);
   });
 
@@ -252,12 +250,11 @@ function legacyFestivalPath(
   hierarchy: typeof H,
   groupArtists: BoardGroupArtistRow[],
   perGroupById: Map<string, AvailableSong[]>,
-  locale: string,
 ) {
   const groupRefs = resolveFestivalGroups(roster, hierarchy);
   const perGroup = groupRefs.map((g) => perGroupById.get(g.rootId) ?? []);
   const artistById = new Map(groupArtists.map((a) => [String(a.id), a]));
-  const groups: Array<{ artistId: number; slug: string; label: string; color: string | null }> = [];
+  const groups: Array<{ artistId: number; slug: string; color: string | null }> = [];
   const groupCatalogs: AvailableSong[][] = [];
   groupRefs.forEach((ref, i) => {
     const artist = artistById.get(ref.rootId);
@@ -266,7 +263,6 @@ function legacyFestivalPath(
     groups.push({
       artistId,
       slug: artist.slug,
-      label: displayNameWithFallback(artist, artist.translations, locale, "short"),
       color: artist.color,
     });
     groupCatalogs.push(perGroup[i]);
@@ -302,8 +298,8 @@ describe("festival page path — characterization against the pre-resolver page"
 
   it("full Fes roster: identical groups and catalog alignment", () => {
     for (const locale of ["ko", "ja", "en"]) {
-      expect(newFestivalPath(FES_ROSTER, H, FES_ROWS, perGroupById, locale)).toEqual(
-        legacyFestivalPath(FES_ROSTER, H, FES_ROWS, perGroupById, locale),
+      expect(newFestivalPath(FES_ROSTER, H, FES_ROWS, perGroupById, locale)).toMatchObject(
+        legacyFestivalPath(FES_ROSTER, H, FES_ROWS, perGroupById),
       );
     }
   });
@@ -311,7 +307,7 @@ describe("festival page path — characterization against the pre-resolver page"
   it("a missing display row: same drop, catalogs stay aligned", () => {
     const rows = [row(1), row(20), row(30)];
     const next = newFestivalPath(FES_ROSTER, H, rows, perGroupById, "ko");
-    expect(next).toEqual(legacyFestivalPath(FES_ROSTER, H, rows, perGroupById, "ko"));
+    expect(next).toMatchObject(legacyFestivalPath(FES_ROSTER, H, rows, perGroupById));
     expect(next.groupCatalogs.map((c) => c[0].songId)).toEqual([100, 2000, 3000]);
   });
 });

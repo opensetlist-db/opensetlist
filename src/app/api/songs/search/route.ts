@@ -263,6 +263,8 @@ export async function GET(request: NextRequest) {
             where: { isDeleted: false },
             select: {
               id: true,
+              originalTitle: true,
+              originalLanguage: true,
               variantLabel: true,
               translations: {
                 select: { locale: true, title: true, variantLabel: true },

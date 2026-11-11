@@ -309,7 +309,7 @@ describe("SetlistRow", () => {
         />,
       );
       expect(screen.getByText("Aqours")).toBeTruthy();
-      expect(screen.getByText("虹ヶ咲")).toBeTruthy();
+      expect(screen.getByText("虹ヶ咲学園スクールアイドル同好会")).toBeTruthy();
       expect(screen.queryByText(/^\+\d+$/)).toBeNull();
     });
 
@@ -340,12 +340,12 @@ describe("SetlistRow", () => {
         />,
       );
       expect(screen.getByText("Aqours")).toBeTruthy();
-      expect(screen.getByText("虹ヶ咲")).toBeTruthy();
+      expect(screen.getByText("虹ヶ咲学園スクールアイドル同好会")).toBeTruthy();
       expect(screen.queryByText("Liella!")).toBeNull();
       expect(screen.getByText("+1").getAttribute("title")).toBe("Liella!");
     });
 
-    it("group badge uses the SHORT name form", () => {
+    it("shows a group badge in its full original form once", () => {
       render(
         <SetlistRow
           item={makeItem({ stageType: "full_group", artists: [niji] })}
@@ -356,11 +356,11 @@ describe("SetlistRow", () => {
           eventArtistId="99"
         />,
       );
-      expect(screen.getByText("虹ヶ咲")).toBeInTheDocument();
-      expect(screen.queryByText("虹ヶ咲学園スクールアイドル同好会")).toBeNull();
+      expect(screen.getByText("虹ヶ咲学園スクールアイドル同好会")).toHaveAttribute("lang", "ja");
+      expect(screen.queryByText("虹ヶ咲")).toBeNull();
     });
 
-    it("locale with a long name but no shortName still gets the short badge", () => {
+    it("renders the full locale name below the full original name", () => {
       const nijiLongKo = {
         artist: {
           ...niji.artist,
@@ -379,8 +379,8 @@ describe("SetlistRow", () => {
           eventArtistId={null}
         />,
       );
-      expect(screen.getByText("虹ヶ咲")).toBeInTheDocument();
-      expect(screen.queryByText("니지가사키 학원 스쿨 아이돌 동호회")).toBeNull();
+      expect(screen.getByText("虹ヶ咲学園スクールアイドル同好会")).toHaveAttribute("lang", "ja");
+      expect(screen.getByText("니지가사키 학원 스쿨 아이돌 동호회")).toHaveAttribute("lang", "ko");
     });
 
     it("single-artist event: full_group row credited to the event artist stays badge-free", () => {
@@ -444,7 +444,7 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    const badge = screen.getByText("Cerise Bouquet");
+    const badge = screen.getByRole("link", { name: "Cerise Bouquet" });
     // 18-v3 artist tag: the artist colour feeds `--artist`, which the
     // stylesheet mixes into the chip background; the label stays ink
     // (no inline text colour), so a pale unit colour can't carry text.
@@ -479,7 +479,7 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    const badge = screen.getByText("Cerise Bouquet");
+    const badge = screen.getByRole("link", { name: "Cerise Bouquet" });
     // `resolveUnitColor` substitutes a palette pick keyed on the
     // unit's slug when `Artist.color` is null — multiple
     // color-pending units render with distinguishable hues instead
@@ -507,7 +507,7 @@ describe("SetlistRow", () => {
     );
     // The approved card row titles songs in ink (hover turns them
     // blue); no inline colour may override the stylesheet.
-    const link = screen.getByText("Test Song");
+    const link = screen.getByRole("link", { name: "Test Song" });
     expect(link.tagName).toBe("A");
     expect(link.style.color).toBe("");
   });
@@ -689,7 +689,7 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    const badge = screen.getByText("Kaho");
+    const badge = screen.getByRole("link", { name: "Kaho" });
     expect(badge.style.getPropertyValue("--artist")).toBe(KAHO_SOLO);
     expect(
       container.querySelector('a[href="/en/artists/11/kaho-solo"]'),
@@ -831,7 +831,7 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    expect(screen.getByText("Sayaka, Tsuzuri, Yuyu")).toBeInTheDocument();
+    expect(screen.getByText("Sayaka").closest("p")).toHaveTextContent("Sayaka, Tsuzuri, Yuyu");
   });
 });
 
