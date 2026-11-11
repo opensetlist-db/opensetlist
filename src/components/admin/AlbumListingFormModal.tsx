@@ -137,6 +137,7 @@ export default function AlbumListingFormModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...payload,
+          reviewedTranslations: form.has("reviewedTranslations"),
           removedTranslationLocales: initialData?.translations
             .filter((row) => !payload.translations.some((entry) => entry.locale === row.locale))
             .map((row) => row.locale),
@@ -309,7 +310,7 @@ export default function AlbumListingFormModal({
 
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
-            <label className="text-sm font-medium">로케일 별 라벨 (선택)</label>
+            <label className="text-sm font-medium">로케일별 매장 이름</label>
             {translations.length < ADMIN_LOCALES.length && (
               <button
                 type="button"
@@ -322,7 +323,7 @@ export default function AlbumListingFormModal({
           </div>
           {translations.length === 0 && (
             <p className="text-xs text-zinc-500">
-              비어 있으면 모든 로케일에서 원어 라벨을 그대로 사용합니다.
+              원어 외 공개 언어의 매장 표기를 출처에서 확인해 입력하세요.
             </p>
           )}
           <div className="space-y-2">
@@ -396,6 +397,10 @@ export default function AlbumListingFormModal({
           </div>
         </div>
 
+        <label className="mt-4 flex items-start gap-2 text-sm">
+          <input name="reviewedTranslations" type="checkbox" />
+          원문을 변경했거나 동일한 표기를 사용한 경우, 한국어·영어·일본어 표기와 출처를 확인했습니다.
+        </label>
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"

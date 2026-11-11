@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { entityPath } from "@/lib/seo/entityUrl";
+import type { SongDetailPair } from "@/lib/songDisplay";
 import styles from "./songDetail.module.css";
 
 /*
@@ -21,7 +22,8 @@ export interface SongVersionView {
   slug: string;
   title: string;
   sub: string | null;
-  variantLabel: string | null;
+  lang: string;
+  variantLabel: SongDetailPair | null;
   isBase: boolean;
   isCurrent: boolean;
   performanceCount: number;
@@ -47,11 +49,14 @@ export async function SongVersionsPanel({
           const inner = (
             <>
               <span className={styles.versionCopy}>
-                <strong>{v.title}</strong>
-                {v.sub ? <small>{v.sub}</small> : null}
+                <strong lang={v.lang}>{v.title}</strong>
+                {v.sub ? <small lang={locale}>{v.sub}</small> : null}
                 <span className={styles.pills}>
                   {v.variantLabel ? (
-                    <span className={styles.variantPill}>{v.variantLabel}</span>
+                    <span className={styles.variantPill}>
+                      <span lang={v.variantLabel.lang}>{v.variantLabel.main}</span>
+                      {v.variantLabel.sub && <small lang={locale} className={styles.pairSub}>{v.variantLabel.sub}</small>}
+                    </span>
                   ) : v.isBase ? (
                     <span className={styles.chip}>{t("baseVariant")}</span>
                   ) : null}

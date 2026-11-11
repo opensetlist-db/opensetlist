@@ -10,10 +10,8 @@ import {
 } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, formatDate } from "@/lib/utils";
-import {
-  displayNameWithFallback,
-  displayOriginalTitle,
-} from "@/lib/display";
+import { displayOriginalTitle } from "@/lib/display";
+import { pairText, songDetailName, songDisplay } from "@/lib/songDisplay";
 import { deriveOgPaletteFromCachedSong } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { getEventStatus } from "@/lib/eventStatus";
@@ -280,26 +278,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   ]);
   if (!song) return { title: metaT("notFound") };
   const palette = await deriveOgPaletteFromCachedSong(song, performances);
-  // Songs are work-primary: OG title shows the original-language
-  // title with the locale-resolved variant label. Going through
-  // `displayOriginalTitle` instead of hand-resolving via
-  // `pickLocaleTranslation` keeps the OG meta in lockstep with the
-  // detail-page H1 (which already uses the helper) — so a shared
-  // OG card never reads a different title than the page itself.
-  const { main: songTitle, variant: metaVariant } = displayOriginalTitle(
-    song,
-    song.translations,
-    locale,
-  );
+  const songTitle = songDisplay(song, song.translations, locale);
   const firstArtist = song.artists[0]?.artist ?? null;
   const artistName = firstArtist
-    ? displayNameWithFallback(firstArtist, firstArtist.translations, locale)
+    ? pairText(songDetailName(firstArtist, firstArtist.translations, locale))
     : null;
 
   // Group name in the title: song-name queries are ambiguous across
   // IPs (and "Rise Up High! | OpenSetlist" gave no reason to click at
   // position ~11), so name who sings it plus what the page offers.
-  const fullSongTitle = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""}`;
+  const fullSongTitle = `${pairText(songTitle)}${songTitle.variant ? ` (${pairText(songTitle.variant)})` : ""}`;
   const title = artistName
     ? metaT("songTitle", { title: fullSongTitle, group: artistName })
     : metaT("songTitleNoGroup", { title: fullSongTitle });
@@ -327,7 +315,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description,
-      images: [ogImage],
+      images: [{ url: ogImage, alt: title }],
       site: "@opensetlistdb",
     },
   };
@@ -385,7 +373,7 @@ export default async function SongPage({ params, searchParams }: Props) {
   // rule + matches the artist-page pattern).
   const referenceNow = new Date();
 
-  const title = displayOriginalTitle(song, song.translations, locale);
+  const title = songDisplay(song, song.translations, locale);
 
   // Primary artist drives the identity card's accent border + artist
   // link. Falls back to the first credit by index if no `primary` role
@@ -394,16 +382,16 @@ export default async function SongPage({ params, searchParams }: Props) {
     song.artists.find((sa) => sa.role === "primary")?.artist ??
     song.artists[0]?.artist ??
     null;
+  const primaryName = primaryArtist
+    ? songDetailName(primaryArtist, primaryArtist.translations, locale)
+    : null;
 
   const firstAlbum = songAlbums[0]
     ? {
-        // Albums are work-primary too — the original title, like the
-        // song H1. The locale subtitle stays in the album panel.
-        title: displayOriginalTitle(
-          songAlbums[0].album,
-          songAlbums[0].album.translations,
-          locale,
-        ).main,
+        title: {
+          ...displayOriginalTitle(songAlbums[0].album, songAlbums[0].album.translations, locale, "paired"),
+          lang: songAlbums[0].album.originalLanguage,
+        },
         typeLabel: albumTypeLabel(albumTypeLabels, songAlbums[0].album.type),
       }
     : null;
@@ -413,19 +401,18 @@ export default async function SongPage({ params, searchParams }: Props) {
   const historyRows: SongHistoryRow[] = performances.map((p) => {
     const event = p.setlistItem.event;
     const cells = getSongPerformanceCells(p.setlistItem);
+    const series = event.eventSeries;
+    const seriesName = series ? songDetailName(series, series.translations, locale, "title") : null;
+    const eventName = songDetailName(event, event.translations, locale, "title");
     return {
       // Each appearance is its own row: a song played twice in one
       // event (medley reprise, encore reprise) yields two rows with the
       // same event id, so the key is the setlistItemId.
       id: String(p.setlistItemId),
       seriesId: event.eventSeries ? String(event.eventSeries.id) : null,
-      seriesName: event.eventSeries
-        ? displayNameWithFallback(
-            event.eventSeries,
-            event.eventSeries.translations,
-            locale,
-          ) || null
-        : null,
+      seriesName: seriesName?.main || null,
+      seriesSub: seriesName?.sub,
+      seriesLang: seriesName?.lang,
       status: getEventStatus(
         { status: event.status, startTime: event.startTime },
         referenceNow,
@@ -435,9 +422,9 @@ export default async function SongPage({ params, searchParams }: Props) {
       dateTime: event.date ? String(event.date).slice(0, 10) : null,
       formattedDate: formatDate(event.date, locale, SONG_HISTORY_DATE_FORMAT),
       dateMs: event.date ? new Date(String(event.date)).getTime() : 0,
-      name:
-        displayNameWithFallback(event, event.translations, locale) ||
-        et("unknownEvent"),
+      name: eventName.main || et("unknownEvent"),
+      sub: eventName.sub,
+      lang: eventName.main ? eventName.lang : locale,
       href: entityPath("events", locale, event.id, event.slug),
       isEncore: cells.isEncore,
       position: cells.position,
@@ -487,12 +474,13 @@ export default async function SongPage({ params, searchParams }: Props) {
     versionCountRows.map((row) => [String(row.songId), row._count._all]),
   );
   const versions: SongVersionView[] = versionSources.map((v) => {
-    const display = displayOriginalTitle(v, v.translations, locale);
+    const display = songDisplay(v, v.translations, locale);
     return {
       id: String(v.id),
       slug: v.slug,
       title: display.main,
       sub: display.sub,
+      lang: display.lang,
       variantLabel: display.variant,
       isBase: String(v.id) === String(baseSong.id),
       isCurrent: String(v.id) === String(song.id),
@@ -522,11 +510,7 @@ export default async function SongPage({ params, searchParams }: Props) {
     ? {
         id: song.baseVersion.id,
         slug: song.baseVersion.slug,
-        title: displayOriginalTitle(
-          song.baseVersion,
-          song.baseVersion.translations,
-          locale,
-        ).main,
+        title: songDisplay(song.baseVersion, song.baseVersion.translations, locale),
       }
     : null;
 
@@ -540,7 +524,7 @@ export default async function SongPage({ params, searchParams }: Props) {
           ariaLabel={ct("breadcrumb")}
           items={[
             { label: ct("home"), href: `/${locale}` },
-            { label: title.main },
+            { label: pairText(title) },
           ]}
         />
       </div>
@@ -549,16 +533,11 @@ export default async function SongPage({ params, searchParams }: Props) {
         locale={locale}
         title={title}
         artist={
-          primaryArtist
+          primaryArtist && primaryName
             ? {
                 id: primaryArtist.id,
                 slug: primaryArtist.slug,
-                name:
-                  displayNameWithFallback(
-                    primaryArtist,
-                    primaryArtist.translations,
-                    locale,
-                  ) || at("unknown"),
+                name: primaryName.main ? primaryName : { main: at("unknown"), sub: null, lang: locale },
                 color: primaryArtist.color,
               }
             : null

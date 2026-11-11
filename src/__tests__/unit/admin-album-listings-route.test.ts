@@ -11,6 +11,7 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
       delete: vi.fn(),
       findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
     },
     albumStoreListingTranslation: {
       deleteMany: vi.fn(),
@@ -42,6 +43,15 @@ const baseValid = {
   status: "active",
 };
 
+const translated = {
+  ...baseValid,
+  translations: [
+    { locale: "ko", storeName: "아마존 재팬" },
+    { locale: "en", storeName: "Amazon Japan" },
+  ],
+};
+const existing = { ...baseValid, id: "list-uuid", originalLanguage: "ja", translations: translated.translations };
+
 describe("POST /api/admin/album-listings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,7 +63,7 @@ describe("POST /api/admin/album-listings", () => {
       Response.json({ error: "unauthorized" }, { status: 401 }),
     );
     const res = await POST(
-      jsonRequest("http://x/api/admin/album-listings", baseValid) as never,
+      jsonRequest("http://x/api/admin/album-listings", translated) as never,
     );
     expect(res.status).toBe(401);
     expect(prisma.albumStoreListing.create).not.toHaveBeenCalled();
@@ -77,6 +87,12 @@ describe("POST /api/admin/album-listings", () => {
       }) as never,
     );
     expect(res.status).toBe(400);
+  });
+
+  it("rejects a new listing with missing locale text", async () => {
+    const res = await POST(jsonRequest("http://x/api/admin/album-listings", baseValid) as never);
+    expect(res.status).toBe(400);
+    expect(prisma.albumStoreListing.create).not.toHaveBeenCalled();
   });
 
   it("returns 400 on unknown status value", async () => {
@@ -120,7 +136,7 @@ describe("POST /api/admin/album-listings", () => {
       }),
     );
     const res = await POST(
-      jsonRequest("http://x/api/admin/album-listings", baseValid) as never,
+      jsonRequest("http://x/api/admin/album-listings", translated) as never,
     );
     expect(res.status).toBe(409);
     const body = await res.json();
@@ -133,7 +149,7 @@ describe("POST /api/admin/album-listings", () => {
     );
     const res = await POST(
       jsonRequest("http://x/api/admin/album-listings", {
-        ...baseValid,
+        ...translated,
         productUrl: "",
       }) as never,
     );
@@ -148,7 +164,7 @@ describe("POST /api/admin/album-listings", () => {
       { id: "uuid-1", albumId: BigInt(1), originalStoreName: "amazon_jp" },
     );
     await POST(
-      jsonRequest("http://x/api/admin/album-listings", baseValid) as never,
+      jsonRequest("http://x/api/admin/album-listings", translated) as never,
     );
     const call = (prisma.albumStoreListing.create as ReturnType<typeof vi.fn>)
       .mock.calls[0][0];
@@ -165,6 +181,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     verifyMock.mockResolvedValue(null);
+    vi.mocked(prisma.albumStoreListing.findUniqueOrThrow).mockResolvedValue(existing as never);
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
       async (fn: (tx: typeof prisma) => unknown) => fn(prisma),
     );
@@ -194,8 +211,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
 
   it("updates locale overrides without rebuilding retained rows", async () => {
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "list-uuid",
-      translations: [],
+      ...existing,
     });
     const res = await PATCH_LISTING(
       jsonRequest(
@@ -219,8 +235,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
 
   it("preserves omitted lifecycle fields on update", async () => {
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "list-uuid",
-      translations: [],
+      ...existing,
     });
     await PATCH_LISTING(
       jsonRequest("http://x/api/admin/album-listings/list-uuid", baseValid, "PATCH") as never,
@@ -239,11 +254,10 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
     // CR finding: a thin client that PATCHes only the URL shouldn't
     // wipe per-locale labels.
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue(
-      { id: "list-uuid", translations: [] },
+      existing,
     );
-    // baseValid does NOT include translations
     const res = await PATCH_LISTING(
-      jsonRequest("http://x/api/admin/album-listings/list-uuid", baseValid, "PATCH") as never,
+      jsonRequest("http://x/api/admin/album-listings/list-uuid", { productUrl: "https://example.com/p" }, "PATCH") as never,
       { params },
     );
     expect(res.status).toBe(200);
@@ -268,11 +282,11 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
     expect(prisma.albumStoreListing.update).not.toHaveBeenCalled();
   });
 
-  it("wipes translations on explicit empty array (full-replace)", async () => {
+  it("rejects clearing required translations with an explicit empty array", async () => {
     // Distinguish "field missing" (preserve) from "[] supplied"
     // (full-replace clear).
     (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue(
-      { id: "list-uuid", translations: [] },
+      { ...existing, translations: [] },
     );
     const res = await PATCH_LISTING(
       jsonRequest(
@@ -282,7 +296,7 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
       ) as never,
       { params },
     );
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(prisma.albumStoreListing.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ translations: { deleteMany: {}, upsert: [] } }),
     }));

@@ -233,6 +233,7 @@
       "basicOptions": "特典なしの購入オプション",
       "storeCount": "販売店 {count}店",
       "deadline": "特典締切：{time}",
+      "label": "購入特典",
       "buyAt": "{store}で商品を見る",
       "officialInfo": "公式商品情報",
       "status": {

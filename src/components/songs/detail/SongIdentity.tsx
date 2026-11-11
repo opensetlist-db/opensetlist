@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { entityPath, type EntityId } from "@/lib/seo/entityUrl";
+import type { SongDetailPair } from "@/lib/songDisplay";
 import { colors } from "@/styles/tokens";
 import styles from "./songDetail.module.css";
 
@@ -12,7 +13,7 @@ import styles from "./songDetail.module.css";
  * Content rules carried over from the pre-redesign sidebar card:
  *   - Title: original title leads; the locale translation is the
  *     subtitle only when it exists and differs (`displayOriginalTitle`).
- *     The variant label (locale translation → original) is its own pill.
+ *     The variant label keeps its own pair in a separate pill.
  *   - Artist: the `primary` credit, else the first credit; one link, no
  *     new all-credits section. No credit → a plain "곡" kind badge.
  *   - Meta: song release year (UTC), and the earliest vocal album's type
@@ -27,11 +28,11 @@ import styles from "./songDetail.module.css";
 
 export interface SongIdentityProps {
   locale: string;
-  title: { main: string; sub: string | null; variant: string | null };
-  artist: { id: EntityId; slug: string; name: string; color: string | null } | null;
-  base: { id: EntityId; slug: string; title: string } | null;
+  title: SongDetailPair & { variant: SongDetailPair | null };
+  artist: { id: EntityId; slug: string; name: SongDetailPair; color: string | null } | null;
+  base: { id: EntityId; slug: string; title: SongDetailPair } | null;
   releaseYear: number | null;
-  firstAlbum: { title: string; typeLabel: string } | null;
+  firstAlbum: { title: SongDetailPair; typeLabel: string } | null;
   performanceCount: number;
   seriesCount: number;
 }
@@ -68,24 +69,36 @@ export async function SongIdentity({
             href={entityPath("artists", locale, artist.id, artist.slug)}
             className={styles.artistBadge}
           >
-            {artist.name} <span aria-hidden="true">›</span>
+            <span>
+              <span lang={artist.name.lang}>{artist.name.main}</span>
+              {artist.name.sub && <small lang={locale} className={styles.pairSub}>{artist.name.sub}</small>}
+            </span>{" "}
+            <span aria-hidden="true">›</span>
           </Link>
         ) : (
           <span className={styles.kindBadge}>{t("kindBadge")}</span>
         )}
-        <h1 id="song-title" className={styles.h1}>
+        <h1 id="song-title" lang={title.lang} className={styles.h1}>
           {title.main}
         </h1>
-        {title.sub ? <p className={styles.subtitle}>{title.sub}</p> : null}
-        {title.variant ? (
+        {title.sub ? <p lang={locale} className={styles.subtitle}>{title.sub}</p> : null}
+        {title.variant || base ? (
           <div className={styles.version}>
-            <span className={styles.variantPill}>{title.variant}</span>
+            {title.variant && (
+              <span className={styles.variantPill}>
+                <span lang={title.variant.lang}>{title.variant.main}</span>
+                {title.variant.sub && <small lang={locale} className={styles.pairSub}>{title.variant.sub}</small>}
+              </span>
+            )}
             {base ? (
               <Link
                 href={entityPath("songs", locale, base.id, base.slug)}
                 className={styles.baseLink}
               >
-                {t("baseVersion")} · {base.title}{" "}
+                <span>
+                  {t("baseVersion")} · <span lang={base.title.lang}>{base.title.main}</span>
+                  {base.title.sub && <small lang={locale} className={styles.pairSub}>{base.title.sub}</small>}
+                </span>{" "}
                 <span aria-hidden="true">↗</span>
               </Link>
             ) : null}
@@ -107,7 +120,10 @@ export async function SongIdentity({
                 </div>
                 <div>
                   <dt>{t("albumLabel")}</dt>
-                  <dd>{firstAlbum.title}</dd>
+                  <dd>
+                    <span lang={firstAlbum.title.lang}>{firstAlbum.title.main}</span>
+                    {firstAlbum.title.sub && <small lang={locale} className={styles.pairSub}>{firstAlbum.title.sub}</small>}
+                  </dd>
                 </div>
               </>
             ) : null}

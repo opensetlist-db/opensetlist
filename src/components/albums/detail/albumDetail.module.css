@@ -476,6 +476,14 @@ a.trackRow:focus-visible {
   font-weight: 700;
 }
 
+.storeNameTranslation {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 0.82em;
+  font-weight: 500;
+}
+
 .deadline {
   margin: 4px 0 0;
   color: var(--text-secondary);

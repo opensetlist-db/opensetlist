@@ -82,11 +82,11 @@ describe("parseBonusTranslations", () => {
   it("trims bonusType; preserves null when blank", () => {
     expect(
       parseBonusTranslations([
-        { locale: "ko", bonusType: "  태피스트리  " },
+        { locale: "ko", bonusType: "  태피스트리  ", bonusDescription: "  2장 세트  " },
         { locale: "ja", bonusType: "" },
       ]),
     ).toEqual([
-      { locale: "ko", bonusType: "태피스트리" },
+      { locale: "ko", bonusType: "태피스트리", bonusDescription: "2장 세트" },
       { locale: "ja", bonusType: null },
     ]);
   });
@@ -104,5 +104,13 @@ describe("parsePattern3TrackTranslations", () => {
       { locale: "ko", title: "드라마" },
       { locale: "en", title: "Drama" },
     ]);
+  });
+
+  it("rejects a malformed or duplicate translation without accepting a partial replacement", () => {
+    const ko = { locale: "ko", title: "드라마" };
+    expect(parsePattern3TrackTranslations([ko])).toEqual([ko]);
+    expect(parsePattern3TrackTranslations([ko, null])).toBeNull();
+    expect(parsePattern3TrackTranslations([ko, { ...ko, locale: " ko " }])).toBeNull();
+    expect(parsePattern3TrackTranslations([{ ...ko, locale: "en-us" }])).toBeNull();
   });
 });

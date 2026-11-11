@@ -10,6 +10,7 @@ import {
   ADMIN_WRITABLE_LISTING_STATUSES,
   parseListingTranslations,
 } from "@/lib/adminParsers";
+import { requireReviewedText, storeLanguageIssue, translationChanged } from "@/lib/purchaseLanguage";
 import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
@@ -40,8 +41,8 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   }
 
   if (
-    typeof body.originalStoreName !== "string" ||
-    !body.originalStoreName.trim()
+    body.originalStoreName !== undefined &&
+    (typeof body.originalStoreName !== "string" || !body.originalStoreName.trim())
   ) {
     return NextResponse.json(
       { error: "매장 이름은 필수입니다." },
@@ -49,10 +50,8 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
   if (
-    typeof body.status !== "string" ||
-    !ADMIN_WRITABLE_LISTING_STATUSES.has(
-      body.status as AlbumStoreListingStatus,
-    )
+    body.status !== undefined &&
+    (typeof body.status !== "string" || !ADMIN_WRITABLE_LISTING_STATUSES.has(body.status as AlbumStoreListingStatus))
   ) {
     return NextResponse.json(
       { error: "잘못된 상태입니다." },
@@ -81,38 +80,47 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
 
   try {
     const purchase = parseListingPurchaseFields(body);
-    const updated = await prisma.albumStoreListing.update({
-      where: { id },
-      data: {
-        ...purchase,
-        revision: { increment: 1 },
-        // Verified choices are no longer safe matches for the store/edition importer.
-        ...(purchase.isBonusOption != null ? { optionKey: id } : {}),
-        originalStoreName: (body.originalStoreName as string).trim(),
-        originalEditionLabel:
-          typeof body.originalEditionLabel === "string" &&
-          body.originalEditionLabel.trim()
-            ? body.originalEditionLabel.trim()
-            : null,
-        originalLanguage:
-          typeof body.originalLanguage === "string" &&
-          body.originalLanguage.trim()
-            ? body.originalLanguage.trim()
-            : "ja",
-
-        status: body.status as AlbumStoreListingStatus,
-        translations: translationsProvided || removed !== undefined ? {
-          deleteMany: removed !== undefined
-              ? { locale: { in: removed.filter((locale) => !translations.some((row) => row.locale === locale)) } }
-              : translationsProvided && translations.length === 0 ? {} : undefined,
-          upsert: translations.map((row) => ({
-            where: { listingId_locale: { listingId: id, locale: row.locale } },
-            create: row,
-            update: row,
-          })),
-        } : undefined,
-      },
-      include: { translations: true },
+    const originalStoreName = typeof body.originalStoreName === "string" ? body.originalStoreName.trim() : undefined;
+    const originalLanguage = typeof body.originalLanguage === "string" ? body.originalLanguage.trim() || "ja" : undefined;
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "AlbumStoreListing" WHERE id = ${id} FOR UPDATE`;
+      const before = await tx.albumStoreListing.findUniqueOrThrow({
+        where: { id },
+        include: { translations: true },
+      });
+      const after = await tx.albumStoreListing.update({
+        where: { id },
+        data: {
+          ...purchase,
+          revision: { increment: 1 },
+          // Verified choices are no longer safe matches for the store/edition importer.
+          ...(purchase.isBonusOption != null ? { optionKey: id } : {}),
+          originalStoreName,
+          originalEditionLabel: typeof body.originalEditionLabel === "string"
+            ? body.originalEditionLabel.trim() || null
+            : body.originalEditionLabel === undefined ? undefined : null,
+          originalLanguage,
+          status: body.status as AlbumStoreListingStatus | undefined,
+          translations: translationsProvided || removed !== undefined ? {
+            deleteMany: removed !== undefined
+                ? { locale: { in: removed.filter((locale) => !translations.some((row) => row.locale === locale)) } }
+                : translationsProvided && translations.length === 0 ? {} : undefined,
+            upsert: translations.map((row) => ({
+              where: { listingId_locale: { listingId: id, locale: row.locale } },
+              create: row,
+              update: row,
+            })),
+          } : undefined,
+        },
+        include: { translations: true },
+      });
+      const sourceChanged = before.originalStoreName !== after.originalStoreName ||
+        before.originalLanguage !== after.originalLanguage;
+      if (sourceChanged || translationChanged(before.translations, after.translations, ["storeName"])) {
+        requireReviewedText(sourceChanged, body.reviewedTranslations,
+          storeLanguageIssue(after, body.reviewedTranslations === true));
+      }
+      return after;
     });
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));

@@ -7,19 +7,19 @@ const IMPORT_TYPES = [
     value: "groups",
     label: "1. 그룹 (Groups)",
     columns: ["slug*", "type", "category", "hasBoard", "originalLanguage", "originalName", "originalShortName", "originalDescription", "ja_name", "ja_shortName", "ja_description", "ko_name", "ko_shortName", "ko_description", "en_name", "en_shortName", "en_description"],
-    note: "type: franchise/label/agency/series · category: animegame/kpop/jpop/cpop/others · hasBoard: true/false (기본 false) · 슬러그는 upsert 키 · ja/ko/en_name 최소 1개 권장",
+    note: "type: franchise/label/agency/series · category: animegame/kpop/jpop/cpop/others · hasBoard: true/false (기본 false) · 슬러그는 upsert 키",
   },
   {
     value: "artists",
     label: "2. 아티스트 (Artists)",
     columns: ["slug*", "type*", "parentArtist_slug", "group_slugs", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "originalLanguage", "originalName", "originalShortName", "originalBio", "category", "isMainUnit", "color", "sortOrder", "isSideProject"],
-    note: "ja/ko/en_name 최소 1개 필수 · group_slugs: 공백 구분 · category: 그룹 미연결 아티스트 fallback (Group 연결 시 무시) · isMainUnit: 유닛 아티스트만 의미 있음 (true/false) · color: 유닛 배지 색 (예: #e91e8c). 컬럼 자체를 생략하면 기존 색 유지, 빈 셀이면 색 제거 · sortOrder: 루트·동일 부모의 유닛/솔로 공식 표시 순서 (정수, 작을수록 앞). 컬럼 생략 시 기존 값 유지, 빈 셀이면 미지정 · isSideProject: 사이드 프로젝트 = 페스 보드에서 제외 (true/false, 최상위 아티스트만). 컬럼 생략·빈 셀이면 기존 값 유지 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용",
+    note: "group_slugs: 공백 구분 · category: 그룹 미연결 아티스트 fallback (Group 연결 시 무시) · isMainUnit: 유닛 아티스트만 의미 있음 (true/false) · color: 유닛 배지 색 (예: #e91e8c). 컬럼 자체를 생략하면 기존 색 유지, 빈 셀이면 색 제거 · sortOrder: 루트·동일 부모의 유닛/솔로 공식 표시 순서 (정수, 작을수록 앞). 컬럼 생략 시 기존 값 유지, 빈 셀이면 미지정 · isSideProject: 사이드 프로젝트 = 페스 보드에서 제외 (true/false, 최상위 아티스트만). 컬럼 생략·빈 셀이면 기존 값 유지 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용",
   },
   {
     value: "members",
     label: "3. 멤버 (Members)",
-    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "sortOrder", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "va_ja_shortName", "va_ko_shortName", "va_en_shortName", "startDate", "endDate", "note", "originalLanguage", "originalName", "originalShortName", "va_originalLanguage", "va_originalName", "va_originalShortName", "va_originalStageName"],
-    note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · sortOrder: 기본 멤버 순서 (소속별 관계순과 별개, 정수, 작을수록 앞, 비어 있는 멤버는 뒤로). 컬럼 생략 시 기존 값 유지, 빈 셀이면 미지정 · startDate/endDate: 유닛 소속 기간 · note: graduated 등 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · VA는 va_* 접두사 · va_*_shortName: 글로서리 추출용 (선택)",
+    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "sortOrder", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "va_ja_shortName", "va_ko_shortName", "va_en_shortName", "va_ja_stageName", "va_ko_stageName", "va_en_stageName", "startDate", "endDate", "note", "originalLanguage", "originalName", "originalShortName", "va_originalLanguage", "va_originalName", "va_originalShortName", "va_originalStageName"],
+    note: "artist_slugs: 공백 구분 · sortOrder: 기본 멤버 순서 (소속별 관계순과 별개, 정수, 작을수록 앞, 비어 있는 멤버는 뒤로). 컬럼 생략 시 기존 값 유지, 빈 셀이면 미지정 · startDate/endDate: 유닛 소속 기간 · note: graduated 등 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · VA는 va_* 접두사 · va_*_shortName: 글로서리 추출용 (선택)",
   },
   {
     value: "membership-order",
@@ -30,20 +30,20 @@ const IMPORT_TYPES = [
   {
     value: "albums",
     label: "4. 앨범 (Albums)",
-    columns: ["slug*", "type*", "artist_slugs", "releaseDate", "originalTitle*", "originalLanguage", "ja_title", "ko_title", "en_title", "labelName"],
-    note: "originalLanguage: ja(기본값), en, ko, zh 등 · type: single, album, ep, live_album, soundtrack · artist_slugs: 공백 구분 (스플릿 싱글: 여러 아티스트, 컴필레이션: 비워두기)",
+    columns: ["slug*", "type*", "artist_slugs", "releaseDate", "originalTitle", "originalLanguage", "ja_title", "ko_title", "en_title", "labelName"],
+    note: "originalLanguage: ja(신규 기본값), en, ko, zh-CN · type: single, album, ep, live_album, soundtrack · artist_slugs: 공백 구분 (스플릿 싱글: 여러 아티스트, 컴필레이션: 비워두기)",
   },
   {
     value: "songs",
     label: "5. 곡 (Songs)",
-    columns: ["slug*", "originalTitle*", "originalLanguage", "artist_slugs", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ja_variantLabel", "ko_title", "ko_variantLabel", "en_title", "en_variantLabel", "sourceNote", "album_slug", "disc_number", "track_number"],
-    note: "originalLanguage: ja(기본값), en, ko, zh 등 · artist_slugs: 공백 구분 (콜라보곡: 여러 아티스트) · album_slug + track_number: 앨범 트랙 연결 · disc_number: 멀티디스크 앨범용 (기본값 1)",
+    columns: ["slug*", "originalTitle", "originalLanguage", "artist_slugs", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ja_variantLabel", "ko_title", "ko_variantLabel", "en_title", "en_variantLabel", "sourceNote", "album_slug", "disc_number", "track_number", "track_type", "parent_song_slug"],
+    note: "originalLanguage: ja(신규 기본값), en, ko, zh-CN · artist_slugs: 공백 구분 (콜라보곡: 여러 아티스트) · album_slug + track_number: 앨범 트랙 연결 · disc_number: 멀티디스크 앨범용 (기본값 1)",
   },
   {
     value: "events",
     label: "6. 이벤트 (Events)",
-    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_en_name", "series_en_shortName", "series_ja_organizerName", "series_ko_organizerName", "series_en_organizerName", "series_type", "event_slug*", "event_type", "date", "startTime*", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "en_name", "en_shortName", "en_city", "en_venue", "ja_organizerName", "ko_organizerName", "en_organizerName", "artist_slug", "event_performer_slugs", "event_guest_slugs", "originalLanguage", "originalName", "originalShortName", "originalCity", "originalVenue", "series_originalLanguage", "series_originalName", "series_originalShortName", "series_originalDescription", "bdAlbum_slug", "engagementOpensAt"],
-    note: "ja/ko/en_name 최소 1개 필수 · event_performer_slugs: 공백 구분 정규 출연진 · event_guest_slugs: 공백 구분 게스트 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · 시리즈는 series_* 접두사 · *_organizerName: 주최 번역 (빈 칸이면 기존 값 유지)",
+    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_en_name", "series_en_shortName", "series_ja_organizerName", "series_ko_organizerName", "series_en_organizerName", "series_organizerName", "series_type", "event_slug*", "event_type", "date", "startTime*", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "en_name", "en_shortName", "en_city", "en_venue", "ja_organizerName", "ko_organizerName", "en_organizerName", "organizerName", "artist_slug", "event_performer_slugs", "event_guest_slugs", "originalLanguage", "originalName", "originalShortName", "originalCity", "originalVenue", "series_originalLanguage", "series_originalName", "series_originalShortName", "series_originalDescription", "bdAlbum_slug", "engagementOpensAt"],
+    note: "event_performer_slugs: 공백 구분 정규 출연진 · event_guest_slugs: 공백 구분 게스트 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · 시리즈는 series_* 접두사 · *_organizerName: 주최 번역 (빈 칸이면 기존 값 유지)",
   },
   {
     value: "setlistitems",
@@ -77,10 +77,7 @@ export default function ImportPage() {
   }
 
   async function handleImport() {
-    if (!csvText.trim()) {
-      setError("CSV 데이터가 없습니다.");
-      return;
-    }
+    if (!csvText.trim()) return;
 
     setLoading(true);
     setError("");
@@ -116,6 +113,13 @@ export default function ImportPage() {
       <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
         반드시 순서대로 가져오세요: 그룹 → 아티스트 → 멤버 → 앨범 → 곡 → 이벤트 → 세트리스트
       </div>
+      {!["membership-order", "setlistitems"].includes(selectedType) && (
+        <div className="mb-4 space-y-1 rounded border border-zinc-300 p-3 text-sm">
+          <p>새 항목이나 이름 변경에는 원문과 한국어·일본어·영어 표기를 확인해 입력하세요. 원문 언어와 로마자·숫자 제목은 별도 번역을 생략할 수 있습니다.</p>
+          <p>출처에서 같은 표기를 확인했다면 해당 번역 열에 <code>_same_source</code>를 붙인 열에 검수 URL을 넣으세요. 번역 셀이 비어 있으면 저장된 번역을 유지합니다.</p>
+          <p>출처가 없거나 표기가 충돌하는 항목과 그 항목에 의존하는 행은 검수 목록에 남겨 두고, 준비된 CSV만 가져오세요.</p>
+        </div>
+      )}
 
       {/* Type selector */}
       <div className="mb-4">
@@ -204,8 +208,9 @@ export default function ImportPage() {
 
       {/* Error */}
       {error && (
-        <div className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
+        <div role="alert" className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <p>{error}</p>
+          <p className="mt-1">앞서 처리된 행이 반영됐을 수 있습니다. 수정 후 재시도하기 전에 저장 결과를 확인하세요.</p>
         </div>
       )}
 

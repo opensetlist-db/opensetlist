@@ -1,4 +1,6 @@
+import { checkIdentityNames, identityTranslations } from "@/lib/adminIdentityNames";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { revalidatePublicData } from "@/lib/dataCache";
@@ -9,34 +11,15 @@ import {
   enumValue,
   nullableHexColor,
   nullableInt,
+  nullableString,
+  originalLanguage as parseOriginalLanguage,
+  requireString,
   parseJsonBody,
 } from "@/lib/admin-input";
 import { parseStageIdentityTranslations } from "@/app/api/admin/artists/_validate";
 
 type Props = { params: Promise<{ id: string }> };
 
-/**
- * Per-member edit. Every field here is "the body owns what it sends,
- * and only that":
- *
- *   - `translations` are upserted per locale, like the members CSV
- *     import (`import/route.ts`), NOT delete-and-recreate like the
- *     artist PUT. The artist form owns every ArtistTranslation field
- *     (it loads and resubmits name / shortName / bio for each locale),
- *     so recreating from its payload loses nothing. The member row of
- *     that same form only holds ONE ko name — it never loads ja / en or
- *     any shortName — so a recreate from its payload wiped every other
- *     locale and every shortName on each 저장. Upserting means a
- *     locale absent from the body keeps its row, and `shortName` is
- *     written only when the item carries the key (`null` / "" clears
- *     it). Removing a locale is therefore not possible through this
- *     route; nothing in the admin UI needs it.
- *   - `type`, `color`, `sortOrder` are preserve-on-missing, matching
- *     `parseArtistDisplayFields`: a body without the key leaves the
- *     column alone; a present value is authoritative ("" / null clears
- *     colour and order). A caller that predates a field (an old tab, a
- *     script) therefore cannot blank it.
- */
 export async function PUT(request: NextRequest, { params }: Props) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
@@ -50,10 +33,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!parsedBody.ok) return parsedBody.response;
   const body = parsedBody.body;
 
-  // Required and non-empty even though absent locales are kept: a save
-  // that names nothing is a client bug, not a "touch only scalars"
-  // request, and the create paths share this parser.
-  const translations = parseStageIdentityTranslations(body.translations, "translations");
+  const translations = identityTranslations(body.translations, (raw) => parseStageIdentityTranslations(raw, "translations"));
   if (!translations.ok) return badRequest(translations.message);
 
   // `type` is optional (absent / null → keep the stored one), but a
@@ -84,37 +64,54 @@ export async function PUT(request: NextRequest, { params }: Props) {
     sortOrder = parsed.value;
   }
 
-  // One sequential transaction so a failed upsert cannot leave the
-  // scalars updated with half the names changed (and an un-expired
-  // public cache). The final read returns the identity with ALL its
-  // locales, including the ones the body did not send — the form's
-  // row re-renders from it.
-  const results = await prisma.$transaction([
-    prisma.stageIdentity.update({
-      where: { id },
-      data: { type, color, sortOrder },
-    }),
-    ...translations.value.map((t) =>
-      prisma.stageIdentityTranslation.upsert({
-        where: { stageIdentityId_locale: { stageIdentityId: id, locale: t.locale } },
-        create: {
-          stageIdentityId: id,
-          locale: t.locale,
-          name: t.name,
-          shortName: t.shortName ?? null,
+  const name = body.originalName === undefined ? undefined : requireString(body.originalName, "originalName");
+  if (name && !name.ok) return badRequest(name.message);
+  const shortName = body.originalShortName === undefined ? undefined : nullableString(body.originalShortName, "originalShortName");
+  if (shortName && !shortName.ok) return badRequest(shortName.message);
+  const language = body.originalLanguage === undefined ? undefined : parseOriginalLanguage(body.originalLanguage);
+  if (language && !language.ok) return badRequest(language.message);
+  const rows = translations.value;
+
+  try {
+    const stageIdentity = await prisma.$transaction(async (tx) => {
+      const stored = await tx.stageIdentity.findUnique({
+        where: { id: id },
+        include: { translations: true },
+      });
+      if (!stored) return NextResponse.json({ error: "대상을 찾을 수 없습니다." }, { status: 404 });
+      const message = checkIdentityNames("멤버", {
+        originalName: name?.value ?? stored.originalName,
+        originalShortName: shortName ? shortName.value : stored.originalShortName,
+        originalLanguage: language?.value ?? stored.originalLanguage,
+        translations: rows,
+        sameNameConfirmations: translations.sameNameConfirmations,
+      }, stored);
+      if (message) return badRequest(message);
+      return tx.stageIdentity.update({
+        where: { id },
+        data: {
+          type, color, sortOrder,
+          originalName: name?.value,
+          originalShortName: shortName?.value,
+          originalLanguage: language?.value,
+          translations: { upsert: rows.map((row) => ({
+            where: { stageIdentityId_locale: { stageIdentityId: id, locale: row.locale } },
+            create: row,
+            update: { name: row.name, shortName: row.shortName },
+          })) },
         },
-        // `shortName: undefined` is dropped by Prisma = column untouched.
-        update: { name: t.name, shortName: t.shortName },
-      })
-    ),
-    prisma.stageIdentity.findUniqueOrThrow({
-      where: { id },
-      include: { translations: true },
-    }),
-  ]);
-  const si = results[results.length - 1];
-  revalidatePublicData();
-  return NextResponse.json(serializeBigInt(si));
+        include: { translations: true },
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (stageIdentity instanceof NextResponse) return stageIdentity;
+    revalidatePublicData();
+    return NextResponse.json(serializeBigInt(stageIdentity));
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      return NextResponse.json({ error: "동시에 수정되었습니다. 다시 불러온 뒤 저장하세요." }, { status: 409 });
+    }
+    throw error;
+  }
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {

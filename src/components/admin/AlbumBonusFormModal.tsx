@@ -13,7 +13,7 @@ export type BonusFormPayload = {
   listingId: string;
   originalBonusType: string;
   originalLanguage: string;
-  translations: { locale: string; bonusType: string | null }[];
+  translations: { locale: string; bonusType: string | null; bonusDescription: string | null }[];
 };
 
 export type BonusInitial = BonusFormPayload & { id: string; revision: number };
@@ -47,7 +47,7 @@ export default function AlbumBonusFormModal({
     const used = new Set(translations.map((t) => t.locale));
     const next = ADMIN_LOCALES.find((l) => !used.has(l));
     if (next)
-      setTranslations((prev) => [...prev, { locale: next, bonusType: null }]);
+      setTranslations((prev) => [...prev, { locale: next, bonusType: null, bonusDescription: null }]);
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -69,6 +69,7 @@ export default function AlbumBonusFormModal({
         .map((t) => ({
           locale: t.locale,
           bonusType: t.bonusType?.trim() || null,
+          bonusDescription: t.bonusDescription?.trim() || null,
         })),
     };
     const url = initialData?.id
@@ -81,6 +82,7 @@ export default function AlbumBonusFormModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...payload,
+          reviewedTranslations: form.has("reviewedTranslations"),
           expectedRevision: initialData?.revision,
           bonusImageUrl: initialData?.bonusImageUrl === payload.bonusImageUrl ? undefined : payload.bonusImageUrl,
           removedTranslationLocales: initialData?.translations
@@ -177,7 +179,7 @@ export default function AlbumBonusFormModal({
 
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
-            <label className="text-sm font-medium">로케일 별 라벨 (선택)</label>
+            <label className="text-sm font-medium">로케일별 특전 종류·설명</label>
             {translations.length < ADMIN_LOCALES.length && (
               <button
                 type="button"
@@ -190,7 +192,7 @@ export default function AlbumBonusFormModal({
           </div>
           {translations.length === 0 && (
             <p className="text-xs text-zinc-500">
-              비어 있으면 모든 로케일에서 원어 라벨을 그대로 사용합니다.
+              원어 외 공개 언어의 특전 종류와 설명을 입력하세요. 설명은 원문이 있는 경우 필요합니다.
             </p>
           )}
           <div className="space-y-2">
@@ -247,11 +249,27 @@ export default function AlbumBonusFormModal({
                 >
                   삭제
                 </button>
+                <textarea
+                  aria-label={tr.locale + " 특전 설명"}
+                  value={tr.bonusDescription ?? ""}
+                  onChange={(e) =>
+                    setTranslations((prev) =>
+                      prev.map((t, j) =>
+                        j === i ? { ...t, bonusDescription: e.target.value } : t,
+                      ),
+                    )
+                  }
+                  className="col-span-full min-w-0 rounded border border-zinc-300 px-2 py-1 text-sm"
+                />
               </div>
             ))}
           </div>
         </div>
 
+        <label className="mt-4 flex items-start gap-2 text-sm">
+          <input name="reviewedTranslations" type="checkbox" />
+          원문을 변경했거나 동일한 문구를 사용한 경우, 모든 번역의 의미를 원문과 대조했습니다.
+        </label>
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
