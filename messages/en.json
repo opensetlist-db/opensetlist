@@ -189,6 +189,7 @@
     "albumActiveBonuses": "{count, plural, one {# store bonus} other {# store bonuses}}",
     "albumActiveBonusesBadge": "Bonus {count}",
     "unknown": "Unknown album",
+    "coverAlt": "Album cover for {title}",
     "type": {
       "single": "Single",
       "album": "Album",

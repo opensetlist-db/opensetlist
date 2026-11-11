@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { AlbumType } from "@/generated/prisma/enums";
 import type { RelatedEvent } from "@/lib/albumRelatedEvents";
-import { displayOriginalName, resolveLocalizedField } from "@/lib/display";
+import { resolveDisplayPair } from "@/lib/display";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { entityPath } from "@/lib/seo/entityUrl";
 import { formatDate } from "@/lib/utils";
@@ -32,11 +32,13 @@ import styles from "./albumDetail.module.css";
  * without JS and announces its expanded state for free.
  */
 
+type RelatedLabel = { main: string; sub: string | null; originalLanguage: string };
+
 type EventView = {
   id: string;
   href: string;
-  name: string;
-  venue: string | null;
+  name: RelatedLabel;
+  venue: RelatedLabel | null;
   status: ResolvedEventStatus;
   formattedDate: string;
   dateTime: string;
@@ -45,7 +47,7 @@ type EventView = {
 
 type SeriesView = {
   key: string;
-  label: string;
+  label: RelatedLabel;
   events: EventView[];
   sortKey: number;
 };
@@ -63,6 +65,23 @@ function toMs(value: unknown): number {
   return Number.isNaN(ms) ? 0 : ms;
 }
 
+/** Keeps the original locale with each event or series title pair. */
+function relatedTitle(
+  row: { originalName: string; originalLanguage: string; translations: { locale: string; name: string }[] },
+  locale: string,
+  fallback: string,
+): RelatedLabel {
+  if (!row.originalName) return { main: fallback, sub: null, originalLanguage: locale };
+  return {
+    originalLanguage: row.originalLanguage,
+    ...resolveDisplayPair(
+      { original: row.originalName, originalLanguage: row.originalLanguage },
+      row.translations, locale, "name", { kind: "title" },
+    ),
+  };
+}
+
+/** Displays related performances with the title and venue names for this locale. */
 export async function AlbumEventsPanel({
   events,
   albumType,
@@ -93,23 +112,23 @@ export async function AlbumEventsPanel({
   };
 
   const now = new Date();
-  const buckets = new Map<string, { label: string; events: EventView[] }>();
+  const buckets = new Map<string, { label: RelatedLabel; events: EventView[] }>();
   const other: EventView[] = [];
   for (const event of events) {
     const displayDate = event.date ?? event.startTime;
+    const localizedVenue = event.translations.find((row) => row.locale === locale)?.venue;
+    const venue = event.originalVenue ? {
+      originalLanguage: event.originalLanguage,
+      ...resolveDisplayPair(
+        { original: event.originalVenue, originalLanguage: event.originalLanguage },
+        event.translations, locale, "venue",
+      ),
+    } : localizedVenue ? { main: localizedVenue, sub: null, originalLanguage: locale } : null;
     const view: EventView = {
       id: String(event.id),
       href: entityPath("events", locale, event.id, event.slug),
-      name:
-        displayOriginalName(event, event.translations, locale).main ||
-        et("unknownEvent"),
-      venue: resolveLocalizedField(
-        event,
-        event.translations,
-        locale,
-        "venue",
-        "originalVenue",
-      ),
+      name: relatedTitle(event, locale, et("unknownEvent")),
+      venue,
       status: getEventStatus(
         { status: event.status, startTime: event.startTime },
         now,
@@ -130,12 +149,7 @@ export async function AlbumEventsPanel({
       bucket.events.push(view);
     } else {
       buckets.set(key, {
-        label:
-          displayOriginalName(
-            event.eventSeries,
-            event.eventSeries.translations,
-            locale,
-          ).main || st("unknownSeries"),
+        label: relatedTitle(event.eventSeries, locale, st("unknownSeries")),
         events: [view],
       });
     }
@@ -154,7 +168,12 @@ export async function AlbumEventsPanel({
   series.sort((a, b) => b.sortKey - a.sortKey);
   if (other.length > 0) {
     other.sort((a, b) => b.startMs - a.startMs);
-    series.push({ key: "other", label: et("ungrouped"), events: other, sortKey: 0 });
+    series.push({
+      key: "other",
+      label: { main: et("ungrouped"), sub: null, originalLanguage: locale },
+      events: other,
+      sortKey: 0,
+    });
   }
 
   return (
@@ -168,7 +187,9 @@ export async function AlbumEventsPanel({
       {series.map((group) => (
         <details key={group.key} className={styles.eventGroup} open>
           <summary>
-            {group.label} <span className={styles.count}>{group.events.length}</span>
+            <span lang={group.label.originalLanguage}>{group.label.main}</span>{" "}
+            <span className={styles.count}>{group.events.length}</span>
+            {group.label.sub && <small className={styles.eventTranslation} lang={locale}>{group.label.sub}</small>}
           </summary>
           {group.events.map((event) => (
             <Link key={event.id} href={event.href} className={styles.eventRow}>
@@ -179,8 +200,14 @@ export async function AlbumEventsPanel({
                 <time dateTime={event.dateTime}>{event.formattedDate}</time>
               </span>
               <span className={styles.eventCopy}>
-                <strong>{event.name}</strong>
-                {event.venue ? <small>{event.venue}</small> : null}
+                <strong lang={event.name.originalLanguage}>{event.name.main}</strong>
+                {event.name.sub && <small lang={locale}>{event.name.sub}</small>}
+                {event.venue && (
+                  <span className={styles.eventVenue}>
+                    <span lang={event.venue.originalLanguage}>{event.venue.main}</span>
+                    {event.venue.sub && <small lang={locale}>{event.venue.sub}</small>}
+                  </span>
+                )}
               </span>
               <span className={styles.arrow} aria-hidden="true">
                 ›

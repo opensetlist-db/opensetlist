@@ -1,4 +1,8 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
+import { AlbumInputError, parseAlbumInput } from "@/lib/adminAlbumInput";
+import { albumTitleIssues } from "@/lib/albumTitlePolicy";
+import { revalidatePublicData } from "@/lib/dataCache";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
@@ -30,9 +34,7 @@ import { verifyAdminAPI } from "@/lib/admin-auth";
  * this comment claimed a cookie/middleware policy already protected the
  * route boundary — it did not; the proxy excluded `/api` entirely and
  * several admin routes, including the CSV importer, were open.)
- *
- * No POST exposed — Album rows come from CSV import, not admin form
- * creation. See the comment on `/api/admin/albums/[id]/route.ts`.
+
  */
 export async function GET() {
   const unauthorized = await verifyAdminAPI();
@@ -67,5 +69,50 @@ export async function GET() {
       { error: "Internal server error" },
       { status: 500 },
     );
+  }
+}
+
+/** Creates an album only after its titles satisfy the public locale policy. */
+export async function POST(request: NextRequest) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
+  try {
+    const body: unknown = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new AlbumInputError("잘못된 JSON입니다.");
+    }
+    const { slug, type, originalTitle, originalLanguage, releaseDate, labelName, translations: submitted = [], artistIds = [] } =
+      parseAlbumInput(body as Record<string, unknown>);
+    if (!slug || !type || !originalTitle || !originalLanguage) {
+      throw new AlbumInputError("슬러그, 타입, 원제, 원어를 입력해 주세요.");
+    }
+    const translations = submitted.filter((row) => row.title);
+    const issues = albumTitleIssues({ originalTitle, originalLanguage, translations });
+    if (issues.length) throw new AlbumInputError(`앨범 제목: ${issues.join(", ")}`);
+
+    const album = await prisma.album.create({
+      data: {
+        slug, type, originalTitle, originalLanguage, releaseDate, labelName,
+        translations: { create: translations.map(({ locale, title }) => ({ locale, title })) },
+        artists: { create: artistIds.map((artistId) => ({ artistId })) },
+      },
+      select: { id: true },
+    });
+    revalidatePublicData();
+    return NextResponse.json({ id: String(album.id) }, { status: 201 });
+  } catch (error) {
+    if (error instanceof AlbumInputError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return NextResponse.json({ error: "이미 사용 중인 슬러그입니다." }, { status: 409 });
+      }
+      if (error.code === "P2003") {
+        return NextResponse.json({ error: "잘못된 아티스트 ID입니다." }, { status: 400 });
+      }
+    }
+    throw error;
   }
 }

@@ -3,10 +3,8 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
-import { validateCanonicalSlug } from "@/lib/slug";
-import { ALBUM_TYPE_SET } from "@/lib/albumConstants";
-import { parseBigInt } from "@/lib/adminParsers";
-import type { AlbumType } from "@/generated/prisma/enums";
+import { AlbumInputError, parseAlbumInput } from "@/lib/adminAlbumInput";
+import { albumTitleChanged, albumTitleIssues } from "@/lib/albumTitlePolicy";
 import { revalidatePublicData } from "@/lib/dataCache";
 import {
   isUploadError,
@@ -20,33 +18,20 @@ type RouteProps = { params: Promise<{ id: string }> };
 /** Thrown inside the transaction to roll it back on a cover CAS miss. */
 class CoverConflict extends Error {}
 
-type PatchBody = {
-  slug?: unknown;
-  type?: unknown;
-  originalTitle?: unknown;
-  originalLanguage?: unknown;
-  releaseDate?: unknown;
-  labelName?: unknown;
-  imageUrl?: unknown;
-  expectedImageUrl?: unknown;
-  translations?: unknown;
-  artistIds?: unknown;
-};
-
 /**
  * PATCH /api/admin/albums/[id]
  *
  *   Body: {
- *     slug: string,
- *     type: AlbumType,
- *     originalTitle: string,
- *     originalLanguage: string,
- *     releaseDate: string | null,   // YYYY-MM-DD
- *     labelName: string | null,
+ *     slug?: string,
+ *     type?: AlbumType,
+ *     originalTitle?: string,
+ *     originalLanguage?: string,
+ *     releaseDate?: string | null,   // YYYY-MM-DD
+ *     labelName?: string | null,
  *     imageUrl?: string | null,          // omit = cover untouched
  *     expectedImageUrl?: string | null, // required with imageUrl
- *     translations: { locale, title }[],
- *     artistIds: number[],
+ *     translations?: { locale, title, sameSource?: string }[],
+ *     artistIds?: (string | number)[],
  *   }
  *   → 200 { ...album }
  *   → 400 invalid input
@@ -67,10 +52,9 @@ type PatchBody = {
  * blindly — that is the shape an old, still-open form tab sends, and
  * writing it would bring back a cover someone has since replaced.
  *
- * Translations + artists are replaced delete-then-create (mirrors
- * `PUT /api/admin/songs/[id]`). This is the only Album mutation
- * endpoint b05 ships — Album rows themselves come from CSV import,
- * so there's no `POST /api/admin/albums` create surface (yet).
+ * Omitted fields and translation locales are preserved. An empty title
+ * clears that locale and an empty array clears all translations.
+ * A provided artist array replaces the artist collection.
  */
 export async function PATCH(request: NextRequest, { params }: RouteProps) {
   const unauthorized = await verifyAdminAPI();
@@ -87,104 +71,20 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  let body: PatchBody;
+  let body: Record<string, unknown>;
   try {
-    body = (await request.json()) as PatchBody;
+    const raw: unknown = await request.json();
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error();
+    body = raw as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
 
-  // Slug — canonical-only (same contract as every other admin route).
-  if (typeof body.slug !== "string") {
-    return NextResponse.json(
-      { error: "슬러그는 필수입니다." },
-      { status: 400 },
-    );
-  }
-  const slug = validateCanonicalSlug(body.slug);
-  if (!slug) {
-    return NextResponse.json(
-      {
-        error:
-          "슬러그는 영소문자, 숫자, 하이픈으로만 구성된 URL-safe 형식이어야 합니다.",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (
-    typeof body.type !== "string" ||
-    !ALBUM_TYPE_SET.has(body.type as AlbumType)
-  ) {
-    return NextResponse.json(
-      { error: "잘못된 앨범 타입입니다." },
-      { status: 400 },
-    );
-  }
-  if (typeof body.originalTitle !== "string" || !body.originalTitle.trim()) {
-    return NextResponse.json(
-      { error: "원제는 필수입니다." },
-      { status: 400 },
-    );
-  }
-  if (typeof body.originalLanguage !== "string" || !body.originalLanguage) {
-    return NextResponse.json(
-      { error: "원어를 선택해 주세요." },
-      { status: 400 },
-    );
-  }
-
-  // releaseDate is a calendar date (Album.releaseDate is `@db.Date`),
-  // not a timestamp — the operator's form sends a YYYY-MM-DD string.
-  // Strict-validate the shape so a typo like "2025/05/26" or
-  // "2025-13-40" 400s with a useful message instead of either silently
-  // succeeding through `new Date(...)` lenient parsing or landing
-  // an "Invalid Date" sentinel into Prisma. UTC round-trip catches
-  // out-of-range day/month values (2025-02-30 → reparses as 2025-03-02
-  // under lenient parsing); requiring the parsed parts to equal the
-  // input rejects them.
-  let releaseDate: Date | null = null;
-  if (body.releaseDate != null && body.releaseDate !== "") {
-    if (typeof body.releaseDate !== "string") {
-      return NextResponse.json(
-        { error: "발매일 형식이 잘못되었습니다." },
-        { status: 400 },
-      );
-    }
-    const m = body.releaseDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) {
-      return NextResponse.json(
-        { error: "발매일 형식이 잘못되었습니다." },
-        { status: 400 },
-      );
-    }
-    const year = Number(m[1]);
-    const month = Number(m[2]);
-    const day = Number(m[3]);
-    const parsed = new Date(Date.UTC(year, month - 1, day));
-    if (
-      Number.isNaN(parsed.getTime()) ||
-      parsed.getUTCFullYear() !== year ||
-      parsed.getUTCMonth() + 1 !== month ||
-      parsed.getUTCDate() !== day
-    ) {
-      return NextResponse.json(
-        { error: "발매일 형식이 잘못되었습니다." },
-        { status: 400 },
-      );
-    }
-    releaseDate = parsed;
-  }
-
-  const labelName =
-    typeof body.labelName === "string" && body.labelName.trim()
-      ? body.labelName.trim()
-      : null;
   let coverChange: { expected: AlbumCoverAssignment; next: string | null } | null = null;
   if (body.imageUrl !== undefined) {
     try {
       coverChange = {
-        expected: parseExpectedCoverJson(body as Record<string, unknown>),
+        expected: parseExpectedCoverJson(body),
         next: parseCoverUrl(body.imageUrl),
       };
     } catch (e) {
@@ -195,116 +95,56 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     }
   }
 
-  // Translations field is optional. "Missing" = preserve existing
-  // rows (a thin client editing only the slug shouldn't wipe locale
-  // titles); explicit empty array = full-replace. Any non-array
-  // shape would have thrown on `.filter` before — surface as 400
-  // explicitly so the operator gets a useful diagnostic.
-  if (
-    body.translations !== undefined &&
-    !Array.isArray(body.translations)
-  ) {
-    return NextResponse.json(
-      { error: "translations 필드는 배열이어야 합니다." },
-      { status: 400 },
-    );
-  }
-  const translationsProvided = Array.isArray(body.translations);
-  const translations = translationsProvided
-    ? (body.translations as Array<{ locale: unknown; title: unknown }>)
-        .filter(
-          (t) =>
-            typeof t.locale === "string" &&
-            typeof t.title === "string" &&
-            t.title.trim().length > 0,
-        )
-        .map((t) => ({
-          locale: t.locale as string,
-          title: (t.title as string).trim(),
-        }))
-    : [];
-
-  // artistIds: same preserve-on-missing rule, but additionally
-  // reject the whole request if any provided element fails to parse
-  // as BigInt. Silently dropping the bad entries (the previous
-  // behavior) would leave AlbumArtist rows partly-rebuilt — operator
-  // sees "saved" but the connections they wanted are missing.
-  const artistIdsProvided = body.artistIds !== undefined;
-  const artistIds: bigint[] = [];
-  if (artistIdsProvided) {
-    if (!Array.isArray(body.artistIds)) {
-      return NextResponse.json(
-        { error: "아티스트 ID 목록 형식이 잘못되었습니다." },
-        { status: 400 },
-      );
-    }
-    // Reject duplicate artistIds at the parse step rather than letting
-    // them reach the DB. AlbumArtist's @@unique([albumId, artistId])
-    // would otherwise raise P2002 inside the transaction below — the
-    // 409 catch maps it to a slug-conflict error message (the
-    // transaction's slug-collision case shares the same Prisma code),
-    // which would mislead the operator. A 400 with the actual
-    // duplicate diagnosis is honest.
-    const seenArtistIds = new Set<bigint>();
-    for (const aid of body.artistIds) {
-      // parseBigInt enforces the safe-integer guard for JSON numbers
-      // and the digit-shape guard for strings — both branches return
-      // null on anything unparseable, which surfaces as a 400 here
-      // rather than silently anchoring onto a rounded Artist.id.
-      const parsed = parseBigInt(aid);
-      if (parsed === null) {
-        return NextResponse.json(
-          { error: "잘못된 아티스트 ID입니다." },
-          { status: 400 },
-        );
-      }
-      if (seenArtistIds.has(parsed)) {
-        return NextResponse.json(
-          { error: "중복된 아티스트 ID입니다." },
-          { status: 400 },
-        );
-      }
-      seenArtistIds.add(parsed);
-      artistIds.push(parsed);
-    }
-  }
-
   try {
+    const { translations, artistIds, ...info } = parseAlbumInput(body);
     const updated = await prisma.$transaction(async (tx) => {
       const exists = await tx.album.findUnique({
         where: { id: albumId },
-        select: { id: true },
+        select: {
+          originalTitle: true, originalLanguage: true,
+          translations: { select: { locale: true, title: true } },
+        },
       });
       if (!exists) return null;
 
-      if (translationsProvided) {
-        // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
-        await tx.albumTranslation.deleteMany({ where: { albumId } });
+      const finalTranslations = new Map(exists.translations.map((row) => [row.locale, row]));
+      if (translations?.length === 0) finalTranslations.clear();
+      for (const row of translations ?? []) {
+        if (row.title) finalTranslations.set(row.locale, row);
+        else finalTranslations.delete(row.locale);
       }
-      if (artistIdsProvided) {
+      const nextTitle = {
+        originalTitle: info.originalTitle ?? exists.originalTitle,
+        originalLanguage: info.originalLanguage ?? exists.originalLanguage,
+        translations: [...finalTranslations.values()],
+      };
+      const titleChanged = albumTitleChanged(exists, nextTitle);
+      if (titleChanged || translations?.some((row) => row.sameSource)) {
+        const issues = albumTitleIssues(nextTitle, { previous: exists, submitted: translations ?? [] });
+        if (issues.length) throw new AlbumInputError(`앨범 제목: ${issues.join(", ")}`);
+      }
+
+      const removedLocales = exists.translations
+        .filter((row) => !finalTranslations.has(row.locale))
+        .map((row) => row.locale);
+      if (artistIds) {
         await tx.albumArtist.deleteMany({ where: { albumId } });
       }
 
       const row = await tx.album.update({
         where: { id: albumId },
         data: {
-          slug,
-          type: body.type as AlbumType,
-          originalTitle: (body.originalTitle as string).trim(),
-          originalLanguage: body.originalLanguage as string,
-          releaseDate,
-          labelName,
-          translations:
-            translationsProvided && translations.length
-              ? {
-                  create: translations.map((t) => ({
-                    locale: t.locale,
-                    title: t.title,
-                  })),
-                }
-              : undefined,
+          ...info,
+          translations: translations && titleChanged ? {
+            deleteMany: { locale: { in: removedLocales } },
+            upsert: translations.filter((row) => row.title).map(({ locale, title }) => ({
+              where: { albumId_locale: { albumId, locale } },
+              create: { locale, title },
+              update: { title },
+            })),
+          } : undefined,
           artists:
-            artistIdsProvided && artistIds.length
+            artistIds?.length
               ? { create: artistIds.map((artistId) => ({ artistId })) }
               : undefined,
         },
@@ -323,7 +163,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         throw new CoverConflict();
       }
       return coverChange ? { ...row, imageUrl: coverChange.next } : row;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     if (!updated) {
       return NextResponse.json(
@@ -334,6 +174,9 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
+    if (e instanceof AlbumInputError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
     if (e instanceof CoverConflict) {
       // The current value is a courtesy for the caller; failing to read
       // it must not turn a definite conflict into a 500.
@@ -352,6 +195,9 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       );
     }
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      if (e.code === "P2034") {
+        return NextResponse.json({ error: "앨범 정보가 동시에 수정되었습니다. 새로고침한 뒤 다시 시도해 주세요." }, { status: 409 });
+      }
       if (e.code === "P2002") {
         // Unique constraint — `slug` is the only @unique on Album
         // that PATCH can collide on; if somehow another constraint

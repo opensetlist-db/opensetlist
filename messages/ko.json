@@ -189,6 +189,7 @@
     "albumActiveBonuses": "매장특전 {count}건",
     "albumActiveBonusesBadge": "특전 {count}",
     "unknown": "이름 없는 앨범",
+    "coverAlt": "{title} 앨범 표지",
     "type": {
       "single": "싱글",
       "album": "앨범",
