@@ -551,9 +551,11 @@ describe("CSV import keeps covers", () => {
       originalTitle: existingTitle, translations: before.translations, imageUrl: before.imageUrl,
     });
 
-    const han = await importCsv(`${header}\n${TAG},${changedTitle},無限大의 노래,Infinite Song`);
-    expect(han.status).toBe(400);
-    expect((await han.json()).error).toContain("ko_title: ko-han");
+    const invalidScript = await importCsv(`${header}\n${TAG},${changedTitle},무한대の 노래,Infinite 歌`);
+    expect(invalidScript.status).toBe(400);
+    const { error } = await invalidScript.json();
+    expect(error).toContain("ko_title: localized-japanese-script");
+    expect(error).toContain("en_title: localized-japanese-script");
     expect(await read()).toEqual(afterDate);
 
     expect((await importCsv(`${header}\n${TAG},${changedTitle},무한대의 노래,Infinite Song`)).status).toBe(200);

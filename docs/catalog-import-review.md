@@ -15,11 +15,12 @@ imports. Use the separate bonus review for album bonuses.
    Keep variant labels, names, venue, organizer, city and approved abbreviations
    separate. If the original spelling or language changes, recheck each
    required non-original language against its source and include it in the CSV
-   even when its spelling is unchanged. Keep the original script and write
-   Korean localized names and titles without Han characters. Record how you
-   resolved conflicts. Hold unresolved
-   names and new abbreviations for operator review with reasons and source
-   candidates. A blank needed translation remains missing.
+   even when its spelling is unchanged. Preserve the original script. Use
+   verified Hangul or Roman spellings for Korean or English localized names
+   and titles, respectively, and keep Hiragana, Katakana and Han out of both.
+   Record how you resolved conflicts. Hold unresolved names and new abbreviations
+   for operator review with reasons and source candidates. A blank needed
+   translation remains missing.
 3. Run the language review against the merged record and split held entries
    and their dependents from the ready files. Put dependent tracks, versions,
    artist/performer links, and event/series relationships in the same review.
@@ -110,8 +111,9 @@ node scripts/catalog-display-review.mjs stored.json --audit > audit.json
 - Inspect the import result and re-export the affected rows from the target DB.
   Run the same review on the stored names with `--audit`, keeping explicit holds
   and their dependencies in the report. Record excluded, held, missing,
-  title-review, unconfirmed-same, and ko-han separately. A source-review hold
-  means a required translation was carried forward without re-submitting it.
+  title-review, unconfirmed-same, and localized-japanese-script separately.
+  A source-review hold means a required translation was carried forward without
+  re-submitting it.
 - Compare old, planned, and stored values. Check IDs, slugs, original text,
   relationships, dates and existing user records. For an import error, inspect
   earlier rows before retrying. Setlist replacement is atomic per event. Follow

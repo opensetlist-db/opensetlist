@@ -16,7 +16,7 @@ const nameFields = { name: "originalName", shortName: "originalShortName" };
 const titleFields = { title: "originalTitle", variantLabel: "variantLabel" };
 const eventFields = { ...nameFields, organizerName: "organizerName" };
 const incompleteStatuses = new Set([
-  "missing-original", "missing", "unconfirmed-same", "title-review", "source-review", "ko-han",
+  "missing-original", "missing", "unconfirmed-same", "title-review", "source-review", "localized-japanese-script",
 ]);
 
 /** Match the server's trimmed cell values when binding a review to a CSV row. */

@@ -152,10 +152,22 @@ describe("catalog display completeness", () => {
     expect(catalogDisplayIssues({}, existing, { originalTitle: "別の題名" }, [ko, en], title)).toEqual([]);
     const legacy = { ...mixed, translations: [{ ...ko, title: "永久의 노래" }, en] };
     expect(catalogDisplayIssues({}, legacy, {}, [], title)).toEqual([]);
-    expect(catalogDisplayIssues({}, existing, {}, legacy.translations, title)).toEqual(["ko_title: ko-han"]);
+    expect(catalogDisplayIssues({}, existing, {}, legacy.translations, title)).toEqual(["ko_title: localized-japanese-script"]);
     expect(catalogDisplayIssues({}, legacy, { originalTitle: "Day.1" }, [], title)).toEqual([]);
     expect(catalogDisplayIssues({}, legacy, { originalTitle: "Day.1" }, [legacy.translations[0]], title))
-      .toEqual(["ko_title: ko-han"]);
+      .toEqual(["ko_title: localized-japanese-script"]);
+  });
+
+  it("rejects kana and Han in Korean and English names while preserving original and brand spelling", () => {
+    const fields = [["originalName", "name", "required"]] as const;
+    const original = { originalName: "無限のカナ", originalLanguage: "ja" };
+    const ja = { locale: "ja", name: original.originalName };
+    const localized = [{ locale: "ko", name: "무한 かな" }, { locale: "en", name: "Infinite ㋐" }];
+    expect(catalogDisplayIssues({}, null, original, [ja, ...localized], fields)).toEqual([
+      "ko_name: localized-japanese-script", "en_name: localized-japanese-script",
+    ]);
+    expect(catalogDisplayIssues({}, null, original, [ja, { ...localized[0], name: "무한" }, { ...localized[1], name: "A・ZU・NA" }], fields))
+      .toEqual([]);
   });
 
   it("allows the full-name fallback only for a matching approved unit and missing short labels", () => {
@@ -166,7 +178,7 @@ describe("catalog display completeness", () => {
     expect(catalogDisplayIssues({}, null, original, names, fields, "", "other"))
       .toEqual(["ko_shortName: missing", "en_shortName: missing"]);
     expect(catalogDisplayIssues({}, null, original, [{ ...names[0], shortName: "永久" }, names[1]], fields, "", "diverdiva"))
-      .toEqual(["ko_shortName: ko-han"]);
+      .toEqual(["ko_shortName: localized-japanese-script"]);
   });
 
   it("keeps resubmission field-specific when an event's short and full titles match", () => {
@@ -186,7 +198,7 @@ describe("catalog display completeness", () => {
       .toEqual([]);
   });
 
-  it("holds stale or Han translations in preparation and keeps date-only legacy CSV ready", () => {
+  it("holds stale or invalid-script translations in preparation and keeps date-only legacy CSV ready", () => {
     const original = "永久の歌";
     const oldKo = { locale: "ko", value: "永久의 노래", source: "fixed:ko" };
     const oldEn = { locale: "en", value: "Eternal Song", source: "fixed:en" };
@@ -200,12 +212,15 @@ describe("catalog display completeness", () => {
     const date = entry(["fixture", "", "", "", "2026-10-01"]);
     expect(reviewCatalog([date]).ready).toEqual(["album:fixture"]);
     expect(() => verifyReviewedCsv(date)).not.toThrow();
-    expect(reviewCatalog([date], { audit: true }).statuses).toMatchObject({ "ko-han": 1 });
+    expect(reviewCatalog([date], { audit: true }).statuses).toMatchObject({ "localized-japanese-script": 1 });
 
     const changed = { ...field, original: "無限大の歌" };
     const stale = reviewCatalog([entry(["fixture", changed.original, "", "", ""], changed)]);
     expect(stale.held[0].reasons).toContain("en title: source-review");
-    expect(stale.held[0].reasons).toContain("ko title: ko-han");
+    expect(stale.held[0].reasons).toContain("ko title: localized-japanese-script");
+    const invalid = { ...changed, translations: [oldKo, { ...oldEn, value: "無限大 Song" }] };
+    const held = reviewCatalog([entry(["fixture", changed.original, oldKo.value, invalid.translations[1].value, ""], invalid)]);
+    expect(held.held[0].reasons).toContain("en title: localized-japanese-script");
     const corrected = { ...changed, translations: [
       { ...oldKo, value: "무한대의 노래" }, { ...oldEn, value: "Infinite Song" },
     ] };

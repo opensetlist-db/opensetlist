@@ -45,8 +45,9 @@ export function catalogLocaleReviewIssue({
   status: string;
 }) {
   // Excluded titles and unchanged original-language copies supply no localized display text.
-  if (locale === "ko" && value && /\p{Script=Han}/u.test(value) &&
-      (submitted?.trim() || (status !== "exempt" && status !== "original-language"))) return "ko-han";
+  if ((locale === "ko" || locale === "en") && value &&
+      /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(value.normalize("NFKC")) &&
+      (submitted?.trim() || (status !== "exempt" && status !== "original-language"))) return "localized-japanese-script";
   if (sourceChanged && locale !== originalLanguage && !submitted?.trim() &&
       (status === "present" || status === "confirmed-same")) return "source-review";
   return undefined;
