@@ -7,6 +7,7 @@ import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { AlbumType } from "@/generated/prisma/enums";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
 import { albumCardInclude, collectBdAlbumIds } from "@/lib/albumHighlights";
+import { displayOriginalTitle } from "@/lib/display";
 import { CoverImage } from "@/components/shared/CoverImage";
 import { SERIES_DATE_FORMAT } from "./seriesDate";
 import styles from "./seriesDetail.module.css";
@@ -88,11 +89,7 @@ export async function SeriesBdSection({
       <h2 id="series-bd-title">{t("tourBds")}</h2>
       <ul className={styles.bdList}>
         {albums.map((album) => {
-          // Strict viewer-locale title: the include also carries the
-          // fallback locale's row, which must not read as a translation.
-          const translated = album.translations.find(
-            (tr) => tr.locale === locale,
-          )?.title;
+          const title = displayOriginalTitle(album, album.translations, locale, "paired");
           const release = album.releaseDate
             ? formatDate(album.releaseDate, locale, SERIES_DATE_FORMAT)
             : "";
@@ -118,10 +115,10 @@ export async function SeriesBdSection({
                     className={styles.bdTitle}
                     lang={album.originalLanguage}
                   >
-                    {album.originalTitle}
+                    {title.main}
                   </strong>
-                  {translated && translated !== album.originalTitle ? (
-                    <small lang={locale}>{translated}</small>
+                  {title.sub ? (
+                    <small lang={locale}>{title.sub}</small>
                   ) : null}
                   <small>
                     {albumT(`type.${album.type}`)}

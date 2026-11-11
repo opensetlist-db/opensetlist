@@ -133,7 +133,7 @@ async function MiniVariant({
     getTranslations({ locale, namespace: "Song" }),
   ]);
 
-  const titleParts = displayOriginalTitle(album, album.translations, locale);
+  const titleParts = displayOriginalTitle(album, album.translations, locale, "paired");
   const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
 
   const releaseYear = parseReleaseYear(album.releaseDate);

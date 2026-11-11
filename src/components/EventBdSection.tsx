@@ -38,7 +38,7 @@ export async function EventBdSection({ eventId, startTime, album, locale, refere
     getTranslations({ locale, namespace: "Event.bd" }),
     getTranslations({ locale, namespace: "Album" }),
   ]);
-  const title = displayOriginalTitle(album, album.translations, locale);
+  const title = displayOriginalTitle(album, album.translations, locale, "paired");
   const albumHref = entityPath("albums", locale, album.id, album.slug);
   const { bonusStores, basicOptions, bonusCount } = projectPurchaseOptions(
     album.listings, referenceNow, { performanceOnly: true },
