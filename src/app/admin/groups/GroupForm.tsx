@@ -281,7 +281,9 @@ export default function GroupForm({ initialData }: GroupFormProps) {
             >
               <div className="mb-2 flex items-center justify-between">
                 <select
+                  aria-label="번역 언어"
                   value={tr.locale}
+                  disabled={i < (initialData?.translations.length ?? 0)}
                   onChange={(e) => updateTranslation(i, "locale", e.target.value)}
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 >

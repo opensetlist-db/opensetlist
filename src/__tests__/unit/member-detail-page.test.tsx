@@ -195,6 +195,18 @@ describe("member detail page (30-v1)", () => {
     expect(html).toMatch(/lang="ja"[^>]*>三宅美羽</);
   });
 
+  it("uses an original translation for a blank source name and a question mark for an unknown avatar", async () => {
+    const nameFromTranslation = await render(member({
+      originalName: "", originalShortName: null,
+      translations: [{ locale: "ja", name: "原名", shortName: null }],
+    }));
+    expect(nameFromTranslation).toMatch(/<h1[^>]*lang="ja"[^>]*>原名<\/h1>/);
+    expect(nameFromTranslation).toMatch(/class="[^"]*avatar[^"]*" aria-hidden="true">原</);
+    const unknown = await render(member({ originalName: "", originalShortName: null, translations: [] }));
+    expect(unknown).toMatch(/<h1[^>]*lang="ko"[^>]*>unknown<\/h1>/);
+    expect(unknown).toMatch(/class="[^"]*avatar[^"]*" aria-hidden="true">\?</);
+  });
+
   it("no colour, no VA, no unit: neutral rim, VA block and unit link omitted, breadcrumb without group", async () => {
     // Positive control: the same member with VA and unit shows both.
     const full = await render(member());

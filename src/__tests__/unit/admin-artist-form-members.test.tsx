@@ -6,6 +6,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import ArtistForm from "@/app/admin/artists/ArtistForm";
+import GroupForm from "@/app/admin/groups/GroupForm";
 
 // The artist form's member list (edit mode) re-sorts itself after a
 // local change. It must land on the order the server reads back
@@ -114,6 +115,21 @@ async function openEditor(name: string) {
 describe("ArtistForm member list", () => {
   beforeEach(() => mockApi());
   afterEach(() => vi.unstubAllGlobals());
+
+  it.each(["artist", "group"])("locks persisted %s locales and lets new rows choose a locale", (kind) => {
+    render(kind === "artist" ? <ArtistForm initialData={baseInitial} /> : <GroupForm initialData={{
+      id: "group", slug: "group", type: "series", category: null, hasBoard: false,
+      originalName: "グループ", originalLanguage: "ja", originalShortName: "", originalDescription: "",
+      translations: [{ locale: "ko", name: "그룹", shortName: "", description: "" }],
+    }} />);
+    expect(screen.getByRole("combobox", { name: "번역 언어" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /언어 추가/ }));
+    const [existing, added] = screen.getAllByRole("combobox", { name: "번역 언어" });
+    expect(existing).toBeDisabled();
+    expect(added).toBeEnabled();
+    fireEvent.change(added, { target: { value: "en" } });
+    expect(added).toHaveValue("en");
+  });
 
   it("linking an existing member keeps its stored number and sorts it in", async () => {
     render(

@@ -264,7 +264,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const characterAvatarLabel = resolveOriginalShortLabel(
     member,
     member.translations,
-    characterName.main,
+    identityName(member, locale).main,
   );
 
   // Pick the active unit for chrome (unit link, song-tag fallback).

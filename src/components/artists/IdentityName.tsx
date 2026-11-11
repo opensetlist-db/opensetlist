@@ -7,7 +7,7 @@ type Identity = {
 };
 
 export function identityName(identity: Identity, locale: string, fallback = "") {
-  const original = identity.originalName ??
+  const original = identity.originalName ||
     identity.translations.find((row) => row.locale === identity.originalLanguage)?.name;
   if (!original) return { main: fallback, sub: null, lang: locale, locale };
 
