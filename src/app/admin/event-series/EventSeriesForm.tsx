@@ -140,6 +140,7 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
   // flight or unsettled, the other's save and navigation are blocked.
   // Dirty = the payload differs from the last saved one.
   const [logoStatus, setLogoStatus] = useState<LogoCardStatus>({ dirty: false, busy: false });
+  const [savedLocales, setSavedLocales] = useState(() => initialData?.translations.map((row) => row.locale) ?? []);
   const [savedPayload, setSavedPayload] = useState(() => JSON.stringify(buildPayload()));
   const [logoRefreshKey, setLogoRefreshKey] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -181,12 +182,10 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
       originalShortName: originalShortName.trim() || null,
       originalDescription: originalDescription.trim() || null,
       originalLanguage,
-      removeTranslations: initialData?.translations
-        .filter((old) => !translations.some((row) => row.locale === old.locale))
-        .map((old) => old.locale) ?? [],
+      removeTranslations: savedLocales.filter((locale) => !translations.some((row) => row.locale === locale)),
       translations: translations
         .filter((t) => [t.name, t.shortName, t.description, t.organizerName].some((value) => value.trim())
-          || initialData?.translations.some((row) => row.locale === t.locale))
+          || savedLocales.includes(t.locale))
         .map((t) => ({
           locale: t.locale,
           name: t.name,
@@ -231,7 +230,8 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
         // and let the card recompute its previews (parent / artist /
         // title may have changed).
         if (initialData && logoStatus.dirty) {
-          setSavedPayload(JSON.stringify(payload));
+          setSavedLocales(payload.translations.map((row) => row.locale));
+          setSavedPayload(JSON.stringify({ ...payload, removeTranslations: [] }));
           setLogoRefreshKey((k) => k + 1);
           setStatusMessage(
             "기본 정보만 저장했습니다. 로고 변경은 아직 저장하지 않았습니다 — 로고 카드의 저장을 눌러 주세요."
@@ -424,7 +424,6 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
         <p className="mb-2 text-xs text-zinc-600">
           한국어·영어·일본어에서 필요한 표기는 출처에서 확인해 입력하세요. 로마자·숫자 제목과 원문 언어의 반복 입력은 필요하지 않습니다.
         </p>
-        {saveError && <p role="alert" className="mb-2 text-sm text-red-700">{saveError}</p>}
         <div className="space-y-3">
           {translations.map((tr, i) => (
             <div
@@ -503,6 +502,7 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
       </div>
 
       <div>
+        {saveError && <p role="alert" className="mb-2 text-sm text-red-700">{saveError}</p>}
         <button
           type="submit"
           disabled={loading || logoStatus.busy}

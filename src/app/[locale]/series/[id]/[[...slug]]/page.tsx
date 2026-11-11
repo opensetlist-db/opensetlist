@@ -252,6 +252,8 @@ export default async function EventSeriesPage({
   // ── City groups ──────────────────────────────────────────
   const preparedLegs: SeriesLeg[] = legs.map((leg, i) => {
     const first = leg.events[0];
+    const localCity = localizedEventText(first.originalCity, first.originalLanguage, first.translations, locale, "city");
+    const originalCity = first.originalCity?.trim();
     const legEvents = leg.events.map((ev) => {
       const status = getEventStatus(ev, referenceNow);
       // Row date prefers the calendar `date`; the group's range below
@@ -277,9 +279,8 @@ export default async function EventSeriesPage({
     return {
       key: `${leg.city}-${i}`,
       city: {
-        text: localizedEventText(first.originalCity, first.originalLanguage, first.translations, locale, "city")
-          ?? t("unknownCity"),
-        lang: locale,
+        text: localCity ?? (originalCity || t("unknownCity")),
+        lang: localCity || !originalCity ? locale : first.originalLanguage,
       },
       venue: leg.venue,
       dateRangeLabel: formatSeriesDateRange(

@@ -733,7 +733,6 @@ export default function EventForm({ initialData }: EventFormProps) {
         <p className="mb-2 text-xs text-zinc-600">
           한국어·영어·일본어에서 필요한 표기는 출처에서 확인해 입력하세요. 로마자·숫자 제목과 원문 언어의 반복 입력은 필요하지 않습니다.
         </p>
-        {saveError && <p role="alert" className="mb-2 text-sm text-red-700">{saveError}</p>}
         <div className="space-y-3">
           {translations.map((tr, i) => (
             <div
@@ -853,13 +852,16 @@ export default function EventForm({ initialData }: EventFormProps) {
         hoverClassName: "hover:bg-amber-50",
       })}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loading ? "저장 중..." : "저장"}
-      </button>
+      <div>
+        {saveError && <p role="alert" className="mb-2 text-sm text-red-700">{saveError}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "저장 중..." : "저장"}
+        </button>
+      </div>
     </form>
   );
 }
