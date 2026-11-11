@@ -445,7 +445,10 @@ describe("GET /board/mine", () => {
           originalTitle: "残陽",
           originalLanguage: "ja",
           variantLabel: null,
-          translations: [],
+          translations: [
+            { locale: "ko", title: "잔양", variantLabel: null },
+            { locale: "en", title: "Zanyou", variantLabel: null },
+          ],
         },
       },
     ] as never);
@@ -459,6 +462,16 @@ describe("GET /board/mine", () => {
           groupId: "1",
           songId: "10",
           title: "残陽",
+          song: {
+            originalTitle: "残陽",
+            originalLanguage: "ja",
+            variantLabel: null,
+            baseVersionId: null,
+            translations: [
+              { locale: "ko", title: "잔양", variantLabel: null },
+              { locale: "en", title: "Zanyou", variantLabel: null },
+            ],
+          },
           available: false,
           createdAt: CREATED.toISOString(),
         },
@@ -526,6 +539,13 @@ describe("GET /board/mine — wishes (n15)", () => {
           groupId: "2",
           songId: "11",
           title: "未体験HORIZON",
+          song: {
+            originalTitle: "未体験HORIZON",
+            originalLanguage: "ja",
+            variantLabel: null,
+            baseVersionId: null,
+            translations: [],
+          },
           available: true,
           createdAt: CREATED.toISOString(),
         },

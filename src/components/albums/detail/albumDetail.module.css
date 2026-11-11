@@ -417,6 +417,19 @@ a.trackRow:focus-visible {
 .eventCopy strong {
   font-size: 15px;
 }
+.eventVenue,
+.eventTranslation {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.eventVenue {
+  font-size: 13px;
+}
+.eventTranslation {
+  font-weight: 400;
+}
 .eventCopy small {
   display: block;
   margin-top: 4px;
@@ -474,6 +487,14 @@ a.trackRow:focus-visible {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
+}
+
+.storeNameTranslation {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 0.82em;
+  font-weight: 500;
 }
 
 .deadline {

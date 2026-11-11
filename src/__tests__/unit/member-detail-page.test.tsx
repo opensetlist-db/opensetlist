@@ -156,10 +156,9 @@ beforeEach(() => {
 });
 
 describe("member detail page (30-v1)", () => {
-  it("default: translated h1, original subtitle, canonical unit + breadcrumb links, VA without period", async () => {
+  it("default: original h1, localized subtitle, canonical unit + breadcrumb links, VA without period", async () => {
     const html = await render(member());
-    expect(html).toContain(">세라스 야나기다 릴리엔펠트</h1>");
-    expect(html).toMatch(/lang="ja"[^>]*>セラス柳田リリエンフェルト</);
+    expect(html).toMatch(/<h1[^>]*lang="ja"[^>]*>セラス柳田リリエンフェルト<\/h1><p[^>]*lang="ko"[^>]*>세라스 야나기다 릴리엔펠트<\/p>/);
     expect(html).toContain('href="/ko/artists/3/edel-note"');
     expect(html).toContain('href="/ko/artists/1/hasunosora"');
     // Original-language short name initial.
@@ -167,7 +166,7 @@ describe("member detail page (30-v1)", () => {
     expect(html).toContain("voiceActor");
     // The VA block rendered (positive control for the period check
     // below) — all real VA dates are null, so it has no period line.
-    expect(html).toMatch(/class="[^"]*voiceName[^"]*">미야케 미우</);
+    expect(html).toMatch(/class="[^"]*voiceName[^"]*" lang="ja">三宅美羽<\/span><span[^>]*lang="ko"[^>]*>미야케 미우<\/span>/);
     expect(html).not.toMatch(/class="[^"]*period/);
     expect(html).toContain("--member-color:#f56455");
   });
@@ -194,6 +193,18 @@ describe("member detail page (30-v1)", () => {
     expect(html).toMatch(/<h1[^>]*lang="ja"[^>]*>セラス柳田リリエンフェルト<\/h1>/);
     expect(html).not.toMatch(/class="[^"]*subtitle/);
     expect(html).toMatch(/lang="ja"[^>]*>三宅美羽</);
+  });
+
+  it("uses an original translation for a blank source name and a question mark for an unknown avatar", async () => {
+    const nameFromTranslation = await render(member({
+      originalName: "", originalShortName: null,
+      translations: [{ locale: "ja", name: "原名", shortName: null }],
+    }));
+    expect(nameFromTranslation).toMatch(/<h1[^>]*lang="ja"[^>]*>原名<\/h1>/);
+    expect(nameFromTranslation).toMatch(/class="[^"]*avatar[^"]*" aria-hidden="true">原</);
+    const unknown = await render(member({ originalName: "", originalShortName: null, translations: [] }));
+    expect(unknown).toMatch(/<h1[^>]*lang="ko"[^>]*>unknown<\/h1>/);
+    expect(unknown).toMatch(/class="[^"]*avatar[^"]*" aria-hidden="true">\?</);
   });
 
   it("no colour, no VA, no unit: neutral rim, VA block and unit link omitted, breadcrumb without group", async () => {
@@ -349,11 +360,17 @@ describe("member detail page (30-v1)", () => {
 
   it("songs tab: a song without artist credit falls back to the member's primary unit tag", async () => {
     const html = await render(
-      member({ performances: [perf(event(), [song(9, null)])] }),
+      member({
+        performances: [perf(event(), [song(9, null)])],
+        artistLinks: [{ startDate: "2024-04-01", endDate: null, artist: {
+          ...unit,
+          translations: [{ locale: "ko", name: "에델 노트" }],
+        } }],
+      }),
       { tab: "songs" },
     );
     expect(html).toContain("songsHeader(1)");
-    expect(html).toMatch(/unitTag[^>]*>Edel Note</);
+    expect(html).toMatch(/unitTag[^>]*><span[^>]*><span lang="ja">Edel Note<\/span><small[^>]*lang="ko"[^>]*>에델 노트<\/small>/);
     expect(html).toContain('href="/ko/songs/9/song-9"');
   });
 });

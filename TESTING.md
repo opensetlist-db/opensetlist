@@ -168,7 +168,7 @@ know what each suite leaves behind:
 | `member-order.test.ts` | **writes** | artist, event, stage identity, performers; `afterAll` deletes them |
 | `official-order.test.ts` | **writes** | `officialorder-itest-` artists, identities, relations, event, explicit voice, song and historical item in a rolled-back transaction; fixed-prefix purge before/after handles interrupted fixtures |
 | `membership-order-management.test.ts` | **writes** | `membershiporder-itest-` artists, identities, historical event, explicit voice/song and relations; real admin/import rank-only handlers, warm expiry, blank/clear/replay/partial failures; fixed-prefix purge before/after and zero-row checks |
-| `n14-live-path.test.ts` | **writes** | event, setlist items, reactions, wishes, confirms; also joins the dev Supabase Realtime channel (anon key) and broadcasts; `afterAll` deletes the rows |
+| `n14-live-path.test.ts` | **writes** | event, setlist items, reactions, wishes, confirms and one song with a translated variant; also joins the dev Supabase Realtime channel (anon key) and broadcasts; purges its own `n14-itest-` fixture prefix before setup and deletes the current run's rows after |
 | `n14-warm.test.ts` | **writes** | event; calls the admin `POST /api/admin/setlist-items` handler; `afterAll` deletes both |
 | `setlist-deleted-404.test.ts` | **writes** | event; soft-deletes it through the admin `DELETE /api/admin/events/[id]` handler, restores it, then `afterAll` hard-deletes it |
 | `image-asset-schema.test.ts` | **writes** | series and event through the admin handlers, an album, `ImageAsset` rows keyed `itest/<tag>/…`; runs `SET LOCAL ROLE anon/authenticated` inside rolled-back transactions; `afterAll` deletes them |
@@ -185,7 +185,7 @@ know what each suite leaves behind:
 | `album-list-pagination.test.ts` | **writes** | read-only paging of the whole album catalog and every artist chip against a raw-SQL ordering; then 5 artists (2 deleted sub-units) and 29 albums dated 2099 or undated whose slug starts `c07itest<ts>`, with `AlbumArtist` links; `beforeAll` purges earlier `c07itest` leftovers, `afterAll` deletes them and asserts none are left |
 | `r2-smoke.test.ts` | **skipped** unless `R2_SMOKE=1` | no DB; with the `R2_*` env set and `R2_KEY_PREFIX=test`, writes ONE object `test/smoke/<uuid>.png` to the real bucket and deletes nothing — log the printed key |
 | `prisma-pool-txleak.test.ts` | read-only | `SELECT` only |
-| `purchase-options.test.ts` | **writes** | isolated album, listings and bonuses through admin handlers; `afterAll` hard-deletes its fixture |
+| `purchase-options.test.ts` | **writes** | isolated album, listings, bonuses and import jobs through admin handlers; `afterAll` hard-deletes its fixture |
 
 Every `*.test.ts` here needs a row, and every row a file:
 `npm run check:testing-md` (a CI step right after Lint) fails otherwise. The

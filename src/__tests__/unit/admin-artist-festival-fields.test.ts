@@ -42,6 +42,9 @@ beforeEach(() => {
   txMock.mockImplementation(async (arg: unknown) =>
     typeof arg === "function" ? (arg as (tx: unknown) => unknown)(prisma) : arg,
   );
+  artist.findUnique.mockResolvedValue({ id: BigInt(20), type: "group", originalName: "サイド", originalLanguage: "ja", groupLinks: [], translations: [
+    { locale: "ja", name: "サイド" }, { locale: "ko", name: "사이드", shortName: "사이드", bio: "소개" }, { locale: "en", name: "Side" },
+  ] });
   artist.update.mockResolvedValue({ id: BigInt(20), translations: [] });
   artist.create.mockResolvedValue({ id: BigInt(21), translations: [] });
   artist.findMany.mockResolvedValue([]);
@@ -127,7 +130,7 @@ const put = (body: unknown) =>
   );
 
 describe("PUT /api/admin/artists/[id] — festival fields", () => {
-  it("rejects self/descendant and existing ancestor cycles before deleting translations or groups", async () => {
+  it("rejects self/descendant and existing ancestor cycles before writing translations or groups", async () => {
     const rows = [
       { id: BigInt(21), parentArtistId: BigInt(20) },
       { id: BigInt(22), parentArtistId: BigInt(21) },
@@ -136,15 +139,11 @@ describe("PUT /api/admin/artists/[id] — festival fields", () => {
     ];
     artist.findMany.mockResolvedValue(rows);
     expect((await put({ ...BASE_BODY, parentArtistId: "99" })).status).toBe(200);
-    expect(prisma.artistTranslation.deleteMany).toHaveBeenCalledTimes(1);
-    expect(prisma.artistGroup.deleteMany).toHaveBeenCalledTimes(1);
     expect(artist.update).toHaveBeenCalledTimes(1);
     for (const parentArtistId of ["20", "21", "22", "30"]) {
       const res = await put({ ...BASE_BODY, parentArtistId });
       expect(res.status).toBe(400);
     }
-    expect(prisma.artistTranslation.deleteMany).toHaveBeenCalledTimes(1);
-    expect(prisma.artistGroup.deleteMany).toHaveBeenCalledTimes(1);
     expect(artist.update).toHaveBeenCalledTimes(1);
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(5);
   });
@@ -173,6 +172,17 @@ describe("PUT /api/admin/artists/[id] — festival fields", () => {
     expect(data).not.toHaveProperty("isSideProject");
   });
 
+  it("keeps other locale rows and untouched fields in a partial edit", async () => {
+    expect((await put({ translations: [{ locale: "ko", name: "사이드 팀" }] })).status).toBe(200);
+    const data = artist.update.mock.calls[0][0].data;
+    expect(data.translations).toEqual({ upsert: [{
+      where: { artistId_locale: { artistId: BigInt(20), locale: "ko" } },
+      create: { locale: "ko", name: "사이드 팀" },
+      update: { name: "사이드 팀" },
+    }] });
+    expect(data.groupLinks).toBeUndefined();
+  });
+
   it("400 on an invalid colour, before any write", async () => {
     const res = await put({ ...BASE_BODY, color: "#zzzzzz" });
     expect(res.status).toBe(400);
@@ -186,6 +196,7 @@ describe("POST /api/admin/artists — festival fields", () => {
       jsonRequest("http://localhost/api/admin/artists", {
         ...BASE_BODY,
         slug: "side",
+        translations: [{ locale: "ko", name: "사이드" }, { locale: "en", name: "Side" }],
         color: "#abc",
         sortOrder: "3",
         isSideProject: true,
@@ -210,23 +221,23 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
     );
 
   beforeEach(() => {
-    artist.findUnique.mockResolvedValue({ id: BigInt(20), type: "group" });
+    artist.findUnique.mockResolvedValue({ id: BigInt(20), type: "group", translations: [{ locale: "ko", name: "사이드" }, { locale: "en", name: "Side" }] });
   });
 
   it("rejects a parent cycle without changing the stored parent, while retaining row feedback", async () => {
-    artist.findUnique.mockImplementation(async ({ where }: { where: { slug: string } }) => ({ id: BigInt(where.slug === "root" ? 99 : 20), type: "group" }));
-    expect((await importCsv("slug,ja_name,parentArtist_slug\nside,サイド,root")).status).toBe(200);
+    artist.findUnique.mockImplementation(async ({ where }: { where: { slug: string } }) => ({ id: BigInt(where.slug === "root" ? 99 : 20), type: "group", translations: [{ locale: "ko", name: "사이드" }, { locale: "en", name: "Side" }] }));
+    expect((await importCsv("slug,parentArtist_slug\nside,root")).status).toBe(200);
     const parentWrites = () => artist.update.mock.calls.filter(([args]) => Object.hasOwn(args.data, "parentArtistId"));
     expect(parentWrites()).toHaveLength(1);
     expect(parentWrites()[0][0].data.parentArtistId).toBe(BigInt(99));
-    const res = await importCsv("slug,ja_name,parentArtist_slug\nside,サイド,side");
+    const res = await importCsv("slug,parentArtist_slug\nside,side");
     expect(res.status).toBe(200);
     expect((await res.json()).log).toContain('ERROR: artists.csv parentArtist_slug "side" creates a cycle (artist side) — parent kept');
     expect(parentWrites()).toHaveLength(1);
   });
 
   it("update: columns omitted from the header leave the stored values alone", async () => {
-    const res = await importCsv(["slug,ja_name", "side,サイド"].join("\n"));
+    const res = await importCsv("slug\nside");
     expect(res.status).toBe(200);
     const data = artist.update.mock.calls[0][0].data;
     expect(data.sortOrder).toBeUndefined();
@@ -235,7 +246,7 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
 
   it("update: values set; a blank sortOrder clears, a blank isSideProject keeps", async () => {
     const res = await importCsv(
-      ["slug,ja_name,sortOrder,isSideProject", "side,サイド,2,true", "main,メイン,,"].join("\n"),
+      ["slug,sortOrder,isSideProject", "side,2,true", "main,,"].join("\n"),
     );
     // Blank cells are a valid "keep"/"clear", not an invalid value.
     const body = await res.json();
@@ -251,7 +262,7 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
 
   it("invalid cells WARN and keep the stored value", async () => {
     const res = await importCsv(
-      ["slug,ja_name,sortOrder,isSideProject", "side,サイド,first,maybe"].join("\n"),
+      ["slug,sortOrder,isSideProject", "side,first,maybe"].join("\n"),
     );
     const body = await res.json();
     const warns = body.log.filter((l: string) => l.startsWith("WARN"));
@@ -280,7 +291,7 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
   it("create: one invalid cell is enough to skip; valid rows still import", async () => {
     artist.findUnique.mockResolvedValue(null);
     const res = await importCsv(
-      ["slug,ja_name,sortOrder,isSideProject", "bad-one,バッド,3,treu", "good-one,グッド,4,true"].join("\n"),
+      ["slug,ja_name,sortOrder,isSideProject,ko_name,en_name", "bad-one,バッド,3,treu,,", "good-one,グッド,4,true,굿,Good"].join("\n"),
     );
     const body = await res.json();
     const warns = body.log.filter((l: string) => l.startsWith("WARN"));
@@ -297,7 +308,7 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
 
   it("create: defaults when the CSV carries nothing", async () => {
     artist.findUnique.mockResolvedValue(null);
-    await importCsv(["slug,ja_name", "new-one,ニュー"].join("\n"));
+    await importCsv(["slug,ja_name,ko_name,en_name", "new-one,ニュー,뉴,New"].join("\n"));
     expect(artist.create.mock.calls[0][0].data).toMatchObject({
       sortOrder: null,
       isSideProject: false,

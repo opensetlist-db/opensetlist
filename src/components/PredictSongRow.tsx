@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useTranslations } from "next-intl";
-import { displayOriginalTitle } from "@/lib/display";
+import { ParticipationSongName } from "@/components/ParticipationSongName";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import styles from "@/components/event/eventDetail.module.css";
 import { colors, zIndex } from "@/styles/tokens";
@@ -66,16 +66,6 @@ export function PredictSongRow({
     isDragging,
   } = useSortable({ id: entry.songId, disabled: locked });
 
-  const display = displayOriginalTitle(
-    {
-      originalTitle: entry.song.originalTitle,
-      originalLanguage: entry.song.originalLanguage,
-      variantLabel: entry.song.variantLabel,
-    },
-    entry.song.translations,
-    locale,
-  );
-
   const isMatched =
     state === "matched-in-rank" || state === "matched-out-of-rank";
   const isDimmed =
@@ -134,10 +124,7 @@ export function PredictSongRow({
             : undefined
         }
       >
-        {display.main}
-        {display.sub && (
-          <span className={styles.songSub}> {display.sub}</span>
-        )}
+        <ParticipationSongName song={entry.song} locale={locale} />
       </span>
 
       {/* Remove button — pre-show only. */}

@@ -11,6 +11,8 @@ import LogoAssignmentCard, {
 } from "@/components/admin/LogoAssignmentCard";
 import type { LogoCardState } from "@/lib/adminLogoCard";
 
+import { sameEventNames, SameEventNames } from "@/components/admin/SameEventNames";
+
 type Translation = {
   locale: string;
   name: string;
@@ -69,6 +71,8 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
   const [originalDescription, setOriginalDescription] = useState(
     initialData?.originalDescription ?? ""
   );
+  const [confirmedNames, setConfirmedNames] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
@@ -96,6 +100,11 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
       .then((r) => r.json())
       .then(setSeriesList);
   }, []);
+
+  const sameFor = (row: Translation) => row.locale === originalLanguage ? [] : sameEventNames({
+    name: originalName, shortName: originalShortName, organizerName,
+  }, row);
+  const sameKey = (row: Translation) => JSON.stringify([originalLanguage, sameFor(row)]);
 
   function updateTranslation(
     index: number,
@@ -131,6 +140,7 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
   // flight or unsettled, the other's save and navigation are blocked.
   // Dirty = the payload differs from the last saved one.
   const [logoStatus, setLogoStatus] = useState<LogoCardStatus>({ dirty: false, busy: false });
+  const [savedLocales, setSavedLocales] = useState(() => initialData?.translations.map((row) => row.locale) ?? []);
   const [savedPayload, setSavedPayload] = useState(() => JSON.stringify(buildPayload()));
   const [logoRefreshKey, setLogoRefreshKey] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -172,20 +182,25 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
       originalShortName: originalShortName.trim() || null,
       originalDescription: originalDescription.trim() || null,
       originalLanguage,
+      removeTranslations: savedLocales.filter((locale) => !translations.some((row) => row.locale === locale)),
       translations: translations
-        .filter((t) => t.name.trim())
+        .filter((t) => [t.name, t.shortName, t.description, t.organizerName].some((value) => value.trim())
+          || savedLocales.includes(t.locale))
         .map((t) => ({
           locale: t.locale,
           name: t.name,
           shortName: t.shortName || null,
           description: t.description || null,
           organizerName: t.organizerName.trim() || null,
+          confirmedSame: confirmedNames[t.locale] === sameKey(t)
+            ? sameFor(t).map(([field]) => field) : undefined,
         })),
     };
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSaveError(null);
     if (logoStatus.busy) return;
 
     if (!originalName.trim()) {
@@ -215,7 +230,8 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
         // and let the card recompute its previews (parent / artist /
         // title may have changed).
         if (initialData && logoStatus.dirty) {
-          setSavedPayload(JSON.stringify(payload));
+          setSavedLocales(payload.translations.map((row) => row.locale));
+          setSavedPayload(JSON.stringify({ ...payload, removeTranslations: [] }));
           setLogoRefreshKey((k) => k + 1);
           setStatusMessage(
             "기본 정보만 저장했습니다. 로고 변경은 아직 저장하지 않았습니다 — 로고 카드의 저장을 눌러 주세요."
@@ -227,9 +243,9 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
       }
 
       const body = await res.json().catch(() => null);
-      alert(body?.error ?? "저장에 실패했습니다.");
+      setSaveError(body?.error ?? "저장에 실패했습니다.");
     } catch {
-      alert("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+      setSaveError("저장에 실패했습니다. 네트워크를 확인해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -325,7 +341,7 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
 
       <div className="rounded border border-zinc-300 bg-zinc-50 p-4">
         <div className="mb-3 text-sm font-medium">
-          원본 (다른 언어 번역이 없을 때 표시)
+          원문 (공개 화면에 먼저 표시)
         </div>
         <div className="mb-3">
           <label className="mb-1 block text-xs text-zinc-600">원본 언어</label>
@@ -405,6 +421,9 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
             </button>
           )}
         </div>
+        <p className="mb-2 text-xs text-zinc-600">
+          한국어·영어·일본어에서 필요한 표기는 출처에서 확인해 입력하세요. 로마자·숫자 제목과 원문 언어의 반복 입력은 필요하지 않습니다.
+        </p>
         <div className="space-y-3">
           {translations.map((tr, i) => (
             <div
@@ -463,12 +482,19 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
                 className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
               <input
-                placeholder="주최 번역 (비우면 원어 주최 표시)"
+                placeholder="이 언어에서 쓰는 주최자명"
                 value={tr.organizerName}
                 onChange={(e) =>
                   updateTranslation(i, "organizerName", e.target.value)
                 }
                 className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <SameEventNames
+                matches={sameFor(tr)}
+                checked={confirmedNames[tr.locale] === sameKey(tr)}
+                onChange={(checked) => setConfirmedNames((prev) => ({
+                  ...prev, [tr.locale]: checked ? sameKey(tr) : "",
+                }))}
               />
             </div>
           ))}
@@ -476,6 +502,7 @@ export default function EventSeriesForm({ initialData, logo }: EventSeriesFormPr
       </div>
 
       <div>
+        {saveError && <p role="alert" className="mb-2 text-sm text-red-700">{saveError}</p>}
         <button
           type="submit"
           disabled={loading || logoStatus.busy}

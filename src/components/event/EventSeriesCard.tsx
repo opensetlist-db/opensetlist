@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { entityPath } from "@/lib/seo/entityUrl";
+import { EventNameText } from "@/components/events/EventNameText";
+import type { EventDisplayText } from "@/lib/eventDisplay";
 import styles from "./eventDetail.module.css";
 
 /*
@@ -12,9 +14,10 @@ import styles from "./eventDetail.module.css";
 interface Props {
   locale: string;
   series: { id: string; slug: string; name: string } | null;
+  name?: EventDisplayText | null;
 }
 
-export function EventSeriesCard({ locale, series }: Props) {
+export function EventSeriesCard({ locale, series, name }: Props) {
   const t = useTranslations("EventDetail");
   if (!series) return null;
   return (
@@ -27,7 +30,7 @@ export function EventSeriesCard({ locale, series }: Props) {
           {t("sameSeriesTitle")}
         </h2>
       </div>
-      <p className={styles.seriesName}>{series.name}</p>
+      <p className={styles.seriesName}>{name ? <EventNameText pair={name} /> : series.name}</p>
       <Link
         href={entityPath("series", locale, series.id, series.slug)}
         className={styles.blockButton}

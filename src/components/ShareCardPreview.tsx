@@ -1,5 +1,6 @@
 "use client";
 
+import type { ShareName, ShareNames } from "@/lib/shareNames";
 import { forwardRef } from "react";
 import type { ShareCardMode } from "@/lib/shareCardMode";
 import { useTranslations } from "next-intl";
@@ -168,6 +169,7 @@ interface Props {
   eventTitle: string;
   /** "2026.05.02 · venue"; empty hides the line. */
   dateLine: string;
+  shareNames?: ShareNames;
   /**
    * Actual setlist filtered to song-type items already (caller does the
    * filter). Encore vs main split via `isEncore` on each row. Empty in
@@ -210,6 +212,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
       seriesName,
       eventTitle,
       dateLine,
+      shareNames,
       actualSongs,
       predictions,
       matched,
@@ -228,6 +231,13 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
     const mainSongs = actualSongs.filter((s) => !s.isEncore);
     const encoreSongs = actualSongs.filter((s) => s.isEncore);
     const rowCount = isPrediction ? predictions.length : actualSongs.length;
+
+    const titleName = shareNames?.event ?? { main: eventTitle, sub: null, lang: locale };
+    const series = shareNames
+      ? shareNames.series
+      : seriesName ? { main: seriesName, sub: null, lang: locale } : null;
+    const seriesCaption = series && (series.main !== titleName.main || series.sub !== titleName.sub) ? series : null;
+    const venue = shareNames?.venue;
 
     const pillLabel = isPrediction
       ? t("pillPrediction")
@@ -320,7 +330,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               </span>
             </span>
           </div>
-          {seriesName && (
+          {seriesCaption && (
             <div
               {...captureShift("series-caption")}
               style={{
@@ -329,15 +339,16 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 fontWeight: 600,
                 lineHeight: 1.5,
                 color: P.accent,
+                overflowWrap: "anywhere",
               }}
             >
-              {seriesName}
+              <NameLines name={seriesCaption} locale={locale} />
             </div>
           )}
           <div
             {...captureShift("event-title")}
             style={{
-              marginTop: seriesName ? 0 : 22,
+              marginTop: seriesCaption ? 0 : 22,
               fontSize: 29,
               fontWeight: 700,
               lineHeight: 1.4,
@@ -345,9 +356,9 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               overflowWrap: "anywhere",
             }}
           >
-            {eventTitle}
+            <NameLines name={titleName} locale={locale} />
           </div>
-          {dateLine && (
+          {(dateLine || venue) && (
             <div
               style={{
                 marginTop: 12,
@@ -358,6 +369,11 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               }}
             >
               {dateLine}
+              {venue && (
+                <div style={{ fontSize: 14, overflowWrap: "anywhere" }}>
+                  <NameLines name={venue} locale={locale} />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -531,7 +547,11 @@ function PredictionRows({
     <Row
       key={entry.songId}
       rank={rank}
-      title={displayOriginalTitle(entry.song, entry.song.translations, locale).main}
+      names={[{
+        ...displayOriginalTitle(entry.song, entry.song.translations, locale, "paired"),
+        lang: entry.song.originalLanguage,
+      }]}
+      locale={locale}
       mark={null}
       compact={two}
       P={P}
@@ -583,18 +603,17 @@ function ActualRows({
   const two = mainSongs.length + encoreSongs.length >= TWO_COLUMN_MIN_SONG_COUNT;
   const render = (e: Entry, key: string) => {
     if (e.kind === "encore") return <EncoreDivider key={key} label={encoreLabel} P={P} />;
-    // Medleys list every available title ("A / B / C"); a row with no
-    // title at all says so rather than inventing a name.
-    const title =
-      e.item.songs
-        .map((s) => displayOriginalTitle(s.song, s.song.translations, locale).main)
-        .filter(Boolean)
-        .join(" / ") || unknownLabel;
+    // Keep each medley title next to its own translation.
+    const names = e.item.songs.map(({ song }) => ({
+      ...displayOriginalTitle(song, song.translations, locale, "paired"),
+      lang: song.originalLanguage,
+    })).filter((name) => name.main);
     return (
       <Row
         key={key}
         rank={e.rank}
-        title={title}
+        names={names.length ? names : [{ main: unknownLabel, sub: null, lang: locale }]}
+        locale={locale}
         mark={isHit(e.item, predictions) ? "hit" : "miss"}
         compact={two}
         P={P}
@@ -616,13 +635,15 @@ function ActualRows({
 
 function Row({
   rank,
-  title,
+  names,
+  locale,
   mark,
   compact,
   P,
 }: {
   rank: number;
-  title: string;
+  names: ShareName[];
+  locale: string;
   /** null = pre-show (no comparison yet). */
   mark: "hit" | "miss" | null;
   /** Two-column rows: tighter padding, 12px titles. */
@@ -655,7 +676,7 @@ function Row({
       >
         {pad2(rank)}
       </span>
-      <span
+      <div
         {...captureShift("row-title")}
         style={{
           flex: 1,
@@ -667,8 +688,12 @@ function Row({
           overflowWrap: "anywhere",
         }}
       >
-        {title}
-      </span>
+        {names.map((name, index) => (
+          <div key={index}>
+            <NameLines name={name} locale={locale} />
+          </div>
+        ))}
+      </div>
       {mark && (
         <span
           {...captureShift("row-mark")}
@@ -705,5 +730,18 @@ function EncoreDivider({ label, P }: { label: string; P: CardPalette }) {
     >
       {label}
     </div>
+  );
+}
+
+function NameLines({ name, locale }: { name: ShareName; locale: string }) {
+  return (
+    <>
+      <span lang={name.lang}>{name.main}</span>
+      {name.sub && (
+        <span lang={locale} style={{ display: "block", fontSize: "0.82em", fontWeight: 500 }}>
+          {name.sub}
+        </span>
+      )}
+    </>
   );
 }

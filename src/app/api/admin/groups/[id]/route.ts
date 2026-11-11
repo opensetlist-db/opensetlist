@@ -1,3 +1,4 @@
+import { checkIdentityNames, identityTranslations } from "@/lib/adminIdentityNames";
 import { NextRequest, NextResponse } from "next/server";
 import { GroupType, GroupCategory } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
@@ -26,7 +27,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
-  const slug = requireString(body.slug, "slug");
+  const slug = body.slug === undefined ? { ok: true as const, value: undefined } : requireString(body.slug, "slug");
   if (!slug.ok) return badRequest(slug.message);
 
   const typeCheck = nullableEnumValue(body.type, "type", Object.values(GroupType));
@@ -38,48 +39,66 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
   if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
 
-  const name = requireString(body.originalName, "originalName");
-  if (!name.ok) return badRequest(name.message);
-
-  const shortName = nullableString(body.originalShortName, "originalShortName");
-  if (!shortName.ok) return badRequest(shortName.message);
-
-  const description = nullableString(body.originalDescription, "originalDescription");
-  if (!description.ok) return badRequest(description.message);
-
-  const language = parseOriginalLanguage(body.originalLanguage);
-  if (!language.ok) return badRequest(language.message);
-
-  const translations = parseLocalizedTranslations(body.translations);
+  const translations = identityTranslations(body.translations, parseLocalizedTranslations);
   if (!translations.ok) return badRequest(translations.message);
 
-  // Atomic delete-then-update: a failed update would otherwise leave
-  // the group with no translation rows. Catch P2002 (unique violation
-  // on `slug`) and surface as 409 — pre-flight findFirst would race
-  // against concurrent edits.
+  const name = body.originalName === undefined ? undefined : requireString(body.originalName, "originalName");
+  if (name && !name.ok) return badRequest(name.message);
+  const shortName = body.originalShortName === undefined ? undefined : nullableString(body.originalShortName, "originalShortName");
+  if (shortName && !shortName.ok) return badRequest(shortName.message);
+  const language = body.originalLanguage === undefined ? undefined : parseOriginalLanguage(body.originalLanguage);
+  if (language && !language.ok) return badRequest(language.message);
+  const description = body.originalDescription === undefined ? undefined : nullableString(body.originalDescription, "originalDescription");
+  if (description && !description.ok) return badRequest(description.message);
+  // The shared parser uses null for omitted optional keys on create.
+  const rows = translations.value.map((row, i) => {
+    const input = (body.translations as Record<string, unknown>[])[i];
+    return { ...row, shortName: "shortName" in input ? row.shortName : undefined,
+      description: "description" in input ? row.description : undefined };
+  });
+
   try {
     const group = await prisma.$transaction(async (tx) => {
-      // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
-      await tx.groupTranslation.deleteMany({ where: { groupId: id } });
+      const stored = await tx.group.findUnique({
+        where: { id: id },
+        include: { translations: true },
+      });
+      if (!stored) return NextResponse.json({ error: "대상을 찾을 수 없습니다." }, { status: 404 });
+      const message = checkIdentityNames("그룹", {
+        originalName: name?.value ?? stored.originalName,
+        originalShortName: shortName ? shortName.value : stored.originalShortName,
+        originalLanguage: language?.value ?? stored.originalLanguage,
+        translations: rows,
+        sameNameConfirmations: translations.sameNameConfirmations,
+      }, stored);
+      if (message) return badRequest(message);
       return tx.group.update({
         where: { id },
         data: {
           slug: slug.value,
-          type: typeCheck.value,
-          category: categoryCheck.value,
-          hasBoard: hasBoardCheck.value ?? false,
-          originalName: name.value,
-          originalShortName: shortName.value,
-          originalDescription: description.value,
-          originalLanguage: language.value,
-          translations: { create: translations.value },
+          type: "type" in body ? typeCheck.value : undefined,
+          category: "category" in body ? categoryCheck.value : undefined,
+          hasBoard: "hasBoard" in body ? (hasBoardCheck.value ?? false) : undefined,
+          originalName: name?.value,
+          originalShortName: shortName?.value,
+          originalDescription: description?.value,
+          originalLanguage: language?.value,
+          translations: { upsert: rows.map(({ locale, ...data }) => ({
+            where: { groupId_locale: { groupId: id, locale } },
+            create: { locale, ...data },
+            update: data,
+          })) },
         },
         include: { translations: true },
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (group instanceof NextResponse) return group;
     revalidatePublicData();
     return NextResponse.json(serializeBigInt(group));
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") {
+      return NextResponse.json({ error: "동시에 수정되었습니다. 다시 불러온 뒤 저장하세요." }, { status: 409 });
+    }
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2002"

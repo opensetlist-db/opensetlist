@@ -37,16 +37,21 @@ font hashes, renderer/runtime/lockfile identity, output dimensions and SHA-256s.
 the recorded environment; a different Node/renderer/lockfile is a new preview.
 The gallery is a convenience; the manifest binds the images.
 
-The title is the complete localized series name where present, with the
-complete event name as the performance designation. Without a series the full
-event name is the title. Artist context is omitted when already included in
-either name. Venue and date are omitted when absent; no Day label is invented.
+The headline uses the complete original series title, followed by a smaller
+current-language title when one exists. The performance line uses the same
+pair for the event title. Without a series, the event title is the headline.
+Artist and venue names follow the same display order. Artist context is omitted
+when the displayed titles already include both required names. The title
+policy omits the translation line for Roman-letter and numeric titles and
+identical values. Venue and date are omitted when absent.
 
 The shared light template uses the existing ImageResponse/Satori stack and OG
 WOFF list, plus the site's Josefin wordmark. Satori measures actual font paths
 with no line clamp or ellipsis. Title limits are 40–60px / four lines, with
-34px date, 30px purpose, 28–32px performance and 28px venue. At 360px the title
-is at least 12px. All nine purpose strings live in the message catalogs.
+30px date and purpose, 28–34px performance and 30–32px venue. Current-language
+lines use 84% of the original text size. At 360px the original title is at
+least 12px. The purpose labels and image descriptions live in the message
+catalogs.
 Missing font files, unsupported glyphs, overflow or excess shrinking fail the
 command. Every render finishes before the new output directory is created;
 an I/O failure during writing may leave an incomplete directory without a

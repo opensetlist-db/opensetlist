@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { IdentityName, type IdentityNamePair } from "./IdentityName";
 import styles from "./artistDetail.module.css";
 import { type LocalizedText, accentStyle, firstGrapheme } from "./artistDetail";
 
@@ -18,17 +19,17 @@ import { type LocalizedText, accentStyle, firstGrapheme } from "./artistDetail";
 
 interface Props {
   href: string;
-  name: LocalizedText;
+  name: IdentityNamePair;
   /** Initial source (locale short-name cascade); falls back to `name`. */
   avatarLabel?: LocalizedText | null;
   /** Owning unit, or null when the member belongs to no sub-unit. */
-  unitName: LocalizedText | null;
+  unitName: IdentityNamePair | null;
   /** Page resolves: owning unit colour → stage-identity colour → muted. */
   color: string;
 }
 
 export function MemberChip({ href, name, avatarLabel, unitName, color }: Props) {
-  const initialSource = avatarLabel?.text ? avatarLabel : name;
+  const initialSource = avatarLabel?.text ? avatarLabel : { text: name.main, lang: name.lang };
   return (
     <Link href={href} className={styles.member} style={accentStyle(color)}>
       <span
@@ -39,12 +40,12 @@ export function MemberChip({ href, name, avatarLabel, unitName, color }: Props) 
         {firstGrapheme(initialSource.text)}
       </span>
       <span className={styles.memberCopy}>
-        <span className={styles.memberName} lang={name.lang}>
-          {name.text}
+        <span className={styles.memberName}>
+          <IdentityName name={name} />
         </span>
         {unitName && (
-          <span className={styles.memberUnit} lang={unitName.lang}>
-            {unitName.text}
+          <span className={styles.memberUnit}>
+            <IdentityName name={unitName} />
           </span>
         )}
       </span>

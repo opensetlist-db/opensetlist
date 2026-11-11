@@ -3,7 +3,9 @@ import { getTranslations } from "next-intl/server";
 import EventStatusTicker from "@/components/EventStatusTicker";
 import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { EventArt } from "@/components/shared/EventArt";
+import { EventNameText } from "@/components/events/EventNameText";
 import type { HomeCardView } from "@/lib/homeView";
+import { eventDisplayPlain } from "@/lib/eventDisplay";
 import { motion } from "@/styles/tokens";
 import { HomeChevronIcon, HomeGiftIcon, HomePinIcon } from "./HomeIcons";
 import styles from "./home.module.css";
@@ -58,13 +60,16 @@ export async function CompactEventCard({
         )}
         <div className={styles.dateLine}>
           <time dateTime={view.startTimeIso}>{view.dateLabel}</time>
-          {view.dayLabel && <span className={styles.day}>{view.dayLabel}</span>}
+          {view.dayLabel && <span className={styles.day}><EventNameText pair={view.dayLabel} /></span>}
         </div>
-        <h3 className={styles.cardTitle}>{view.title}</h3>
-        {view.place && (
+        <h3 className={styles.cardTitle}><EventNameText pair={view.title} /></h3>
+        {(view.city || view.venue) && (
           <p className={styles.venue}>
             <HomePinIcon />
-            <span>{view.place}</span>
+            <span className="[overflow-wrap:anywhere]">
+              {view.city}{view.city && view.venue && " · "}
+              {view.venue && <EventNameText pair={view.venue} />}
+            </span>
           </p>
         )}
         {live ? (
@@ -95,7 +100,9 @@ export async function CompactEventCard({
         prefetch={false}
         className={styles.bonusBadge}
         data-testid="home-bd-bonus"
-        aria-label={t("bdBonusFor", { event: view.dayLabel ? `${view.title} · ${view.dayLabel}` : view.title })}
+        aria-label={t("bdBonusFor", {
+          event: [eventDisplayPlain(view.title), eventDisplayPlain(view.dayLabel)].filter(Boolean).join(" · "),
+        })}
       >
         <HomeGiftIcon />
         {t("bdBonus")}

@@ -29,10 +29,11 @@ const disclosures = {
 const officialUrl = "https://example.com/official";
 const bonusImageUrl = "https://example.com/poster.png";
 const benefit = (name: string, endsAt: string | null = null) => ({
-  id: name, originalBonusType: name, translations: [], startsAt: null, endsAt, endedAt: null,
+  id: name, originalBonusType: name, originalLanguage: "en",
+  translations: ["ko", "ja"].map(locale => ({ locale, bonusType: name })), startsAt: null, endsAt, endedAt: null,
 });
 const listing = (id: string, overrides: Record<string, unknown>) => ({
-  id, originalStoreName: "Amazon", status: "active", originalEditionLabel: null,
+  id, originalStoreName: "Amazon", originalLanguage: "ja", status: "active", originalEditionLabel: null,
   includesPerformanceVideo: true, isBonusOption: true, storeKey: null, officialOrder: null,
   startsAt: null, endsAt: null, sourceUrl: null, selectionGuide: null,
   productUrl: amazonBonus, translations: [], bonuses: [], ...overrides,
@@ -49,7 +50,7 @@ it.each(locales)("simplifies %s options while preserving benefits, links and tra
         sourceUrl: officialUrl,
         selectionGuide: "Includes live shows A and B",
         originalEditionLabel: "Blu-ray Memorial BOX",
-        bonuses: [{ ...benefit("Poster"), bonusImageUrl, originalBonusDescription: "Store exclusive poster" }],
+        bonuses: [{ ...benefit("Poster"), bonusImageUrl, originalBonusDescription: "Store exclusive poster", translations: ["ko", "ja"].map(locale => ({ locale, bonusType: "Poster", bonusDescription: "Store exclusive poster" })) }],
       }),
       listing("plain", { productUrl: amazonPlain + "&tag=old-22", isBonusOption: false }),
       listing("other", { originalStoreName: "Example store", productUrl: other, bonuses: [benefit("Card")] }),

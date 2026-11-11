@@ -27,7 +27,7 @@ function renderHero(status: ResolvedEventStatus, statusLabel: string) {
       logoTint={null}
       artTitle="Fes"
       series={null}
-      title="リハーサル Day.1"
+      title={{ main: "リハーサル Day.1", sub: "리허설 Day.1", mainLang: "ja", subLang: "ko" }}
       dateLabel={null}
       venueLine={null}
     />,

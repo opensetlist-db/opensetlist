@@ -1,5 +1,6 @@
 {
   "EventShareCard": {
+    "imageAlt": "{names}の{label}カード",
     "prediction": "セットリスト予想",
     "live": "セットリスト速報",
     "setlist": "セットリスト公開"
@@ -189,6 +190,7 @@
     "albumActiveBonuses": "店舗特典 {count}件",
     "albumActiveBonusesBadge": "特典 {count}",
     "unknown": "名称未定のアルバム",
+    "coverAlt": "{title}のジャケット",
     "type": {
       "single": "シングル",
       "album": "アルバム",
@@ -233,6 +235,7 @@
       "basicOptions": "特典なしの購入オプション",
       "storeCount": "販売店 {count}店",
       "deadline": "特典締切：{time}",
+      "label": "購入特典",
       "buyAt": "{store}で商品を見る",
       "officialInfo": "公式商品情報",
       "status": {

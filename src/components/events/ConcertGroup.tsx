@@ -19,9 +19,9 @@ import { colors, radius, shadows } from "@/styles/tokens";
  */
 
 interface Props {
-  title: string;
+  title: ReactNode;
   /** Representative artist short name (series groups only). */
-  artistTag: string | null;
+  artistTag: ReactNode;
   /** "Tour" / "Festival" from the root series type, if either. */
   typeLabel: string | null;
   countLabel: string;

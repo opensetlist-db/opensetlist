@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { parseBonusTranslations } from "@/lib/adminParsers";
+import { bonusLanguageIssue, requireReviewedText } from "@/lib/purchaseLanguage";
 import { revalidatePublicData } from "@/lib/dataCache";
 
 type CreateBody = Record<string, unknown> & {
@@ -50,14 +51,19 @@ export async function POST(request: NextRequest) {
 
   try {
     const purchase = parseBonusPurchaseFields(body);
+    const originalBonusType = body.originalBonusType.trim();
+    const translations = parseBonusTranslations(body.translations);
+    requireReviewedText(false, undefined, bonusLanguageIssue({
+      originalBonusType, originalLanguage, originalBonusDescription: purchase.originalBonusDescription, translations,
+    }, body.reviewedTranslations === true));
     const created = await prisma.albumStoreBonus.create({
       data: {
         ...purchase,
         listingId,
-        originalBonusType: (body.originalBonusType as string).trim(),
+        originalBonusType,
         originalLanguage,
         translations: {
-          create: parseBonusTranslations(body.translations),
+          create: translations,
         },
       },
       include: { translations: true },

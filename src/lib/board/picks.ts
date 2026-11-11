@@ -1,6 +1,7 @@
 import { defaultLocale } from "@/i18n/routing";
 import { prisma } from "@/lib/prisma";
-import { displayOriginalTitle } from "@/lib/display";
+import { boardSongRef } from "@/lib/board/pickTitle";
+import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
 import { getAvailableSongsCached } from "@/lib/predict/availableSongs";
 import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
 import { BOARD_PICKS_PER_GROUP } from "@/lib/board/config";
@@ -168,7 +169,6 @@ export function deletePick(
 export async function loadMinePicks(
   eventId: bigint,
   anonId: string,
-  locale: string,
 ): Promise<BoardMinePick[]> {
   const rows = await prisma.boardPick.findMany({
     where: { eventId, anonId },
@@ -184,8 +184,8 @@ export async function loadMinePicks(
           originalTitle: true,
           originalLanguage: true,
           variantLabel: true,
+          baseVersionId: true,
           translations: {
-            where: { locale },
             select: { locale: true, title: true, variantLabel: true },
           },
         },
@@ -195,8 +195,10 @@ export async function loadMinePicks(
   return rows.map((r) => ({
     id: r.id,
     groupId: r.groupArtistId.toString(),
-    songId: r.songId.toString(),
-    title: displayOriginalTitle(r.song, r.song.translations, locale).main,
+    ...boardSongRef(String(r.songId), {
+      ...r.song,
+      baseVersionId: r.song.baseVersionId == null ? null : safeBigIntToNumber(r.song.baseVersionId),
+    }),
     available: !r.song.isDeleted,
     createdAt: r.createdAt.toISOString(),
   }));

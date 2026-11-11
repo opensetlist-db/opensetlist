@@ -8,6 +8,53 @@ export function parseArtistSlugs(value: string | undefined | null): string[] {
   return value.trim().split(/\s+/).filter(Boolean);
 }
 
+/** An identical localized spelling needs a source URL in the review and CSV. */
+export function isSameSpellingSource(source: unknown): source is string {
+  return typeof source === "string" && /^https?:\/\//i.test(source) && URL.canParse(source);
+}
+
+const approvedFullUnitNames: Readonly<Record<string, string>> = {
+  diverdiva: "DiverDiva",
+  azuna: "A・ZU・NA",
+  qu4rtz: "QU4RTZ",
+  r3birth: "R3BIRTH",
+  "a-l-a-n": "A.L.A.N",
+};
+
+/** An event's repeated title keeps its title classification. Only approved units can omit a separate short name. */
+export function catalogShortNameRule(
+  shortName: string | undefined,
+  fullName: string | undefined,
+  fullNameIsTitle: boolean,
+  artistSlug?: string,
+) {
+  if (shortName && fullNameIsTitle && shortName === fullName) return "title";
+  if (fullName && artistSlug && approvedFullUnitNames[artistSlug] === fullName) return "full-name";
+  return undefined;
+}
+
+/** Checks beyond display completeness that depend on the proposed CSV write. */
+export function catalogLocaleReviewIssue({
+  locale, value, originalLanguage, sourceChanged, submitted, status,
+}: {
+  locale: string;
+  value?: string;
+  originalLanguage: string;
+  sourceChanged: boolean;
+  submitted?: string;
+  status?: string;
+}) {
+  // Without a display status, only explicitly submitted text is under review.
+  if ((submitted?.trim() || (status && status !== "exempt" && status !== "original-language")) &&
+      (locale === "ko" || locale === "en") && value &&
+      /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(value.normalize("NFKC"))) {
+    return "localized-japanese-script";
+  }
+  if (sourceChanged && locale !== originalLanguage && !submitted?.trim() &&
+      (status === "present" || status === "confirmed-same")) return "source-review";
+  return undefined;
+}
+
 /**
  * Resolve originalLanguage from CSV row value, with default "ja".
  *
@@ -30,37 +77,13 @@ export function resolveOriginalLanguage(value: string | undefined | null): strin
   return normalized;
 }
 
-export interface TranslationRow {
-  locale: string;
-  title: string;
-  variantLabel: string | null;
-}
-
-/**
- * Resolve song translations from a CSV row.
- * Returns { translations, removedLocales } where:
- * - translations: locale rows to upsert (title and/or variantLabel present)
- * - removedLocales: locales with no data that should be deleted from DB
- */
-export function resolveSongTranslations(row: Record<string, string>): {
-  translations: TranslationRow[];
-  removedLocales: string[];
-} {
-  const LOCALES = ["ja", "ko", "en"] as const;
-
-  const translations: TranslationRow[] = [];
-  for (const locale of LOCALES) {
-    const title = row[`${locale}_title`] || "";
-    const variantLabel = row[`${locale}_variantLabel`] || null;
-    if (title || variantLabel) {
-      translations.push({ locale, title, variantLabel });
-    }
-  }
-
-  const presentLocales = new Set(translations.map((t) => t.locale));
-  const removedLocales = LOCALES.filter((l) => !presentLocales.has(l));
-
-  return { translations, removedLocales };
+/** CSV translations are partial patches. Blank cells preserve stored fields. */
+export function resolveSongTranslations(row: Record<string, string>) {
+  return ["ja", "ko", "en"].map((locale) => ({
+    locale,
+    title: row[`${locale}_title`] || undefined,
+    variantLabel: row[`${locale}_variantLabel`] || undefined,
+  })).filter(({ title, variantLabel }) => title || variantLabel);
 }
 
 export type OriginalsFieldMap<T> = ReadonlyArray<{

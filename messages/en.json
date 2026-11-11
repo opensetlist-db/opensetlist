@@ -1,5 +1,6 @@
 {
   "EventShareCard": {
+    "imageAlt": "{label} card for {names}",
     "prediction": "Setlist predictions",
     "live": "Live setlist",
     "setlist": "Published setlist"
@@ -189,6 +190,7 @@
     "albumActiveBonuses": "{count, plural, one {# store bonus} other {# store bonuses}}",
     "albumActiveBonusesBadge": "Bonus {count}",
     "unknown": "Unknown album",
+    "coverAlt": "Album cover for {title}",
     "type": {
       "single": "Single",
       "album": "Album",
@@ -233,6 +235,7 @@
       "basicOptions": "Purchase options without bonuses",
       "storeCount": "{count, plural, one {# store} other {# stores}}",
       "deadline": "Bonus deadline: {time}",
+      "label": "Purchase bonus",
       "buyAt": "View product at {store}",
       "officialInfo": "Official product information",
       "status": {

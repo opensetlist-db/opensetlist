@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { bonusCandidateLanguageIssue, listingCandidateLanguageIssue, type ParsedBonus } from "@/lib/album-bonus-import";
 import { useMemo, useState } from "react";
 import type {
   Classifications,
@@ -108,10 +109,15 @@ export default function ReviewClient({
     setDecisions((d) => {
       const next = { ...d, listings: { ...d.listings }, bonuses: { ...d.bonuses } };
       for (let i = 0; i < candidates.listings.length; i++) {
-        next.listings[i] = { approved };
+        const listingIssue = listingClassByIdx.get(i)?.kind === "insert"
+          && listingCandidateLanguageIssue(candidates.listings[i]);
+        const listingApproved = approved && !listingIssue;
+        next.listings[i] = { approved: listingApproved };
         const bs = candidates.listings[i].bonuses;
         for (let j = 0; j < bs.length; j++) {
-          next.bonuses[`${i}:${j}`] = { approved };
+          const key = `${i}:${j}`;
+          const bonusIssue = bonusClassByKey.get(key)?.kind === "insert" && bonusCandidateLanguageIssue(bs[j]);
+          next.bonuses[key] = { approved: listingApproved && !bonusIssue };
         }
       }
       return next;
@@ -353,6 +359,7 @@ export default function ReviewClient({
             const lc = listingClassByIdx.get(idx)!;
             const decision = decisions.listings[idx];
             const approved = decision?.approved === true;
+            const issue = lc.kind === "insert" ? listingCandidateLanguageIssue(listing) : undefined;
             return (
               <div
                 key={idx}
@@ -363,7 +370,7 @@ export default function ReviewClient({
                     type="checkbox"
                     checked={approved}
                     onChange={(e) => setListingApproved(idx, e.target.checked)}
-                    disabled={!isPending}
+                    disabled={!isPending || (!!issue && !approved)}
                     className="mt-1"
                   />
                   <div className="flex-1">
@@ -378,6 +385,10 @@ export default function ReviewClient({
                         </span>
                       )}
                     </div>
+                    {issue && <p className="text-sm text-red-700">검수 대기 — {issue}</p>}
+                    {lc.kind === "insert" && listing.translations?.map((row, i) => (
+                      <p key={i} className="text-sm">{row.locale} · {row.storeName}</p>
+                    ))}
                     {lc.diffs.length > 0 && (
                       <div className="mt-1 text-xs text-amber-700">
                         {lc.diffs.map((d, di) => (
@@ -406,6 +417,7 @@ export default function ReviewClient({
                     const bc = bonusClassByKey.get(key)!;
                     const bd = decisions.bonuses[key];
                     const bonusApproved = bd?.approved === true;
+                    const bonusIssue = bc.kind === "insert" ? bonusCandidateLanguageIssue(bonus) : undefined;
                     return (
                       <label
                         key={key}
@@ -417,7 +429,7 @@ export default function ReviewClient({
                           onChange={(e) =>
                             setBonusApproved(key, e.target.checked)
                           }
-                          disabled={!isPending}
+                          disabled={!isPending || (!bonusApproved && (!approved || !!bonusIssue))}
                           className="mt-1"
                         />
                         <div className="flex-1">
@@ -425,6 +437,7 @@ export default function ReviewClient({
                             <span>{bonus.originalBonusType}</span>
                             <ClassificationBadge kind={bc.kind} />
                           </div>
+                          <BonusTextReview bonus={bonus} issue={bonusIssue} />
                         </div>
                       </label>
                     );
@@ -435,6 +448,17 @@ export default function ReviewClient({
           })}
         </div>
 
+        {candidates.globalEarlyBooking?.bonuses.length ? (
+          <section className="mt-4 space-y-2">
+            <h3 className="font-medium">조기 예약 특전</h3>
+            {candidates.globalEarlyBooking.bonuses.map((bonus, i) => (
+              <div key={i} className="rounded border border-zinc-200 p-2">
+                <p>{bonus.originalBonusType}</p>
+                <BonusTextReview bonus={bonus} issue={bonusCandidateLanguageIssue(bonus)} />
+              </div>
+            ))}
+          </section>
+        ) : null}
         {classifications.unreferencedListings.length > 0 && (
           <div className="mt-3 rounded border border-zinc-200 bg-zinc-50 p-2 text-xs">
             <div className="mb-1 font-semibold text-zinc-700">
@@ -525,5 +549,19 @@ function ClassificationBadge({ kind }: { kind: string }) {
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${m.cls}`}>
       {m.label}
     </span>
+  );
+}
+
+function BonusTextReview({ bonus, issue }: { bonus: ParsedBonus; issue?: string }) {
+  return (
+    <>
+      {bonus.originalBonusDescription && <p className="text-sm">{bonus.originalBonusDescription}</p>}
+      {bonus.translations?.map((row, i) => (
+        <p key={i} className="text-sm">
+          {row.locale} · {row.bonusType}{row.bonusDescription && <> — {row.bonusDescription}</>}
+        </p>
+      ))}
+      {issue && <p className="text-sm text-red-700">검수 대기 — {issue}</p>}
+    </>
   );
 }

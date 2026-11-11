@@ -3,6 +3,8 @@ import Link from "next/link";
 import { EventArt } from "@/components/shared/EventArt";
 import { ChevronIcon } from "@/components/events/ChevronIcon";
 import { ConcertStatusPill } from "@/components/events/ConcertStatusPill";
+import { EventNameText } from "@/components/events/EventNameText";
+import type { EventDisplayText } from "@/lib/eventDisplay";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";
 
@@ -23,8 +25,9 @@ import { colors } from "@/styles/tokens";
 
 interface Props {
   href: string;
-  title: string;
-  venueCity: string | null;
+  title: EventDisplayText;
+  city: string | null;
+  venue: EventDisplayText | null;
   startTimeIso: string;
   dateLabel: string;
   status: ResolvedEventStatus;
@@ -39,7 +42,8 @@ interface Props {
 export function ConcertRow({
   href,
   title,
-  venueCity,
+  city,
+  venue,
   startTimeIso,
   dateLabel,
   status,
@@ -75,15 +79,18 @@ export function ConcertRow({
       />
       <div className="col-start-2 row-start-1 min-w-0">
         <h4 className="mb-1.5 text-[15px] font-bold leading-[1.65] text-[var(--row-title)] [overflow-wrap:anywhere] group-hover:text-[var(--row-title-hover)] group-hover:underline min-[1100px]:text-[16px] [&:lang(ko)]:break-keep">
-          {title}
+          <EventNameText pair={title} />
         </h4>
-        {venueCity && (
+        {(venue || city) && (
           <p
             className="m-0 flex items-start gap-[7px] text-[12px] [overflow-wrap:anywhere] min-[700px]:text-[13px]"
             style={{ color: colors.textSecondary }}
           >
             <PinIcon />
-            <span>{venueCity}</span>
+            <span>
+              {city}{city && venue && " · "}
+              {venue && <EventNameText pair={venue} />}
+            </span>
           </p>
         )}
       </div>

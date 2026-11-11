@@ -1,6 +1,8 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import type { PublicLogo } from "@/lib/logoResolution";
+import type { EventDisplayText } from "@/lib/eventDisplay";
+import { EventNameText } from "@/components/events/EventNameText";
 import { SeriesLogo } from "./SeriesLogo";
 import styles from "./seriesDetail.module.css";
 
@@ -13,9 +15,9 @@ export type SeriesMeta =
       label: string;
       /** Locale-prefixed canonical path (`entityPath`). */
       href: string;
-      name: LangText;
+      name: EventDisplayText;
     }
-  | { kind: "organizer"; label: string; name: LangText };
+  | { kind: "organizer"; label: string; name: EventDisplayText };
 
 /*
  * Full-width identity panel of the series page (32-v1).
@@ -44,7 +46,7 @@ export function SeriesIdentity({
   typeLabel: string;
   title: LangText;
   subtitle: LangText | null;
-  meta: SeriesMeta | null;
+  meta: SeriesMeta[];
   description: LangText | null;
   metrics: ReadonlyArray<{ label: string; value: string }>;
 }) {
@@ -68,20 +70,20 @@ export function SeriesIdentity({
             {subtitle.text}
           </p>
         ) : null}
-        {meta ? (
-          <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>{meta.label}</span>
-            {meta.kind === "artist" ? (
-              <Link href={meta.href} lang={meta.name.lang}>
-                {meta.name.text}
+        {meta.map((item) => (
+          <div className={styles.metaRow} key={item.kind}>
+            <span className={styles.metaLabel}>{item.label}</span>
+            {item.kind === "artist" ? (
+              <Link href={item.href}>
+                <EventNameText pair={item.name} />
               </Link>
             ) : (
-              <span className={styles.metaValue} lang={meta.name.lang}>
-                {meta.name.text}
+              <span className={styles.metaValue}>
+                <EventNameText pair={item.name} />
               </span>
             )}
           </div>
-        ) : null}
+        ))}
         {description ? (
           <p className={styles.description} lang={description.lang}>
             {description.text}

@@ -1,6 +1,6 @@
 import { TrackedAlbumLink } from "@/components/TrackedAlbumLink";
 import { getTranslations } from "next-intl/server";
-import { displayOriginalTitle } from "@/lib/display";
+import { displayOriginalTitle, resolveDisplayPair } from "@/lib/display";
 import { parseReleaseYear } from "@/lib/utils";
 import { entityPath } from "@/lib/seo/entityUrl";
 import type { AlbumsListItem } from "@/lib/albums";
@@ -24,20 +24,23 @@ import styles from "./albumList.module.css";
 interface Props {
   album: AlbumsListItem;
   locale: string;
-  /** Pre-resolved primary-artist label (`displayOriginalName(...).main`). */
-  artistName?: string;
   /** `countActiveBonuses(listings)`: bonuses of listings not `ended`. */
   activeBonusCount: number;
 }
 
+/** Uses one canonical link for the album title, credit and purchase indicator. */
 export async function AlbumListRow({
   album,
   locale,
-  artistName,
   activeBonusCount,
 }: Props) {
   const t = await getTranslations({ locale, namespace: "Album" });
-  const title = displayOriginalTitle(album, album.translations, locale);
+  const title = displayOriginalTitle(album, album.translations, locale, "paired");
+  const artist = album.artists[0]?.artist;
+  const artistName = artist && resolveDisplayPair(
+    { original: artist.originalName, originalLanguage: artist.originalLanguage },
+    artist.translations, locale, "name",
+  );
   const year = parseReleaseYear(album.releaseDate);
 
   return (
@@ -54,7 +57,12 @@ export async function AlbumListRow({
           <span className={styles.type} data-type={album.type}>
             {t(`type.${album.type}`)}
           </span>
-          {artistName && <span className={styles.artist}>{artistName}</span>}
+          {artist && artistName && (
+            <span className={styles.artist}>
+              <span lang={artist.originalLanguage}>{artistName.main}</span>
+              {artistName.sub && <small lang={locale}>{artistName.sub}</small>}
+            </span>
+          )}
           {activeBonusCount > 0 && (
             // Compact visible text ("특전 N"); the role + label carry the
             // longer "매장특전 N건" wording for screen readers.
@@ -67,9 +75,9 @@ export async function AlbumListRow({
             </span>
           )}
         </div>
-        <div className={styles.rowTitle}>{title.main}</div>
+        <div className={styles.rowTitle} lang={album.originalLanguage}>{title.main}</div>
         <div className={styles.rowSub}>
-          {title.sub}
+          {title.sub && <span lang={locale}>{title.sub}</span>}
           {year !== null && (
             <span className={styles.mobileYear}>
               {title.sub ? " · " : ""}

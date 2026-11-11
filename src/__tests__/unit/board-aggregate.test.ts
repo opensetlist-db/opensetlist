@@ -36,7 +36,7 @@ describe("rankBoardSongs", () => {
 
 describe("buildBoardColumn", () => {
   const titles: Record<string, string> = { "10": "残陽", "11": "ハナムスビ", "12": "Dream Believers" };
-  const titleOf = (id: string) => titles[id] ?? null;
+  const titleOf = (id: string) => titles[id] ? { songId: id, title: titles[id] } : null;
 
   it("zero submissions → operator column, nothing ranked", () => {
     expect(buildBoardColumn([], 0, titleOf)).toEqual({

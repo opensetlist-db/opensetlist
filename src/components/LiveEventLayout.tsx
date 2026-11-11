@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ComponentProps } from "react";
 import { createEventDisplayOrdering, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
 // `useSetlistPolling` is only a type source here. The hook itself has
 // no runtime caller any more: `useRealtimeEventChannel` owns the single
@@ -35,7 +35,7 @@ import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import type { VenueStartLabel } from "@/components/LiveSetlist";
 import type { BoardBlockSeed } from "@/lib/board/types";
 
-interface Props {
+interface Props extends Pick<Parameters<typeof LiveSetlist>[0], "shareNames"> {
   // ───── Event-level static (forwarded to children unchanged) ─────
   eventId: string;
   isOngoing: boolean;
@@ -83,6 +83,7 @@ interface Props {
   title: string;
   venue: string | null;
   city: string | null;
+  infoNames?: ComponentProps<typeof EventInfoCard>["names"];
   /**
    * Localized short variants of `series.name` and `title`. The page
    * already resolves both via `displayNameWithFallback(..., "short")`
@@ -208,8 +209,10 @@ export function LiveEventLayout({
   title,
   venue,
   city,
+  infoNames,
   seriesShortName,
   eventShortName,
+  shareNames,
   initialImpressions,
   initialImpressionsNextCursor,
   initialImpressionsTotalCount,
@@ -415,29 +418,11 @@ export function LiveEventLayout({
           snapshotCapturedAt={capturedAt ?? undefined}
           isWishPredictOpen={isWishPredictOpen}
           board={board}
-          // Share-card header pair. v0.11.6 added short-variant
-          // preference (operator preference): the captured PNG is
-          // space-constrained, and long series names like the
-          // Hasunosora tour ("ラブライブ！蓮ノ空女学院スクールアイドルクラブ
-          // 6TH LIVE DREAM ~BLOOM GARDEN PARTY~") wrap across multiple
-          // lines and visually dominate the card. Each input prefers
-          // its short variant via `displayNameWithFallback(..., "short")`
-          // resolved upstream by the page; falls back to the full
-          // variant when no short exists.
-          //
-          //   - `seriesName`: short series name when the event belongs
-          //     to a series, else empty string (preview hides the
-          //     series row in that case).
-          //   - `eventTitle`: short event-specific identifier (e.g.
-          //     "Hyogo Day.1" instead of "Garden Stage / Hyogo Day.1").
-          //
-          // `dateLine`: "2026.05.02 · venue" under the title, as the
-          // approved 18-share-v1 cards print it (the card had carried
-          // no date row since v0.11.6). Built from the venue date's
-          // UTC parts — the stored calendar date, not the viewer's.
+          // Keep the legacy caller working while the detail page adopts shareNames.
           seriesName={seriesShortName ?? series?.name ?? ""}
           eventTitle={eventShortName ?? title}
-          dateLine={shareDateLine(date, venue)}
+          dateLine={shareDateLine(date, shareNames ? null : venue)}
+          shareNames={shareNames}
           availableSongs={availableSongs}
           unitFilters={unitFilters}
           setlistStartLabel={setlistStartLabel}
@@ -469,6 +454,7 @@ export function LiveEventLayout({
           startTime={startTime}
           venue={venue}
           city={city}
+          names={infoNames}
           artist={artist}
           organizerName={organizerName}
           series={series}
@@ -481,7 +467,7 @@ export function LiveEventLayout({
           performers={performersForCard}
           isLineup={showLineup}
         />
-        <EventSeriesCard locale={locale} series={series} />
+        <EventSeriesCard locale={locale} series={series} name={infoNames?.series} />
       </aside>
     </div>
   );

@@ -26,6 +26,8 @@ const ALBUM_TYPE_LABEL_KO: Record<string, string> = {
   soundtrack: "OST",
 };
 
+import { sameEventNames, SameEventNames } from "@/components/admin/SameEventNames";
+
 type Translation = {
   locale: string;
   name: string;
@@ -157,6 +159,8 @@ export default function EventForm({ initialData }: EventFormProps) {
   );
   const [originalCity, setOriginalCity] = useState(initialData?.originalCity ?? "");
   const [originalVenue, setOriginalVenue] = useState(initialData?.originalVenue ?? "");
+  const [confirmedNames, setConfirmedNames] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
@@ -226,6 +230,11 @@ export default function EventForm({ initialData }: EventFormProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const sameFor = (row: Translation) => row.locale === originalLanguage ? [] : sameEventNames({
+    name: originalName, shortName: originalShortName, organizerName, venue: originalVenue, city: originalCity,
+  }, row);
+  const sameKey = (row: Translation) => JSON.stringify([originalLanguage, sameFor(row)]);
+
   function updateTranslation(
     index: number,
     field: keyof Translation,
@@ -275,6 +284,7 @@ export default function EventForm({ initialData }: EventFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSaveError(null);
 
     if (!startTime) {
       alert("시작 시각은 필수입니다.");
@@ -312,8 +322,12 @@ export default function EventForm({ initialData }: EventFormProps) {
       originalCity: originalCity.trim() || null,
       originalVenue: originalVenue.trim() || null,
       originalLanguage,
+      removeTranslations: initialData?.translations
+        .filter((old) => !translations.some((row) => row.locale === old.locale))
+        .map((old) => old.locale) ?? [],
       translations: translations
-        .filter((t) => t.name.trim())
+        .filter((t) => [t.name, t.shortName, t.city, t.venue, t.organizerName].some((value) => value.trim())
+          || initialData?.translations.some((row) => row.locale === t.locale))
         .map((t) => ({
           locale: t.locale,
           name: t.name,
@@ -321,6 +335,8 @@ export default function EventForm({ initialData }: EventFormProps) {
           city: t.city || null,
           venue: t.venue || null,
           organizerName: t.organizerName.trim() || null,
+          confirmedSame: confirmedNames[t.locale] === sameKey(t)
+            ? sameFor(t).map(([field]) => field) : undefined,
         })),
       performerIds: selectedPerformers.map((p) => p.id),
       guestIds: selectedGuests.map((g) => g.id),
@@ -348,9 +364,9 @@ export default function EventForm({ initialData }: EventFormProps) {
       // 400) so the operator sees the actual reason instead of digging
       // through Sentry.
       const body = await res.json().catch(() => null);
-      alert(body?.error ?? "저장에 실패했습니다.");
+      setSaveError(body?.error ?? "저장에 실패했습니다.");
     } catch {
-      alert("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+      setSaveError("저장에 실패했습니다. 네트워크를 확인해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -653,7 +669,7 @@ export default function EventForm({ initialData }: EventFormProps) {
 
       <div className="rounded border border-zinc-300 bg-zinc-50 p-4">
         <div className="mb-3 text-sm font-medium">
-          원본 (다른 언어 번역이 없을 때 표시)
+          원문 (공개 화면에 먼저 표시)
         </div>
         <div className="mb-3">
           <label className="mb-1 block text-xs text-zinc-600">원본 언어</label>
@@ -714,6 +730,9 @@ export default function EventForm({ initialData }: EventFormProps) {
             </button>
           )}
         </div>
+        <p className="mb-2 text-xs text-zinc-600">
+          한국어·영어·일본어에서 필요한 표기는 출처에서 확인해 입력하세요. 로마자·숫자 제목과 원문 언어의 반복 입력은 필요하지 않습니다.
+        </p>
         <div className="space-y-3">
           {translations.map((tr, i) => (
             <div
@@ -780,12 +799,19 @@ export default function EventForm({ initialData }: EventFormProps) {
                 />
               </div>
               <input
-                placeholder="주최자명 번역 (비우면 원어 주최자명 표시)"
+                placeholder="이 언어에서 쓰는 주최자명"
                 value={tr.organizerName}
                 onChange={(e) =>
                   updateTranslation(i, "organizerName", e.target.value)
                 }
                 className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <SameEventNames
+                matches={sameFor(tr)}
+                checked={confirmedNames[tr.locale] === sameKey(tr)}
+                onChange={(checked) => setConfirmedNames((prev) => ({
+                  ...prev, [tr.locale]: checked ? sameKey(tr) : "",
+                }))}
               />
             </div>
           ))}
@@ -826,13 +852,16 @@ export default function EventForm({ initialData }: EventFormProps) {
         hoverClassName: "hover:bg-amber-50",
       })}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loading ? "저장 중..." : "저장"}
-      </button>
+      <div>
+        {saveError && <p role="alert" className="mb-2 text-sm text-red-700">{saveError}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "저장 중..." : "저장"}
+        </button>
+      </div>
     </form>
   );
 }

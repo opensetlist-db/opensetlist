@@ -118,11 +118,11 @@ describe("SongIdentity", () => {
   const ARTIST_COLOR = "#FB8A9B";
   const base = {
     locale: "ko",
-    title: { main: "Dream Believers", sub: null, variant: null },
-    artist: { id: 1, slug: "hasu", name: "蓮ノ空", color: ARTIST_COLOR },
+    title: { main: "Dream Believers", sub: null, variant: null, lang: "ja" },
+    artist: { id: 1, slug: "hasu", name: { main: "蓮ノ空", sub: "하스노소라", lang: "ja" }, color: ARTIST_COLOR },
     base: null,
     releaseYear: 2023,
-    firstAlbum: { title: "Dream Believers", typeLabel: "EP" },
+    firstAlbum: { title: { main: "Dream Believers", sub: null, lang: "ja" }, typeLabel: "EP" },
     performanceCount: 3,
     seriesCount: 1,
   };
@@ -132,6 +132,8 @@ describe("SongIdentity", () => {
     const { container } = render(el as ReactElement);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Dream Believers");
     expect(screen.getByRole("link").getAttribute("href")).toBe("/ko/artists/1/hasu");
+    expect(screen.getByText("하스노소라").getAttribute("lang")).toBe("ko");
+    expect(screen.getByText("蓮ノ空").getAttribute("lang")).toBe("ja");
     expect(container.querySelector("dl")!.textContent).toContain("2023");
     expect(container.querySelector("section")!.getAttribute("style")).toContain(ARTIST_COLOR);
     expect(screen.getByText("Song.statsPerformances")).toBeTruthy();
@@ -140,11 +142,12 @@ describe("SongIdentity", () => {
   it("shows the variant pill and a direct link to the original song", async () => {
     const el = await SongIdentity({
       ...base,
-      title: { main: "Dream Believers", sub: null, variant: "104期 Ver." },
-      base: { id: 1, slug: "dream-believers", title: "Dream Believers" },
+      title: { ...base.title, variant: { main: "104期 Ver.", sub: "104기 Ver.", lang: "ja" } },
+      base: { id: 1, slug: "dream-believers", title: base.title },
     });
     render(el as ReactElement);
     expect(screen.getByText("104期 Ver.")).toBeTruthy();
+    expect(screen.getByText("104기 Ver.").tagName).toBe("SMALL");
     const link = screen.getAllByRole("link").find((a) => a.textContent?.includes("Song.baseVersion"))!;
     expect(link.getAttribute("href")).toBe("/ko/songs/1/dream-believers");
   });
@@ -153,7 +156,7 @@ describe("SongIdentity", () => {
     const long = "【QA】" + "長い日本語の楽曲タイトル · A long multilingual song title ".repeat(4);
     const el = await SongIdentity({
       ...base,
-      title: { main: long, sub: "번역 제목", variant: null },
+      title: { ...base.title, main: long, sub: "번역 제목" },
       artist: null,
       releaseYear: null,
       firstAlbum: null,
@@ -207,7 +210,7 @@ describe("SongAlbumPanel", () => {
       rows: [
         albumRow({ releaseDate: "2023-01-01T00:00:00.000Z" }),
         albumRow(
-          { id: "6", slug: "second", originalTitle: "Second", translations: [{ locale: "ko", title: "두 번째" }] },
+          { id: "6", slug: "second", originalTitle: "二番目", imageUrl: "https://example.test/a.jpg", translations: [{ locale: "ko", title: "두 번째" }] },
           { isCanonical: false, activeBonusCount: 2, discNumber: 2, trackNumber: 4 },
         ),
       ],
@@ -222,6 +225,7 @@ describe("SongAlbumPanel", () => {
     expect(links[0].textContent).toContain("EP · 2023");
     expect(links[1].textContent).not.toContain("Song.albumOriginalRecording");
     expect(links[1].textContent).toContain("두 번째");
+    expect(screen.getByRole("img", { name: "二番目 / 두 번째" })).toBeTruthy();
     expect(links[1].textContent).toContain("Album.stats.bonusSectionLabel 2");
     expect(links[1].textContent).toContain('Song.discN:{"disc":2}');
     expect(screen.getByText('Song.albumsTotalCount:{"count":2}')).toBeTruthy();
@@ -271,8 +275,8 @@ describe("SongVersionsPanel", () => {
     const el = await SongVersionsPanel({
       locale: "ko",
       versions: [
-        { id: "1", slug: "db", title: "Dream Believers", sub: null, variantLabel: null, isBase: true, isCurrent: false, performanceCount: 3 },
-        { id: "62", slug: "db-104", title: "Dream Believers", sub: "드림 비리버즈", variantLabel: "104期 Ver.", isBase: false, isCurrent: true, performanceCount: 0 },
+        { id: "1", slug: "db", title: "Dream Believers", sub: null, lang: "ja", variantLabel: null, isBase: true, isCurrent: false, performanceCount: 3 },
+        { id: "62", slug: "db-104", title: "Dream Believers", sub: null, lang: "ja", variantLabel: { main: "104期 Ver.", sub: "104기 Ver.", lang: "ja" }, isBase: false, isCurrent: true, performanceCount: 0 },
       ],
     });
     const { container } = render(el as ReactElement);
@@ -283,7 +287,7 @@ describe("SongVersionsPanel", () => {
     const current = container.querySelector('[aria-current="page"]')!;
     expect(current.textContent).toContain("104期 Ver.");
     expect(current.textContent).toContain("Song.currentVariant");
-    expect(current.textContent).toContain("드림 비리버즈");
+    expect(current.textContent).toContain("104기 Ver.");
   });
 });
 
