@@ -21,6 +21,7 @@ export type CardEvent = Named & {
   artist: Named | null;
 };
 
+/** Resolve the paired labels once for the preview, its metadata, and the frozen publication. */
 export function cardContent(event: CardEvent, locale: CardLocale) {
   const eventName = shareName(event, locale, "title");
   const seriesName = event.eventSeries ? shareName(event.eventSeries, locale, "title") : null;

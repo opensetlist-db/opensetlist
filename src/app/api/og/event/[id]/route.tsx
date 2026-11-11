@@ -96,6 +96,7 @@ const AIRPLANE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>';
 const AIRPLANE_URI = `data:image/svg+xml;utf8,${AIRPLANE_SVG}`;
 
+/** Render a status-pinned card so a shared URL can keep its status across crawler refreshes. */
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
   const url = new URL(req.url);

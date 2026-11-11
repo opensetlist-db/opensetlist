@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server.edge";
 import type { lookupPublication } from "./reader";
 
 type Card = NonNullable<Awaited<ReturnType<typeof lookupPublication>>>;
+/** Keep the saved text of legacy revisions when rendering newer cards with paired labels. */
 export function eventShareHtml(card: Card, destination: string, copy: {
   heading: string; opening: string; open: string;
   correctionHeading: string; correctionBody: string; openCorrection: string; correctionUnavailable: string;

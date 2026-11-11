@@ -42,6 +42,7 @@ const ERROR_HEADERS = {
 
 const TITLE_FALLBACK = "OPENSETLIST";
 
+/** Use the artist's theme and the album's original and localized titles. */
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
   const url = new URL(req.url);

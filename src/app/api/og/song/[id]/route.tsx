@@ -29,6 +29,7 @@ const NOTE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>';
 const NOTE_URI = `data:image/svg+xml;utf8,${NOTE_SVG}`;
 
+/** Place the credited main artist below the song title using the same locale rules. */
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
   const url = new URL(req.url);

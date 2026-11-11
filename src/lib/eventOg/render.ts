@@ -56,6 +56,7 @@ export class CardLayoutError extends Error {
   }
 }
 export class CardFontError extends Error {}
+/** Reserve measured space for each language before rendering the labels. */
 async function fit(
   field: LayoutField, text: string, sub: string | null,
   area: { min: number; max: number; lines: number; height: number; lineHeight: number },
@@ -91,6 +92,7 @@ async function fit(
   throw new CardLayoutError(`읽기 가능한 배치 실패 (${area.min}px / ${area.lines}줄): ${text}`, field);
 }
 
+/** Reject overflow before the image can enter a preview packet for approval. */
 export async function renderCard(content: CardContent, mode: CardMode, label: string, resources: CardResources) {
   const { fonts } = resources;
   const performance = await fit("performance", content.performance, content.performanceSub, TEMPLATE.performance, fonts);

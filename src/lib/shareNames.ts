@@ -15,6 +15,7 @@ export function shareName(
   return { main, sub, lang: item.originalLanguage };
 }
 
+/** Keep the two spellings legible on surfaces that accept only plain text. */
 export function shareNameText({ main, sub }: Pick<ShareName, "main" | "sub">) {
   return sub ? `${main} / ${sub}` : main;
 }

@@ -28,6 +28,7 @@ const STAR_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M12 2l2.4 7.4H22l-6.2 4.5L18.2 22 12 17.3 5.8 22l2.4-8.1L2 9.4h7.6z"/></svg>';
 const STAR_URI = `data:image/svg+xml;utf8,${STAR_SVG}`;
 
+/** Show a member’s parent name when available and the active member count for a roster. */
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
   const url = new URL(req.url);
