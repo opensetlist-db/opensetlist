@@ -43,7 +43,8 @@
 /*
  * The cover spans both rows (title block + meta block) on desktop so the
  * square sits beside the whole identity, vertically centred. The square
- * steps 200 / 160 / 112 / 88px with the bands below; AlbumCover.tsx owns
+ * steps 200 / 160 / 112 / 88px with the bands below (a missing cover is
+ * an 88 / 64px tile, see `[data-state="fallback"]`); AlbumCover.tsx owns
  * the fallback, no-referrer and onError behaviour.
  */
 .cover {
@@ -134,9 +135,28 @@
 }
 
 .metaLabel {
-  flex: 0 0 68px;
+  flex: 0 0 auto;
+  min-width: 68px;
+  white-space: nowrap;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+/*
+ * Without artwork the 200px placeholder only pushed the track list down:
+ * the fallback square shrinks to a small icon tile at every band.
+ */
+.identity:has(.cover[data-state="fallback"]) {
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+.cover[data-state="fallback"] {
+  width: 88px;
+}
+.cover[data-state="fallback"] .coverNote {
+  font-size: 30px;
+}
+.cover[data-state="fallback"] .coverLabel {
+  font-size: 10px;
 }
 
 .metaValue {
@@ -639,7 +659,19 @@ a.trackRow:focus-visible {
     font-size: 13px;
   }
   .metaLabel {
-    flex-basis: 56px;
+    min-width: 56px;
+  }
+  .identity:has(.cover[data-state="fallback"]) {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .cover[data-state="fallback"] {
+    width: 64px;
+  }
+  .cover[data-state="fallback"] .coverNote {
+    font-size: 22px;
+  }
+  .cover[data-state="fallback"] .coverLabel {
+    display: none;
   }
   .metaRow {
     gap: 12px;
@@ -718,7 +750,7 @@ a.trackRow:focus-visible {
   }
 
   /*
-   * Titles longer than 70 characters (live BD box sets) leave the narrow
+   * Titles longer than 24 characters (LONG_TITLE_CHARS) leave the narrow
    * column beside the cover: the cover and type badge share the first
    * row, the title and subtitle take the full card width below. Without
    * this a BD name wraps a dozen times in a ~170px column.

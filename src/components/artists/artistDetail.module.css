@@ -404,6 +404,16 @@
 .discography {
   max-width: 900px;
 }
+.range {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+}
 .discography .albumRow {
   padding: 18px 0;
 }

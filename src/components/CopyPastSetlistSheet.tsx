@@ -251,6 +251,11 @@ export function CopyPastSetlistSheet({
     return dedupCountForMerge(existingPredictions, selected.songs);
   }, [existingPredictions, selected]);
 
+  // An empty or failed lookup is one line of text: it gets a sheet
+  // sized to that line instead of the 60vh floor.
+  const messageOnly =
+    !loading && (error !== null || (data !== null && data.length === 0));
+
   return (
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
@@ -262,8 +267,11 @@ export function CopyPastSetlistSheet({
             sliver glued to the bottom of the screen that the user
             couldn't comfortably interact with. `max-h-[90vh]` still
             caps growth so a 10-card picker scrolls inside the
-            drawer rather than pushing past the address bar. */}
-        <Drawer.Content className="fixed bottom-0 left-0 right-0 z-[210] mt-24 flex h-fit min-h-[60vh] max-h-[90vh] flex-col rounded-t-2xl bg-white outline-none">
+            drawer rather than pushing past the address bar. The
+            empty / error states drop the floor (one line of text),
+            and `mx-auto max-w-[640px]` keeps the sheet a readable
+            width on desktop instead of spanning the whole screen. */}
+        <Drawer.Content className={`fixed bottom-0 left-0 right-0 z-[210] mx-auto mt-24 flex h-fit w-full max-w-[640px] ${messageOnly ? "" : "min-h-[60vh]"} max-h-[90vh] flex-col rounded-t-2xl bg-white outline-none`}>
           <div className="mx-auto mt-3 h-1.5 w-12 flex-shrink-0 rounded-full bg-gray-300" />
 
           <Drawer.Title className="sr-only">{t("copy.sheetTitle")}</Drawer.Title>

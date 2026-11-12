@@ -46,7 +46,7 @@ import styles from "@/components/artists/artistDetail.module.css";
 
 type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
-  searchParams: Promise<{ tab?: string | string[] }>;
+  searchParams: Promise<{ tab?: string | string[]; page?: string | string[] }>;
 };
 
 const TABS = ["overview", "albums", "history"] as const;
@@ -808,6 +808,8 @@ export default async function ArtistPage({ params, searchParams }: Props) {
           artistSlug={artist.slug}
           locale={locale}
           mode="full"
+          page={Number(Array.isArray(sp.page) ? sp.page[0] : sp.page) || 1}
+          total={albumCount}
         />
       )}
 

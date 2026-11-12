@@ -28,9 +28,9 @@ import {
  *             surface with a different rule, so do not merge the two.
  *   past      concerts with at least one visible song-bearing setlist
  *             item (`SONG_COUNT_WHERE`: not deleted, type song, a song
- *             linked). Newest first, at most five, within the previous
+ *             linked). Newest first, at most six, within the previous
  *             30 days. Only when that window is EMPTY does the query
- *             drop the horizon and show the latest five overall
+ *             drop the horizon and show the latest six overall
  *             ("archive" mode, labelled so old shows don't read as
  *             recent). A non-empty short recent list is never topped up
  *             with older rows.
@@ -40,6 +40,9 @@ import {
  */
 
 export const HOME_TAKE = 5;
+// Past cards sit in a 2-column grid at >=1100px; an even count keeps
+// the last row full instead of leaving one orphan card.
+export const HOME_PAST_TAKE = 6;
 export const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
 export const HOME_PAST_WINDOW_MS = 30 * MS_PER_DAY;
 
@@ -163,7 +166,7 @@ function findPast(now: Date, since: Date | null) {
     select: HOME_PAST_SELECT,
     // id breaks ties so two shows at the same instant keep a stable order.
     orderBy: [{ startTime: "desc" }, { id: "desc" }],
-    take: HOME_TAKE,
+    take: HOME_PAST_TAKE,
   });
 }
 

@@ -50,11 +50,12 @@ import { colors } from "@/styles/tokens";
 /**
  * Desktop picker column width. 18-v3 `.predict-layout` draws the
  * inline picker at 240px; the live picker also carries the unit chips,
- * the result count and the sort toggle, which need more room than the
- * mockup's sample list, so the column keeps the wider 280px and the
- * editor (`minmax(0, 1fr)`) takes the rest.
+ * the result count and the sort toggle, and its rows show a title plus
+ * a romanized / translated subtitle, so the column is 360px (280 left
+ * the list squeezed beside a mostly empty editor) and the editor
+ * (`minmax(0, 1fr)`) takes the rest.
  */
-const DESKTOP_PICKER_COL_PX = 280;
+const DESKTOP_PICKER_COL_PX = 360;
 
 interface Props {
   eventId: string;
@@ -594,6 +595,11 @@ export function PredictedSetlist({
       >
         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
           <div className={styles.predictList}>
+          {/* Before the first pick the editor column would otherwise
+              be blank beside the picker; say where picks land. */}
+          {isPreShow && isDesktopPicker && predictions.length === 0 && (
+            <p className={styles.predictEmpty}>{t("emptyDesktop")}</p>
+          )}
           {predictions.map((entry, idx) => {
             const song = catalogById.get(entry.songId);
             const rank = idx + 1;

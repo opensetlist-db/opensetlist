@@ -171,14 +171,14 @@ const DECIDED: Record<string, Record<Locale, string>> = {
     ko: "이벤트 정보",
   },
   "EventDetail.factDate": {
-    en: "Date",
-    ja: "日付",
-    ko: "날짜",
+    en: "Date (local)",
+    ja: "日付（現地）",
+    ko: "날짜 (현지)",
   },
   "EventDetail.factStart": {
-    en: "Start",
-    ja: "開始",
-    ko: "시작",
+    en: "Start (your time)",
+    ja: "開始（あなたの時間）",
+    ko: "시작 (내 시간)",
   },
   "EventDetail.cancelledBody": {
     en: "This event is cancelled. Song wishes and predictions cannot be saved or edited.",
@@ -230,14 +230,15 @@ const DECIDED: Record<string, Record<Locale, string>> = {
     ja: "実際の曲順",
     ko: "실제 곡 순서",
   },
+  // Shortened so the ja/en text fits the 240px header field.
   "Header.searchPlaceholder": {
-    en: "Search events, artists, songs, albums",
-    ja: "イベント・アーティスト・曲・アルバムを検索",
+    en: "Songs, artists, events…",
+    ja: "曲・アーティスト・イベント",
     ko: "이벤트·아티스트·곡·앨범 검색",
   },
   "Search.placeholder": {
-    en: "Search events, artists, songs, albums",
-    ja: "イベント・アーティスト・曲・アルバムを検索",
+    en: "Songs, artists, events…",
+    ja: "曲・アーティスト・イベント",
     ko: "이벤트·아티스트·곡·앨범 검색",
   },
   "Search.subtitle": {
