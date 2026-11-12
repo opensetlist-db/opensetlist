@@ -342,6 +342,9 @@
 :global(html:lang(ko)) .page [data-testid="event-art"] strong {
   word-break: keep-all;
 }
+:global(html:lang(ja)) .page [data-testid="event-art"] strong {
+  word-break: auto-phrase;
+}
 
 /* EventArt fixes 24px at ≥700; the approved rail uses 22px. These
    size overrides reach into EventArt's markup (`data-testid` + inner
@@ -553,8 +556,11 @@
   line-height: 1.6;
   color: var(--foreground);
 }
-:global(html:lang(ko)) .live .cardTitle {
+:global(html:lang(ko)) .page .cardTitle {
   word-break: keep-all;
+}
+:global(html:lang(ja)) .page .cardTitle {
+  word-break: auto-phrase;
 }
 .live .dateLine,
 .live .venue,
@@ -629,7 +635,7 @@
     height: 110px;
   }
   .compact [data-testid="event-art"] strong {
-    font-size: 14px;
+    font-size: 12px;
   }
 }
 
@@ -647,6 +653,9 @@
 /* ── ≥1100: five upcoming cards share one row ─────────────────────── */
 
 @media (min-width: 1100px) {
+  .rail [data-testid="event-art"] {
+    height: 128px;
+  }
   .rail[data-count="5"] {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }

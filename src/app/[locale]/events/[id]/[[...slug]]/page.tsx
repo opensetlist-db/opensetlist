@@ -1346,7 +1346,15 @@ export default async function EventPage({ params }: Props) {
           event.startTime ? new Date(event.startTime).toISOString() : null
         }
         startLabel={
-          heroStart ? `${heroStart.date} ${heroStart.time} ${heroStart.zone}` : null
+          // Tagged as venue-local: the info card's start row shows the
+          // viewer's own zone, and the two can land on different dates.
+          // An unknown country falls back to UTC, which is not the
+          // venue's clock, so that case keeps the bare line.
+          !heroStart
+            ? null
+            : heroStart.zone === "UTC"
+              ? `${heroStart.date} ${heroStart.time} ${heroStart.zone}`
+              : detailT("venueStart", heroStart)
         }
         logoUrl={heroLogo?.image?.url ?? null}
         logoTint={heroLogo?.color ?? null}
@@ -1369,16 +1377,6 @@ export default async function EventPage({ params }: Props) {
         venueLine={venuePair}
       />
 
-      {resolvedStatus === "completed" && event.bdAlbum && (
-        <EventBdSection
-          eventId={String(event.id)}
-          startTime={event.startTime}
-          album={event.bdAlbum}
-          locale={locale}
-          referenceNow={referenceNow}
-        />
-      )}
-
       {/* Cancelled: say so before anything else on the page (18-v3
           `.notice.cancel`); the sections below keep their own cancelled
           behaviour (no board, locked wishes, no score). */}
@@ -1396,6 +1394,18 @@ export default async function EventPage({ params }: Props) {
           </a>
         ))}
       </nav>
+
+      {/* Below the jump nav: on a phone the BD card fills most of the
+          first screen, so the "setlist" link comes first. */}
+      {resolvedStatus === "completed" && event.bdAlbum && (
+        <EventBdSection
+          eventId={String(event.id)}
+          startTime={event.startTime}
+          album={event.bdAlbum}
+          locale={locale}
+          referenceNow={referenceNow}
+        />
+      )}
 
       {/*
         Layout grid + every dynamic-state owner now lives inside

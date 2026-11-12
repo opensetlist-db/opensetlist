@@ -169,10 +169,13 @@ export function SetlistRow({
     return (
       <span key={performer.id}>
         {index > 0 && ", "}
-        <span lang={name.main ? performer.originalLanguage : locale}>
+        {/* inline-block: a name wraps as a whole onto the next line
+            instead of splitting mid-name (토마 / 리) on narrow rows;
+            max-w-full lets a name wider than the row still wrap. */}
+        <span lang={name.main ? performer.originalLanguage : locale} className="inline-block max-w-full">
           {name.main || name.sub || t("unknownPerformer")}
         </span>
-        {name.main && name.sub && <span lang={locale} className="ml-1 text-[0.85em]">{name.sub}</span>}
+        {name.main && name.sub && <span lang={locale} className="ml-1 inline-block max-w-full text-[0.85em]">{name.sub}</span>}
       </span>
     );
   });

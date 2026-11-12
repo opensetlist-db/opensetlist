@@ -1411,6 +1411,15 @@ a.crowdTitle:hover {
 .predictList {
   margin: 4px 0;
 }
+.predictEmpty {
+  margin: 7px 0;
+  padding: 28px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
 .predictRow {
   display: flex;
   align-items: center;

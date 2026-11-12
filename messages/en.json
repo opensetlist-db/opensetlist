@@ -59,7 +59,11 @@
     "title": "Artists",
     "albums": {
       "latest": "Latest album",
-      "discography": "Discography"
+      "discography": "Discography",
+      "range": "{from}–{to} of {total}",
+      "pagination": "Album pages",
+      "prev": "Previous",
+      "next": "Next"
     },
     "noArtists": "No artists to show",
     "unknown": "Unknown Artist",
@@ -84,7 +88,7 @@
     "tabOverview": "Overview",
     "tabAlbums": "Albums ({count})",
     "tabHistory": "History ({count})",
-    "statsTotalEvents": "Total events",
+    "statsTotalEvents": "Related events",
     "statsCompleted": "Completed",
     "statsSubUnits": "Sub-units",
     "membersWithCount": "Members ({count})",
@@ -105,7 +109,7 @@
     "categoryCpop": "C-POP",
     "categoryOthers": "Others",
     "teamCount": "{count} {count, plural, one {team} other {teams}}",
-    "eventsLabel": "events",
+    "eventsLabel": "own events",
     "eventCount": "{count, plural, one {# event} other {# events}}",
     "colArtist": "Artist",
     "colSubunits": "Sub-units",
@@ -381,8 +385,9 @@
   "EventDetail": {
     "jumpLabel": "On this page",
     "infoTitle": "Event info",
-    "factDate": "Date",
-    "factStart": "Start",
+    "factDate": "Date (local)",
+    "factStart": "Start (your time)",
+    "venueStart": "{date} {time} {zone} · local time",
     "sameSeriesTitle": "Same series",
     "viewSeries": "View series",
     "creditsToggle": "Credits",
@@ -507,6 +512,7 @@
     "importPicksDone": "Added {count, plural, one {# song} other {# songs}} from your board predictions.",
     "importPicksNone": "No new board predictions to add.",
     "provisionalOrder": "The order is provisional. Drag songs to arrange it.",
+    "emptyDesktop": "Songs you pick from the list on the right line up here in order.",
     "copy": {
       "sheetTitle": "Copy from a past show",
       "loading": "Loading past shows...",
@@ -780,7 +786,7 @@
     "closeMenu": "Close menu",
     "mainNav": "Main menu",
     "search": "Search",
-    "searchPlaceholder": "Search events, artists, songs, albums",
+    "searchPlaceholder": "Songs, artists, events…",
     "skipToContent": "Skip to content"
   },
   "Search": {
@@ -788,7 +794,7 @@
     "subtitle": "Search events, artists, albums and songs",
     "metaTitle": "Search results for “{q}”",
     "inputLabel": "Search the site",
-    "placeholder": "Search events, artists, songs, albums",
+    "placeholder": "Songs, artists, events…",
     "submit": "Search",
     "clear": "Clear search",
     "formLabel": "Content search",
@@ -801,6 +807,7 @@
     "results": "Search results · “{q}”",
     "more": "{type} · See more",
     "noGroup": "No matching results.",
+    "noGroups": "{types}: no matching results.",
     "emptyTitle": "What are you looking for?",
     "emptyBody": "Enter an event, artist, song or album name to get started.",
     "noneTitle": "No matching results found",

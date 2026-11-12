@@ -197,16 +197,22 @@ export default async function SearchPage({ params, searchParams }: Props) {
       }
     } else {
       const { slices } = outcome;
-      if (slices.every((s) => s.hits.length === 0)) {
+      // Groups with hits go first; empty ones collapse into one line
+      // below them, so a query that only matches songs doesn't open on
+      // two "no results" cards.
+      const filled = slices.filter((s) => s.hits.length > 0);
+      const empty = slices.filter((s) => s.hits.length === 0);
+      if (filled.length === 0) {
         results = <StatePanel title={t("noneTitle")} body={t("noneBody")} />;
       } else {
         results = (
           <>
             {summary}
-            {/* Two columns from 700px; one column below, in the fixed
-                order concerts → artists → songs → albums. */}
+            {/* Two columns from 700px; one column below. Groups with hits
+                keep the fixed order events → artists → songs → albums;
+                the empty ones are the one line after the grid. */}
             <div className="grid grid-cols-1 items-start gap-5 min-[700px]:grid-cols-2 min-[700px]:gap-6">
-              {slices.map((slice) => (
+              {filled.map((slice) => (
                 <ResultGroup
                   key={slice.type}
                   type={slice.type}
@@ -225,6 +231,11 @@ export default async function SearchPage({ params, searchParams }: Props) {
                 />
               ))}
             </div>
+            {empty.length > 0 && (
+              <p className="mt-5 text-[14px]" style={{ color: colors.textSecondary }}>
+                {t("noGroups", { types: empty.map((s) => groupLabel(s.type)).join(" · ") })}
+              </p>
+            )}
           </>
         );
       }

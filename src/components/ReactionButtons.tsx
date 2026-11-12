@@ -509,9 +509,6 @@ function ReactionButton({
         alignItems: "center",
         gap: 4,
         justifyContent: "center",
-        // 18-v3: 60px minimum so the four buttons line up as columns
-        // down the setlist; the count slot inside keeps digit widths.
-        minWidth: 60,
         borderRadius: 7,
         padding: "4px 8px",
         whiteSpace: "nowrap",
@@ -529,7 +526,11 @@ function ReactionButton({
       // 36px tall from 1100px, 40px (a bigger touch target) below.
       // The focus ring is the global 3px :focus-visible outline — the
       // old `outline: none` hid it.
-      className="min-h-[40px] active:scale-[0.91] min-[1100px]:min-h-[36px]"
+      // 18-v3: 60px minimum so the four buttons line up as columns
+      // down the setlist; the count slot inside keeps digit widths.
+      // Phones split the row four ways instead (48px floor): four 60px
+      // buttons wrapped 3+1 inside a 390px-wide card.
+      className="min-h-[40px] min-w-[48px] active:scale-[0.91] max-[699px]:flex-1 min-[700px]:min-w-[60px] min-[1100px]:min-h-[36px]"
     >
       <span
         style={{

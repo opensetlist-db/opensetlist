@@ -59,7 +59,11 @@
     "title": "アーティスト",
     "albums": {
       "latest": "最新アルバム",
-      "discography": "ディスコグラフィー"
+      "discography": "ディスコグラフィー",
+      "range": "{from}–{to} / {total}",
+      "pagination": "アルバムのページ移動",
+      "prev": "前へ",
+      "next": "次へ"
     },
     "noArtists": "表示できるアーティストはありません",
     "unknown": "不明なアーティスト",
@@ -84,7 +88,7 @@
     "tabOverview": "概要",
     "tabAlbums": "アルバム ({count})",
     "tabHistory": "公演履歴 ({count})",
-    "statsTotalEvents": "総公演",
+    "statsTotalEvents": "関連公演",
     "statsCompleted": "終了",
     "statsSubUnits": "サブユニット",
     "membersWithCount": "メンバー ({count})",
@@ -105,7 +109,7 @@
     "categoryCpop": "C-POP",
     "categoryOthers": "その他",
     "teamCount": "{count}チーム",
-    "eventsLabel": "公演",
+    "eventsLabel": "単独公演",
     "eventCount": "{count}公演",
     "colArtist": "アーティスト",
     "colSubunits": "サブユニット",
@@ -381,8 +385,9 @@
   "EventDetail": {
     "jumpLabel": "ページ内の項目",
     "infoTitle": "イベント情報",
-    "factDate": "日付",
-    "factStart": "開始",
+    "factDate": "日付（現地）",
+    "factStart": "開始（あなたの時間）",
+    "venueStart": "{date} {time} {zone}・現地時間",
     "sameSeriesTitle": "同じシリーズ",
     "viewSeries": "シリーズを見る",
     "creditsToggle": "出演クレジット",
@@ -507,6 +512,7 @@
     "importPicksDone": "ボードの予想曲を{count}曲追加しました。",
     "importPicksNone": "新しく取り込める予想曲はありません。",
     "provisionalOrder": "曲順は仮です。ドラッグして並べ替えてください。",
+    "emptyDesktop": "右の曲リストで選んだ曲が、ここに順番に並びます。",
     "copy": {
       "sheetTitle": "過去公演から取り込み",
       "loading": "過去公演の情報を読み込み中...",
@@ -780,7 +786,7 @@
     "closeMenu": "メニューを閉じる",
     "mainNav": "メインメニュー",
     "search": "検索",
-    "searchPlaceholder": "イベント・アーティスト・曲・アルバムを検索",
+    "searchPlaceholder": "曲・アーティスト・イベント",
     "skipToContent": "本文へ移動"
   },
   "Search": {
@@ -788,7 +794,7 @@
     "subtitle": "イベント、アーティスト、アルバム、曲を検索",
     "metaTitle": "「{q}」の検索結果",
     "inputLabel": "サイト内検索",
-    "placeholder": "イベント・アーティスト・曲・アルバムを検索",
+    "placeholder": "曲・アーティスト・イベント",
     "submit": "検索",
     "clear": "検索語を消去",
     "formLabel": "コンテンツ検索",
@@ -801,6 +807,7 @@
     "results": "検索結果 · “{q}”",
     "more": "{type} · もっと見る",
     "noGroup": "該当する結果はありません。",
+    "noGroups": "{types}：該当する結果はありません。",
     "emptyTitle": "探したい名前を入力してください",
     "emptyBody": "イベント名、アーティスト名、曲名、アルバム名から探せます。",
     "noneTitle": "一致する結果が見つかりませんでした",

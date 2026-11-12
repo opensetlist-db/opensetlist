@@ -42,6 +42,7 @@ vi.mock("@/lib/prisma", () => ({
 import {
   HOME_PAST_WINDOW_MS,
   HOME_TAKE,
+  HOME_PAST_TAKE,
   ONGOING_BUFFER_MS,
   findPastWithFallback,
   getCachedHomeData,
@@ -144,7 +145,7 @@ describe("home queries", () => {
         },
       ],
     });
-    expect(args.take).toBe(HOME_TAKE);
+    expect(args.take).toBe(HOME_PAST_TAKE);
     expect(args.orderBy).toEqual([{ startTime: "desc" }, { id: "desc" }]);
   });
 

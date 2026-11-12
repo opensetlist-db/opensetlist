@@ -38,8 +38,10 @@ export type AlbumForIdentity = BigIntStringified<
 >;
 
 // 22-v1 moves titles longer than this out of the narrow mobile column
-// beside the cover (see `.longTitle` in the CSS module).
-const LONG_TITLE_CHARS = 70;
+// beside the cover (see `.longTitle` in the CSS module). 70 left a
+// 60-odd character BD name (Liella! 7th) at seven lines beside a 112px
+// cover; past ~24 characters the side column already wraps 3+ lines.
+const LONG_TITLE_CHARS = 24;
 
 /** Shares title spelling between the detail heading and the cover description. */
 export async function AlbumIdentity({

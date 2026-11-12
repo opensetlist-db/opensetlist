@@ -29,10 +29,9 @@ import styles from "@/components/artists/artistDetail.module.css";
  * to an artist without albums — the tab itself is hidden then).
  */
 
-// Full discography cap. A dedicated paged sub-page is Phase 3; 30
-// comfortably covers every Phase 1/2 artist. The tab label still shows
-// the uncapped total (31 for 蓮ノ空 at the time of 20-v1), which the
-// approved design kept as is.
+// Full discography page size. The tab label shows the uncapped total,
+// so anything past the first page is reached through `?page=` links
+// (Aqours has 55: a hard cap left 25 of them unreachable).
 const DISCOGRAPHY_LIMIT = 30;
 // Latest-album preview count for the overview tab.
 const PREVIEW_LIMIT = 3;
@@ -41,7 +40,7 @@ const PREVIEW_LIMIT = 3;
 // every artist page view — cached like the rest of the artist page.
 const getArtistAlbums = cachedQuery(
   "artist-albums",
-  async (artistId: bigint, locale: string, take: number) => {
+  async (artistId: bigint, locale: string, take: number, skip: number) => {
     const albums = await prisma.album.findMany({
       where: { artists: { some: { artistId } } },
       // Newest first; NULL releaseDate sorts last so un-dated rows never
@@ -51,6 +50,7 @@ const getArtistAlbums = cachedQuery(
         { id: "desc" },
       ],
       take,
+      skip,
       include: albumCardInclude(locale),
     });
     return serializeBigInt(albums);
@@ -66,17 +66,28 @@ export async function ArtistAlbumsSection({
   artistSlug,
   locale,
   mode,
+  page = 1,
+  total = 0,
 }: {
   artistId: bigint;
   artistSlug: string;
   locale: string;
   mode: "preview" | "full";
+  /** Full mode: 1-based page, clamped to the last page of `total`. */
+  page?: number;
+  /** Full mode: the uncapped album count (the tab label's number). */
+  total?: number;
 }) {
+  const lastPage = Math.max(1, Math.ceil(total / DISCOGRAPHY_LIMIT));
+  // Floored: `?page=1.1` would otherwise reach Prisma as a fractional
+  // skip (a 500) and mint a new cache key per fraction.
+  const current = Math.min(Math.max(1, Math.floor(page) || 1), lastPage);
   // Preview fetches one extra row so we can tell whether "view all" is
   // worth showing (more albums exist than the preview shows) without a
   // separate count query.
   const take = mode === "preview" ? PREVIEW_LIMIT + 1 : DISCOGRAPHY_LIMIT;
-  const serialized = await getArtistAlbums(artistId, locale, take);
+  const skip = mode === "preview" ? 0 : (current - 1) * DISCOGRAPHY_LIMIT;
+  const serialized = await getArtistAlbums(artistId, locale, take, skip);
 
   if (mode === "preview" && serialized.length === 0) return null;
 
@@ -144,16 +155,41 @@ export async function ArtistAlbumsSection({
   };
 
   if (mode === "full") {
+    const pageHref = (n: number) =>
+      `${entityPath("artists", locale, artistId, artistSlug)}?tab=albums${n > 1 ? `&page=${n}` : ""}`;
+    const from = skip + 1;
+    const to = skip + visible.length;
     return (
       <div className={styles.discography}>
         <section className={styles.panel}>
           <div className={styles.sectionHead}>
             <h2 className={styles.sectionTitle}>{t("albums.discography")}</h2>
+            {lastPage > 1 && visible.length > 0 && (
+              <span className={styles.range}>{t("albums.range", { from, to, total })}</span>
+            )}
           </div>
           {visible.length === 0 ? (
             <p className={styles.empty}>{albumT("noAlbums")}</p>
           ) : (
             <ul className={styles.list}>{visible.map(renderRow)}</ul>
+          )}
+          {lastPage > 1 && (
+            <nav aria-label={t("albums.pagination")} className={styles.pager}>
+              {current > 1 ? (
+                <Link href={pageHref(current - 1)} className={styles.more}>
+                  <span aria-hidden="true">‹&nbsp;</span>
+                  {t("albums.prev")}
+                </Link>
+              ) : (
+                <span />
+              )}
+              {current < lastPage && (
+                <Link href={pageHref(current + 1)} className={styles.more}>
+                  {t("albums.next")}
+                  <span aria-hidden="true">&nbsp;›</span>
+                </Link>
+              )}
+            </nav>
           )}
         </section>
       </div>
