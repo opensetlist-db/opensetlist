@@ -381,8 +381,9 @@
   "EventDetail": {
     "jumpLabel": "On this page",
     "infoTitle": "Event info",
-    "factDate": "Date",
-    "factStart": "Start",
+    "factDate": "Date (local)",
+    "factStart": "Start (your time)",
+    "venueStart": "{date} {time} {zone} · local time",
     "sameSeriesTitle": "Same series",
     "viewSeries": "View series",
     "creditsToggle": "Credits",
@@ -780,7 +781,7 @@
     "closeMenu": "Close menu",
     "mainNav": "Main menu",
     "search": "Search",
-    "searchPlaceholder": "Search events, artists, songs, albums",
+    "searchPlaceholder": "Songs, artists, events…",
     "skipToContent": "Skip to content"
   },
   "Search": {
@@ -788,7 +789,7 @@
     "subtitle": "Search events, artists, albums and songs",
     "metaTitle": "Search results for “{q}”",
     "inputLabel": "Search the site",
-    "placeholder": "Search events, artists, songs, albums",
+    "placeholder": "Songs, artists, events…",
     "submit": "Search",
     "clear": "Clear search",
     "formLabel": "Content search",

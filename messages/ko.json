@@ -370,7 +370,7 @@
     "bd": {
       "sectionTitle": "이 라이브의 BD",
       "announcedBadge": "발매 예정",
-      "preorderBadge": "예약 수락 중",
+      "preorderBadge": "예약 판매 중",
       "releasedBadge": "발매 중",
       "releaseDateLabel": "발매",
       "bonusStoreCount": "특전 제공 판매점 {count}곳",
@@ -381,8 +381,9 @@
   "EventDetail": {
     "jumpLabel": "페이지 안 이동",
     "infoTitle": "이벤트 정보",
-    "factDate": "날짜",
-    "factStart": "시작",
+    "factDate": "날짜 (현지)",
+    "factStart": "시작 (내 시간)",
+    "venueStart": "{date} {time} {zone} · 현지 시간",
     "sameSeriesTitle": "같은 시리즈",
     "viewSeries": "시리즈 보기",
     "creditsToggle": "출연 크레딧",

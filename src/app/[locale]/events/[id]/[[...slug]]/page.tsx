@@ -1346,7 +1346,15 @@ export default async function EventPage({ params }: Props) {
           event.startTime ? new Date(event.startTime).toISOString() : null
         }
         startLabel={
-          heroStart ? `${heroStart.date} ${heroStart.time} ${heroStart.zone}` : null
+          // Tagged as venue-local: the info card's start row shows the
+          // viewer's own zone, and the two can land on different dates.
+          // An unknown country falls back to UTC, which is not the
+          // venue's clock, so that case keeps the bare line.
+          !heroStart
+            ? null
+            : heroStart.zone === "UTC"
+              ? `${heroStart.date} ${heroStart.time} ${heroStart.zone}`
+              : detailT("venueStart", heroStart)
         }
         logoUrl={heroLogo?.image?.url ?? null}
         logoTint={heroLogo?.color ?? null}
