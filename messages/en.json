@@ -59,7 +59,11 @@
     "title": "Artists",
     "albums": {
       "latest": "Latest album",
-      "discography": "Discography"
+      "discography": "Discography",
+      "range": "{from}–{to} of {total}",
+      "pagination": "Album pages",
+      "prev": "Previous",
+      "next": "Next"
     },
     "noArtists": "No artists to show",
     "unknown": "Unknown Artist",
@@ -84,7 +88,7 @@
     "tabOverview": "Overview",
     "tabAlbums": "Albums ({count})",
     "tabHistory": "History ({count})",
-    "statsTotalEvents": "Total events",
+    "statsTotalEvents": "Related events",
     "statsCompleted": "Completed",
     "statsSubUnits": "Sub-units",
     "membersWithCount": "Members ({count})",
@@ -105,7 +109,7 @@
     "categoryCpop": "C-POP",
     "categoryOthers": "Others",
     "teamCount": "{count} {count, plural, one {team} other {teams}}",
-    "eventsLabel": "events",
+    "eventsLabel": "own events",
     "eventCount": "{count, plural, one {# event} other {# events}}",
     "colArtist": "Artist",
     "colSubunits": "Sub-units",

@@ -59,7 +59,11 @@
     "title": "アーティスト",
     "albums": {
       "latest": "最新アルバム",
-      "discography": "ディスコグラフィー"
+      "discography": "ディスコグラフィー",
+      "range": "{from}–{to} / {total}",
+      "pagination": "アルバムのページ移動",
+      "prev": "前へ",
+      "next": "次へ"
     },
     "noArtists": "表示できるアーティストはありません",
     "unknown": "不明なアーティスト",
@@ -84,7 +88,7 @@
     "tabOverview": "概要",
     "tabAlbums": "アルバム ({count})",
     "tabHistory": "公演履歴 ({count})",
-    "statsTotalEvents": "総公演",
+    "statsTotalEvents": "関連公演",
     "statsCompleted": "終了",
     "statsSubUnits": "サブユニット",
     "membersWithCount": "メンバー ({count})",
@@ -105,7 +109,7 @@
     "categoryCpop": "C-POP",
     "categoryOthers": "その他",
     "teamCount": "{count}チーム",
-    "eventsLabel": "公演",
+    "eventsLabel": "単独公演",
     "eventCount": "{count}公演",
     "colArtist": "アーティスト",
     "colSubunits": "サブユニット",

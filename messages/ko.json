@@ -59,7 +59,11 @@
     "title": "아티스트",
     "albums": {
       "latest": "최신 앨범",
-      "discography": "디스코그래피"
+      "discography": "디스코그래피",
+      "range": "{from}–{to} / {total}",
+      "pagination": "앨범 페이지 이동",
+      "prev": "이전",
+      "next": "다음"
     },
     "noArtists": "표시할 아티스트가 없습니다",
     "unknown": "알 수 없는 아티스트",
@@ -84,7 +88,7 @@
     "tabOverview": "개요",
     "tabAlbums": "앨범 ({count})",
     "tabHistory": "공연 이력 ({count})",
-    "statsTotalEvents": "총 공연",
+    "statsTotalEvents": "관련 공연",
     "statsCompleted": "완료",
     "statsSubUnits": "서브유닛",
     "membersWithCount": "멤버 ({count})",
@@ -105,7 +109,7 @@
     "categoryCpop": "C-POP",
     "categoryOthers": "기타",
     "teamCount": "{count}팀",
-    "eventsLabel": "공연",
+    "eventsLabel": "단독 공연",
     "eventCount": "{count}공연",
     "colArtist": "아티스트",
     "colSubunits": "서브유닛",
