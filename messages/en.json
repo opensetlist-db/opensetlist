@@ -802,6 +802,7 @@
     "results": "Search results · “{q}”",
     "more": "{type} · See more",
     "noGroup": "No matching results.",
+    "noGroups": "{types}: no matching results.",
     "emptyTitle": "What are you looking for?",
     "emptyBody": "Enter an event, artist, song or album name to get started.",
     "noneTitle": "No matching results found",
