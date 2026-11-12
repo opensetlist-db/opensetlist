@@ -1377,16 +1377,6 @@ export default async function EventPage({ params }: Props) {
         venueLine={venuePair}
       />
 
-      {resolvedStatus === "completed" && event.bdAlbum && (
-        <EventBdSection
-          eventId={String(event.id)}
-          startTime={event.startTime}
-          album={event.bdAlbum}
-          locale={locale}
-          referenceNow={referenceNow}
-        />
-      )}
-
       {/* Cancelled: say so before anything else on the page (18-v3
           `.notice.cancel`); the sections below keep their own cancelled
           behaviour (no board, locked wishes, no score). */}
@@ -1404,6 +1394,18 @@ export default async function EventPage({ params }: Props) {
           </a>
         ))}
       </nav>
+
+      {/* Below the jump nav: on a phone the BD card fills most of the
+          first screen, so the "setlist" link comes first. */}
+      {resolvedStatus === "completed" && event.bdAlbum && (
+        <EventBdSection
+          eventId={String(event.id)}
+          startTime={event.startTime}
+          album={event.bdAlbum}
+          locale={locale}
+          referenceNow={referenceNow}
+        />
+      )}
 
       {/*
         Layout grid + every dynamic-state owner now lives inside

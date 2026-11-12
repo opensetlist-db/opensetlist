@@ -512,6 +512,7 @@
     "importPicksDone": "Added {count, plural, one {# song} other {# songs}} from your board predictions.",
     "importPicksNone": "No new board predictions to add.",
     "provisionalOrder": "The order is provisional. Drag songs to arrange it.",
+    "emptyDesktop": "Songs you pick from the list on the right line up here in order.",
     "copy": {
       "sheetTitle": "Copy from a past show",
       "loading": "Loading past shows...",

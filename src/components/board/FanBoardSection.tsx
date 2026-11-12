@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
@@ -132,6 +132,7 @@ export function FanBoardSection({
   const [activeId, setActiveId] = useState<string | null>(
     seed.chips[0]?.groupId ?? null,
   );
+  const tabsId = useId();
   const sectionRef = useRef<HTMLElement>(null);
   const viewed = useRef(new Set<string>());
   const scrolledForHash = useRef(false);
@@ -366,6 +367,26 @@ export function FanBoardSection({
     color: g.color,
   })) : seed.chips;
   const activeChipId = active?.groupId ?? activeId;
+  const tabId = (groupId: string) => `${tabsId}-tab-${groupId}`;
+  const panelId = `${tabsId}-panel`;
+  // WAI-ARIA tabs keyboard pattern, same as <SetlistTabs>: arrows cycle
+  // with wrap-around, Home/End jump; focus follows the new tab because
+  // a tabIndex change alone does not move it.
+  const onTabKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const idx = chips.findIndex((c) => c.groupId === activeChipId);
+    const last = chips.length - 1;
+    const next =
+      e.key === "ArrowRight" ? (idx + 1) % chips.length
+      : e.key === "ArrowLeft" ? (idx - 1 + chips.length) % chips.length
+      : e.key === "Home" ? 0
+      : e.key === "End" ? last
+      : -1;
+    if (next < 0 || next === idx) return;
+    e.preventDefault();
+    const nextId = chips[next].groupId;
+    setActiveId(nextId);
+    requestAnimationFrame(() => document.getElementById(tabId(nextId))?.focus());
+  };
   const locked = state.kind === "ready" && (state.locked || lockedByServer);
   const tally = state.kind === "ready" ? state.tally : null;
   // A group is graded only when it HAS a shortlist: zero picks at the
@@ -570,6 +591,7 @@ export function FanBoardSection({
         data-testid="board-group-tabs"
         aria-label={t("groupsAria")}
         className={styles.groupTabs}
+        onKeyDown={onTabKeyDown}
       >
         {chips.map((c) => {
           const selected = c.groupId === activeChipId;
@@ -578,8 +600,11 @@ export function FanBoardSection({
               key={c.groupId}
               type="button"
               role="tab"
+              id={tabId(c.groupId)}
               data-testid={`board-group-${c.groupId}`}
               aria-selected={selected}
+              aria-controls={panelId}
+              tabIndex={selected ? 0 : -1}
               onClick={() => setActiveId(c.groupId)}
               className={styles.groupTab}
               // No group colour → the neutral border tone, mixed toward
@@ -595,7 +620,11 @@ export function FanBoardSection({
         })}
       </div>
 
-      <div role="tabpanel">
+      <div
+        role="tabpanel"
+        id={panelId}
+        aria-labelledby={activeChipId ? tabId(activeChipId) : undefined}
+      >
         {state.kind === "loading" && (
           <p className={styles.ballotNote}>{t("loading")}</p>
         )}

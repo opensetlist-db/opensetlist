@@ -512,6 +512,7 @@
     "importPicksDone": "보드 예상곡 {count}곡을 추가했어요.",
     "importPicksNone": "새로 가져올 예상곡이 없어요.",
     "provisionalOrder": "곡 순서는 임시예요. 드래그해서 순서를 정해 주세요.",
+    "emptyDesktop": "오른쪽 곡 목록에서 고른 곡이 여기에 순서대로 쌓여요.",
     "copy": {
       "sheetTitle": "지난 공연에서 가져오기",
       "loading": "지난 공연 정보를 불러오는 중...",

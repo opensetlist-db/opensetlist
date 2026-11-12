@@ -512,6 +512,7 @@
     "importPicksDone": "ボードの予想曲を{count}曲追加しました。",
     "importPicksNone": "新しく取り込める予想曲はありません。",
     "provisionalOrder": "曲順は仮です。ドラッグして並べ替えてください。",
+    "emptyDesktop": "右の曲リストで選んだ曲が、ここに順番に並びます。",
     "copy": {
       "sheetTitle": "過去公演から取り込み",
       "loading": "過去公演の情報を読み込み中...",

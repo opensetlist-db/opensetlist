@@ -182,6 +182,30 @@ describe("<FanBoardSection>", () => {
     expect(screen.getByRole("tab", { name: "蓮ノ空" }).getAttribute("aria-selected")).toBe("false");
   });
 
+  it("group tabs follow the WAI-ARIA keyboard pattern and label their panel", async () => {
+    respond(READY);
+    renderBlock();
+    await screen.findAllByText("残陽");
+    const tablist = screen.getByRole("tablist");
+    const selected = () => screen.getByRole("tab", { selected: true }).textContent;
+    // Roving tabindex: only the open group is in the Tab order.
+    expect(screen.getAllByRole("tab").map((b) => b.tabIndex)).toEqual([0, -1, -1]);
+    fireEvent.keyDown(tablist, { key: "ArrowRight" });
+    expect(selected()).toBe("Liella!");
+    fireEvent.keyDown(tablist, { key: "End" });
+    expect(selected()).toBe("Aqours");
+    fireEvent.keyDown(tablist, { key: "ArrowRight" }); // wraps
+    expect(selected()).toBe("蓮ノ空");
+    fireEvent.keyDown(tablist, { key: "ArrowLeft" }); // wraps back
+    expect(selected()).toBe("Aqours");
+    fireEvent.keyDown(tablist, { key: "Home" });
+    expect(selected()).toBe("蓮ノ空");
+    const tab = screen.getByRole("tab", { selected: true });
+    const panel = screen.getByRole("tabpanel");
+    expect(tab.getAttribute("aria-controls")).toBe(panel.id);
+    expect(panel.getAttribute("aria-labelledby")).toBe(tab.id);
+  });
+
   it("#board-<slug> selects that group", async () => {
     window.location.hash = "#board-aqours";
     respond(READY);
