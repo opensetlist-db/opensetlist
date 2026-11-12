@@ -200,6 +200,19 @@ describe("<FanBoardSection>", () => {
     expect(selected()).toBe("Aqours");
     fireEvent.keyDown(tablist, { key: "Home" });
     expect(selected()).toBe("蓮ノ空");
+    // Focus follows the selection (set in a requestAnimationFrame), and
+    // the roving tabindex moves with it.
+    screen.getByRole("tab", { name: "蓮ノ空" }).focus();
+    fireEvent.keyDown(tablist, { key: "ArrowRight" });
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    expect(screen.getByRole("tab", { name: "Liella!" })).toHaveFocus();
+    expect(screen.getAllByRole("tab").map((b) => b.tabIndex)).toEqual([-1, 0, -1]);
+    // A handled key that stays put is still claimed (no page scroll).
+    fireEvent.keyDown(tablist, { key: "Home" });
+    const stay = new KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true });
+    tablist.dispatchEvent(stay);
+    expect(stay.defaultPrevented).toBe(true);
+    expect(selected()).toBe("蓮ノ空");
     const tab = screen.getByRole("tab", { selected: true });
     const panel = screen.getByRole("tabpanel");
     expect(tab.getAttribute("aria-controls")).toBe(panel.id);

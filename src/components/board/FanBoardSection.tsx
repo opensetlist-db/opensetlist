@@ -381,8 +381,12 @@ export function FanBoardSection({
       : e.key === "Home" ? 0
       : e.key === "End" ? last
       : -1;
-    if (next < 0 || next === idx) return;
+    if (next < 0) return;
+    // Every handled key is claimed, even when it stays put (Home on the
+    // first tab, a single group): otherwise the browser's own Home/End
+    // scroll runs and carries the board off screen.
     e.preventDefault();
+    if (next === idx) return;
     const nextId = chips[next].groupId;
     setActiveId(nextId);
     requestAnimationFrame(() => document.getElementById(tabId(nextId))?.focus());
