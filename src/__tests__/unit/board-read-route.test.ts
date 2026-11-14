@@ -12,9 +12,8 @@ vi.mock("next/cache", () => ({
   revalidateTag: vi.fn(),
 }));
 
-// `song.findMany` exists only for the legacy-wish base fold (n15):
-// titles must come from the cached catalog, and the tests assert the
-// song query runs only when legacy wishes exist.
+// The batched catalog is mocked separately. Here `song.findMany`
+// verifies the extra variant-to-base lookup for legacy wishes.
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     event: { findFirst: vi.fn() },
@@ -444,8 +443,7 @@ describe("GET /api/events/[id]/board", () => {
     expect(catalogMock).toHaveBeenCalledTimes(1);
     expect(catalogMock).toHaveBeenCalledWith([1, 2], new Set(["10", "11", "12", "99"]), "ja");
     // Per column: exactly one grouped count + one distinct-participant
-    // count (two columns → two of each); no song query without legacy
-    // wishes.
+    // count (two columns → two of each); no variant-to-base lookup.
     expect(pickGroupBy).toHaveBeenCalledTimes(1);
     expect(pickGroupBy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -592,6 +590,7 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
       where: { id: { in: [BigInt(10), BigInt(501)] } },
       select: { id: true, baseVersionId: true },
     });
+    expect(catalogMock).toHaveBeenCalledWith([1, 2], new Set(["10"]), "ja");
   });
 
   it("a legacy wish whose song resolves to no roster group lands in no column", async () => {

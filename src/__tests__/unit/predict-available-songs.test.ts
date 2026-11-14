@@ -77,7 +77,14 @@ describe("getAvailableSongsByGroup", () => {
       row(BigInt(10), "Shared song", [DEEP, OUTSIDER]),
       row(BigInt(20), "One group", [{ ...CERISE, isDeleted: true }, OUTSIDER]),
       row(BigInt(30), "One group", [CERISE]),
-    ] as Awaited<ReturnType<typeof prisma.song.findMany>>);
+    ].map((song) => ({
+      ...song,
+      slug: String(song.id),
+      createdAt: new Date(0),
+      isDeleted: false,
+      deletedAt: null,
+      sourceNote: null,
+    })));
 
     const catalogs = await getAvailableSongsByGroup([1, 70], new Set(["10", "20", "30"]), "en");
 
