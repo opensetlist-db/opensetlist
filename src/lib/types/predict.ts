@@ -99,6 +99,8 @@ export interface AvailableSongUnit {
   label: string;
   labelSub?: string | null;
   labelLang?: string;
+  /** Compact label for the artist filter chip. */
+  filterName?: { label: string; labelLang: string };
   /** Resolved via `resolveUnitColor(artist)` — uses `Artist.color`
    *  when set, otherwise the slug-hashed palette fallback. Never
    *  null on the wire. */

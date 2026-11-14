@@ -28,7 +28,7 @@
 
 import { rootOf, type ArtistHierarchy } from "@/lib/artistHierarchyTree";
 import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
-import { resolveDisplayPair } from "@/lib/display";
+import { groupBadgeLabel } from "@/lib/setlistRowBadge";
 import { resolveFestivalGroups } from "@/lib/predict/festivalCatalog";
 import type { EventRosterEntry } from "@/lib/types/setlist";
 
@@ -181,16 +181,10 @@ export function boardGroupsFromRows(
     const r = rowById.get(rootId);
     const artistId = r ? safeBigIntToNumber(BigInt(rootId)) : null;
     if (!r || artistId === null) continue;
-    const name = resolveDisplayPair(
-      { original: r.originalName ?? "", originalLanguage: r.originalLanguage },
-      r.translations, locale, "name",
-    );
     groups.push({
       artistId,
       slug: r.slug,
-      label: name.main || name.sub || "",
-      labelSub: name.main ? name.sub : null,
-      labelLang: name.main ? r.originalLanguage : locale,
+      ...groupBadgeLabel(r, locale),
       color: r.color,
     });
   }

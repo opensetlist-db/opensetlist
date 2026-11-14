@@ -93,6 +93,7 @@ describe("groupBadgeLabel", () => {
   const niji = {
     originalName: "虹ヶ咲学園スクールアイドル同好会",
     originalShortName: "虹ヶ咲",
+    originalLanguage: "ja",
     translations: [
       // ko row has only the long name — the case the generic
       // `displayNameWithFallback(..., "short")` cascade gets wrong.
@@ -102,20 +103,20 @@ describe("groupBadgeLabel", () => {
   };
 
   it("prefers the locale shortName", () => {
-    expect(groupBadgeLabel(niji, "en")).toBe("Nijigasaki");
+    expect(groupBadgeLabel(niji, "en")).toEqual({ label: "Nijigasaki", labelLang: "en" });
   });
 
   it("locale has a long name but no shortName → originalShortName, not the long name", () => {
-    expect(groupBadgeLabel(niji, "ko")).toBe("虹ヶ咲");
+    expect(groupBadgeLabel(niji, "ko")).toEqual({ label: "虹ヶ咲", labelLang: "ja" });
   });
 
   it("no translation for the locale → originalShortName", () => {
-    expect(groupBadgeLabel(niji, "zh-CN")).toBe("虹ヶ咲");
+    expect(groupBadgeLabel(niji, "zh-CN")).toEqual({ label: "虹ヶ咲", labelLang: "ja" });
   });
 
   it("no short form anywhere → locale name, then originalName", () => {
     const noShort = { ...niji, originalShortName: null };
-    expect(groupBadgeLabel(noShort, "ko")).toBe("니지가사키 학원 스쿨 아이돌 동호회");
-    expect(groupBadgeLabel(noShort, "ja")).toBe("虹ヶ咲学園スクールアイドル同好会");
+    expect(groupBadgeLabel(noShort, "ko")).toEqual({ label: "니지가사키 학원 스쿨 아이돌 동호회", labelLang: "ko" });
+    expect(groupBadgeLabel(noShort, "ja")).toEqual({ label: "虹ヶ咲学園スクールアイドル同好会", labelLang: "ja" });
   });
 });

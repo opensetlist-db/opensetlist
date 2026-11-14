@@ -309,7 +309,7 @@ describe("SetlistRow", () => {
         />,
       );
       expect(screen.getByText("Aqours")).toBeTruthy();
-      expect(screen.getByText("虹ヶ咲学園スクールアイドル同好会")).toBeTruthy();
+      expect(screen.getByText("虹ヶ咲")).toBeTruthy();
       expect(screen.queryByText(/^\+\d+$/)).toBeNull();
     });
 
@@ -340,12 +340,12 @@ describe("SetlistRow", () => {
         />,
       );
       expect(screen.getByText("Aqours")).toBeTruthy();
-      expect(screen.getByText("虹ヶ咲学園スクールアイドル同好会")).toBeTruthy();
+      expect(screen.getByText("虹ヶ咲")).toBeTruthy();
       expect(screen.queryByText("Liella!")).toBeNull();
       expect(screen.getByText("+1").getAttribute("title")).toBe("Liella!");
     });
 
-    it("shows a group badge in its full original form once", () => {
+    it("uses the original short name for a Japanese viewer", () => {
       render(
         <SetlistRow
           item={makeItem({ stageType: "full_group", artists: [niji] })}
@@ -356,20 +356,19 @@ describe("SetlistRow", () => {
           eventArtistId="99"
         />,
       );
-      expect(screen.getByText("虹ヶ咲学園スクールアイドル同好会")).toHaveAttribute("lang", "ja");
-      expect(screen.queryByText("虹ヶ咲")).toBeNull();
+      expect(screen.getByRole("link", { name: "虹ヶ咲" })).toBeInTheDocument();
     });
 
-    it("renders the full locale name below the full original name", () => {
+    it("uses the localized short name and falls back to the original short name", () => {
       const nijiLongKo = {
         artist: {
           ...niji.artist,
           translations: [
-            { locale: "ko", name: "니지가사키 학원 스쿨 아이돌 동호회", shortName: null },
+            { locale: "ko", name: "니지가사키 학원 스쿨 아이돌 동호회", shortName: "니지가사키" },
           ],
         },
       };
-      render(
+      const { rerender } = render(
         <SetlistRow
           item={makeItem({ stageType: "full_group", artists: [nijiLongKo] })}
           index={0}
@@ -379,8 +378,18 @@ describe("SetlistRow", () => {
           eventArtistId={null}
         />,
       );
-      expect(screen.getByText("虹ヶ咲学園スクールアイドル同好会")).toHaveAttribute("lang", "ja");
-      expect(screen.getByText("니지가사키 학원 스쿨 아이돌 동호회")).toHaveAttribute("lang", "ko");
+      expect(screen.getByRole("link", { name: "니지가사키" })).toHaveAttribute("href", "/ko/artists/20/nijigasaki");
+      rerender(
+        <SetlistRow
+          item={makeItem({ artists: [nijiLongKo] })}
+          index={0}
+          reactionCounts={{}}
+          locale="en"
+          eventId="42"
+          eventArtistId={null}
+        />,
+      );
+      expect(screen.getByText("虹ヶ咲")).toHaveAttribute("lang", "ja");
     });
 
     it("single-artist event: full_group row credited to the event artist stays badge-free", () => {
