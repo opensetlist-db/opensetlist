@@ -251,6 +251,7 @@ describe("event page × fan board (server render)", () => {
     eventFindFirst.mockResolvedValue(eventRow({ status: "ongoing" }));
     const props = await renderPage();
     expect(props.board).toBeNull();
+    expect(props.boardEnabled).toBe(true);
     expect(loadBoardGroups).not.toHaveBeenCalled();
     expectNoAggregation();
   });

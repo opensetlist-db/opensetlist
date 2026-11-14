@@ -74,6 +74,7 @@ interface Props extends Pick<Parameters<typeof LiveSetlist>[0], "shareNames"> {
    * `<LiveSetlist>`, which mounts `<FanBoardSection>` from it.
    */
   board?: BoardBlockSeed | null;
+  boardEnabled?: boolean;
   date: Date | string | null;
   startTime: Date | string | null;
   artist: { id: string; slug: string; name: string } | null;
@@ -201,6 +202,7 @@ export function LiveEventLayout({
   status,
   isWishPredictOpen,
   board = null,
+  boardEnabled = false,
   date,
   startTime,
   artist,
@@ -418,6 +420,7 @@ export function LiveEventLayout({
           snapshotCapturedAt={capturedAt ?? undefined}
           isWishPredictOpen={isWishPredictOpen}
           board={board}
+          boardEnabled={boardEnabled}
           // Keep the legacy caller working while the detail page adopts shareNames.
           seriesName={seriesShortName ?? series?.name ?? ""}
           eventTitle={eventShortName ?? title}

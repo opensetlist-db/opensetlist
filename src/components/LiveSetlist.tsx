@@ -93,6 +93,8 @@ interface Props {
    * status switches the board from voting to frozen ranks to final results.
    */
   board?: BoardBlockSeed | null;
+  /** An enabled live board suppresses the standalone wishlist even without a seed. */
+  boardEnabled?: boolean;
   /**
    * Share-card header trio (v0.11.5+). Forwarded through to
    * `<ShareCardPreview>` so the captured PNG identifies the event
@@ -159,6 +161,7 @@ export function LiveSetlist({
   status,
   isWishPredictOpen,
   board = null,
+  boardEnabled = false,
   seriesName,
   eventTitle,
   dateLine,
@@ -262,6 +265,7 @@ export function LiveSetlist({
           gives TS a narrowing it can use to drop the cast on the
           prop pass-through. */}
       {!showBoard &&
+        !(status === "ongoing" && boardEnabled) &&
         startTime != null &&
         (status !== "upcoming" || isWishPredictOpen) && (
           // `key={eventId}` forces a remount when the user navigates

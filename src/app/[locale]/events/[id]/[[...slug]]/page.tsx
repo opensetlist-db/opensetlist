@@ -1432,6 +1432,7 @@ export default async function EventPage({ params }: Props) {
         status={resolvedStatus}
         isWishPredictOpen={wishPredictOpen}
         board={boardSeed}
+        boardEnabled={event.boardEnabled}
         date={event.date}
         startTime={event.startTime}
         artist={headerArtist}
