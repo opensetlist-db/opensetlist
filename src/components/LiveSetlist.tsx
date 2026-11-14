@@ -135,9 +135,7 @@ interface Props {
   /** When the predict/wish window opens; null once open or n/a. */
   predictOpensLabel?: VenueStartLabel | null;
   /**
-   * Sync health of this browser's live data (from
-   * `useRealtimeEventChannel`). Rendered beside the LIVE pill on
-   * ongoing events only. Optional so non-live callers/tests can omit.
+   * Sync health of this browser's live data, used to warn about delays.
    */
   freshness?: Freshness;
   /**
@@ -356,16 +354,8 @@ export function LiveSetlist({
           </span>
         )}
       </div>
-      {/* Live notice (18-v3 `.live-top`). The LIVE pill itself is in
-          the page Hero; here the card says the list is being filled in
-          and how fresh this browser's copy is. */}
-      {isOngoing && (
-        <div className={styles.liveNotice} data-testid="setlist-live-notice">
-          <strong>{detailT("liveNotice")}</strong>
-          {freshness && (
-            <LiveSyncIndicator freshness={freshness} locale={locale} />
-          )}
-        </div>
+      {isOngoing && freshness && (
+        <LiveSyncIndicator freshness={freshness} />
       )}
 
       {/* Tab-aware body. When `predict-{eventId}` is in localStorage,

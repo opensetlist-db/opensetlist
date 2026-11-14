@@ -12,7 +12,7 @@ vi.mock("@/lib/admin-auth", () => ({
 
 vi.mock("@/lib/dataCache", () => ({
   revalidatePublicData: vi.fn(),
-  revalidateEventData: vi.fn(),
+  revalidateSetlistData: vi.fn(),
 }));
 
 // The events list resolves logos from the cached series graph; these

@@ -5,7 +5,7 @@ import {
   withAdminLiveWriterBusy,
 } from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
-import { revalidateEventData } from "@/lib/dataCache";
+import { revalidateSetlistData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
 import {
@@ -142,7 +142,7 @@ async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
   if (!result) {
     return NextResponse.json({ error: "Event not found" }, { status: 404 });
   }
-  revalidateEventData(eid);
+  revalidateSetlistData(eid);
   return NextResponse.json({
     ...serializeBigInt(result.item),
     rev: revToNumber(result.rev),

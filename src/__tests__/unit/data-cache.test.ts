@@ -39,6 +39,7 @@ import {
   eventTag,
   joinIdKey,
   revalidateEventData,
+  revalidateSetlistData,
   revalidatePublicData,
   warmEntryCache,
   WARM_PUBLIC_DATA_TAG,
@@ -176,6 +177,14 @@ describe("revalidation helpers", () => {
     expect(() => revalidatePublicData()).not.toThrow();
     expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+
+  it("expires the edited event and the home cards after a setlist write", () => {
+    revalidateSetlistData(BigInt(109));
+    expect(revalidateTagMock.mock.calls).toEqual([
+      ["event:109", { expire: 0 }],
+      ["home-events", { expire: 0 }],
+    ]);
   });
 });
 

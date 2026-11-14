@@ -392,7 +392,6 @@
     "viewSeries": "View series",
     "creditsToggle": "Credits",
     "songPerformers": "Performers on this song",
-    "liveNotice": "Updating live",
     "cancelledTitle": "Cancelled",
     "cancelledBody": "This event is cancelled. Song wishes and predictions cannot be saved or edited.",
     "opensTitle": "Participation opens",
@@ -485,7 +484,6 @@
     "startPredict": "Make a setlist prediction",
     "predictedComingSoon": "Predicted setlist — coming soon",
     "unknownSong": "Song TBC",
-    "lastSync": "Last sync {time}",
     "updatesDelayed": "Updates delayed"
   },
   "Predict": {

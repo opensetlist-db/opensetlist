@@ -6,7 +6,7 @@ import {
 } from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
-import { revalidateEventData } from "@/lib/dataCache";
+import { revalidateSetlistData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
 import {
@@ -146,7 +146,7 @@ async function createItem(request: NextRequest, warmFault: WarmFault | null) {
   }
   // After commit: expire the event's cached reads (incl. the live
   // snapshot) so the broadcast's refetch wave sees the new revision.
-  revalidateEventData(eid);
+  revalidateSetlistData(eid);
   return NextResponse.json(
     { ...serializeBigInt(result.item), rev: revToNumber(result.rev) },
     { status: 201 },
