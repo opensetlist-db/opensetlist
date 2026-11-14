@@ -1,10 +1,11 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import {
+  BUILD_KEY,
   CACHE_TTL,
   cachedQuery,
   eventBoardControlTag,
   eventBoardTag,
-  eventTag,
 } from "@/lib/dataCache";
 import { getEventStatus } from "@/lib/eventStatus";
 import { getAvailableSongsCached } from "@/lib/predict/availableSongs";
@@ -36,10 +37,8 @@ import type {
  *
  *   - `getBoardControlCached` — the board's control metadata (flag,
  *     stored status, start time, series artist, starter picks). Event
- *     TTL, tagged with the event tag AND its own control tag, which
- *     the admin board write expires — so the kill switch reaches the
- *     next board read. This is the ONE board read allowed while a
- *     show is ongoing.
+ *     TTL. Event updates expire the public-data tag; the board editor
+ *     expires its own control tag so the kill switch reaches the next read.
  *   - `getBoardAggregateCached` — the per-group columns ("want" from
  *     wishes since per-group wishes, "expect" from picks). Own cache name
  *     and own tag (`event:<id>:board`), ~2 min TTL. Fan ballot writes
@@ -49,8 +48,8 @@ import type {
  *     shape carries the post-show tally (n15).
  *
  * `resolveBoardRead` runs the control check BEFORE touching the
- * aggregate, so a disabled board or an ongoing/cancelled event costs
- * one cached row read and nothing else.
+ * aggregate. During the show a separate, non-expiring entry stores
+ * the locked ranking without reading the actual setlist.
  */
 
 export const getBoardControlCached = cachedQuery(
@@ -70,15 +69,12 @@ export const getBoardControlCached = cachedQuery(
     }),
   {
     revalidate: CACHE_TTL.event,
-    // `eventTag`: event writes (status, startTime) refresh it like the
-    // event row. `eventBoardControlTag`: the admin board write expires
-    // ONLY this entry, so turning the board off reaches the very next
-    // board read — no event/global invalidation needed for that.
-    tags: (eventId) => [eventTag(eventId), eventBoardControlTag(eventId)],
+    // Setlist edits only invalidate the event tag; they can't change board controls.
+    tags: (eventId) => [eventBoardControlTag(eventId)],
   },
 );
 
-type AggregateStatus = "upcoming" | "completed";
+type AggregateStatus = "upcoming" | "ongoing" | "completed";
 
 /** A group's (already cached) base catalog as song id → display
  *  data. Holds live base songs only, so a missing id means the song is
@@ -190,11 +186,11 @@ async function loadPickCounts(eventId: bigint, before?: Date) {
  * (a handful). Folded ids are summed, so a variant and its base wished
  * the legacy way land in one row.
  */
-async function loadWishCounts(eventId: bigint) {
+async function loadWishCounts(eventId: bigint, before?: Date) {
   const [songRows, participantRows] = await Promise.all([
     prisma.songWish.groupBy({
       by: ["groupArtistId", "songId"],
-      where: { eventId },
+      where: before ? { eventId, createdAt: { lt: before } } : { eventId },
       _count: { _all: true },
       _min: { createdAt: true },
     }),
@@ -204,6 +200,7 @@ async function loadWishCounts(eventId: bigint) {
       WHERE "eventId" = ${eventId}
         AND "anonId" IS NOT NULL
         AND "groupArtistId" IS NOT NULL
+        AND (${before ?? null}::timestamp IS NULL OR "createdAt" < ${before ?? null}::timestamp)
       GROUP BY "groupArtistId"
     `,
   ]);
@@ -274,10 +271,12 @@ async function loadSetlistSongs(eventId: bigint): Promise<SetlistSongRow[]> {
 // the want column). The data cache outlives a deploy, and an entry
 // written by the previous release must not reach the new client. A new
 // name is a clean miss.
-export const getBoardAggregateCached = cachedQuery(
-  "event-board-v3",
-  async (eventId: bigint, locale: string, status: AggregateStatus) => {
-    const control = await getBoardControlCached(eventId);
+async function loadBoardAggregate(
+    eventId: bigint,
+    locale: string,
+    status: AggregateStatus,
+    control: Awaited<ReturnType<typeof getBoardControlCached>>,
+) {
     const primary = seriesPrimaryArtistOf(control?.eventSeries);
     // The lock is the start time (the write path refuses picks from
     // then on). An early wrap-up — stored status flipped to completed
@@ -293,8 +292,7 @@ export const getBoardAggregateCached = cachedQuery(
     // Freshness: the tally shares this entry's TTL (CACHE_TTL.board),
     // and setlist writes don't expire the board tag, so a setlist
     // correction after the show reaches the grade within ~2 minutes.
-    const lockAt =
-      status === "completed" && control ? new Date(control.startTime) : undefined;
+    const lockAt = status !== "upcoming" && control ? new Date(control.startTime) : undefined;
     const [groups, counts, wishCounts, setlistSongs] = await Promise.all([
       loadBoardGroups({
         eventId,
@@ -302,11 +300,10 @@ export const getBoardAggregateCached = cachedQuery(
         locale,
       }),
       loadPickCounts(eventId, lockAt),
-      loadWishCounts(eventId),
+      loadWishCounts(eventId, status === "ongoing" ? lockAt : undefined),
       // The tally is computed here, inside the cached loader, and only
-      // for a completed event: an upcoming board has nothing to grade,
-      // and an ongoing one never reaches the aggregate at all.
-      lockAt ? loadSetlistSongs(eventId) : Promise.resolve(null),
+      // for a completed event.
+      status === "completed" && lockAt ? loadSetlistSongs(eventId) : Promise.resolve(null),
     ]);
     const starters = readStarterMap(control?.boardStarterSongIds ?? null);
     // Titles come from the group's (already cached) base catalog — the
@@ -392,7 +389,12 @@ export const getBoardAggregateCached = cachedQuery(
     // Computation time, not request time: on a cache hit this is when
     // the counts were taken, which is what "as of" promises the reader.
     return { asOf: new Date(), groups: views, tally };
-  },
+}
+
+export const getBoardAggregateCached = cachedQuery(
+  "event-board-v3",
+  async (eventId: bigint, locale: string, status: Exclude<AggregateStatus, "ongoing">) =>
+    loadBoardAggregate(eventId, locale, status, await getBoardControlCached(eventId)),
   {
     revalidate: CACHE_TTL.board,
     tags: (eventId) => [eventBoardTag(eventId)],
@@ -416,8 +418,18 @@ export async function resolveBoardRead(
   const status = getEventStatus(control, now);
   const startTime = new Date(control.startTime);
   const lockAt = startTime.toISOString();
-  if (status === "ongoing" || status === "cancelled") {
+  if (status === "cancelled" || (status === "ongoing" && now < startTime)) {
     return { enabled: true, status, locked: true, lockAt };
+  }
+
+  if (status === "ongoing") {
+    // shortcut: a cache eviction or new deploy rebuilds from the same vote cutoff.
+    const snapshot = await unstable_cache(
+      async () => ({ groups: (await loadBoardAggregate(eventId, locale, status, control)).groups }),
+      ["event-board-at-start-v1", BUILD_KEY, String(eventId), locale, lockAt],
+      { revalidate: false },
+    )();
+    return { enabled: true, status, locked: true, lockAt, asOf: lockAt, groups: snapshot.groups };
   }
 
   const aggregate = await getBoardAggregateCached(eventId, locale, status);

@@ -9,8 +9,8 @@
 #   scripts/board-cache-proof.sh <preview-base-url> <event-id> [locale]
 #
 # The event must have the board turned on (admin → event → 팬 보드) and
-# be upcoming or completed; an ongoing/cancelled event answers with a
-# locked stub that never reaches the aggregate. A protected Preview
+# be upcoming or completed; an ongoing board's fixed start timestamp
+# is not evidence of cache reuse. A protected Preview
 # needs VERCEL_AUTOMATION_BYPASS_SECRET in the environment. Paste the
 # output into the PR as the evidence.
 set -euo pipefail
@@ -44,7 +44,9 @@ read_board() {
     let b;
     try { b = JSON.parse(process.argv[1]); } catch { console.error("not JSON — is this the app?"); process.exit(3); }
     if (!b.enabled) { console.error("board is disabled for this event — turn it on in admin first"); process.exit(3); }
-    if (!b.asOf) { console.error(`no aggregate: status=${b.status} (ongoing/cancelled events never reach it)`); process.exit(3); }
+    if (!b.asOf || (b.status !== "upcoming" && b.status !== "completed")) {
+      console.error(`cache proof expects an upcoming or completed board, got ${b.status}`); process.exit(3);
+    }
     process.stdout.write(b.asOf);
   ' "$body")" || return 3
   printf '%s %s\n' "$asof" "$cc"

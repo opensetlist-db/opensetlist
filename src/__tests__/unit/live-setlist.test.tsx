@@ -48,6 +48,7 @@ interface RenderArgs {
   startTime?: Date | string | null;
   top3Wishes?: FanTop3Entry[];
   initialTrendingSongs?: TrendingSong[];
+  boardEnabled?: boolean;
 }
 
 function trendingFixture(setlistItemId = "1"): TrendingSong {
@@ -67,6 +68,7 @@ function renderLiveSetlist({
   startTime = new Date("2026-05-23T12:00:00.000Z"),
   top3Wishes = [],
   initialTrendingSongs = [],
+  boardEnabled = false,
 }: RenderArgs) {
   const items: LiveSetlistItem[] = [];
   const reactionCounts: ReactionCountsMap = {};
@@ -83,6 +85,7 @@ function renderLiveSetlist({
       locale="ko"
       status={status}
       isWishPredictOpen={isWishPredictOpen}
+      boardEnabled={boardEnabled}
       seriesName="Test Series"
       eventTitle="Test Event"
       dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
@@ -149,6 +152,12 @@ describe("<LiveSetlist> wishlist render-condition", () => {
   it("completed + isWishPredictOpen=false → still renders the wishlist (post-show TOP-3 + match badges)", () => {
     renderLiveSetlist({ status: "completed", isWishPredictOpen: false });
     expect(screen.getByTestId("event-wish-section")).toBeTruthy();
+  });
+
+  it("hides the standalone wishlist for a live board event even before the board is available", () => {
+    renderLiveSetlist({ status: "ongoing", isWishPredictOpen: false, boardEnabled: true });
+    expect(screen.getByTestId("setlist-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("event-wish-section")).not.toBeInTheDocument();
   });
 
   it("cancelled + isWishPredictOpen=false → still renders (the wishlist component itself decides further)", () => {
