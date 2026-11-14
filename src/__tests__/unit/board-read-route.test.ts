@@ -234,7 +234,7 @@ describe("GET /api/events/[id]/board", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(START.getTime() - 1000)); // 1 s before start
     findFirst.mockResolvedValue(
-      control({ boardStarterSongIds: { "1": ["11", "10", "999"] } }) as never,
+      control({ boardStarterSongIds: { "1": ["abc", "11", "10", "999"] } }) as never,
     );
     const res = await GET(req(), params());
     expect(res.status).toBe(200);
