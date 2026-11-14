@@ -5,6 +5,7 @@ import { resolveUnitColor } from "@/lib/artistColor";
 import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
 import { descendantsOf, getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import { FALLBACK_LOCALE, locales } from "@/i18n/routing";
+import { groupBadgeLabel } from "@/lib/setlistRowBadge";
 import type { AvailableSong } from "@/lib/types/predict";
 
 /**
@@ -188,6 +189,7 @@ export function mapAvailableSongRows(
         label: unitName.main,
         labelSub: unitName.sub,
         labelLang: unitArtist.originalLanguage,
+        filterName: groupBadgeLabel(unitArtist, locale),
         color: resolveUnitColor(unitArtist),
         isSubUnit: unitArtist.parentArtistId !== null,
         isMainUnit: unitArtist.isMainUnit,

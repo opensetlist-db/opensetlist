@@ -6,6 +6,7 @@ import {
   mapAvailableSongRows,
   type AvailableSongRow,
 } from "@/lib/predict/availableSongs";
+import { deriveUnitFilters } from "@/lib/predict/unitFilters";
 
 type RowArtist = AvailableSongRow["artists"][number]["artist"];
 
@@ -85,6 +86,24 @@ describe("mapAvailableSongRows — single-artist scope (root + depth 1)", () => 
       // out-of-scope co-credit is ignored
       [50, 2, true, false, [2], []],
     ]);
+  });
+
+  it("uses a localized abbreviation in the artist filter while keeping the full song section label", () => {
+    const songs = mapAvailableSongRows([
+      row(BigInt(20), "Aoku Haruka", [{
+        ...CERISE,
+        originalName: "スリーズブーケ",
+        translations: [{ locale: "en", name: "Cerise Bouquet", shortName: "Cerise" }],
+      }]),
+    ], 1, [1, 2], "en");
+    expect(songs[0].unit).toMatchObject({ label: "スリーズブーケ", labelSub: "Cerise Bouquet" });
+    expect(deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD")[1]).toMatchObject({
+      kind: "individual",
+      artistId: 2,
+      label: "Cerise",
+      labelLang: "en",
+      labelSub: undefined,
+    });
   });
 });
 

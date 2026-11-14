@@ -152,11 +152,12 @@ export function deriveUnitFilters(
     if (existing) {
       existing.count++;
     } else {
+      const filterName = song.unit.filterName;
       buckets.set(song.unit.artistId, {
         slug: song.unit.slug,
-        label: song.unit.label,
-        labelSub: song.unit.labelSub,
-        labelLang: song.unit.labelLang,
+        label: filterName?.label || song.unit.label,
+        labelSub: filterName?.label ? undefined : song.unit.labelSub,
+        labelLang: filterName?.label ? filterName.labelLang : song.unit.labelLang,
         color: song.unit.color,
         isMainUnit: song.unit.isMainUnit,
         count: 1,

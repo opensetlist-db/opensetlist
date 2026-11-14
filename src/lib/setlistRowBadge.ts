@@ -1,4 +1,4 @@
-import type { ArtistRef, LiveSetlistItem } from "@/lib/types/setlist";
+import type { ArtistRef, LiveSetlistItem, NameTranslation } from "@/lib/types/setlist";
 
 /**
  * Decide which Artist(s) a public setlist row credits with a badge
@@ -79,7 +79,9 @@ export const MAX_ROW_BADGES = 2;
  * originalName → "".
  */
 export function groupBadgeLabel(
-  artist: Pick<ArtistRef, "originalName" | "originalShortName" | "originalLanguage" | "translations">,
+  artist: Pick<ArtistRef, "originalName" | "originalShortName" | "originalLanguage"> & {
+    translations: readonly NameTranslation[];
+  },
   locale: string,
 ) {
   const t = artist.translations.find((tr) => tr.locale === locale);
