@@ -527,6 +527,10 @@ copyLine(Aqours,未体験HORIZON),${url})`,
 });
 
 describe("<LiveSetlist> board guard", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   function renderLiveSetlist(status: ResolvedEventStatus, board: BoardBlockSeed | null = SEED) {
     return render(
       <LiveSetlist
@@ -584,11 +588,17 @@ describe("<LiveSetlist> board guard", () => {
   );
 
   it("replaces an open board with locked start rankings at the live transition", async () => {
+    localStorage.setItem(ANON_ID_KEY, "existing-fan");
     respond(READY);
     const view = renderLiveSetlist("upcoming");
     await screen.findAllByText("残陽");
     expect(screen.getByTestId("board-save-note")).toHaveTextContent("saveNote");
-    localStorage.setItem(ANON_ID_KEY, "existing-fan");
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/events/107/board/mine?locale=ko",
+        expect.anything(),
+      ),
+    );
     respond({ ...READY, status: "ongoing", locked: true, asOf: LOCK });
     const live = (items: React.ComponentProps<typeof LiveSetlist>["items"] = []) => (
       <LiveSetlist
@@ -623,6 +633,7 @@ describe("<LiveSetlist> board guard", () => {
     fireEvent(document, new Event("visibilitychange"));
     expect(boardCalls().map(([url]) => url)).toEqual([
       "/api/events/107/board?locale=ko",
+      "/api/events/107/board/mine?locale=ko",
       "/api/events/107/board?locale=ko",
     ]);
     expect(screen.queryByTestId("event-wish-section")).toBeNull();
