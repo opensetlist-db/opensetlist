@@ -12,9 +12,8 @@ vi.mock("next/cache", () => ({
   revalidateTag: vi.fn(),
 }));
 
-// `song.findMany` exists only for the legacy-wish base fold (n15):
-// titles must come from the cached catalog, and the tests assert the
-// song query runs only when legacy wishes exist.
+// The batched catalog is mocked separately. Here `song.findMany`
+// verifies the extra variant-to-base lookup for legacy wishes.
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     event: { findFirst: vi.fn() },
@@ -41,14 +40,14 @@ vi.mock("@/lib/board/loadBoardGroups", () => ({
   loadBoardGroups: vi.fn(),
 }));
 vi.mock("@/lib/predict/availableSongs", () => ({
-  getAvailableSongsCached: vi.fn(),
+  getAvailableSongsByGroup: vi.fn(),
 }));
 
 import { GET } from "@/app/api/events/[id]/board/route";
 import { prisma } from "@/lib/prisma";
 import * as dataCache from "@/lib/dataCache";
 import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
-import { getAvailableSongsCached } from "@/lib/predict/availableSongs";
+import { getAvailableSongsByGroup } from "@/lib/predict/availableSongs";
 import type { AvailableSong } from "@/lib/types/predict";
 
 const findFirst = vi.mocked(prisma.event.findFirst);
@@ -70,7 +69,7 @@ function routeParticipants() {
 }
 const EMPTY_COLUMN = { top: [], submissions: 0, participants: 0, label: "operator" };
 const groupsMock = vi.mocked(loadBoardGroups);
-const catalogMock = vi.mocked(getAvailableSongsCached);
+const catalogMock = vi.mocked(getAvailableSongsByGroup);
 
 const START = new Date("2026-11-14T07:30:00.000Z");
 const params = (id = "107") => ({ params: Promise.resolve({ id }) });
@@ -123,7 +122,9 @@ beforeEach(() => {
     { artistId: 1, slug: "hasunosora", label: "蓮ノ空", color: "#f8b500" },
     { artistId: 2, slug: "liella", label: "Liella!", color: null },
   ]);
-  catalogMock.mockResolvedValue([song(10, "残陽"), song(11, "ハナムスビ")]);
+  catalogMock.mockImplementation(async (groupIds) =>
+    new Map(groupIds.map((id) => [id, [song(10, "残陽"), song(11, "ハナムスビ")]])),
+  );
   // No fan picks unless a test says otherwise.
   pickGroupBy.mockResolvedValue([] as never);
   wishGroupBy.mockResolvedValue([] as never);
@@ -233,7 +234,7 @@ describe("GET /api/events/[id]/board", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(START.getTime() - 1000)); // 1 s before start
     findFirst.mockResolvedValue(
-      control({ boardStarterSongIds: { "1": ["11", "10", "999"] } }) as never,
+      control({ boardStarterSongIds: { "1": ["abc", "11", "10", "999"] } }) as never,
     );
     const res = await GET(req(), params());
     expect(res.status).toBe(200);
@@ -276,7 +277,7 @@ describe("GET /api/events/[id]/board", () => {
     ]);
     // Only the group that HAS starters loads a catalog.
     expect(catalogMock).toHaveBeenCalledTimes(1);
-    expect(catalogMock).toHaveBeenCalledWith(BigInt(1), "ja");
+    expect(catalogMock).toHaveBeenCalledWith([1], new Set(["10", "11", "999"]), "ja");
     expectNoRevalidate();
   });
 
@@ -438,13 +439,11 @@ describe("GET /api/events/[id]/board", () => {
     });
     // Starters still travel; the client shows them only on operator columns.
     expect(g1.starters).toMatchObject([{ songId: "11", title: "ハナムスビ" }]);
-    // One catalog per group that has picks or starters, in the request locale.
-    expect(catalogMock).toHaveBeenCalledTimes(2);
-    expect(catalogMock).toHaveBeenCalledWith(BigInt(1), "ja");
-    expect(catalogMock).toHaveBeenCalledWith(BigInt(2), "ja");
+    // One batch with the distinct songs from every populated group.
+    expect(catalogMock).toHaveBeenCalledTimes(1);
+    expect(catalogMock).toHaveBeenCalledWith([1, 2], new Set(["10", "11", "12", "99"]), "ja");
     // Per column: exactly one grouped count + one distinct-participant
-    // count (two columns → two of each); no song query without legacy
-    // wishes.
+    // count (two columns → two of each); no variant-to-base lookup.
     expect(pickGroupBy).toHaveBeenCalledTimes(1);
     expect(pickGroupBy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -487,10 +486,14 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
     findFirst.mockResolvedValue(control() as never);
     // Group 1's catalog holds 10, 11; group 2's holds 11 (cross-group)
     // and 20.
-    catalogMock.mockImplementation((async (groupId: bigint) =>
-      groupId === BigInt(1)
-        ? [song(10, "残陽"), song(11, "ハナムスビ")]
-        : [song(11, "ハナムスビ"), song(20, "未体験HORIZON")]) as never);
+    catalogMock.mockImplementation(async (groupIds) =>
+      new Map(groupIds.map((id) => [
+        id,
+        id === 1
+          ? [song(10, "残陽"), song(11, "ハナムスビ")]
+          : [song(11, "ハナムスビ"), song(20, "未体験HORIZON")],
+      ])),
+    );
   });
 
   it("same ranking, counts and labels as the expect column", async () => {
@@ -558,7 +561,8 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
       label: "early",
     });
     // Attribution needs every group's catalog.
-    expect(catalogMock).toHaveBeenCalledTimes(2);
+    expect(catalogMock).toHaveBeenCalledTimes(1);
+    expect(catalogMock).toHaveBeenCalledWith([1, 2], new Set(["11", "20"]), "ja");
   });
 
   it("a legacy wish merges with the same song wished under its group; a legacy variant folds onto its base", async () => {
@@ -586,6 +590,7 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
       where: { id: { in: [BigInt(10), BigInt(501)] } },
       select: { id: true, baseVersionId: true },
     });
+    expect(catalogMock).toHaveBeenCalledWith([1, 2], new Set(["10"]), "ja");
   });
 
   it("a legacy wish whose song resolves to no roster group lands in no column", async () => {

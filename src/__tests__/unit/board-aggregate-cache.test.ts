@@ -43,7 +43,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 vi.mock("@/lib/board/loadBoardGroups", () => ({ loadBoardGroups: vi.fn() }));
 vi.mock("@/lib/predict/availableSongs", () => ({
-  getAvailableSongsCached: vi.fn(),
+  getAvailableSongsByGroup: vi.fn(),
 }));
 
 import { prisma } from "@/lib/prisma";
