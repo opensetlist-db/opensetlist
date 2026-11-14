@@ -3,9 +3,7 @@ import type { ArtistRef, LiveSetlistItem, NameTranslation } from "@/lib/types/se
 /**
  * Decide which Artist(s) a public setlist row credits with a badge
  * under the title — the row's "who is performing this?" answer.
- * Returns the badge artists in display order (possibly empty); the row
- * renders the first `MAX_ROW_BADGES` as chips and folds the rest into
- * a `+N` chip.
+ * Returns the badge artists in display order (possibly empty).
  *
  * Rules, in order:
  *
@@ -57,13 +55,6 @@ export function pickRowArtistBadges(
   if (eventArtistId === undefined) return [];
   return credited.some((a) => (a.orderId ?? String(a.id)) !== eventArtistId) ? credited : [];
 }
-
-/**
- * Chips shown before the rest fold into `+N`. Two covers every real
- * multi-group case so far (a two-group collab) while keeping the badge
- * line to one row in the narrow title column on mobile.
- */
-export const MAX_ROW_BADGES = 2;
 
 /**
  * Compact artist label for badges, group tabs and picker filters.

@@ -139,6 +139,7 @@ function json(status: number, body: unknown) {
 }
 
 beforeEach(() => {
+  vi.setSystemTime("2026-10-24T00:00:00Z");
   vi.clearAllMocks();
   window.localStorage.clear();
   window.location.hash = "";
@@ -155,6 +156,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function seedLocal(picks: { id: string; groupId: string; songId: string; title: string; available: boolean }[]) {

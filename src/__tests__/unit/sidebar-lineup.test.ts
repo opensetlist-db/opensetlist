@@ -3,6 +3,7 @@ import {
   deriveLineupFromRoster,
   deriveSidebarUnitsAndPerformers,
 } from "@/lib/sidebarDerivations";
+import { colors } from "@/styles/tokens";
 import type {
   EventRosterEntry,
   LiveSetlistItem,
@@ -172,7 +173,7 @@ describe("deriveLineupFromRoster", () => {
   });
 });
 
-describe("deriveSidebarUnitsAndPerformers (unchanged by the lineup)", () => {
+describe("deriveSidebarUnitsAndPerformers", () => {
   it("still derives nothing from an empty setlist — the lineup is a separate path", () => {
     const items: LiveSetlistItem[] = [];
     expect(
@@ -184,5 +185,56 @@ describe("deriveSidebarUnitsAndPerformers (unchanged by the lineup)", () => {
         "??",
       ),
     ).toEqual({ units: [], performers: [] });
+  });
+
+  it("uses the scheduled unit or group color until a credited unit supplies a color", () => {
+    const groupColor = "#ee8800";
+    const group = { ...hasu, color: groupColor };
+    const rosterWithColors = [
+      member("kaho", [group, cerise, gelato]),
+      member("ceras", [group]),
+      member("ginko", [group, cerise]),
+    ];
+    const lineup = deriveLineupFromRoster(rosterWithColors, "ko", "?", "??");
+    const eventPerformers = lineup.performers.map(({ id, color }) => ({
+      stageIdentityId: id,
+      isGuest: false,
+      rosterColor: color,
+    }));
+    const item: LiveSetlistItem = {
+      id: 1,
+      position: 1,
+      type: "song",
+      stageType: "full_group",
+      confirmCount: 0,
+      isEncore: false,
+      unitName: null,
+      status: "confirmed",
+      performanceType: "live_performance",
+      createdAt: "2026-11-14T00:00:00Z",
+      songs: [],
+      performers: [rosterWithColors[0], rosterWithColors[1], member("unlisted", [])]
+        .map(({ stageIdentity }) => ({
+          stageIdentity: {
+            ...stageIdentity,
+            artistLinks: stageIdentity.artistLinks.map(({ artist }) => ({ artistId: artist.id })),
+          },
+          realPerson: null,
+        })),
+      artists: [{ artist: group }],
+    };
+    const derive = (items: LiveSetlistItem[]) => Object.fromEntries(
+      deriveSidebarUnitsAndPerformers(items, eventPerformers, "ko", "?", "??")
+        .performers.map(({ id, color }) => [id, color]),
+    );
+
+    expect(derive([item])).toEqual({ kaho: ceriseColor, ceras: groupColor, unlisted: colors.primary });
+
+    const performedUnit = { ...gelato, color: "#008877" };
+    expect(derive([item, { ...item, id: 2, stageType: "unit", artists: [{ artist: performedUnit }] }])).toEqual({
+      kaho: performedUnit.color,
+      ceras: groupColor,
+      unlisted: colors.primary,
+    });
   });
 });

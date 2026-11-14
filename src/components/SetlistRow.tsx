@@ -18,11 +18,7 @@ import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
-import {
-  groupBadgeLabel,
-  MAX_ROW_BADGES,
-  pickRowArtistBadges,
-} from "@/lib/setlistRowBadge";
+import { groupBadgeLabel, pickRowArtistBadges } from "@/lib/setlistRowBadge";
 import styles from "@/components/event/eventDetail.module.css";
 import { entityPath } from "@/lib/seo/entityUrl";
 
@@ -206,18 +202,12 @@ export function SetlistRow({
   // On multi-group events (LL Fes) the same helper also badges
   // `full_group` rows whose credit differs from the event's primary
   // artist — see `pickRowArtistBadges` for the full rule table.
-  //
-  // Multi-credit rows (a genuine multi-group collab) get up to
-  // MAX_ROW_BADGES chips in official display order, then a `+N` chip whose
-  // title lists the rest.
   const badgeArtists = pickRowArtistBadges(item, eventArtistId);
   // Credits with no resolvable name are dropped from the chip list;
   // if that leaves nothing, the row shows the stageType fallback.
   const namedBadges = badgeArtists
     .map((artist) => ({ artist, ...groupBadgeLabel(artist, locale) }))
     .filter(({ label }) => label);
-  const shownBadges = namedBadges.slice(0, MAX_ROW_BADGES);
-  const hiddenBadges = namedBadges.slice(MAX_ROW_BADGES);
 
   const isNonSong = NON_SONG_TYPES.has(item.type);
   // "Unknown song" row: a song-typed item with no `SetlistItemSong`
@@ -302,7 +292,7 @@ export function SetlistRow({
             panelTitle={creditsT("songPerformers")}
           >
             <div className={styles.creditLine}>
-              {shownBadges.map(({ artist, label, labelLang }) => (
+              {namedBadges.map(({ artist, label, labelLang }) => (
                 <UnitBadge
                   key={artist.orderId ?? artist.id}
                   artistColor={artist.color}
@@ -312,15 +302,6 @@ export function SetlistRow({
                   label={<span lang={labelLang}>{label}</span>}
                 />
               ))}
-              {hiddenBadges.length > 0 && (
-                <span
-                  className={styles.artistTag}
-                  style={{ "--artist": colors.border } as React.CSSProperties}
-                  title={hiddenBadges.map(({ label }) => label).join(", ")}
-                >
-                  +{hiddenBadges.length}
-                </span>
-              )}
               {/* Backed unit credited but no resolvable name (rare —
                   Artist with empty translations + null originalName).
                   Falls back to the i18n stageType label so the row still

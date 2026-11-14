@@ -232,15 +232,13 @@ export interface PerformersCardItem {
 }
 
 /**
- * Event-level performer summary — the subset of `EventPerformer`
- * fields needed to mark host vs guest StageIdentities. Built once at
- * SSR (operators set the guest roster before the show; we don't poll
- * it during a live event), passed as a stable prop to
- * `<LiveEventLayout>`.
+ * Event-level guest flag and optional scheduled lineup tint. Built once
+ * at SSR and passed as a stable prop to `<LiveEventLayout>`.
  */
 export interface EventPerformerSummary {
   stageIdentityId: string;
   isGuest: boolean;
+  rosterColor?: string;
 }
 
 /**

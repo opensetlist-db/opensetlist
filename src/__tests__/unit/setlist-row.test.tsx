@@ -313,7 +313,7 @@ describe("SetlistRow", () => {
       expect(screen.queryByText(/^\+\d+$/)).toBeNull();
     });
 
-    it("three-group collab → first two chips + `+1` whose title lists the rest", () => {
+    it("three-group collab → all group links in credit order", () => {
       const liella = {
         artist: {
           id: 30,
@@ -339,10 +339,13 @@ describe("SetlistRow", () => {
           eventArtistId="99"
         />,
       );
-      expect(screen.getByText("Aqours")).toBeTruthy();
-      expect(screen.getByText("虹ヶ咲")).toBeTruthy();
-      expect(screen.queryByText("Liella!")).toBeNull();
-      expect(screen.getByText("+1").getAttribute("title")).toBe("Liella!");
+      const groupLinks = screen.getAllByRole("link", { name: /^(Aqours|虹ヶ咲|Liella!)$/ });
+      expect(groupLinks.map((link) => link.getAttribute("href"))).toEqual([
+        "/en/artists/10/aqours",
+        "/en/artists/20/nijigasaki",
+        "/en/artists/30/liella",
+      ]);
+      expect(screen.queryByText(/^\+\d+$/)).toBeNull();
     });
 
     it("uses the original short name for a Japanese viewer", () => {

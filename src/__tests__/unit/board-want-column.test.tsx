@@ -129,6 +129,7 @@ type Handler = (url: string, init?: RequestInit) => Reply | Promise<Reply>;
 let handler: Handler;
 
 beforeEach(() => {
+  vi.setSystemTime("2026-10-24T00:00:00Z");
   vi.clearAllMocks();
   window.localStorage.clear();
   window.localStorage.setItem(ANON_ID_KEY, ANON);
@@ -290,7 +291,6 @@ describe("<FanBoardSection> want column", () => {
       return { status: 500, body: {} };
     };
     vi.useFakeTimers();
-    vi.setSystemTime("2026-10-24T00:00:00Z");
     renderBlock();
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(wantCol().queryAllByTestId("board-top-entry")).toHaveLength(count);
