@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { createEventDisplayOrdering } from "@/lib/eventDisplayOrder";
-import { readEventDisplayOrder } from "@/lib/readEventDisplayOrder";
+import { readEventDisplayOrder, withDisplayIds } from "@/lib/readEventDisplayOrder";
 import { prisma } from "@/lib/prisma";
 import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 
@@ -33,7 +33,7 @@ function fetchAdminEvent(tx: Prisma.TransactionClient, id: bigint) {
           performers: {
             orderBy: byStageIdentityOrderBy(),
             include: {
-              stageIdentity: { include: { translations: true } },
+              stageIdentity: { include: { translations: true, artistLinks: { select: { artistId: true, sortOrder: true } } } },
             },
           },
           artists: {
@@ -48,11 +48,15 @@ function fetchAdminEvent(tx: Prisma.TransactionClient, id: bigint) {
   });
 }
 
-export async function getAdminEventWithOrderedSetlist(id: bigint) {
+export async function getAdminEventWithOrderedSetlist(id: bigint, includeArtistOrder = false) {
   return prisma.$transaction(async (tx) => {
     const row = await fetchAdminEvent(tx, id);
     if (!row) return null;
     const ordering = createEventDisplayOrdering(await readEventDisplayOrder(tx, id, row.setlistItems));
-    return { ...row, setlistItems: row.setlistItems.map(ordering.sortItem) };
+    const artistOrder = includeArtistOrder ? await tx.artist.findMany({
+      where: { isDeleted: false },
+      select: { id: true, parentArtistId: true, type: true, sortOrder: true },
+    }) : undefined;
+    return { ...row, artistOrder, setlistItems: row.setlistItems.map((item) => withDisplayIds(ordering.sortItem(item))) };
   }, { isolationLevel: "RepeatableRead" });
 }

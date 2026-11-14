@@ -20,5 +20,9 @@ export async function GET() {
     where: { isDeleted: false },
     select: { id: true, parentArtistId: true, type: true, sortOrder: true },
   });
-  return NextResponse.json(serializeBigInt(sortAdminMembers(identities, (identity) => identity, artists)));
+  const ordered = sortAdminMembers(identities, (identity) => identity, artists);
+  return NextResponse.json(serializeBigInt(ordered.map((identity) => ({
+    ...identity,
+    artistLinks: identity.artistLinks.map((link) => ({ ...link, orderArtistId: link.artistId.toString() })),
+  }))));
 }

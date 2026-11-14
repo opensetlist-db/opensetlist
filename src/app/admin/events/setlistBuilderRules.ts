@@ -1,8 +1,8 @@
 import { descendantsOf, type ArtistHierarchy } from "@/lib/artistHierarchyTree";
 
 /**
- * SetlistBuilder's pure row rules: credit after an artist pick, the
- * stage type a credit implies, and the default performer roster.
+ * SetlistBuilder's pure row rules: the stage type a credit implies and
+ * the default performer roster.
  *
  * A plain module, not part of `SetlistBuilder.tsx`: that file is a
  * "use client" component, and a "use client" module may export only
@@ -16,43 +16,6 @@ export type PerformerLinks = {
   id: string;
   artistLinks: readonly { artist: { id: number } }[];
 };
-
-/**
- * Credit list after the operator picks `artist` in the artist search.
- *
- * Group picks REPLACE the whole credit: on a multi-group night the
- * sticky credit carries the previous block's group (μ's), and the
- * operator starts the next block by picking the next group (Aqours).
- * Appending would save the row credited μ's + Aqours, and the public
- * badge — which reads the credits in order — would show μ's on an
- * Aqours song. Unit/solo credits go too: they belong to whatever
- * group the previous row was about, and a full_group stage doesn't
- * carry them anyway (see handleStageTypeChange).
- *
- * Unit/solo picks stay additive: a two-unit collab or a unit + solo
- * special stage is a legitimate multi-credit row, and the group credit
- * (if any) stays alongside — that pairing is how a unit row inside a
- * group block is normally credited.
- *
- * `addGroup` is the deliberate escape hatch for a genuine multi-group
- * collab (an anniversary song sung by several groups): the 「+ 그룹
- * 추가」 button in the dropdown passes it so the picked group is
- * appended instead of replacing. Unit/solo credits are still dropped
- * on that path, for the same reason as above.
- *
- * Pure.
- */
-export function nextCreditOnPick<T extends { id: number; type?: string }>(
-  selected: readonly T[],
-  artist: T,
-  opts: { addGroup?: boolean } = {},
-): T[] {
-  if (artist.type !== "group") return [...selected, artist];
-  if (opts.addGroup) {
-    return [...selected.filter((a) => a.type === "group"), artist];
-  }
-  return [artist];
-}
 
 /**
  * Stage type implied by a row's credit, applied whenever the operator
@@ -99,22 +62,24 @@ export function stageTypeForCredit(
  * is credited). Passing the group id too would make
  * deriveDefaultPerformerIds expand it through the hierarchy and
  * pre-check the whole group (11 Nijigasaki members on a solo row).
- * So unit/solo stages drop group credits — unless only groups are
- * credited (e.g. the operator flipped the select by hand), in which
- * case the groups are all we have. full_group and special use every
- * credit as before.
+ * Drop only the ancestors of a credited unit or soloist: an unrelated
+ * co-credited group still contributes its whole roster.
  *
  * Pure.
  */
 export function performerSourceIds(
   credits: readonly { id: number; type?: string }[],
   stageType: string,
+  hierarchy: ArtistHierarchy,
 ): number[] {
-  if (stageType === "unit" || stageType === "solo") {
-    const nonGroup = credits.filter((a) => a.type !== "group");
-    if (nonGroup.length > 0) return nonGroup.map((a) => a.id);
-  }
-  return credits.map((a) => a.id);
+  if (stageType !== "unit" && stageType !== "solo") return credits.map((a) => a.id);
+  const narrowerCredits = credits.filter((a) => a.type === "unit" || a.type === "solo");
+  if (narrowerCredits.length === 0) return credits.map((a) => a.id);
+  return credits.filter((a) => {
+    if (a.type !== "group") return true;
+    const descendants = descendantsOf(hierarchy, a.id);
+    return !narrowerCredits.some((credit) => descendants.includes(String(credit.id)));
+  }).map((a) => a.id);
 }
 
 /**
