@@ -81,6 +81,7 @@ function respond(body: unknown, status = 200) {
 }
 
 beforeEach(() => {
+  vi.setSystemTime("2026-10-24T00:00:00Z");
   vi.clearAllMocks();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
@@ -98,7 +99,6 @@ describe("<FanBoardSection> aggregate freshness", () => {
   }
   function start() {
     vi.useFakeTimers();
-    vi.setSystemTime("2026-10-24T00:00:00Z");
     return renderBlock();
   }
 
