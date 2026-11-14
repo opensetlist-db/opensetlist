@@ -1144,12 +1144,6 @@ export default async function EventPage({ params }: Props) {
   const setlistItemsForDerivation: LiveSetlistItem[] = liveSeed
     ? liveSeed.items
     : (event.setlistItems as unknown as LiveSetlistItem[]).map((item) => displayOrdering?.sortItem(item) ?? item);
-  const eventPerformers: EventPerformerSummary[] = event.performers.map(
-    (p) => ({
-      stageIdentityId: p.stageIdentityId,
-      isGuest: p.isGuest,
-    }),
-  );
   // Roster-derived lineup. Computed for every status because its
   // `groups` also feed the JSON-LD performers, but handed to the
   // sidebar until an upcoming or live event has actual credits.
@@ -1162,6 +1156,11 @@ export default async function EventPage({ params }: Props) {
           t("unknownPerformer"),
         )
       : null;
+  const rosterColors = new Map(rosterLineup?.performers.map(({ id, color }) => [id, color]));
+  const eventPerformers: EventPerformerSummary[] = event.performers.map((performer) => ({
+    ...performer,
+    rosterColor: rosterColors.get(performer.stageIdentityId),
+  }));
   const sidebarLineup =
     (resolvedStatus === "upcoming" || resolvedStatus === "ongoing") && rosterLineup
       ? { units: rosterLineup.units, performers: rosterLineup.performers }

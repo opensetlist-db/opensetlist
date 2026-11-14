@@ -57,15 +57,11 @@ export function deriveSidebarUnitsAndPerformers(
   ordering?: EventDisplayOrdering,
   rosterGroupIds?: Readonly<Record<string, string>>,
 ): { units: UnitsCardItem[]; performers: PerformersCardItem[] } {
-  // Guest set (D10a + D9 source). Sourced from `EventPerformer`
-  // (a different relation from `setlistItems[].performers`, which
-  // is the per-song `SetlistItemMember[]`). Built once and consulted
-  // by Pass-2 (filter) and the performer-pill build (mark + sort).
-  const guestStageIdentityIds = new Set<string>(
-    eventPerformers.filter((p) => p.isGuest).map((p) => p.stageIdentityId),
+  const rosterById = new Map(
+    eventPerformers.map((performer) => [performer.stageIdentityId, performer]),
   );
 
-  const isGuest = (id: string) => ordering?.isGuest(id) ?? guestStageIdentityIds.has(id);
+  const isGuest = (id: string) => ordering?.isGuest(id) ?? rosterById.get(id)?.isGuest ?? false;
 
   // Internal extension: keep `resolvedColor` on the unit map so the
   // performer-pill walk can read it without re-running
@@ -113,8 +109,7 @@ export function deriveSidebarUnitsAndPerformers(
 
   // Helper: pick the primary unit for a performer's artist links —
   // first link that points at one of the event's units. Returns null
-  // when no link resolves; caller then falls back to the global
-  // default tint.
+  // when no link resolves, so the scheduled lineup can supply the tint.
   const pickPrimaryUnit = (
     links: ReadonlyArray<{ artistId: number; orderArtistId?: string }>,
   ): SidebarUnitInternal | null => {
@@ -187,9 +182,7 @@ export function deriveSidebarUnitsAndPerformers(
     ...allUnits.filter((u) => u.isGuest),
   ];
 
-  // Performers card build — each pill tint is the primary unit's
-  // resolved color (NOT the personal `StageIdentity.color`; operator
-  // wants the lineup to read as "members of these units"). Names use
+  // Performer cards use the credited unit or scheduled lineup tint. Names use
   // the FULL cascade per operator preference — sidebar pills have
   // room and the full form is unambiguous when scanning.
   const performerSeen = new Map<string, PerformersCardItem>();
@@ -209,11 +202,8 @@ export function deriveSidebarUnitsAndPerformers(
         id,
         name,
         displayName: eventDisplayName(p.stageIdentity, locale),
-        // Always set — `resolveUnitColor` covers the case where the
-        // primary unit's own color is null, and a missing primary unit
-        // (rare) falls through to the same fallback.
         color:
-          primaryUnit?.resolvedColor ?? resolveUnitColor({ color: null }),
+          primaryUnit?.resolvedColor ?? rosterById.get(id)?.rosterColor ?? resolveUnitColor({ color: null }),
         isGuest: isGuest(id),
       });
     }
