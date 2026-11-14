@@ -7,6 +7,11 @@
 // sources (cache reuse itself is proven on a Preview, not here).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+vi.mock("next/cache", () => ({
+  unstable_cache: (fn: () => Promise<unknown>) => fn,
+  revalidateTag: vi.fn(),
+}));
+
 // `song.findMany` exists only for the legacy-wish base fold (n15):
 // titles must come from the cached catalog, and the tests assert the
 // song query runs only when legacy wishes exist.
@@ -185,20 +190,29 @@ describe("GET /api/events/[id]/board", () => {
     expectNoRevalidate();
   });
 
-  it("ongoing → locked stub after the control read only", async () => {
+  it("ongoing → locked ranks at start time without reading the setlist", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(START); // the instant the show starts
     findFirst.mockResolvedValue(control() as never);
     const res = await GET(req(), params());
-    expect(await res.json()).toEqual({
+    const body = await res.json();
+    expect(body).toMatchObject({
       enabled: true,
       status: "ongoing",
       locked: true,
       lockAt: START.toISOString(),
+      asOf: START.toISOString(),
+      groups: [{ groupId: "1" }, { groupId: "2" }],
     });
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(findFirst).toHaveBeenCalledTimes(1);
-    expectNoAggregateWork();
+    expect(pickGroupBy).toHaveBeenCalledWith(expect.objectContaining({
+      where: { eventId: BigInt(107), createdAt: { lt: START } },
+    }));
+    expect(wishGroupBy).toHaveBeenCalledWith(expect.objectContaining({
+      where: { eventId: BigInt(107), createdAt: { lt: START } },
+    }));
+    expect(setlistFindMany).not.toHaveBeenCalled();
   });
 
   it("stored status ongoing → stub even before startTime", async () => {
@@ -596,7 +610,7 @@ describe("GET /api/events/[id]/board — want column (n15)", () => {
     expect(body.groups[0].starters).toMatchObject([{ songId: "11", title: "ハナムスビ" }]);
   });
 
-  it("ongoing → locked stub, no wish aggregate work", async () => {
+  it("manually ongoing before start → locked stub, no wish aggregate work", async () => {
     findFirst.mockResolvedValue(control({ status: "ongoing" }) as never);
     const body = await (await GET(req(), params())).json();
     expect(body).toMatchObject({ enabled: true, status: "ongoing", locked: true });

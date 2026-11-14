@@ -25,6 +25,7 @@ import { LiveSetlist } from "@/components/LiveSetlist";
 import { trackEvent } from "@/lib/analytics";
 import { absoluteUrl } from "@/lib/seo/entityUrl";
 import { groupIdFromFragment } from "@/lib/board/fragment";
+import { ANON_ID_KEY } from "@/lib/anonId";
 import type { BoardBlockSeed, BoardGroupView, BoardReadResponse } from "@/lib/board/types";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong } from "@/lib/types/predict";
@@ -564,18 +565,15 @@ describe("<LiveSetlist> board guard", () => {
     },
   );
 
-  it.each(["ongoing", "cancelled"] as const)(
-    "%s: no block, no board request; today's wishlist still renders",
-    (status) => {
-      respond(READY);
-      renderLiveSetlist(status);
-      expect(screen.queryByRole("tablist")).toBeNull();
-      expect(screen.getByTestId("event-wish-section")).toBeTruthy();
-      expect(boardCalls()).toHaveLength(0);
-    },
-  );
+  it("cancelled: no block or board request; today's wishlist still renders", () => {
+    respond(READY);
+    renderLiveSetlist("cancelled");
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByTestId("event-wish-section")).toBeTruthy();
+    expect(boardCalls()).toHaveLength(0);
+  });
 
-  it.each(["upcoming", "completed"] as const)(
+  it.each(["upcoming", "ongoing", "completed"] as const)(
     "%s without a seed (board off) → no block, no request, today's wishlist",
     (status) => {
       renderLiveSetlist(status, null);
@@ -585,14 +583,17 @@ describe("<LiveSetlist> board guard", () => {
     },
   );
 
-  it("an upcoming page that turns ongoing unmounts the block", async () => {
+  it("replaces an open board with locked start rankings at the live transition", async () => {
     respond(READY);
     const view = renderLiveSetlist("upcoming");
     await screen.findAllByText("残陽");
-    view.rerender(
+    expect(screen.getByTestId("board-save-note")).toHaveTextContent("saveNote");
+    localStorage.setItem(ANON_ID_KEY, "existing-fan");
+    respond({ ...READY, status: "ongoing", locked: true, asOf: LOCK });
+    const live = (items: React.ComponentProps<typeof LiveSetlist>["items"] = []) => (
       <LiveSetlist
         eventId="107"
-        items={[]}
+        items={items}
         reactionCounts={{}}
         top3Wishes={[]}
         initialTrendingSongs={[]}
@@ -602,18 +603,29 @@ describe("<LiveSetlist> board guard", () => {
         locale="ko"
         status="ongoing"
         isWishPredictOpen={false}
-        board={SEED}
+        board={{ ...SEED, chips: [] }}
         seriesName="S"
         eventTitle="E"
         dateLine="d"
         availableSongs={[]}
         unitFilters={[]}
-      />,
+      />
     );
-    expect(screen.queryByRole("tablist")).toBeNull();
-    expect(boardCalls()).toHaveLength(1);
-    // …and today's wishlist takes the board's place for the show.
-    expect(screen.getByTestId("event-wish-section")).toBeTruthy();
+    view.rerender(live());
+    await screen.findAllByText("残陽");
+    expect(screen.getByTestId("board-save-note")).toHaveTextContent("closed");
+    view.rerender(live([{
+      id: 1, position: 1, isEncore: false, stageType: "full_group", unitName: null,
+      status: "confirmed", performanceType: "live_performance", type: "mc",
+      createdAt: LOCK, confirmCount: 0, songs: [], artists: [], performers: [],
+    }]));
+    fireEvent.click(screen.getByRole("tab", { name: "Liella!" }));
+    fireEvent(document, new Event("visibilitychange"));
+    expect(boardCalls().map(([url]) => url)).toEqual([
+      "/api/events/107/board?locale=ko",
+      "/api/events/107/board?locale=ko",
+    ]);
+    expect(screen.queryByTestId("event-wish-section")).toBeNull();
   });
 });
 
@@ -668,6 +680,16 @@ describe("<FanBoardSection> post-show result mode (n15)", () => {
     expect(
       within(screen.getByTestId("board-col-expect")).getByTestId("board-tally-group"),
     ).toHaveTextContent("tallyGroup(2,3)");
+  });
+
+  it("shows ranks without grading if the completed response arrives before the live page updates", async () => {
+    respond(completed());
+    render(<FanBoardSection eventId="107" locale="ko" seed={SEED} liveReadOnly />);
+    const rows = await screen.findAllByTestId("board-top-entry");
+    expect(rows[0]).toHaveTextContent("残陽");
+    expect(rows[0]).not.toHaveAttribute("data-played");
+    expect(screen.queryByTestId("board-tally-overall")).toBeNull();
+    expect(screen.queryByLabelText("tallyPlayed")).toBeNull();
   });
 
   it("each shortlist song shows ✓ or ✕; the removed song has no link but is graded", async () => {

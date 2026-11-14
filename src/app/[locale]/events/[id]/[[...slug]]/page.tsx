@@ -899,11 +899,8 @@ export default async function EventPage({ params }: Props) {
   // lock time and the group chips. The aggregate is never read here:
   // the client block fetches `/api/events/[id]/board` after mount, so a
   // slow or failing board can't 500 or slow this page, and nothing
-  // board-related enters the batch above. Mounted for upcoming and
-  // completed events only — while ongoing the page keeps today's
-  // wishlist and the board client is not mounted at all (show-night
-  // capacity numbers were qualified without it); cancelled events have
-  // nothing to show.
+  // board-related enters the batch above. For a live event only the
+  // lock time is sent: even the groups come from the frozen API result.
   //
   // ONE open date for the board, the wishlist and the predictions: an
   // upcoming board event shows the board only inside the same window
@@ -919,10 +916,14 @@ export default async function EventPage({ params }: Props) {
   const boardChipsSeed: Omit<BoardBlockSeed, "share"> | null = await (async () => {
     if (
       !event.boardEnabled ||
-      (resolvedStatus !== "upcoming" && resolvedStatus !== "completed") ||
+      resolvedStatus === "cancelled" ||
       (resolvedStatus === "upcoming" && !wishPredictOpen)
     ) {
       return null;
+    }
+    const lockAt = new Date(event.startTime).toISOString();
+    if (resolvedStatus === "ongoing") {
+      return referenceNow < new Date(lockAt) ? null : { lockAt, chips: [] };
     }
     // The chips are the one board read SSR does (cached hierarchy +
     // group display rows). A failure there must not take the page
@@ -946,7 +947,7 @@ export default async function EventPage({ params }: Props) {
     }
     if (groups.length === 0) return null;
     return {
-      lockAt: new Date(event.startTime).toISOString(),
+      lockAt,
       chips: groups.map((g) => ({
         groupId: String(g.artistId),
         slug: g.slug,
@@ -1306,6 +1307,9 @@ export default async function EventPage({ params }: Props) {
       : preWindow && hasPerformers
         ? { href: "#event-performers", label: t("performers") }
         : { href: `#setlist-card-${id}`, label: t("setlist") },
+    ...(isOngoing && boardSeed
+      ? [{ href: `#fan-board-${id}`, label: boardT("title") }]
+      : []),
     { href: "#event-info", label: detailT("infoTitle") },
     { href: "#event-impressions", label: impressionT("title") },
     ...(hasPerformers && !(preWindow && !leadsWithBoard)

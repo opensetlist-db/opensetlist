@@ -93,11 +93,12 @@ export interface BoardTally {
   playedSongIds: string[];
 }
 
-/** The board read response. Four shapes, discriminated by the
+/** The board read response, discriminated by the
  *  control state, so a client can never mistake a stub for an empty
  *  board:
  *   - disabled (or the flag was turned off): `{ enabled: false }`
- *   - locked stub (ongoing / cancelled): no aggregate was computed
+ *   - locked stub (cancelled or manually ongoing before start)
+ *   - ongoing: locked rankings as of the start
  *   - upcoming: the aggregate
  *   - completed: the aggregate + the post-show tally */
 export type BoardReadResponse =
@@ -112,6 +113,14 @@ export type BoardReadResponse =
       enabled: true;
       status: "upcoming";
       locked: boolean;
+      lockAt: string;
+      asOf: string;
+      groups: BoardGroupView[];
+    }
+  | {
+      enabled: true;
+      status: "ongoing";
+      locked: true;
       lockAt: string;
       asOf: string;
       groups: BoardGroupView[];

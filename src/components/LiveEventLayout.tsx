@@ -70,7 +70,7 @@ interface Props extends Pick<Parameters<typeof LiveSetlist>[0], "shareNames"> {
   isWishPredictOpen: boolean;
   /**
    * Fan board seed (n15): lock time + group chips, or null when the
-   * board is off or the event isn't upcoming/completed. Forwarded to
+   * board is off or hidden for the current status. Forwarded to
    * `<LiveSetlist>`, which mounts `<FanBoardSection>` from it.
    */
   board?: BoardBlockSeed | null;

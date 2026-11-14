@@ -238,7 +238,16 @@ describe("event page × fan board (server render)", () => {
     expectNoAggregation();
   });
 
-  it("ongoing → no seed (today's wishlist renders instead), no board work", async () => {
+  it("ongoing after start → empty chip seed with no board reads on the server", async () => {
+    const row = eventRow({ status: "ongoing", startTime: new Date(Date.now() - 1000).toISOString() });
+    eventFindFirst.mockResolvedValue(row);
+    const props = await renderPage();
+    expect(props.board).toMatchObject({ lockAt: row.startTime, chips: [] });
+    expect(loadBoardGroups).not.toHaveBeenCalled();
+    expectNoAggregation();
+  });
+
+  it("marked ongoing before start → no seed or board work", async () => {
     eventFindFirst.mockResolvedValue(eventRow({ status: "ongoing" }));
     const props = await renderPage();
     expect(props.board).toBeNull();
