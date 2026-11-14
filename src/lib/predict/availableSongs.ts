@@ -33,10 +33,11 @@ import type { AvailableSong } from "@/lib/types/predict";
  *
  * Locale filter mirrors `getEvent`'s `[locale, "ja"]` policy.
  */
-async function fetchAvailableSongRows(scopeIds: bigint[], locale: string) {
+async function fetchAvailableSongRows(scopeIds: bigint[], locale: string, songIds?: bigint[]) {
   const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
   return prisma.song.findMany({
     where: {
+      id: songIds && { in: songIds },
       isDeleted: false,
       // Variants hidden — the picker only surfaces canonical (base)
       // songs. A song with `baseVersionId !== null` is a variant
@@ -225,6 +226,26 @@ export async function getAvailableSongs(
 ): Promise<AvailableSong[]> {
   const rows = await fetchAvailableSongRows(scopeIds, locale);
   return mapAvailableSongRows(rows, rootId, scopeIds, locale);
+}
+
+// Board aggregation already runs in its own cache. Fetch its referenced
+// songs together, then apply the same credit rules to each group's scope.
+export async function getAvailableSongsByGroup(
+  rootIds: readonly number[],
+  songIds: ReadonlySet<string>,
+  locale: string,
+): Promise<Map<number, AvailableSong[]>> {
+  if (rootIds.length === 0 || songIds.size === 0) return new Map();
+
+  const hierarchy = await getArtistHierarchyCached();
+  const scopes = rootIds.map((id) => descendantsOf(hierarchy, id));
+  const scopeIds = [...new Set(scopes.flat())].map((id) => BigInt(id));
+  const rows = await fetchAvailableSongRows(scopeIds, locale, [...songIds].map((id) => BigInt(id)));
+
+  return new Map(rootIds.map((id, index) => [
+    id,
+    mapAvailableSongRows(rows, id, scopes[index], locale),
+  ]));
 }
 
 // The picker catalog depends only on (scope root, locale), not on the

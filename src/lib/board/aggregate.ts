@@ -104,13 +104,9 @@ export function mergeLegacyWishes(
  * (distinct non-null anon ids) comes from a separate count because one
  * fan contributes up to three rows.
  *
- * `titleOf` resolves a title from the group's cached catalog, which
- * holds only live base songs. A song missing there was soft-deleted
- * after it was picked: it keeps its votes and its rank (moderation must
- * not silently reshuffle the board) but is sent with an empty title and
- * `available: false` — the UI renders it as "removed" without a link.
- * The catalog is the only title source on purpose: the aggregate adds
- * no song query of its own.
+ * `songOf` resolves a reference to an eligible base song in the group.
+ * An unavailable song keeps its votes and rank, with an empty title
+ * and `available: false` so the UI can show it as removed.
  */
 export function buildBoardColumn(
   rows: readonly BoardSongCount[],

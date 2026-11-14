@@ -1,12 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+vi.mock("@/lib/prisma", () => ({ prisma: { song: { findMany: vi.fn() } } }));
+vi.mock("@/lib/artistHierarchy", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/artistHierarchy")>(),
+  getArtistHierarchyCached: vi.fn(),
+}));
 
 import {
+  getAvailableSongsByGroup,
   mapAvailableSongRows,
   type AvailableSongRow,
 } from "@/lib/predict/availableSongs";
 import { deriveUnitFilters } from "@/lib/predict/unitFilters";
+import { prisma } from "@/lib/prisma";
+import { buildArtistHierarchy, getArtistHierarchyCached } from "@/lib/artistHierarchy";
 
 type RowArtist = AvailableSongRow["artists"][number]["artist"];
 
@@ -59,6 +66,42 @@ const ROWS = [
   row(BigInt(40), "Five Solos", [KOZUE, KAHO]),
   row(BigInt(50), "Cover With Guest", [CERISE, OUTSIDER]),
 ];
+
+describe("getAvailableSongsByGroup", () => {
+  it("reads requested base songs once and routes shared credits to each eligible group", async () => {
+    vi.mocked(getArtistHierarchyCached).mockResolvedValue(
+      buildArtistHierarchy([HASU, CERISE, DEEP, OUTSIDER]),
+    );
+    const findMany = vi.mocked(prisma.song.findMany);
+    findMany.mockResolvedValue([
+      row(BigInt(10), "Shared song", [DEEP, OUTSIDER]),
+      row(BigInt(20), "One group", [{ ...CERISE, isDeleted: true }, OUTSIDER]),
+      row(BigInt(30), "One group", [CERISE]),
+    ].map((song) => ({
+      ...song,
+      slug: String(song.id),
+      createdAt: new Date(0),
+      isDeleted: false,
+      deletedAt: null,
+      sourceNote: null,
+    })));
+
+    const catalogs = await getAvailableSongsByGroup([1, 70], new Set(["10", "20", "30"]), "en");
+
+    expect(getArtistHierarchyCached).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: { in: [BigInt(10), BigInt(20), BigInt(30)] },
+        isDeleted: false,
+        baseVersionId: null,
+        artists: { some: { artist: { id: { in: [BigInt(1), BigInt(2), BigInt(9), BigInt(70)] }, isDeleted: false } } },
+      },
+    }));
+    expect(catalogs.get(1)?.map((s) => [s.songId, s.unit.artistId])).toEqual([[10, 9], [30, 2]]);
+    expect(catalogs.get(70)?.map((s) => [s.songId, s.unit.artistId])).toEqual([[10, 70], [20, 70]]);
+  });
+});
 
 describe("mapAvailableSongRows — single-artist scope (root + depth 1)", () => {
   // `rootId` as a number on purpose: the page used to hand in a
