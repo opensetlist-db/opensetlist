@@ -1,4 +1,4 @@
-import { orderSetlistWriteResponse } from "@/lib/readEventDisplayOrder";
+import { orderSetlistWriteResponse, withDisplayIds } from "@/lib/readEventDisplayOrder";
 import { NextRequest, NextResponse } from "next/server";
 import {
   liveWriterTransaction,
@@ -136,7 +136,7 @@ async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
     // rows were shifted above — clients refetch the snapshot once.
     const ordered = await orderSetlistWriteResponse(tx, eid, item);
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eid);
-    return { item: ordered, rev };
+    return { item: withDisplayIds(ordered), rev };
   }, (r) => r?.rev, { warmFault });
 
   if (!result) {

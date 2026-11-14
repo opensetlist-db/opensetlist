@@ -121,26 +121,33 @@ describe("performerSourceIds (group credited alongside a unit/solo)", () => {
   ]);
 
   it("solo stage drops the group credit", () => {
-    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "solo")).toEqual([AYUMU_SOLO.id]);
+    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "solo", hierarchy)).toEqual([AYUMU_SOLO.id]);
   });
 
   it("unit stage with only a group credited keeps the group", () => {
-    expect(performerSourceIds([NIJI_GROUP], "unit")).toEqual([NIJI]);
+    expect(performerSourceIds([NIJI_GROUP], "unit", hierarchy)).toEqual([NIJI]);
   });
 
   it("full_group and special keep every credit", () => {
-    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "full_group")).toEqual([NIJI, AYUMU_SOLO.id]);
-    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "special")).toEqual([NIJI, AYUMU_SOLO.id]);
+    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "full_group", hierarchy)).toEqual([NIJI, AYUMU_SOLO.id]);
+    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "special", hierarchy)).toEqual([NIJI, AYUMU_SOLO.id]);
   });
 
   it("虹ヶ咲 + 歩夢 on a solo stage pre-checks only 歩夢, not the whole group", () => {
     const credits = [NIJI_GROUP, AYUMU_SOLO];
     expect(
-      deriveDefaultPerformerIds("song", "solo", performerSourceIds(credits, "solo"), nijiRoster, hierarchy),
+      deriveDefaultPerformerIds("song", "solo", performerSourceIds(credits, "solo", hierarchy), nijiRoster, hierarchy),
     ).toEqual(["ayumu"]);
     // what the unfiltered ids would have produced
     expect(
       deriveDefaultPerformerIds("song", "solo", credits.map((a) => a.id), nijiRoster, hierarchy),
     ).toEqual(["ayumu", "setsuna"]);
+  });
+
+  it("retains a co-credited group outside the selected soloist's hierarchy", () => {
+    const credits = [NIJI_GROUP, AYUMU_SOLO, { id: AQOURS, type: "group" }];
+    expect(
+      deriveDefaultPerformerIds("song", "solo", performerSourceIds(credits, "solo", hierarchy), nijiRoster, hierarchy),
+    ).toEqual(["ayumu", "chika"]);
   });
 });

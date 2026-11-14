@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     select: { id: true, parentArtistId: true, type: true, sortOrder: true },
   }) : artists;
   const ordered = createAdminOfficialOrdering(metadata).sortArtists(artists, (artist) => ({ artistId: artist.id }));
-  return NextResponse.json(serializeBigInt(ordered));
+  return NextResponse.json(serializeBigInt(ordered.map((artist) => ({ ...artist, orderId: artist.id.toString() }))));
 }
 
 export async function POST(request: NextRequest) {

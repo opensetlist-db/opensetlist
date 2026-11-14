@@ -77,3 +77,15 @@ it("adds both groups via ordinary search results and saves official artist and p
   expect(screen.getByText("아쿠아", { exact: true })).toBeInTheDocument();
   expect(screen.getByText("뮤즈", { exact: true })).toBeInTheDocument();
 });
+
+it("keeps the form available when the performer catalog returns an error", async () => {
+  const reply = Response.json({ error: "unauthorized" }, { status: 401 });
+  const fetchMock = vi.fn(async () => reply);
+  vi.stubGlobal("fetch", fetchMock);
+  render(<SetlistBuilder eventId={1} initialItems={[]} eventPerformers={roster}
+    artistOrder={[aqours, muse]} eventGuestIds={[]} />);
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/admin/stage-identities"));
+  fireEvent.click(screen.getByRole("button", { name: "+ 세트리스트 항목 추가" }));
+  expect(screen.getByRole("button", { name: "호노카 제거" })).toBeInTheDocument();
+});

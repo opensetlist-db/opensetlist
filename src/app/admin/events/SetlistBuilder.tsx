@@ -32,7 +32,7 @@ type SelectedPerformer = {
   translations: { locale: string; name: string }[];
   sortOrder: number | null;
   createdAt: string;
-  artistLinks: { artistId: number; sortOrder: number | null }[];
+  artistLinks: { artistId: number; orderArtistId?: string; sortOrder: number | null }[];
 };
 
 type StageIdentityOption = Omit<SelectedPerformer, "artistLinks"> & {
@@ -46,6 +46,7 @@ type StageIdentityOption = Omit<SelectedPerformer, "artistLinks"> & {
 
 type ArtistOption = {
   id: number;
+  orderId?: string;
   type: string;
   translations: { locale: string; name: string }[];
 };
@@ -206,10 +207,6 @@ export default function SetlistBuilder({
   const artistSearchRef = useRef<HTMLDetailsElement>(null);
   const artistSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const orderedPerformers = useMemo(
-    () => ordering.sortMembers(stageIdentities, (performer) => performer, { kind: "mixed" }),
-    [ordering, stageIdentities],
-  );
   const orderedSelection = useMemo(() => ordering.sortItem({
     stageType: formStageType,
     artists: selectedArtists.map((artist) => ({ artist })),
@@ -218,8 +215,9 @@ export default function SetlistBuilder({
 
   useEffect(() => {
     fetch("/api/admin/stage-identities")
-      .then((r) => r.json())
-      .then(setStageIdentities);
+      .then((response) => response.ok ? response.json() : null)
+      .then((rows) => { if (Array.isArray(rows)) setStageIdentities(rows); })
+      .catch(() => {});
   }, []);
 
   // Click-outside handlers for dropdowns. SongSearch owns its own
@@ -264,8 +262,8 @@ export default function SetlistBuilder({
   }
 
   function getFilteredPerformers() {
-    if (!performerSearch.trim()) return orderedPerformers;
-    return orderedPerformers.filter((si) => matchesIdentitySearch(si, performerSearch));
+    if (!performerSearch.trim()) return stageIdentities;
+    return stageIdentities.filter((si) => matchesIdentitySearch(si, performerSearch));
   }
 
   function selectPerformer(si: StageIdentityOption) {
@@ -309,7 +307,7 @@ export default function SetlistBuilder({
     const ids = deriveDefaultPerformerIds(
       type,
       stageType,
-      performerSourceIds(artists, stageType),
+      performerSourceIds(artists, stageType, hierarchy),
       eventPerformers,
       hierarchy,
     );
@@ -327,20 +325,7 @@ export default function SetlistBuilder({
     applyDerivedPerformers(newType, formStageType, selectedArtists);
   }
 
-  // Stage-type trigger. full_group → all event performers; the
-  // unit/solo/special branch falls through to artistIds — empty
-  // artistIds in those branches yields [] so the operator's next
-  // selectArtist call seeds the roster.
-  //
-  // Switching TO full_group drops unit/solo credits. With the sticky
-  // credit, the form after a unit row opens pre-filled with that unit
-  // (e.g. Cerise Bouquet); if the operator flips the stage to
-  // full_group, a leftover unit credit would now badge the public row
-  // with the unit name (full_group rows get a badge whenever the credit
-  // differs from the event artist) and narrow the roster to the unit's
-  // members. Group credits are kept — that's the festival block case.
-  // This applies equally when editing an existing unit row: the chips
-  // startEdit rebuilds carry `type` (see ArtistOption).
+  // Keep group credits when changing to full_group; leftover units would narrow the roster.
   function handleStageTypeChange(newStageType: string) {
     setFormStageType(newStageType);
     let nextArtists = selectedArtists;

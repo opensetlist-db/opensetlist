@@ -62,22 +62,24 @@ export function stageTypeForCredit(
  * is credited). Passing the group id too would make
  * deriveDefaultPerformerIds expand it through the hierarchy and
  * pre-check the whole group (11 Nijigasaki members on a solo row).
- * So unit/solo stages drop group credits — unless only groups are
- * credited (e.g. the operator flipped the select by hand), in which
- * case the groups are all we have. full_group and special use every
- * credit as before.
+ * Drop only the ancestors of a credited unit or soloist: an unrelated
+ * co-credited group still contributes its whole roster.
  *
  * Pure.
  */
 export function performerSourceIds(
   credits: readonly { id: number; type?: string }[],
   stageType: string,
+  hierarchy: ArtistHierarchy,
 ): number[] {
-  if (stageType === "unit" || stageType === "solo") {
-    const nonGroup = credits.filter((a) => a.type !== "group");
-    if (nonGroup.length > 0) return nonGroup.map((a) => a.id);
-  }
-  return credits.map((a) => a.id);
+  if (stageType !== "unit" && stageType !== "solo") return credits.map((a) => a.id);
+  const narrowerCredits = credits.filter((a) => a.type === "unit" || a.type === "solo");
+  if (narrowerCredits.length === 0) return credits.map((a) => a.id);
+  return credits.filter((a) => {
+    if (a.type !== "group") return true;
+    const descendants = descendantsOf(hierarchy, a.id);
+    return !narrowerCredits.some((credit) => descendants.includes(String(credit.id)));
+  }).map((a) => a.id);
 }
 
 /**

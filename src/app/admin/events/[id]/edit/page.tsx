@@ -14,7 +14,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function EditEventPage({ params }: Props) {
   const { id } = await params;
-  const event = await getAdminEventWithOrderedSetlist(BigInt(id));
+  const event = await getAdminEventWithOrderedSetlist(BigInt(id), true);
   if (!event) notFound();
 
   const data = serializeBigInt(event);
@@ -47,11 +47,6 @@ export default async function EditEventPage({ params }: Props) {
     title: event.originalShortName || event.originalName || `#${event.id}`,
     caption: [logoDate, event.originalVenue].filter(Boolean).join(" · ") || null,
   };
-
-  const artistOrder = await prisma.artist.findMany({
-    where: { isDeleted: false },
-    select: { id: true, parentArtistId: true, type: true, sortOrder: true },
-  });
 
   return (
     <div className="space-y-10">
@@ -158,7 +153,7 @@ export default async function EditEventPage({ params }: Props) {
         <SetlistBuilder
           eventId={Number(data.id)}
           initialItems={data.setlistItems as any}
-          artistOrder={serializeBigIntAsString(artistOrder)}
+          artistOrder={serializeBigIntAsString(event.artistOrder ?? [])}
           eventGuestIds={event.performers.filter((p) => p.isGuest).map((p) => p.stageIdentity.id)}
           // Guests can be picked explicitly but never seed the default roster.
           eventPerformers={event.performers.filter((p) => !p.isGuest).map(({ stageIdentity }) => ({
@@ -168,6 +163,7 @@ export default async function EditEventPage({ params }: Props) {
             createdAt: stageIdentity.createdAt.toISOString(),
             artistLinks: stageIdentity.artistLinks.map((link) => ({
               artistId: Number(link.artistId),
+              orderArtistId: String(link.artistId),
               sortOrder: link.sortOrder,
               artist: { id: Number(link.artist.id), translations: link.artist.translations },
             })),
