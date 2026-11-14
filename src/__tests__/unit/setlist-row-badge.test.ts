@@ -61,7 +61,7 @@ describe("pickRowArtistBadges", () => {
     ).toEqual([AQOURS, NIJI]);
   });
 
-  it("multi-group event × 3 groups → all three (row renders 2 + `+1`)", () => {
+  it("multi-group event × 3 groups → all three in credit order", () => {
     expect(
       pickRowArtistBadges(
         rowMulti("full_group", [AQOURS, NIJI, LIELLA]),
