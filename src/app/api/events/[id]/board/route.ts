@@ -9,7 +9,7 @@ type RouteProps = { params: Promise<{ id: string }> };
  *
  *   GET /api/events/[id]/board?locale=ja
  *     → { enabled: false }                         flag off
- *     → { enabled, status, locked: true, lockAt }  ongoing / cancelled stub
+ *     → { enabled, status, locked: true, lockAt }  locked stub without a snapshot
  *     → { enabled, status, locked, lockAt, asOf, groups }
  *
  * HTTP `no-store` on every answer: the kill switch must reach a reader

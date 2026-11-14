@@ -7,7 +7,7 @@ import {
 } from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
-import { revalidateEventData } from "@/lib/dataCache";
+import { revalidateSetlistData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
 import {
@@ -168,7 +168,7 @@ async function updateItem(
   if (result.kind === "invalid") {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
-  revalidateEventData(eventId);
+  revalidateSetlistData(eventId);
   return NextResponse.json({
     ...serializeBigInt(result.item),
     rev: revToNumber(result.rev),
@@ -195,6 +195,6 @@ async function deleteItem({ params }: Props) {
     });
     return bumpSetlistRevisionAndBroadcast(tx, eventId);
   });
-  revalidateEventData(eventId);
+  revalidateSetlistData(eventId);
   return NextResponse.json({ success: true, rev: revToNumber(rev) });
 }

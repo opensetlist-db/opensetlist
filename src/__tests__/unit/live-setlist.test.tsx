@@ -41,6 +41,7 @@ import type {
 } from "@/lib/types/setlist";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { Freshness } from "@/lib/snapshotFreshness";
 
 interface RenderArgs {
   status: ResolvedEventStatus;
@@ -48,6 +49,8 @@ interface RenderArgs {
   startTime?: Date | string | null;
   top3Wishes?: FanTop3Entry[];
   initialTrendingSongs?: TrendingSong[];
+  boardEnabled?: boolean;
+  freshness?: Freshness;
 }
 
 function trendingFixture(setlistItemId = "1"): TrendingSong {
@@ -67,6 +70,8 @@ function renderLiveSetlist({
   startTime = new Date("2026-05-23T12:00:00.000Z"),
   top3Wishes = [],
   initialTrendingSongs = [],
+  boardEnabled = false,
+  freshness,
 }: RenderArgs) {
   const items: LiveSetlistItem[] = [];
   const reactionCounts: ReactionCountsMap = {};
@@ -83,12 +88,25 @@ function renderLiveSetlist({
       locale="ko"
       status={status}
       isWishPredictOpen={isWishPredictOpen}
+      boardEnabled={boardEnabled}
+      freshness={freshness}
       seriesName="Test Series"
       eventTitle="Test Event"
       dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
     />,
   );
 }
+
+it("renders the live setlist without routine sync messages", () => {
+  renderLiveSetlist({
+    status: "ongoing",
+    isWishPredictOpen: false,
+    freshness: { state: "live", lastSyncAt: new Date("2026-11-14T06:28:33Z") },
+  });
+  expect(screen.getByTestId("setlist-section")).toBeInTheDocument();
+  expect(screen.queryByText("liveNotice")).not.toBeInTheDocument();
+  expect(screen.queryByText("lastSync")).not.toBeInTheDocument();
+});
 
 describe("<LiveSetlist> wishlist render-condition", () => {
   // The bug fix landing on this branch: pre-v0.10.1 the wishlist
@@ -149,6 +167,12 @@ describe("<LiveSetlist> wishlist render-condition", () => {
   it("completed + isWishPredictOpen=false → still renders the wishlist (post-show TOP-3 + match badges)", () => {
     renderLiveSetlist({ status: "completed", isWishPredictOpen: false });
     expect(screen.getByTestId("event-wish-section")).toBeTruthy();
+  });
+
+  it("hides the standalone wishlist for a live board event even before the board is available", () => {
+    renderLiveSetlist({ status: "ongoing", isWishPredictOpen: false, boardEnabled: true });
+    expect(screen.getByTestId("setlist-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("event-wish-section")).not.toBeInTheDocument();
   });
 
   it("cancelled + isWishPredictOpen=false → still renders (the wishlist component itself decides further)", () => {

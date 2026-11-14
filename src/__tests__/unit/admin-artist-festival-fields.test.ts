@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn() }));
-vi.mock("@/lib/dataCache", () => ({ revalidatePublicData: vi.fn() }));
+vi.mock("@/lib/dataCache", () => ({ revalidatePublicData: vi.fn(), revalidateSetlistData: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: vi.fn(),

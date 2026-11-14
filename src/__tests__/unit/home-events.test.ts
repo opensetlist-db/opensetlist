@@ -48,7 +48,7 @@ import {
   getCachedHomeData,
   loadHomeData,
 } from "@/lib/homeEvents";
-import { revalidateEventData, revalidatePublicData } from "@/lib/dataCache";
+import { revalidateEventData, revalidatePublicData, revalidateSetlistData } from "@/lib/dataCache";
 import { buildLogoSeriesGraph } from "@/lib/logoResolution";
 
 const NOW = new Date("2026-10-21T01:35:00.000Z");
@@ -191,8 +191,15 @@ describe("home queries", () => {
     });
     groupBy.mockResolvedValue([{ eventId: BigInt(13), _count: { _all: 22 } }]);
     const data = await loadHomeData(NOW, buildLogoSeriesGraph([]));
-    expect(groupBy.mock.calls[0][0].where.eventId).toEqual({
-      in: [BigInt(11), BigInt(13)],
+    expect(groupBy).toHaveBeenCalledExactlyOnceWith({
+      by: ["eventId"],
+      where: {
+        OR: [
+          { isDeleted: false, type: "song", eventId: { in: [BigInt(11)] } },
+          { isDeleted: false, type: "song", songs: { some: {} }, eventId: { in: [BigInt(13)] } },
+        ],
+      },
+      _count: { _all: true },
     });
     expect(data.ongoing[0].songCount).toBe(0);
     expect(data.past[0].songCount).toBe(22);
@@ -241,5 +248,24 @@ describe("home cache entry × logo graph (07 contract)", () => {
     expect((await getCachedHomeData(bucket)).upcoming[0].logo.image?.url).toBe(
       "https://img.example/b.webp",
     );
+  });
+
+  it("refreshes an ongoing card's count after a setlist write in the same time bucket", async () => {
+    eventFindMany.mockImplementation(async (args: { where: Where }) =>
+      section(args) === "ongoing" ? [row(109), row(110)] : [],
+    );
+    groupBy.mockResolvedValue([{ eventId: BigInt(109), _count: { _all: 3 } }]);
+    const bucket = NOW.getTime();
+    const counts = async () => (await getCachedHomeData(bucket)).ongoing.map((event) => event.songCount);
+    expect(await counts()).toEqual([3, 0]);
+
+    groupBy.mockResolvedValue([
+      { eventId: BigInt(109), _count: { _all: 4 } },
+      { eventId: BigInt(110), _count: { _all: 1 } },
+    ]);
+    expect(await counts()).toEqual([3, 0]);
+
+    revalidateSetlistData(BigInt(110));
+    expect(await counts()).toEqual([4, 1]);
   });
 });

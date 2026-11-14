@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
+import { CACHE_TTL, cachedQuery, HOME_EVENTS_TAG } from "@/lib/dataCache";
 import { getLogoSeriesGraph } from "@/lib/logoSeriesGraph";
 import { MS_PER_DAY } from "@/lib/eventTiming";
 import { PURCHASE_AVAILABILITY_SELECT } from "@/lib/purchaseAvailability";
@@ -191,15 +191,19 @@ export async function findPastWithFallback(now: Date) {
 }
 
 /**
- * Visible song-bearing item count per event, one batched aggregate for
- * every card that shows a count (a per-row `_count` would emit repeated
- * identical spans that Sentry's N+1 detector flags).
+ * Count the live song rows viewers can see, including "Song TBC".
+ * Past cards count identified songs, matching their eligibility rule.
  */
-async function countSongs(eventIds: bigint[]): Promise<Map<string, number>> {
-  if (eventIds.length === 0) return new Map();
+async function countSongs(ongoingIds: bigint[], pastIds: bigint[]): Promise<Map<string, number>> {
+  if (ongoingIds.length === 0 && pastIds.length === 0) return new Map();
   const groups = await prisma.setlistItem.groupBy({
     by: ["eventId"],
-    where: { ...SONG_COUNT_WHERE, eventId: { in: eventIds } },
+    where: {
+      OR: [
+        { isDeleted: false, type: "song", eventId: { in: ongoingIds } },
+        { ...SONG_COUNT_WHERE, eventId: { in: pastIds } },
+      ],
+    },
     _count: { _all: true },
   });
   return new Map(groups.map((g) => [String(g.eventId), g._count._all]));
@@ -232,7 +236,7 @@ export type HomeEvent = {
     translations: NameRow[];
   } | null;
   logo: PublicLogo;
-  /** Visible song-bearing items; null where the section shows no count. */
+  /** Visible song rows; null where the section shows no count. */
   songCount: number | null;
 };
 
@@ -285,10 +289,10 @@ export async function loadHomeData(
     findUpcoming(now),
     findPastWithFallback(now),
   ]);
-  const counts = await countSongs([
-    ...ongoing.map((e) => e.id),
-    ...past.rows.map((e) => e.id),
-  ]);
+  const counts = await countSongs(
+    ongoing.map((e) => e.id),
+    past.rows.map((e) => e.id),
+  );
   const count = (id: bigint) => counts.get(String(id)) ?? 0;
   return {
     ongoing: ongoing.map((e) => toHomeEvent(e, graph, count(e.id))),
@@ -323,5 +327,5 @@ export const getCachedHomeData = cachedQuery(
   "home-events-v3",
   async (bucketMs: number) =>
     loadHomeData(new Date(bucketMs), await getLogoSeriesGraph()),
-  { revalidate: CACHE_TTL.home },
+  { revalidate: CACHE_TTL.home, tags: () => [HOME_EVENTS_TAG] },
 );

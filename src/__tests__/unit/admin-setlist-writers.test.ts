@@ -16,6 +16,7 @@ vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }))
 
 vi.mock("@/lib/dataCache", () => ({
   revalidateEventData: vi.fn(() => log.push("revalidate")),
+  revalidateSetlistData: vi.fn(() => log.push("revalidate-setlist")),
 }));
 
 // The real `requestWarmFault` (the routes' header parsing is under
@@ -118,7 +119,7 @@ describe("admin setlist writers — transaction shape (n14)", () => {
       "create",
       "bump",
       "commit",
-      "revalidate",
+      "revalidate-setlist",
     ]);
     expect((await res.json()).rev).toBe(12);
   });
@@ -137,7 +138,7 @@ describe("admin setlist writers — transaction shape (n14)", () => {
     expect(res.status).toBe(400);
     expect(prisma.setlistItem.create).not.toHaveBeenCalled();
     expect(bumpSetlistRevisionAndBroadcast).not.toHaveBeenCalled();
-    expect(log).not.toContain("revalidate");
+    expect(log).not.toContain("revalidate-setlist");
   });
 
   it("PUT: item → event resolved first, then one tx with the link rewrite and one bump", async () => {
@@ -157,7 +158,7 @@ describe("admin setlist writers — transaction shape (n14)", () => {
       "update",
       "bump",
       "commit",
-      "revalidate",
+      "revalidate-setlist",
     ]);
   });
 
@@ -184,7 +185,7 @@ describe("admin setlist writers — transaction shape (n14)", () => {
       "update",
       "bump",
       "commit",
-      "revalidate",
+      "revalidate-setlist",
     ]);
     expect(await res.json()).toEqual({ success: true, rev: 12 });
   });
@@ -211,7 +212,7 @@ describe("admin setlist writers — transaction shape (n14)", () => {
       "create",
       "bump",
       "commit",
-      "revalidate",
+      "revalidate-setlist",
     ]);
     expect(bumpSetlistRevisionAndBroadcast).toHaveBeenCalledTimes(1);
   });
@@ -308,7 +309,7 @@ describe("admin setlist writers — busy database (503, nothing written, no retr
     expect(await res.json()).toEqual({ error: KOREAN, code: "db_busy" });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(log).not.toContain("create");
-    expect(log).not.toContain("revalidate");
+    expect(log).not.toContain("revalidate-setlist");
   });
 
   it("pool exhausted on the pre-transaction item lookup → 503 (PUT and DELETE)", async () => {

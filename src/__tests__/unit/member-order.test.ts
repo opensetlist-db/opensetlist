@@ -16,7 +16,7 @@ vi.mock("@/lib/dataCache", () => ({
   cachedQuery: (_name: string, fn: unknown) => fn,
   eventTag: (id: unknown) => `event:${String(id)}`,
   revalidatePublicData: vi.fn(),
-  revalidateEventData: vi.fn(),
+  revalidateSetlistData: vi.fn(),
 }));
 vi.mock("@/lib/slug", () => ({
   resolveCanonicalSlug: vi.fn(async () => ({ ok: true, slug: "member" })),

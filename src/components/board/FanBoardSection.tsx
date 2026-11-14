@@ -49,16 +49,15 @@ import { pickFailureKey } from "@/lib/board/ballotClient";
  *     error or non-2xx collapses the block to ONE line and nothing else
  *     on the page changes.
  *   - A `{ enabled: false }` answer (the operator just turned the board
- *     off) or a locked stub (the show started) removes the block
+ *     off) or a response with no ranking removes the block
  *     entirely — the page simply looks like a non-board event.
- *   - The parent never mounts this while the event is ongoing, so no
- *     board request is made during a show.
+ *   - Live mode fetches the frozen ranking once per mount and skips
+ *     the personal ballot restore request.
  *
  * Each group shows two columns side by side (n15): "want" (wishes)
  * and "expect" (picks), each with its crowd TOP3 and the fan's own
  * entries. On a board event this block replaces the event-wide
- * wishlist before and after the show; during the show the page
- * renders the wishlist instead (and never mounts this).
+ * wishlist.
  *
  * After the show (completed) the same block is in result mode:
  * the expect column lists each group's shortlist — its TOP3 at the
@@ -115,6 +114,7 @@ export function FanBoardSection({
   seed,
   catalog = NO_CATALOG,
   anchorId,
+  liveReadOnly = false,
 }: {
   eventId: string;
   locale: string;
@@ -126,6 +126,7 @@ export function FanBoardSection({
   /** Element id for the block. Must not start with `board-` (see
    *  `fragment.ts`: the group fragment matches no element on purpose). */
   anchorId?: string;
+  liveReadOnly?: boolean;
 }) {
   const t = useTranslations("Board");
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -146,7 +147,7 @@ export function FanBoardSection({
   const ballot = useBoardBallot({
     eventId,
     locale,
-    active: state.kind === "ready",
+    active: state.kind === "ready" && !liveReadOnly,
   });
 
   // A tab left open across the start time goes read-only AT the start
@@ -239,7 +240,7 @@ export function FanBoardSection({
           locked: body.locked,
           refreshFailed: false,
           groups: body.groups,
-          tally: body.status === "completed" ? body.tally : null,
+          tally: !liveReadOnly && body.status === "completed" ? body.tally : null,
         });
       } catch {
         if (!disposed && ownGeneration === generation) {
@@ -278,7 +279,7 @@ export function FanBoardSection({
       cancelRead();
       if (readSession.current === session) readSession.current = null;
     };
-  }, [eventId, locale]);
+  }, [eventId, locale, liveReadOnly]);
 
   const mutate = async (action: () => Promise<PickOutcome>) => {
     const complete = readSession.current?.beginWrite();
@@ -391,7 +392,7 @@ export function FanBoardSection({
     setActiveId(nextId);
     requestAnimationFrame(() => document.getElementById(tabId(nextId))?.focus());
   };
-  const locked = state.kind === "ready" && (state.locked || lockedByServer);
+  const locked = state.kind === "ready" && (liveReadOnly || state.locked || lockedByServer);
   const tally = state.kind === "ready" ? state.tally : null;
   // A group is graded only when it HAS a shortlist: zero picks at the
   // lock means nothing to grade, not "0 of 0".
@@ -579,7 +580,7 @@ export function FanBoardSection({
             {t("tallyOverall", { played: tally.played, size: tally.size })}
           </p>
         )}
-        <p className={styles.boardLead}>{t("explainer")}</p>
+        {!liveReadOnly && <p className={styles.boardLead}>{t("explainer")}</p>}
         {state.kind === "ready" && state.refreshFailed && !locked && (
           <p role="status" className={styles.ballotNote}>
             {t("refreshError")}{" "}

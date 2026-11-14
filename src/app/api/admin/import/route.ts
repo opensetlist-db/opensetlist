@@ -18,7 +18,7 @@ import {
   isPattern2AlbumTrackVariant,
   isPattern3AlbumTrackVariant,
 } from "@/lib/albumTrackVariants";
-import { revalidateEventData, revalidatePublicData } from "@/lib/dataCache";
+import { revalidatePublicData, revalidateSetlistData } from "@/lib/dataCache";
 import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
@@ -1799,7 +1799,7 @@ async function importSetlistItems(rows: Record<string, string>[]) {
         },
         { timeout: 30_000, maxWait: 10_000 },
       );
-      revalidateEventData(eventId);
+      revalidateSetlistData(eventId);
       if (itemIds.length > 0) {
         results.push(`CLEARED: ${eventSlug} — ${itemIds.length} existing items deleted`);
       }

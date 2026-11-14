@@ -89,13 +89,12 @@ interface Props {
   isWishPredictOpen: boolean;
   /**
    * Fan board seed (n15) — null/omitted when the board is off (or,
-   * upcoming, before the wish/predict window opens). The block mounts
-   * only while `status` is upcoming (window open) or completed: the
-   * status here is the client's effective one, so a page that crosses
-   * into the show unmounts the board (no board request while ongoing)
-   * and brings the event-wide wishlist back in its place.
+   * upcoming, before the wish/predict window opens). The client's effective
+   * status switches the board from voting to frozen ranks to final results.
    */
   board?: BoardBlockSeed | null;
+  /** An enabled live board suppresses the standalone wishlist even without a seed. */
+  boardEnabled?: boolean;
   /**
    * Share-card header trio (v0.11.5+). Forwarded through to
    * `<ShareCardPreview>` so the captured PNG identifies the event
@@ -136,9 +135,7 @@ interface Props {
   /** When the predict/wish window opens; null once open or n/a. */
   predictOpensLabel?: VenueStartLabel | null;
   /**
-   * Sync health of this browser's live data (from
-   * `useRealtimeEventChannel`). Rendered beside the LIVE pill on
-   * ongoing events only. Optional so non-live callers/tests can omit.
+   * Sync health of this browser's live data, used to warn about delays.
    */
   freshness?: Freshness;
   /**
@@ -162,6 +159,7 @@ export function LiveSetlist({
   status,
   isWishPredictOpen,
   board = null,
+  boardEnabled = false,
   seriesName,
   eventTitle,
   dateLine,
@@ -223,20 +221,11 @@ export function LiveSetlist({
         ? [t("setlistNotRecorded")]
         : [t("noSetlist")];
 
-  // Fan board (n15) and the event-wide wishlist are mutually exclusive
-  // and decided by ONE condition: on a board event the board's "want"
-  // column replaces the wishlist while upcoming or completed (n15);
-  // while ongoing the board is not mounted and today's wishlist renders
-  // instead — its overall TOP3 is part of the live payload, unchanged.
-  //
-  // Upcoming also needs the wish/predict window open — the page already
-  // withholds the seed before it (one open date for all three
-  // surfaces); checking here too keeps this component honest on its
-  // own, so a seed handed in early can't mount a board ahead of the
-  // wishlist and Predict tab it shares a date with.
+  // The board replaces the legacy wishlist once participation opens.
   const showBoard =
     board != null &&
-    ((status === "upcoming" && isWishPredictOpen) || status === "completed");
+    ((status === "upcoming" && isWishPredictOpen) ||
+      status === "ongoing" || status === "completed");
 
   // Participation (wishlist or fan board) leads the page while the show
   // is upcoming — that is what a visitor can still act on. Once the show
@@ -274,6 +263,7 @@ export function LiveSetlist({
           gives TS a narrowing it can use to drop the cast on the
           prop pass-through. */}
       {!showBoard &&
+        !(status === "ongoing" && boardEnabled) &&
         startTime != null &&
         (status !== "upcoming" || isWishPredictOpen) && (
           // `key={eventId}` forces a remount when the user navigates
@@ -295,17 +285,15 @@ export function LiveSetlist({
             top3Wishes={top3Wishes}
           />
         )}
-      {/* Fan board (n15): in the wishlist's place (see `showBoard`).
-          Upcoming: the operator's flag AND the same open window as the
-          wishlist / Predict tab. Never mounted while ongoing/cancelled
-          (see the `board` prop). */}
+      {/* Remount on a status change to fetch the frozen board or final tally. */}
       {showBoard && board && (
           <FanBoardSection
-            key={eventId}
+            key={`${eventId}:${status}`}
             eventId={eventId}
             locale={locale}
             seed={board}
-            catalog={availableSongs}
+            catalog={status === "ongoing" ? undefined : availableSongs}
+            liveReadOnly={status === "ongoing"}
             anchorId={boardAnchorId}
           />
         )}
@@ -366,16 +354,8 @@ export function LiveSetlist({
           </span>
         )}
       </div>
-      {/* Live notice (18-v3 `.live-top`). The LIVE pill itself is in
-          the page Hero; here the card says the list is being filled in
-          and how fresh this browser's copy is. */}
-      {isOngoing && (
-        <div className={styles.liveNotice} data-testid="setlist-live-notice">
-          <strong>{detailT("liveNotice")}</strong>
-          {freshness && (
-            <LiveSyncIndicator freshness={freshness} locale={locale} />
-          )}
-        </div>
+      {isOngoing && freshness && (
+        <LiveSyncIndicator freshness={freshness} />
       )}
 
       {/* Tab-aware body. When `predict-{eventId}` is in localStorage,
