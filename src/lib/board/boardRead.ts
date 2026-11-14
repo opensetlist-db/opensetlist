@@ -8,7 +8,7 @@ import {
   eventBoardTag,
 } from "@/lib/dataCache";
 import { getEventStatus } from "@/lib/eventStatus";
-import { getAvailableSongsCached } from "@/lib/predict/availableSongs";
+import { getAvailableSongsByGroup } from "@/lib/predict/availableSongs";
 import { seriesPrimaryArtistOf } from "@/lib/board/boardGroups";
 import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
 import { readStarterMap } from "@/lib/board/starterPicks";
@@ -29,6 +29,7 @@ import type {
   BoardReadResponse,
   BoardSongRef,
 } from "@/lib/board/types";
+import type { AvailableSong } from "@/lib/types/predict";
 
 /**
  * Fan board read (n15) — control check first, aggregate second.
@@ -76,11 +77,11 @@ export const getBoardControlCached = cachedQuery(
 
 type AggregateStatus = "upcoming" | "ongoing" | "completed";
 
-/** A group's (already cached) base catalog as song id → display
+/** A group's eligible base songs as song id → display
  *  data. Holds live base songs only, so a missing id means the song is
  *  gone from the group's catalog (soft-deleted, or became a variant). */
 function catalogRefs(
-  catalog: Awaited<ReturnType<typeof getAvailableSongsCached>>,
+  catalog: readonly AvailableSong[],
 ): Map<string, BoardSongRef> {
   return new Map(
     catalog.map((s) => [
@@ -306,24 +307,26 @@ async function loadBoardAggregate(
       status === "completed" && lockAt ? loadSetlistSongs(eventId) : Promise.resolve(null),
     ]);
     const starters = readStarterMap(control?.boardStarterSongIds ?? null);
-    // Titles come from the group's (already cached) base catalog — the
-    // same entry the event page's picker reads — so the aggregate adds
-    // no song query for titles. Loaded only for groups that have
-    // something to title — or for every group while legacy wishes
-    // exist, since attributing them needs every catalog. A board with
-    // no starters, picks or wishes does no catalog reads.
     const hasLegacy = wishCounts.legacy.length > 0;
-    const catalogs = await Promise.all(
-      groups.map((g) => {
-        const groupId = String(g.artistId);
-        return hasLegacy ||
-          starters[groupId] ||
-          counts.songsByGroup.has(groupId) ||
-          wishCounts.songsByGroup.has(groupId)
-          ? getAvailableSongsCached(BigInt(g.artistId), locale)
-          : Promise.resolve([]);
-      }),
-    );
+    const songIds = new Set(wishCounts.legacy.map((row) => row.songId));
+    const catalogGroupIds: number[] = [];
+    for (const group of groups) {
+      const groupId = String(group.artistId);
+      const groupStarters = starters[groupId] ?? [];
+      const picks = counts.songsByGroup.get(groupId) ?? [];
+      const wishes = wishCounts.songsByGroup.get(groupId) ?? [];
+      if (hasLegacy || groupStarters.length || picks.length || wishes.length) {
+        catalogGroupIds.push(group.artistId);
+      }
+      for (const id of groupStarters) songIds.add(id);
+      for (const row of picks) songIds.add(row.songId);
+      for (const row of wishes) songIds.add(row.songId);
+    }
+    // Next bypasses nested data caches inside this aggregate. One batch
+    // avoids rerunning the picker for each group on every board refresh.
+    const catalogs = songIds.size
+      ? await getAvailableSongsByGroup(catalogGroupIds, songIds, locale)
+      : new Map<number, AvailableSong[]>();
     // Legacy wish → the FIRST group in board (roster) order whose base
     // catalog holds the song. A catalog is "credited to the group or
     // any of its units/solos", i.e. exactly the songs whose root is
@@ -334,12 +337,12 @@ async function loadBoardAggregate(
       // song id → first group (roster order) whose catalog holds it;
       // later groups never overwrite an earlier one.
       const groupOfSong = new Map<string, string>();
-      groups.forEach((g, i) => {
-        for (const s of catalogs[i]) {
+      for (const g of groups) {
+        for (const s of catalogs.get(g.artistId) ?? []) {
           const id = String(s.songId);
           if (!groupOfSong.has(id)) groupOfSong.set(id, String(g.artistId));
         }
-      });
+      }
       wishesByGroup = mergeLegacyWishes(
         wishCounts.songsByGroup,
         wishCounts.legacy,
@@ -349,9 +352,9 @@ async function loadBoardAggregate(
     // Picks and wishes filed under a group that is no longer on this
     // board (roster edit) simply have no column to land in; they stay
     // in the table.
-    const views: BoardGroupView[] = groups.map((g, i) => {
+    const views: BoardGroupView[] = groups.map((g) => {
       const groupId = String(g.artistId);
-      const songs = catalogRefs(catalogs[i]);
+      const songs = catalogRefs(catalogs.get(g.artistId) ?? []);
       const songOf = (songId: string) => songs.get(songId) ?? null;
       return {
         groupId,
