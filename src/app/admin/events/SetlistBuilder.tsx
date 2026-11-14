@@ -7,10 +7,10 @@ import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 import { nextSetlistPosition } from "@/lib/setlist-position";
 import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 import { buildArtistHierarchy } from "@/lib/artistHierarchyTree";
+import { createEventDisplayOrdering, type EventDisplayOrder } from "@/lib/eventDisplayOrder";
 import { saveSetlistRow } from "./setlistSave";
 import {
   deriveDefaultPerformerIds,
-  nextCreditOnPick,
   performerSourceIds,
   stageTypeForCredit,
 } from "./setlistBuilderRules";
@@ -27,43 +27,31 @@ type SongOption = {
   }[];
 };
 
-type StageIdentityOption = {
+type SelectedPerformer = {
   id: string;
   translations: { locale: string; name: string }[];
-  artistLinks: {
-    // `artist.id` is required for the per-row default-performer
-    // derivation (deriveDefaultPerformerIds) — it filters event
-    // performers down to those linked to the picked unit/solo/special
-    // Artist. The runtime data already carries it (see
-    // `/api/admin/stage-identities` and the page-level event include);
-    // this is purely a type-shape widening so the filter compiles.
+  sortOrder: number | null;
+  createdAt: string;
+  artistLinks: { artistId: number; sortOrder: number | null }[];
+};
+
+type StageIdentityOption = Omit<SelectedPerformer, "artistLinks"> & {
+  artistLinks: (SelectedPerformer["artistLinks"][number] & {
     artist: {
       id: number;
       translations: { locale: string; name: string }[];
     };
-  }[];
+  })[];
 };
 
 type ArtistOption = {
   id: number;
-  // Every source of these chips returns all Artist scalars, so `type`
-  // is present at runtime: `/api/admin/artists` search results, and the
-  // `artists: { include: { artist } }` Prisma includes behind
-  // `startEdit` (edit page `initialItems`, `reloadItems`, the
-  // insert-after response). Read by `selectArtist` (group → full_group,
-  // replace the credit — see nextCreditOnPick) and `handleStageTypeChange` (full_group →
-  // drop unit/solo credits). Typed optional only as a defensive
-  // default — an untyped chip is left alone rather than guessed at.
-  type?: string;
+  type: string;
   translations: { locale: string; name: string }[];
 };
 
-// Last-used row credit, carried into the next "새 항목" form so a
-// run of rows for the same group (a festival block is typically 4-6
-// songs by one group) doesn't need the artist re-picked every time.
-// Only song-type saves of NEW rows update it — editing an old row or
-// saving an MC/interval must not clobber the running block's credit.
-type StickyRowCredit = {
+// Recall is explicit so a new collaboration never inherits unrelated credits.
+type RowCredit = {
   stageType: string;
   artists: ArtistOption[];
 };
@@ -85,25 +73,11 @@ type SetlistItemData = {
       translations: { locale: string; title: string; variantLabel?: string | null }[];
     };
   }[];
-  performers: {
-    stageIdentity: {
-      id: string;
-      translations: { locale: string; name: string }[];
-    };
-  }[];
-  artists: {
-    artist: {
-      id: number;
-      // Artist scalar carried by the Prisma include — see ArtistOption.
-      type?: string;
-      translations: { locale: string; name: string }[];
-    };
-  }[];
+  performers: { stageIdentity: SelectedPerformer }[];
+  artists: { artist: ArtistOption }[];
 };
 
-// Unit/solo credits don't belong on a whole-group stage. Used when the
-// stage type is flipped to full_group; a group PICK replaces the whole
-// credit instead (nextCreditOnPick).
+// Unit/solo credits don't belong on a manually selected full-group stage.
 function isUnitOrSoloCredit(a: ArtistOption): boolean {
   return a.type === "unit" || a.type === "solo";
 }
@@ -143,31 +117,22 @@ export default function SetlistBuilder({
   eventId,
   initialItems,
   eventPerformers,
-  artistParents,
+  artistOrder,
+  eventGuestIds,
 }: {
   eventId: number;
   initialItems: SetlistItemData[];
   // Non-guest performers from EventPerformer; pre-selected on every
   // fresh new-item form so operators deselect rather than add.
   eventPerformers: StageIdentityOption[];
-  // Artist id → parent id (null for roots) for every non-deleted
-  // artist. Lets deriveDefaultPerformerIds match a group credit to
-  // members linked only to its units/solos. A few hundred entries;
-  // optional so a caller without it degrades to direct-link matching.
-  artistParents?: Record<string, string | null>;
+  artistOrder: EventDisplayOrder["artists"];
+  eventGuestIds: EventDisplayOrder["guestIds"];
 }) {
   const router = useRouter();
-  const hierarchy = useMemo(
-    () =>
-      artistParents
-        ? buildArtistHierarchy(
-            Object.entries(artistParents).map(([id, parentArtistId]) => ({
-              id,
-              parentArtistId,
-            })),
-          )
-        : undefined,
-    [artistParents],
+  const hierarchy = useMemo(() => buildArtistHierarchy(artistOrder), [artistOrder]);
+  const ordering = useMemo(
+    () => createEventDisplayOrdering({ artists: artistOrder, guestIds: eventGuestIds }),
+    [artistOrder, eventGuestIds],
   );
   const [items, setItems] = useState<SetlistItemData[]>(initialItems);
   const [stageIdentities, setStageIdentities] = useState<
@@ -197,8 +162,6 @@ export default function SetlistBuilder({
   const [formPerformanceType, setFormPerformanceType] = useState("live_performance");
   const [formType, setFormType] = useState("song");
   const [formSongIds, setFormSongIds] = useState<number[]>([]);
-  const [formPerformerIds, setFormPerformerIds] = useState<string[]>([]);
-  const [formArtistIds, setFormArtistIds] = useState<number[]>([]);
   // Default OFF: 곡 검색은 이벤트 IP(시리즈의 primary artist + sub-units
   // + 등장하는 모든 stage identity의 artist links)에 속한 곡만 후보로
   // 노출. 위키 `ip-expansion-june-2026.md` §"2. Multi-IP site support"
@@ -224,26 +187,34 @@ export default function SetlistBuilder({
 
   const [performerSearch, setPerformerSearch] = useState("");
   const [performerDropdownOpen, setPerformerDropdownOpen] = useState(false);
-  const [selectedPerformers, setSelectedPerformers] = useState<StageIdentityOption[]>([]);
-  const performerSearchRef = useRef<HTMLDivElement>(null);
+  const [selectedPerformers, setSelectedPerformers] = useState<SelectedPerformer[]>([]);
+  const performerSearchRef = useRef<HTMLDetailsElement>(null);
 
   const [artistSearch, setArtistSearch] = useState("");
   const [artistSearchResults, setArtistSearchResults] = useState<ArtistOption[]>([]);
   const [artistSearchLoading, setArtistSearchLoading] = useState(false);
   const [artistDropdownOpen, setArtistDropdownOpen] = useState(false);
   const [selectedArtists, setSelectedArtists] = useState<ArtistOption[]>([]);
-  const [stickyCredit, setStickyCredit] = useState<StickyRowCredit | null>(null);
+  const [lastCredit, setLastCredit] = useState<RowCredit | null>(null);
   // Id of a row just created by "+ 여기에 삽입" and opened for editing.
   // That row is a NEW row as far as the operator is concerned (the
   // insert-after endpoint only pre-creates a blank song/full_group
   // placeholder so the positions shift server-side), so it gets the same
-  // sticky-credit treatment as the "새 항목" form: pre-filled on open,
-  // 📌 고정 해제 visible, and its save updates the sticky credit. Editing
-  // any already-existing row keeps editingId !== freshInsertId and leaves
-  // the sticky credit alone.
+  // recall behavior as the "새 항목" form. Editing an existing row leaves
+  // the last credit alone.
   const [freshInsertId, setFreshInsertId] = useState<number | null>(null);
-  const artistSearchRef = useRef<HTMLDivElement>(null);
+  const artistSearchRef = useRef<HTMLDetailsElement>(null);
   const artistSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const orderedPerformers = useMemo(
+    () => ordering.sortMembers(stageIdentities, (performer) => performer, { kind: "mixed" }),
+    [ordering, stageIdentities],
+  );
+  const orderedSelection = useMemo(() => ordering.sortItem({
+    stageType: formStageType,
+    artists: selectedArtists.map((artist) => ({ artist })),
+    performers: selectedPerformers.map((stageIdentity) => ({ stageIdentity })),
+  }), [ordering, formStageType, selectedArtists, selectedPerformers]);
 
   useEffect(() => {
     fetch("/api/admin/stage-identities")
@@ -293,20 +264,18 @@ export default function SetlistBuilder({
   }
 
   function getFilteredPerformers() {
-    if (!performerSearch.trim()) return stageIdentities;
-    return stageIdentities.filter((si) => matchesIdentitySearch(si, performerSearch));
+    if (!performerSearch.trim()) return orderedPerformers;
+    return orderedPerformers.filter((si) => matchesIdentitySearch(si, performerSearch));
   }
 
   function selectPerformer(si: StageIdentityOption) {
-    if (!formPerformerIds.includes(si.id)) {
-      setFormPerformerIds((prev) => [...prev, si.id]);
+    if (!selectedPerformers.some((performer) => performer.id === si.id)) {
       setSelectedPerformers((prev) => [...prev, si]);
     }
     setPerformerSearch("");
   }
 
   function removePerformer(siId: string) {
-    setFormPerformerIds((prev) => prev.filter((id) => id !== siId));
     setSelectedPerformers((prev) => prev.filter((p) => p.id !== siId));
   }
 
@@ -332,18 +301,6 @@ export default function SetlistBuilder({
     searchArtists(value);
   }
 
-  // Push the (type, stageType, artistIds)-derived default roster into
-  // BOTH state buckets that drive the performer UI: `formPerformerIds`
-  // (the source of truth for save) and `selectedPerformers` (chip
-  // rendering, needs the full StageIdentityOption shape for names +
-  // artistLinks). The derived id set is always a subset of
-  // `eventPerformers` by construction, so we can rebuild the chip
-  // list by filtering that prop without a second lookup. Centralized
-  // here so every trigger (type change, stageType change, artist
-  // add/remove, resetForm) goes through one code path and the two
-  // states can't drift.
-  // Takes the credited artist OBJECTS (not ids): which of them feed
-  // the derivation depends on their type — see performerSourceIds.
   function applyDerivedPerformers(
     type: string,
     stageType: string,
@@ -356,7 +313,6 @@ export default function SetlistBuilder({
       eventPerformers,
       hierarchy,
     );
-    setFormPerformerIds(ids);
     setSelectedPerformers(eventPerformers.filter((p) => ids.includes(p.id)));
   }
 
@@ -392,67 +348,36 @@ export default function SetlistBuilder({
       nextArtists = selectedArtists.filter((a) => !isUnitOrSoloCredit(a));
       if (nextArtists.length !== selectedArtists.length) {
         setSelectedArtists(nextArtists);
-        setFormArtistIds(nextArtists.map((a) => a.id));
       }
     }
     applyDerivedPerformers(formType, newStageType, nextArtists);
   }
 
-  function selectArtist(
-    artist: ArtistOption,
-    opts: { addGroup?: boolean } = {},
-  ) {
-    if (formArtistIds.includes(artist.id)) {
-      setArtistSearch("");
-      setArtistSearchResults([]);
-      return;
-    }
-    // Replace or extend the credit list (see nextCreditOnPick for why
-    // groups never stack unless 「+ 그룹 추가」 asked for it), then let
-    // the new credit pick the stage type (stageTypeForCredit): group →
-    // full_group, unit → unit, single solo → solo. Saves the operator
-    // the stage-type select on almost every row.
-    const nextArtists = nextCreditOnPick(selectedArtists, artist, opts);
-    const nextArtistIds = nextArtists.map((a) => a.id);
-    setFormArtistIds(nextArtistIds);
-    setSelectedArtists(nextArtists);
+  function selectArtist(artist: ArtistOption) {
     setArtistSearch("");
     setArtistSearchResults([]);
-    const nextStageType = stageTypeForCredit(nextArtists, formStageType);
-    if (nextStageType !== formStageType) setFormStageType(nextStageType);
-    // Always re-derive on artist add (type≠song → no-op; otherwise a
-    // member-narrow — see deriveDefaultPerformerIds). Pass the
-    // post-change values explicitly (see comment on handleTypeChange
-    // for the batched-state rationale).
-    applyDerivedPerformers(formType, nextStageType, nextArtists);
+    if (!selectedArtists.some((selected) => selected.id === artist.id)) {
+      updateCredit([...selectedArtists, artist]);
+    }
   }
 
   function removeArtist(artistId: number) {
-    const nextArtists = selectedArtists.filter((a) => a.id !== artistId);
-    const nextArtistIds = nextArtists.map((a) => a.id);
-    setFormArtistIds(nextArtistIds);
-    setSelectedArtists(nextArtists);
-    // Removing the solo/unit chip from a "虹ヶ咲 + 歩夢" row means
-    // "back to the full group" — re-derive the stage the same way a
-    // pick does (no-op when the credit empties out).
-    const nextStageType = stageTypeForCredit(nextArtists, formStageType);
-    if (nextStageType !== formStageType) setFormStageType(nextStageType);
-    applyDerivedPerformers(formType, nextStageType, nextArtists);
+    updateCredit(selectedArtists.filter((artist) => artist.id !== artistId));
   }
 
-  // `sticky` defaults to the current state; handleSave passes the
-  // freshly computed credit explicitly because the setStickyCredit it
-  // just queued hasn't landed yet.
-  function resetForm(sticky: StickyRowCredit | null = stickyCredit) {
-    const seedStageType = sticky?.stageType ?? "full_group";
-    const seedArtists = sticky?.artists ?? [];
-    const seedArtistIds = seedArtists.map((a) => a.id);
+  function updateCredit(artists: ArtistOption[], stageType = stageTypeForCredit(artists, formStageType)) {
+    setSelectedArtists(artists);
+    setFormStageType(stageType);
+    applyDerivedPerformers(formType, stageType, artists);
+  }
+
+  function resetForm() {
     setEditingId(null);
     setFreshInsertId(null);
     setSaveError(null);
     setFormPosition(nextSetlistPosition(items));
     setFormIsEncore(false);
-    setFormStageType(seedStageType);
+    setFormStageType("full_group");
     setFormUnitName("");
     setFormNote("");
     setFormStatus("confirmed");
@@ -461,30 +386,10 @@ export default function SetlistBuilder({
     setFormSongIds([]);
     setSelectedSongs([]);
     setPerformerSearch("");
-    setFormArtistIds(seedArtistIds);
     setArtistSearch("");
     setArtistSearchResults([]);
-    setSelectedArtists(seedArtists);
-    // Seed performers via the same derivation the trigger handlers
-    // use — for the default (type=song, stageType=full_group,
-    // artistIds=[]) this collapses to "every non-guest event
-    // performer", matching the pre-derive behavior of this function.
-    // startEdit() intentionally bypasses this path so opening an
-    // existing item doesn't clobber the saved performer set; only
-    // subsequent stageType/type/artist edits re-derive. With a
-    // sticky credit the roster follows it (e.g. the Aqours members).
-    applyDerivedPerformers("song", seedStageType, seedArtists);
-  }
-
-  // "고정 해제" — drop the sticky credit and reset the open form's
-  // credit fields back to the defaults, leaving the song/note/position
-  // the operator may already have typed untouched.
-  function clearStickyCredit() {
-    setStickyCredit(null);
-    setFormStageType("full_group");
-    setFormArtistIds([]);
     setSelectedArtists([]);
-    applyDerivedPerformers(formType, "full_group", []);
+    applyDerivedPerformers("song", "full_group", []);
   }
 
   // Returns the fresh list (also pushed into state), or null on any
@@ -518,15 +423,7 @@ export default function SetlistBuilder({
     setFormType(item.type ?? "song");
     setFormSongIds(item.songs.map((s) => s.song.id));
     setSelectedSongs(item.songs.map((s) => s.song));
-    setFormPerformerIds(item.performers.map((p) => p.stageIdentity.id));
-    setSelectedPerformers(
-      item.performers.map((p) => ({
-        id: p.stageIdentity.id,
-        translations: p.stageIdentity.translations,
-        artistLinks: [],
-      }))
-    );
-    setFormArtistIds(item.artists?.map((a) => a.artist.id) ?? []);
+    setSelectedPerformers(item.performers.map((p) => p.stageIdentity));
     setSelectedArtists(item.artists?.map((a) => a.artist) ?? []);
     setShowForm(true);
   }
@@ -545,8 +442,8 @@ export default function SetlistBuilder({
       performanceType: formPerformanceType,
       type: formType,
       songIds: formType === "song" ? formSongIds : [],
-      performerIds: formPerformerIds,
-      artistIds: formArtistIds,
+      performerIds: orderedSelection.performers.map(({ stageIdentity }) => stageIdentity.id),
+      artistIds: orderedSelection.artists.map(({ artist }) => artist.id),
     };
 
     const url = editingId
@@ -598,12 +495,10 @@ export default function SetlistBuilder({
       }
 
       const isNewRow = !editingId || editingId === freshInsertId;
-      const nextSticky =
-        isNewRow && formType === "song"
-          ? { stageType: formStageType, artists: selectedArtists }
-          : stickyCredit;
-      setStickyCredit(nextSticky);
-      resetForm(nextSticky);
+      if (isNewRow && formType === "song") {
+        setLastCredit({ stageType: formStageType, artists: selectedArtists });
+      }
+      resetForm();
       setShowForm(false);
       if (!outcome.items) setListStale(true);
       router.refresh();
@@ -682,17 +577,6 @@ export default function SetlistBuilder({
         await reloadItems();
         startEdit(newItem);
         setFreshInsertId(newItem.id);
-        // startEdit restored the placeholder's own (empty) credit; seed
-        // the sticky one instead, exactly as resetForm does for 새 항목.
-        // The placeholder is always type=song, so derive the roster for
-        // a song row.
-        if (stickyCredit && stickyCredit.artists.length > 0) {
-          const ids = stickyCredit.artists.map((a) => a.id);
-          setFormStageType(stickyCredit.stageType);
-          setFormArtistIds(ids);
-          setSelectedArtists(stickyCredit.artists);
-          applyDerivedPerformers("song", stickyCredit.stageType, stickyCredit.artists);
-        }
       } else {
         const err = await res.json().catch(() => null);
         alert(err?.error || "삽입에 실패했습니다.");
@@ -1007,27 +891,23 @@ export default function SetlistBuilder({
           </div>
 
           {/* Artist selector */}
-          <div ref={artistSearchRef}>
-            <div className="mb-1 flex items-center gap-2">
-              <label className="block text-xs font-medium">
-                아티스트 (그룹/유닛/솔로)
-              </label>
-              {stickyCredit &&
-                stickyCredit.artists.length > 0 &&
-                (!editingId || editingId === freshInsertId) && (
-                <button
-                  type="button"
-                  onClick={clearStickyCredit}
-                  className="text-xs text-zinc-500 hover:text-red-600 hover:underline"
-                  title="직전 항목의 아티스트/스테이지 타입 자동 입력 해제"
-                >
-                  📌 고정 해제
-                </button>
-              )}
-            </div>
+          <details open ref={artistSearchRef}>
+            <summary className="mb-2 cursor-pointer text-sm font-medium">
+              아티스트 (그룹/유닛/솔로) <span className="text-xs text-zinc-500">{selectedArtists.length} 선택</span>
+            </summary>
+            {lastCredit && lastCredit.artists.length > 0 && selectedArtists.length === 0 &&
+              formType === "song" && (!editingId || editingId === freshInsertId) && (
+              <button
+                type="button"
+                onClick={() => updateCredit(lastCredit.artists, lastCredit.stageType)}
+                className="mb-2 text-xs text-purple-700 hover:underline"
+              >
+                직전 아티스트 불러오기
+              </button>
+            )}
             {selectedArtists.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {selectedArtists.map((artist) => (
+                {orderedSelection.artists.map(({ artist }) => (
                   <span
                     key={artist.id}
                     className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-800"
@@ -1036,6 +916,7 @@ export default function SetlistBuilder({
                     <button
                       type="button"
                       onClick={() => removeArtist(artist.id)}
+                      aria-label={`${getArtistName(artist)} 제거`}
                       className="ml-0.5 text-purple-500 hover:text-purple-700"
                     >
                       ×
@@ -1059,39 +940,17 @@ export default function SetlistBuilder({
               {artistDropdownOpen && artistSearch.trim() && (
                 <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
                   {artistSearchResults.map((artist) => {
-                    const isSelected = formArtistIds.includes(artist.id);
-                    // Offered only when picking this group would
-                    // otherwise REPLACE another group credit — i.e. the
-                    // multi-group-collab case. Plain click still
-                    // replaces (the common case: next festival block).
-                    const canAddGroup =
-                      !isSelected &&
-                      artist.type === "group" &&
-                      selectedArtists.some((a) => a.type === "group");
+                    const isSelected = selectedArtists.some((selected) => selected.id === artist.id);
                     return (
-                      <div
+                      <button
                         key={artist.id}
-                        className={`flex items-center hover:bg-purple-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
+                        type="button"
+                        onClick={() => selectArtist(artist)}
+                        className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-purple-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
                       >
-                        <button
-                          type="button"
-                          onClick={() => selectArtist(artist)}
-                          className="block flex-1 px-3 py-1.5 text-left text-sm"
-                        >
-                          {isSelected && <span className="mr-1">✓</span>}
-                          {getArtistName(artist)}
-                        </button>
-                        {canAddGroup && (
-                          <button
-                            type="button"
-                            onClick={() => selectArtist(artist, { addGroup: true })}
-                            className="mr-2 shrink-0 rounded px-1.5 py-0.5 text-xs text-purple-600 hover:bg-purple-100"
-                            title="기존 그룹 크레딧을 유지한 채 이 그룹을 추가 (합동 곡)"
-                          >
-                            + 그룹 추가
-                          </button>
-                        )}
-                      </div>
+                        {isSelected && <span className="mr-1">✓</span>}
+                        {getArtistName(artist)}
+                      </button>
                     );
                   })}
                   {!artistSearchLoading && artistSearchResults.length === 0 && (
@@ -1100,13 +959,13 @@ export default function SetlistBuilder({
                 </div>
               )}
             </div>
-          </div>
+          </details>
 
           {/* Song selector — only for song type */}
-          {formType === "song" && <div>
-            <label className="mb-1 block text-xs font-medium">
-              곡 (복수 선택 = 메들리)
-            </label>
+          {formType === "song" && <details open>
+            <summary className="mb-2 cursor-pointer text-sm font-medium">
+              곡 (복수 선택 = 메들리) <span className="text-xs text-zinc-500">{selectedSongs.length} 선택</span>
+            </summary>
             {/* Selected song tags */}
             {selectedSongs.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
@@ -1119,6 +978,7 @@ export default function SetlistBuilder({
                     <button
                       type="button"
                       onClick={() => removeSong(song.id)}
+                      aria-label={`${getSongName(song)} 제거`}
                       className="ml-0.5 text-blue-500 hover:text-blue-700"
                     >
                       ×
@@ -1177,15 +1037,17 @@ export default function SetlistBuilder({
             >
               + 새 곡 추가
             </a>
-          </div>}
+          </details>}
 
           {/* Performer selector */}
-          <div ref={performerSearchRef}>
-            <label className="mb-1 block text-xs font-medium">출연진</label>
+          <details open ref={performerSearchRef}>
+            <summary className="mb-2 cursor-pointer text-sm font-medium">
+              출연진 <span className="text-xs text-zinc-500">{selectedPerformers.length} 선택</span>
+            </summary>
             {/* Selected performer tags */}
             {selectedPerformers.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {selectedPerformers.map((si) => (
+                {orderedSelection.performers.map(({ stageIdentity: si }) => (
                   <span
                     key={si.id}
                     className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800"
@@ -1194,6 +1056,7 @@ export default function SetlistBuilder({
                     <button
                       type="button"
                       onClick={() => removePerformer(si.id)}
+                      aria-label={`${getSIName(si)} 제거`}
                       className="ml-0.5 text-green-500 hover:text-green-700"
                     >
                       ×
@@ -1216,7 +1079,7 @@ export default function SetlistBuilder({
               {performerDropdownOpen && (
                 <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
                   {getFilteredPerformers().map((si) => {
-                    const isSelected = formPerformerIds.includes(si.id);
+                    const isSelected = selectedPerformers.some((performer) => performer.id === si.id);
                     const artistName = si.artistLinks[0]
                       ? (si.artistLinks[0].artist.translations.find(
                           (t) => t.locale === "ko"
@@ -1243,7 +1106,7 @@ export default function SetlistBuilder({
                 </div>
               )}
             </div>
-          </div>
+          </details>
 
           {reconciling && (
             <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">

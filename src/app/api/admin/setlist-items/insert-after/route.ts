@@ -124,7 +124,7 @@ async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
         // Official member order, matching the builder's initial
         // render of the same row (admin event edit page).
         performers: {
-          include: { stageIdentity: { include: { translations: true } } },
+          include: { stageIdentity: { include: { translations: true, artistLinks: { select: { artistId: true, sortOrder: true } } } } },
         },
         artists: {
           include: { artist: { include: { translations: true } } },

@@ -33,7 +33,7 @@ function fetchAdminEvent(tx: Prisma.TransactionClient, id: bigint) {
           performers: {
             orderBy: byStageIdentityOrderBy(),
             include: {
-              stageIdentity: { include: { translations: true } },
+              stageIdentity: { include: { translations: true, artistLinks: { select: { artistId: true, sortOrder: true } } } },
             },
           },
           artists: {
