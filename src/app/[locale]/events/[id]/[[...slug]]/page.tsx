@@ -30,6 +30,7 @@ import type { Impression } from "@/components/EventImpressions";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { LiveEventLayout } from "@/components/LiveEventLayout";
 import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
+import { groupBadgeLabel } from "@/lib/setlistRowBadge";
 import {
   deriveFestivalFilters,
   deriveUnitFilters,
@@ -824,24 +825,16 @@ export default async function EventPage({ params }: Props) {
       getTranslations("Predict.picker"),
     ]);
     availableSongs = songs;
-    const primaryArtistName = eventDisplayField(
-      seriesPrimaryArtist.originalName,
-      seriesPrimaryArtist.originalLanguage,
-      seriesPrimaryArtist.translations,
-      locale,
-      "name",
-    );
+    const primaryArtistName = groupBadgeLabel(seriesPrimaryArtist, locale);
     const safePrimaryArtistId = safeBigIntToNumber(seriesPrimaryArtist.id);
     unitFilters = deriveUnitFilters(
       songs,
       safePrimaryArtistId,
-      primaryArtistName?.main ?? displayNameWithFallback(seriesPrimaryArtist, seriesPrimaryArtist.translations, locale, "short"),
+      primaryArtistName.label,
       predictPickerTrans("filterAll"),
       predictPickerTrans("filterOthers"),
       colors.primary,
-      primaryArtistName
-        ? { labelSub: primaryArtistName.sub, labelLang: primaryArtistName.mainLang }
-        : undefined,
+      { labelLang: primaryArtistName.labelLang },
     );
   } else if (resolvedStatus === "upcoming") {
     const [hierarchy, collaborationArtistIds] = await Promise.all([

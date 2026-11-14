@@ -66,9 +66,7 @@ export function pickRowArtistBadges(
 export const MAX_ROW_BADGES = 2;
 
 /**
- * Label for a group-type row badge. Groups need a guaranteed SHORT
- * form (「蓮ノ空」, 「虹ヶ咲」) — the badge sits in a narrow column and
- * a full group name ("虹ヶ咲学園スクールアイドル同好会") clips.
+ * Compact artist label for badges, group tabs and picker filters.
  * `displayNameWithFallback(..., "short")` falls back from the locale's
  * missing `shortName` to the locale's long `name` before it ever
  * reaches `originalShortName`, so a group with only a long ko
@@ -81,15 +79,15 @@ export const MAX_ROW_BADGES = 2;
  * originalName → "".
  */
 export function groupBadgeLabel(
-  artist: Pick<ArtistRef, "originalName" | "originalShortName" | "translations">,
+  artist: Pick<ArtistRef, "originalName" | "originalShortName" | "originalLanguage" | "translations">,
   locale: string,
-): string {
+) {
   const t = artist.translations.find((tr) => tr.locale === locale);
-  return (
-    t?.shortName ||
-    artist.originalShortName ||
-    t?.name ||
-    artist.originalName ||
-    ""
-  );
+  const shortName = t?.shortName?.trim();
+  if (shortName) return { label: shortName, labelLang: locale };
+  const originalShortName = artist.originalShortName?.trim();
+  if (originalShortName) return { label: originalShortName, labelLang: artist.originalLanguage };
+  const name = t?.name?.trim();
+  if (name) return { label: name, labelLang: locale };
+  return { label: artist.originalName?.trim() ?? "", labelLang: artist.originalLanguage };
 }

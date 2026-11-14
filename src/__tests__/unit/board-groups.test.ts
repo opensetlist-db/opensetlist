@@ -161,7 +161,7 @@ describe("fanBoardRootIds (side projects off the board)", () => {
 });
 
 describe("resolveBoardGroups", () => {
-  it("festival: groups in festival order with original and exact locale names", () => {
+  it("festival: groups keep their order and ids with localized short names", () => {
     const groups = resolveBoardGroups({
       roster: FES_ROSTER,
       hierarchy: H,
@@ -171,14 +171,14 @@ describe("resolveBoardGroups", () => {
       locale: "ko",
     });
     expect(groups).toEqual([
-      { artistId: 1, slug: "group-1", label: "原名1", labelSub: "그룹1", labelLang: "ja", color: "#000001" },
-      { artistId: 10, slug: "group-10", label: "原名10", labelSub: "그룹10", labelLang: "ja", color: "#000001" },
-      { artistId: 20, slug: "group-20", label: "原名20", labelSub: "그룹20", labelLang: "ja", color: "#000002" },
-      { artistId: 30, slug: "group-30", label: "原名30", labelSub: "그룹30", labelLang: "ja", color: "#000003" },
+      { artistId: 1, slug: "group-1", label: "그1", labelLang: "ko", color: "#000001" },
+      { artistId: 10, slug: "group-10", label: "그10", labelLang: "ko", color: "#000001" },
+      { artistId: 20, slug: "group-20", label: "그20", labelLang: "ko", color: "#000002" },
+      { artistId: 30, slug: "group-30", label: "그30", labelLang: "ko", color: "#000003" },
     ]);
   });
 
-  it("festival: a distinct spelling in the original language is also displayed", () => {
+  it("festival: uses the original short name when the locale has only a full name", () => {
     const groups = resolveBoardGroups({
       roster: [member("kanon", [rosterArtist(10, null)])],
       hierarchy: H,
@@ -186,7 +186,7 @@ describe("resolveBoardGroups", () => {
       groupArtists: [row(10)],
       locale: "ja",
     });
-    expect(groups).toMatchObject([{ label: "原名10", labelSub: "グループ10", labelLang: "ja" }]);
+    expect(groups).toMatchObject([{ label: "原10", labelLang: "ja" }]);
   });
 
   it("festival: a root whose display row is missing drops out, order kept", () => {
@@ -210,7 +210,7 @@ describe("resolveBoardGroups", () => {
       locale: "ko",
     });
     expect(groups).toEqual([
-      { artistId: 1, slug: "group-1", label: "原名1", labelSub: "그룹1", labelLang: "ja", color: "#fb8a9b" },
+      { artistId: 1, slug: "group-1", label: "그1", labelLang: "ko", color: "#fb8a9b" },
     ]);
   });
 

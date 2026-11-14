@@ -19,6 +19,7 @@ import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
 import {
+  groupBadgeLabel,
   MAX_ROW_BADGES,
   pickRowArtistBadges,
 } from "@/lib/setlistRowBadge";
@@ -213,14 +214,8 @@ export function SetlistRow({
   // Credits with no resolvable name are dropped from the chip list;
   // if that leaves nothing, the row shows the stageType fallback.
   const namedBadges = badgeArtists
-    .map((artist) => ({
-      artist,
-      name: resolveDisplayPair(
-        { original: artist.originalName ?? "", originalLanguage: artist.originalLanguage },
-        artist.translations, locale, "name",
-      ),
-    }))
-    .filter(({ name }) => name.main || name.sub);
+    .map((artist) => ({ artist, ...groupBadgeLabel(artist, locale) }))
+    .filter(({ label }) => label);
   const shownBadges = namedBadges.slice(0, MAX_ROW_BADGES);
   const hiddenBadges = namedBadges.slice(MAX_ROW_BADGES);
 
@@ -307,26 +302,21 @@ export function SetlistRow({
             panelTitle={creditsT("songPerformers")}
           >
             <div className={styles.creditLine}>
-              {shownBadges.map(({ artist, name }) => (
+              {shownBadges.map(({ artist, label, labelLang }) => (
                 <UnitBadge
                   key={artist.orderId ?? artist.id}
                   artistColor={artist.color}
                   locale={locale}
                   artistId={artist.orderId ?? artist.id}
                   artistSlug={artist.slug}
-                  label={
-                    <>
-                      <span lang={name.main ? artist.originalLanguage : locale}>{name.main || name.sub}</span>
-                      {name.main && name.sub && <span lang={locale} className="block text-[0.85em]">{name.sub}</span>}
-                    </>
-                  }
+                  label={<span lang={labelLang}>{label}</span>}
                 />
               ))}
               {hiddenBadges.length > 0 && (
                 <span
                   className={styles.artistTag}
                   style={{ "--artist": colors.border } as React.CSSProperties}
-                  title={hiddenBadges.map(({ name }) => [name.main, name.sub].filter(Boolean).join(" / ")).join(", ")}
+                  title={hiddenBadges.map(({ label }) => label).join(", ")}
                 >
                   +{hiddenBadges.length}
                 </span>
