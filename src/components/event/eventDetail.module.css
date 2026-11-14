@@ -297,27 +297,6 @@
   --bar: var(--accent-info-panel);
 }
 
-/*
- * "Updating live" notice. Neutral since consistency-03-v3 §8: the LIVE
- * colour belongs to the hero badge and rule, so the in-card notice is a
- * plain grey-blue box with navy text instead of a second pink signal.
- */
-.liveNotice {
-  margin-bottom: 18px;
-  padding: 14px 18px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-notice-neutral);
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.liveNotice strong {
-  display: block;
-  margin-bottom: 3px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--foreground);
-}
 .emptyCopy {
   margin: 0;
   padding: 4px 0;

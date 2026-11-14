@@ -16,6 +16,7 @@ vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }))
 
 vi.mock("@/lib/dataCache", () => ({
   revalidateEventData: vi.fn(() => log.push("revalidate")),
+  revalidateSetlistData: vi.fn(() => log.push("revalidate")),
 }));
 
 // The real `requestWarmFault` (the routes' header parsing is under

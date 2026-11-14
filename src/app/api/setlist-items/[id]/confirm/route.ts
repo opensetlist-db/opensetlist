@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { CONFLICT_CONFIRMATION_THRESHOLD } from "@/lib/config";
-import { revalidateEventData } from "@/lib/dataCache";
+import { revalidateSetlistData } from "@/lib/dataCache";
 import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
@@ -253,9 +253,8 @@ export async function POST(_req: Request, { params }: RouteProps) {
             : null;
         });
 
-        // Promotion changes what the event page renders (rumoured →
-        // confirmed); expire its cached SSR read.
-        revalidateEventData(eventId);
+        // Resolving a conflict can hide competing rows from the setlist.
+        revalidateSetlistData(eventId);
         return NextResponse.json(
           { ok: true, promoted: true },
           { headers: { "Cache-Control": "private, no-store" } },

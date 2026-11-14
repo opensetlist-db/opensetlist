@@ -4,7 +4,6 @@
 // Display (layout matrix):
 //   - identity title 32px at >= 700px, 24px below, line-height 1.4
 //   - LIVE hero: 3px coral left rule + warm wash, shared LIVE badge with dot
-//   - neutral "updating live" notice
 //   - song-name links >= 24px tall (reactions / rows untouched)
 //   - per-song performer toggle beside the credit chips (28x28, aria-
 //     expanded / aria-controls, titled panel, keyboard), and individual
@@ -44,10 +43,8 @@ const PRE = "107"; // upcoming, window not yet open
 
 const MOBILE_BELOW = 700;
 const CORAL = "rgb(229, 71, 59)";
-const NOTICE_BG = "rgb(247, 249, 252)";
-const INK = "rgb(23, 36, 69)";
 const FOCUS = /^solid 3px rgb\(23, 79, 175\) 4px/;
-const CONTRAST = ["liveNotice", "panelCount"];
+const CONTRAST = ["panelCount"];
 // Measured once a performer panel is open (closed panels are hidden).
 const CONTRAST_OPEN = ["creditBody"];
 
@@ -87,7 +84,6 @@ function readDisplay() {
   const h1 = main.querySelector("h1");
   const hs = getComputedStyle(h1);
   const heroS = getComputedStyle(hero);
-  const notice = main.querySelector('[data-testid="setlist-live-notice"]');
   const card = main.querySelector('section[id^="setlist-card-"]');
   const links = card ? [...card.querySelectorAll('li a[href*="/songs/"]')] : [];
   const rows = card ? [...card.querySelectorAll("ol > li, ul > li")].filter((li) => li.className.includes("songRow")) : [];
@@ -100,7 +96,6 @@ function readDisplay() {
     heroRule: `${heroS.borderLeftStyle} ${heroS.borderLeftWidth} ${heroS.borderLeftColor}`,
     heroBg: heroS.backgroundImage,
     badgeDot: !!hero?.querySelector('span > span[aria-hidden="true"]'),
-    notice: notice ? { bg: getComputedStyle(notice).backgroundColor, strong: getComputedStyle(notice.querySelector("strong")).color } : null,
     links: links.map((a) => ({ h: a.getBoundingClientRect().height, display: getComputedStyle(a).display })),
     rowCount: rows.length,
     toggles: toggles.map((b) => {
@@ -202,7 +197,6 @@ const scenario = {
         check(name(`title ${want}px / 1.4 / -.03em`), d.title.size === want && Math.abs(d.title.lh - 1.4) < 0.01 && Math.abs(d.title.ls + 0.03) < 0.002 && d.title.wrap === "anywhere", JSON.stringify(d.title));
         check(name("LIVE hero rule + warm wash"), d.heroRule === `solid 3px ${CORAL}` && /linear-gradient/.test(d.heroBg), `${d.heroRule} | ${d.heroBg.slice(0, 80)}`);
         check(name("LIVE badge with dot"), d.badgeDot);
-        check(name("neutral live notice"), d.notice?.bg === NOTICE_BG && d.notice?.strong === INK, JSON.stringify(d.notice));
         const short = d.links.filter((l) => l.h < 24);
         check(name("song links >= 24px"), d.links.length > 0 && short.length === 0, `${short.length}/${d.links.length} under 24px`);
         // Festival record: every song row has chips, so every performer
@@ -267,7 +261,7 @@ const scenario = {
         if (d.status !== "completed") return h.skip(name("completed checks"), `record ${DONE} is ${d.status}`);
         const want = width >= MOBILE_BELOW ? 32 : 24;
         check(name(`title ${want}px`), d.title.size === want, String(d.title.size));
-        check(name("no LIVE rule / notice"), !d.heroRule.includes(" 3px ") && d.notice === null, d.heroRule);
+        check(name("no LIVE rule"), !d.heroRule.includes(" 3px "), d.heroRule);
         check(name("chip-less performer names immediately visible"), d.inlinePerformers.length > 0 && d.inlinePerformers.every((p) => p.text && p.visible && !p.clipped), JSON.stringify(d.inlinePerformers));
         check(name("performers are direct row text"), d.inlinePerformers.length > 0 && d.inlinePerformers.every((p) => p.directParagraph), String(d.inlinePerformers.length));
         check(name("roster: one grid"), !!d.roster && d.roster.more === 0 && d.roster.cards === d.roster.count, JSON.stringify(d.roster && { cards: d.roster.cards, count: d.roster.count }));
@@ -290,7 +284,7 @@ const scenario = {
           const d = await page.evaluate(readDisplay);
           if (d.status !== "upcoming") return h.skip(name(`${label} checks`), `record ${id} is ${d.status}`);
           check(name(`title ${width >= MOBILE_BELOW ? 32 : 24}px`), d.title.size === (width >= MOBILE_BELOW ? 32 : 24), String(d.title.size));
-          check(name("no LIVE rule / notice"), !d.heroRule.includes(" 3px ") && d.notice === null && !d.badgeDot, d.heroRule);
+          check(name("no LIVE rule or badge"), !d.heroRule.includes(" 3px ") && !d.badgeDot, d.heroRule);
           check(name("roster: one grid"), !d.roster || (d.roster.more === 0 && d.roster.cards === d.roster.count), JSON.stringify(d.roster && { cards: d.roster.cards, count: d.roster.count }));
           // Positive control: the LIVE / completed matrices above found the
           // card; before the show it must not render at all.

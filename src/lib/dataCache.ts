@@ -71,6 +71,7 @@ export const CACHE_TTL = {
  * ongoing anyway.
  */
 export const PUBLIC_DATA_TAG = "public-data";
+export const HOME_EVENTS_TAG = "home-events";
 
 export function eventTag(eventId: bigint | number | string): string {
   return `event:${eventId.toString()}`;
@@ -397,6 +398,11 @@ export function revalidatePublicData(): boolean {
  */
 export function revalidateEventData(eventId: bigint | number | string): void {
   expireTags([eventTag(eventId)]);
+}
+
+/** Expire the event and home cards after a write that can change the song count. */
+export function revalidateSetlistData(eventId: bigint | number | string): void {
+  expireTags([eventTag(eventId), HOME_EVENTS_TAG]);
 }
 
 /** Expire only an event's cached impressions page (see `eventImpressionsTag`). */

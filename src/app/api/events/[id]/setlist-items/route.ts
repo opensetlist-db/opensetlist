@@ -6,7 +6,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { getEventStatus } from "@/lib/eventStatus";
 import { deriveStageType, type ItemType } from "@/lib/setlistStageType";
-import { revalidateEventData } from "@/lib/dataCache";
+import { revalidateEventData, revalidateSetlistData } from "@/lib/dataCache";
 import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
@@ -679,7 +679,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       }, (r) => r.rev);
 
       const { _count, ...createdRest } = created;
-      revalidateEventData(eventId);
+      revalidateSetlistData(eventId);
       return NextResponse.json(
         {
           ok: true,

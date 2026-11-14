@@ -27,6 +27,7 @@ vi.mock("@/lib/dataCache", async (importOriginal) => ({
     (...args: A) =>
       fn(...args),
   revalidateEventData: vi.fn(),
+  revalidateSetlistData: vi.fn(),
   revalidatePublicData: vi.fn(),
   revalidateEventImpressions: vi.fn(),
 }));

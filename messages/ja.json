@@ -392,7 +392,6 @@
     "viewSeries": "シリーズを見る",
     "creditsToggle": "出演クレジット",
     "songPerformers": "この曲の出演メンバー",
-    "liveNotice": "リアルタイムで更新中",
     "cancelledTitle": "開催中止",
     "cancelledBody": "この公演は中止です。聴きたい曲・予想曲の保存や編集はできません。",
     "opensTitle": "参加受付の開始",
@@ -485,7 +484,6 @@
     "startPredict": "セットリスト予想を作成",
     "predictedComingSoon": "予想セットリスト — 近日公開",
     "unknownSong": "曲名確認中",
-    "lastSync": "最終同期 {time}",
     "updatesDelayed": "更新が遅れています"
   },
   "Predict": {
