@@ -1,4 +1,4 @@
-import { orderSetlistWriteResponse } from "@/lib/readEventDisplayOrder";
+import { orderSetlistWriteResponse, withDisplayIds } from "@/lib/readEventDisplayOrder";
 import { NextRequest, NextResponse } from "next/server";
 import {
   liveWriterTransaction,
@@ -124,7 +124,7 @@ async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
         // Official member order, matching the builder's initial
         // render of the same row (admin event edit page).
         performers: {
-          include: { stageIdentity: { include: { translations: true } } },
+          include: { stageIdentity: { include: { translations: true, artistLinks: { select: { artistId: true, sortOrder: true } } } } },
         },
         artists: {
           include: { artist: { include: { translations: true } } },
@@ -136,7 +136,7 @@ async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
     // rows were shifted above — clients refetch the snapshot once.
     const ordered = await orderSetlistWriteResponse(tx, eid, item);
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eid);
-    return { item: ordered, rev };
+    return { item: withDisplayIds(ordered), rev };
   }, (r) => r?.rev, { warmFault });
 
   if (!result) {

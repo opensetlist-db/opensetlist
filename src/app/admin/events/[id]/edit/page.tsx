@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getAdminEventWithOrderedSetlist } from "@/lib/adminEventSetlist";
-import { serializeBigInt } from "@/lib/utils";
-import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
+import { serializeBigInt, serializeBigIntAsString } from "@/lib/utils";
 import EventForm from "../../EventForm";
 import SetlistBuilder from "../../SetlistBuilder";
 import BoardSettings from "../../BoardSettings";
@@ -15,7 +14,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function EditEventPage({ params }: Props) {
   const { id } = await params;
-  const event = await getAdminEventWithOrderedSetlist(BigInt(id));
+  const event = await getAdminEventWithOrderedSetlist(BigInt(id), true);
   if (!event) notFound();
 
   const data = serializeBigInt(event);
@@ -48,13 +47,6 @@ export default async function EditEventPage({ params }: Props) {
     title: event.originalShortName || event.originalName || `#${event.id}`,
     caption: [logoDate, event.originalVenue].filter(Boolean).join(" · ") || null,
   };
-
-  // Artist tree for SetlistBuilder's default-performer matching (a
-  // group credit must match members linked only to its units/solos).
-  // Flattened to a plain object because Maps don't cross the RSC
-  // boundary; the builder rebuilds the lookup client-side.
-  const hierarchy = await getArtistHierarchyCached();
-  const artistParents = Object.fromEntries(hierarchy.parentOf);
 
   return (
     <div className="space-y-10">
@@ -161,51 +153,21 @@ export default async function EditEventPage({ params }: Props) {
         <SetlistBuilder
           eventId={Number(data.id)}
           initialItems={data.setlistItems as any}
-          artistParents={artistParents}
-          // Non-guest event performers — drives the new-item form's
-          // default-performer derivation in SetlistBuilder. The rule
-          // (deriveDefaultPerformerIds) collapses Hasunosora's three
-          // repeating patterns to a deterministic auto-fill from
-          // (type, stageType, formArtistIds):
-          //   • mc/video/interval                → []
-          //   • song + full_group, no credit     → this whole prop
-          //   • song + any stage + credit        → this prop filtered
-          //     to stage identities whose artistLinks include the
-          //     credited Artist or any of its descendants
-          //     (`artistParents`); no match → []
-          // Guests stay explicit-only per the EventPerformer schema
-          // comment; they never seed any derived row.
-          eventPerformers={(data.performers ?? [])
-            .filter((p: { isGuest: boolean }) => !p.isGuest)
-            .map(
-              (p: {
-                stageIdentity: {
-                  id: string;
-                  translations: { locale: string; name: string }[];
-                  artistLinks: {
-                    artist: {
-                      // Prisma's static type is `bigint`; the value
-                      // here has already been JSON-coerced to a JS
-                      // number by `serializeBigInt(event)` upstream,
-                      // but the type chain still says bigint. We
-                      // re-coerce on output so SetlistBuilder's
-                      // `number` Set lookups work.
-                      id: bigint;
-                      translations: { locale: string; name: string }[];
-                    };
-                  }[];
-                };
-              }) => ({
-                id: p.stageIdentity.id,
-                translations: p.stageIdentity.translations,
-                artistLinks: p.stageIdentity.artistLinks.map((l) => ({
-                  artist: {
-                    id: Number(l.artist.id),
-                    translations: l.artist.translations,
-                  },
-                })),
-              }),
-            )}
+          artistOrder={serializeBigIntAsString(event.artistOrder ?? [])}
+          eventGuestIds={event.performers.filter((p) => p.isGuest).map((p) => p.stageIdentity.id)}
+          // Guests can be picked explicitly but never seed the default roster.
+          eventPerformers={event.performers.filter((p) => !p.isGuest).map(({ stageIdentity }) => ({
+            id: stageIdentity.id,
+            translations: stageIdentity.translations,
+            sortOrder: stageIdentity.sortOrder,
+            createdAt: stageIdentity.createdAt.toISOString(),
+            artistLinks: stageIdentity.artistLinks.map((link) => ({
+              artistId: Number(link.artistId),
+              orderArtistId: String(link.artistId),
+              sortOrder: link.sortOrder,
+              artist: { id: Number(link.artist.id), translations: link.artist.translations },
+            })),
+          }))}
         />
         {/* eslint-enable @typescript-eslint/no-explicit-any */}
       </div>
